@@ -135,9 +135,6 @@ impl<T: PointeeSized> *mut T {
     #[inline(always)]
     #[stable(feature = "strict_provenance", since = "1.84.0")]
     pub fn addr(self) -> usize {
-        // A pointer-to-integer transmute currently has exactly the right semantics: it returns the
-        // address without exposing the provenance. Note that this is *not* a stable guarantee about
-        // transmute semantics, it relies on sysroot crates having special status.
         // 指针到整数的 transmute 目前恰好具备所需语义：它返回地址而不暴露 provenance。注意这 *不是*
         // 关于 transmute 语义的稳定保证，它依赖于 sysroot crate 拥有特殊地位。
         // SAFETY: 指针到整数的 transmute 是有效的（前提是你接受丢失 provenance）。
@@ -181,9 +178,6 @@ impl<T: PointeeSized> *mut T {
     #[inline]
     #[stable(feature = "strict_provenance", since = "1.84.0")]
     pub fn with_addr(self, addr: usize) -> Self {
-        // This should probably be an intrinsic to avoid doing any sort of arithmetic, but
-        // meanwhile, we can implement it with `wrapping_offset`, which preserves the pointer's
-        // provenance.
         // 为避免做任何算术，这本应是一个 intrinsic，但在此之前，我们可以用 `wrapping_offset` 来实现它，
         // 它会保留指针的 provenance。
         let self_addr = self.addr() as isize;
@@ -277,7 +271,7 @@ impl<T: PointeeSized> *mut T {
     ///     println!("We got back the value: {}!", ptr.as_ref_unchecked());
     /// }
     /// ```
-    // FIXME: mention it in the docs for `as_ref` and `as_uninit_ref` once stabilized.
+    // FIXME: 稳定后，在 `as_ref` 和 `as_uninit_ref` 的文档中提到这一点。
     #[unstable(feature = "ptr_as_ref_unchecked", issue = "122034")]
     #[inline]
     #[must_use]
@@ -344,15 +338,12 @@ impl<T: PointeeSized> *mut T {
         #[inline]
         #[rustc_allow_const_fn_unstable(const_eval_select)]
         const fn runtime_offset_nowrap(this: *const (), count: isize, size: usize) -> bool {
-            // We can use const_eval_select here because this is only for UB checks.
             // 这里可以使用 const_eval_select，因为它仅用于 UB 检查。
             const_eval_select!(
                 @capture { this: *const (), count: isize, size: usize } -> bool:
                 if const {
                     true
                 } else {
-                    // `size` is the size of a Rust type, so we know that
-                    // `size <= isize::MAX` and thus `as` cast here is not lossy.
                     // `size` 是某个 Rust 类型的大小，因此我们知道 `size <= isize::MAX`，
                     // 故此处的 `as` cast 不会丢失精度。
                     let Some(byte_offset) = count.checked_mul(size as isize) else {
@@ -522,7 +513,7 @@ impl<T: PointeeSized> *mut T {
     /// 调用此方法时，你必须确保 *要么* 指针为空，*要么*
     /// 指针是[可转换为引用的](crate::ptr#pointer-to-reference-conversion)。
     ///
-    /// # Panics during const evaluation
+    /// # Panics
     ///
     /// 如果在 const 求值期间无法确定指针是否为空，此方法将 panic。详见 [`is_null`]。
     ///
@@ -585,7 +576,7 @@ impl<T: PointeeSized> *mut T {
     /// # assert_eq!(s, [4, 2, 3]);
     /// println!("{s:?}"); // 将打印："[4, 2, 3]"。
     /// ```
-    // FIXME: mention it in the docs for `as_mut` and `as_uninit_mut` once stabilized.
+    // FIXME: 稳定后，在 `as_mut` 和 `as_uninit_mut` 的文档中提到这一点。
     #[unstable(feature = "ptr_as_ref_unchecked", issue = "122034")]
     #[inline]
     #[must_use]
@@ -607,7 +598,7 @@ impl<T: PointeeSized> *mut T {
     /// 调用此方法时，你必须确保 *要么* 指针为空，*要么*
     /// 指针是[可转换为引用的](crate::ptr#pointer-to-reference-conversion)。
     ///
-    /// # Panics during const evaluation
+    /// # Panics
     ///
     /// 如果在 const 求值期间无法确定指针是否为空，此方法将 panic。详见 [`is_null`]。
     ///
@@ -693,7 +684,7 @@ impl<T: PointeeSized> *mut T {
     /// 要求指针派生自同一分配对象，主要是出于 `const` 兼容性：指向 *不同* 分配对象的指针之间的距离在编译期
     /// 是未知的。然而该要求在运行时同样存在，并且可能被优化所利用。如果你希望计算不保证来自同一分配对象的
     /// 两个指针之间的差值，请使用 `(self as isize - origin as isize) / size_of::<T>()`。
-    // FIXME: recommend `addr()` instead of `as usize` once that is stable.
+    // FIXME: `addr()` 稳定后，建议使用它而不是 `as usize`。
     ///
     /// [`add`]: #method.add
     /// [allocation]: crate::ptr#allocation
@@ -1451,7 +1442,6 @@ impl<T: PointeeSized> *mut T {
         // SAFETY: 上面已检查 `align` 是 2 的幂
         let ret = unsafe { align_offset(self, align) };
 
-        // Inform Miri that we want to consider the resulting pointer to be suitably aligned.
         // 告知 Miri 我们希望把结果指针视为已适当对齐。
         #[cfg(miri)]
         if ret != usize::MAX {
@@ -1650,8 +1640,6 @@ impl<T> *mut [T] {
     #[unstable(feature = "raw_slice_split", issue = "95595")]
     pub unsafe fn split_at_mut(self, mid: usize) -> (*mut [T], *mut [T]) {
         assert!(mid <= self.len());
-        // SAFETY: The assert above is only a safety-net as long as `self.len()` is correct
-        // The actual safety requirements of this function are the same as for `split_at_mut_unchecked`
         // 只要 `self.len()` 正确，上面的 assert 就只是一道安全网。
         // 本函数实际的安全要求与 `split_at_mut_unchecked` 相同。
         unsafe { self.split_at_mut_unchecked(mid) }
@@ -1696,7 +1684,6 @@ impl<T> *mut [T] {
         let len = self.len();
         let ptr = self.as_mut_ptr();
 
-        // SAFETY: Caller must pass a valid pointer and an index that is in-bounds.
         // SAFETY: 调用方必须传入一个有效指针和一个在边界内的索引。
         let tail = unsafe { ptr.add(mid) };
         (
@@ -1705,11 +1692,12 @@ impl<T> *mut [T] {
         )
     }
 
-    /// Returns a raw pointer to the slice's buffer.
+    /// 返回指向该切片缓冲区首元素的可变裸指针。
     ///
-    /// This is equivalent to casting `self` to `*mut T`, but more type-safe.
+    /// 这等价于把 `self` 转成 `*mut T`，但类型上更明确：调用者得到的是元素指针，
+    /// 而不是仍携带长度 metadata 的胖指针。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```rust
     /// #![feature(slice_ptr_get)]
@@ -1724,16 +1712,15 @@ impl<T> *mut [T] {
         self as *mut T
     }
 
-    /// Returns a raw pointer to an element or subslice, without doing bounds
-    /// checking.
+    /// 返回指向某个元素或子切片的裸指针，不执行边界检查。
     ///
-    /// Calling this method with an [out-of-bounds index] or when `self` is not dereferenceable
-    /// is *[undefined behavior]* even if the resulting pointer is not used.
+    /// 如果用[越界索引][out-of-bounds index]调用本方法，或者 `self` 不是可解引用的
+    /// 有效切片指针，则即便结果指针从未被使用，也会造成 *[undefined behavior]*。
     ///
     /// [out-of-bounds index]: #method.add
     /// [undefined behavior]: https://doc.rust-lang.org/reference/behavior-considered-undefined.html
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(slice_ptr_get)]
@@ -1751,70 +1738,70 @@ impl<T> *mut [T] {
     where
         I: [const] SliceIndex<[T]>,
     {
-        // SAFETY: the caller ensures that `self` is dereferenceable and `index` in-bounds.
+        // SAFETY: 调用方保证 `self` 可解引用，且 `index` 在边界内。
         unsafe { index.get_unchecked_mut(self) }
     }
 
     #[doc = include_str!("docs/as_uninit_slice.md")]
     ///
-    /// # See Also
-    /// For the mutable counterpart see [`as_uninit_slice_mut`](pointer::as_uninit_slice_mut).
+    /// # 另见
+    ///
+    /// 可变版本见 [`as_uninit_slice_mut`](pointer::as_uninit_slice_mut)。
     #[inline]
     #[unstable(feature = "ptr_as_uninit", issue = "75402")]
     pub const unsafe fn as_uninit_slice<'a>(self) -> Option<&'a [MaybeUninit<T>]> {
         if self.is_null() {
             None
         } else {
-            // SAFETY: the caller must uphold the safety contract for `as_uninit_slice`.
+            // SAFETY: 调用方必须维护 `as_uninit_slice` 的安全契约。
             Some(unsafe { slice::from_raw_parts(self as *const MaybeUninit<T>, self.len()) })
         }
     }
 
-    /// Returns `None` if the pointer is null, or else returns a unique slice to
-    /// the value wrapped in `Some`. In contrast to [`as_mut`], this does not require
-    /// that the value has to be initialized.
+    /// 如果指针为空(null)，返回 `None`；否则返回包裹在 `Some` 中的唯一可变切片。
+    /// 与 [`as_mut`] 不同，本方法不要求底层元素已经初始化，因为返回类型是
+    /// `&mut [MaybeUninit<T>]`。
     ///
-    /// For the shared counterpart see [`as_uninit_slice`].
+    /// 共享版本见 [`as_uninit_slice`]。
     ///
     /// [`as_mut`]: #method.as_mut
     /// [`as_uninit_slice`]: #method.as_uninit_slice-1
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// When calling this method, you have to ensure that *either* the pointer is null *or*
-    /// all of the following is true:
+    /// 调用此方法时，你必须确保：**要么**指针为空，**要么**以下条件全部成立：
     ///
-    /// * The pointer must be [valid] for reads and writes for `ptr.len() * size_of::<T>()`
-    ///   many bytes, and it must be properly aligned. This means in particular:
+    /// * 该指针对于 `ptr.len() * size_of::<T>()` 个字节而言必须对读取和写入
+    ///   [有效(valid)][valid]，并且必须正确对齐。这尤其意味着：
     ///
-    ///     * The entire memory range of this slice must be contained within a single [allocation]!
-    ///       Slices can never span across multiple allocations.
+    ///     * 该切片的整个内存范围必须包含在**单个** [allocation] 内。
+    ///       切片绝不能跨越多个 allocation。
     ///
-    ///     * The pointer must be aligned even for zero-length slices. One
-    ///       reason for this is that enum layout optimizations may rely on references
-    ///       (including slices of any length) being aligned and non-null to distinguish
-    ///       them from other data. You can obtain a pointer that is usable as `data`
-    ///       for zero-length slices using [`NonNull::dangling()`].
+    ///     * 即便是零长度切片，指针也必须对齐。原因之一是 enum 布局优化可能依赖
+    ///       “引用（包括任意长度的切片）总是对齐且非空”这个事实来把引用与其他数据
+    ///       区分开。可以用 [`NonNull::dangling()`] 取得一个适合作为零长度切片
+    ///       `data` 的指针。
     ///
-    /// * The total size `ptr.len() * size_of::<T>()` of the slice must be no larger than `isize::MAX`.
-    ///   See the safety documentation of [`pointer::offset`].
+    /// * 切片总大小 `ptr.len() * size_of::<T>()` 必须不大于 `isize::MAX`。
+    ///   参见 [`pointer::offset`] 的安全性文档；这是裸指针 in-bounds 算术的共同上限。
     ///
-    /// * You must enforce Rust's aliasing rules, since the returned lifetime `'a` is
-    ///   arbitrarily chosen and does not necessarily reflect the actual lifetime of the data.
-    ///   In particular, while this reference exists, the memory the pointer points to must
-    ///   not get accessed (read or written) through any other pointer.
+    /// * 你必须维护 Rust 的别名(aliasing)规则。返回的生命周期 `'a` 是调用方选择的，
+    ///   不一定反映数据实际存活多久；在这个 `&mut [MaybeUninit<T>]` 存在期间，
+    ///   指针所覆盖的内存不得通过任何其他指针或引用被读取或写入。`MaybeUninit<T>`
+    ///   只放宽“元素是否已初始化”的要求，不放宽唯一可变访问、对齐、有效性或
+    ///   provenance 要求。
     ///
-    /// This applies even if the result of this method is unused!
+    /// 即便本方法的结果未被使用，上述要求依然适用！
     ///
-    /// See also [`slice::from_raw_parts_mut`][].
+    /// 另见 [`slice::from_raw_parts_mut`][]。
     ///
     /// [valid]: crate::ptr#safety
     /// [allocation]: crate::ptr#allocation
     ///
-    /// # Panics during const evaluation
+    /// # Panics
     ///
-    /// This method will panic during const evaluation if the pointer cannot be
-    /// determined to be null or not. See [`is_null`] for more information.
+    /// 如果在 const 求值期间无法确定该指针是否为空，本方法会 panic。
+    /// 更多信息见 [`is_null`]。
     ///
     /// [`is_null`]: #method.is_null-1
     #[inline]
@@ -1823,14 +1810,14 @@ impl<T> *mut [T] {
         if self.is_null() {
             None
         } else {
-            // SAFETY: the caller must uphold the safety contract for `as_uninit_slice_mut`.
+            // SAFETY: 调用方必须维护 `as_uninit_slice_mut` 的安全契约。
             Some(unsafe { slice::from_raw_parts_mut(self as *mut MaybeUninit<T>, self.len()) })
         }
     }
 }
 
 impl<T> *mut T {
-    /// Casts from a pointer-to-`T` to a pointer-to-`[T; N]`.
+    /// 从指向 `T` 的指针转换为指向 `[T; N]` 的指针。
     #[inline]
     #[unstable(feature = "ptr_cast_array", issue = "144514")]
     pub const fn cast_array<const N: usize>(self) -> *mut [T; N] {
@@ -1839,11 +1826,11 @@ impl<T> *mut T {
 }
 
 impl<T, const N: usize> *mut [T; N] {
-    /// Returns a raw pointer to the array's buffer.
+    /// 返回指向数组缓冲区首元素的可变裸指针。
     ///
-    /// This is equivalent to casting `self` to `*mut T`, but more type-safe.
+    /// 这等价于把 `self` 转成 `*mut T`，但显式表达了“从数组指针取元素缓冲区”的意图。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```rust
     /// #![feature(array_ptr_get)]
@@ -1858,9 +1845,9 @@ impl<T, const N: usize> *mut [T; N] {
         self as *mut T
     }
 
-    /// Returns a raw pointer to a mutable slice containing the entire array.
+    /// 返回一个覆盖整个数组的可变裸切片指针。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(array_ptr_get)]
@@ -1879,7 +1866,7 @@ impl<T, const N: usize> *mut [T; N] {
     }
 }
 
-/// Pointer equality is by address, as produced by the [`<*mut T>::addr`](pointer::addr) method.
+/// `*mut T` 的相等性按地址判断，地址值由 [`<*mut T>::addr`](pointer::addr) 方法给出。
 #[stable(feature = "rust1", since = "1.0.0")]
 #[diagnostic::on_const(
     message = "pointers cannot be reliably compared during const eval",
@@ -1893,7 +1880,7 @@ impl<T: PointeeSized> PartialEq for *mut T {
     }
 }
 
-/// Pointer equality is an equivalence relation.
+/// 指针相等性满足等价关系要求。
 #[stable(feature = "rust1", since = "1.0.0")]
 #[diagnostic::on_const(
     message = "pointers cannot be reliably compared during const eval",
@@ -1901,7 +1888,7 @@ impl<T: PointeeSized> PartialEq for *mut T {
 )]
 impl<T: PointeeSized> Eq for *mut T {}
 
-/// Pointer comparison is by address, as produced by the [`<*mut T>::addr`](pointer::addr) method.
+/// `*mut T` 的全序比较按地址判断，地址值由 [`<*mut T>::addr`](pointer::addr) 方法给出。
 #[stable(feature = "rust1", since = "1.0.0")]
 #[diagnostic::on_const(
     message = "pointers cannot be reliably compared during const eval",
@@ -1921,7 +1908,7 @@ impl<T: PointeeSized> Ord for *mut T {
     }
 }
 
-/// Pointer comparison is by address, as produced by the [`<*mut T>::addr`](pointer::addr) method.
+/// `*mut T` 的偏序比较按地址判断，地址值由 [`<*mut T>::addr`](pointer::addr) 方法给出。
 #[stable(feature = "rust1", since = "1.0.0")]
 #[diagnostic::on_const(
     message = "pointers cannot be reliably compared during const eval",
@@ -1961,7 +1948,7 @@ impl<T: PointeeSized> PartialOrd for *mut T {
 
 #[stable(feature = "raw_ptr_default", since = "1.88.0")]
 impl<T: ?Sized + Thin> Default for *mut T {
-    /// Returns the default value of [`null_mut()`][crate::ptr::null_mut].
+    /// 返回 [`null_mut()`][crate::ptr::null_mut] 产生的默认空指针值。
     fn default() -> Self {
         crate::ptr::null_mut()
     }

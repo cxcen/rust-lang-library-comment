@@ -138,7 +138,7 @@ macro_rules! midpoint_impl {
         /// sufficiently-large unsigned integral type. This implies that the result is
         /// always rounded towards zero and that no overflow will ever occur.
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(0", stringify!($SelfT), ".midpoint(4), 2);")]
@@ -164,7 +164,7 @@ macro_rules! midpoint_impl {
         /// sufficiently-large signed integral type. This implies that the result is
         /// always rounded towards zero and that no overflow will ever occur.
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(0", stringify!($SelfT), ".midpoint(4), 2);")]
@@ -197,7 +197,7 @@ macro_rules! midpoint_impl {
         /// sufficiently-large unsigned integral type. This implies that the result is
         /// always rounded towards zero and that no overflow will ever occur.
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(0", stringify!($SelfT), ".midpoint(4), 2);")]
@@ -221,7 +221,7 @@ macro_rules! midpoint_impl {
         /// sufficiently-large signed integral type. This implies that the result is
         /// always rounded towards zero and that no overflow will ever occur.
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(0", stringify!($SelfT), ".midpoint(4), 2);")]
@@ -471,7 +471,7 @@ impl u8 {
 
     /// Checks if the value is within the ASCII range.
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let ascii = 97u8;
@@ -500,7 +500,7 @@ impl u8 {
     /// Converts this byte to an [ASCII character](ascii::Char), without
     /// checking whether or not it's valid.
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
     /// This byte must be valid ASCII, or else this is UB.
     #[must_use]
@@ -524,7 +524,7 @@ impl u8 {
     ///
     /// To uppercase the value in-place, use [`make_ascii_uppercase`].
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let lowercase_a = 97u8;
@@ -549,7 +549,7 @@ impl u8 {
     ///
     /// To lowercase the value in-place, use [`make_ascii_lowercase`].
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let uppercase_a = 65u8;
@@ -577,7 +577,7 @@ impl u8 {
     ///
     /// This is equivalent to `to_ascii_lowercase(a) == to_ascii_lowercase(b)`.
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let lowercase_a = 97u8;
@@ -600,7 +600,7 @@ impl u8 {
     /// To return a new uppercased value without modifying the existing one, use
     /// [`to_ascii_uppercase`].
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let mut byte = b'a';
@@ -626,7 +626,7 @@ impl u8 {
     /// To return a new lowercased value without modifying the existing one, use
     /// [`to_ascii_lowercase`].
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let mut byte = b'A';
@@ -649,7 +649,7 @@ impl u8 {
     /// - U+0041 'A' ..= U+005A 'Z', or
     /// - U+0061 'a' ..= U+007A 'z'.
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let uppercase_a = b'A';
@@ -683,7 +683,7 @@ impl u8 {
     /// Checks if the value is an ASCII uppercase character:
     /// U+0041 'A' ..= U+005A 'Z'.
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let uppercase_a = b'A';
@@ -717,7 +717,7 @@ impl u8 {
     /// Checks if the value is an ASCII lowercase character:
     /// U+0061 'a' ..= U+007A 'z'.
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let uppercase_a = b'A';
@@ -754,7 +754,7 @@ impl u8 {
     /// - U+0061 'a' ..= U+007A 'z', or
     /// - U+0030 '0' ..= U+0039 '9'.
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let uppercase_a = b'A';
@@ -788,7 +788,7 @@ impl u8 {
     /// Checks if the value is an ASCII decimal digit:
     /// U+0030 '0' ..= U+0039 '9'.
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let uppercase_a = b'A';
@@ -822,7 +822,7 @@ impl u8 {
     /// Checks if the value is an ASCII octal digit:
     /// U+0030 '0' ..= U+0037 '7'.
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(is_ascii_octdigit)]
@@ -856,7 +856,7 @@ impl u8 {
     /// - U+0041 'A' ..= U+0046 'F', or
     /// - U+0061 'a' ..= U+0066 'f'.
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let uppercase_a = b'A';
@@ -894,7 +894,7 @@ impl u8 {
     /// - U+005B ..= U+0060 `` [ \ ] ^ _ ` ``, or
     /// - U+007B ..= U+007E `{ | } ~`
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let uppercase_a = b'A';
@@ -931,7 +931,7 @@ impl u8 {
     /// Checks if the value is an ASCII graphic character:
     /// U+0021 '!' ..= U+007E '~'.
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let uppercase_a = b'A';
@@ -982,7 +982,7 @@ impl u8 {
     /// [pct]: https://pubs.opengroup.org/onlinepubs/9699919799/basedefs/V1_chap07.html#tag_07_03_01
     /// [bfs]: https://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html#tag_18_06_05
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let uppercase_a = b'A';
@@ -1018,7 +1018,7 @@ impl u8 {
     /// Note that most ASCII whitespace characters are control
     /// characters, but SPACE is not.
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let uppercase_a = b'A';
@@ -1049,12 +1049,11 @@ impl u8 {
         matches!(*self, b'\0'..=b'\x1F' | b'\x7F')
     }
 
-    /// Returns an iterator that produces an escaped version of a `u8`,
-    /// treating it as an ASCII character.
+    /// 返回一个迭代器，产出把该 `u8` 当作 ASCII 字符处理后的转义形式。
     ///
-    /// The behavior is identical to [`ascii::escape_default`].
+    /// 行为与 [`ascii::escape_default`] 相同。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// assert_eq!("0", b'0'.escape_ascii().to_string());
@@ -1108,7 +1107,7 @@ impl u16 {
 
     /// Checks if the value is a Unicode surrogate code point, which are disallowed values for [`char`].
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(utf16_extra)]
@@ -1293,13 +1292,13 @@ impl usize {
 }
 
 impl usize {
-    /// Returns an `usize` where every byte is equal to `x`.
+    /// 返回一个每个字节都等于 `x` 的 `usize`。
     #[inline]
     pub(crate) const fn repeat_u8(x: u8) -> usize {
         usize::from_ne_bytes([x; size_of::<usize>()])
     }
 
-    /// Returns an `usize` where every byte pair is equal to `x`.
+    /// 返回一个每个双字节单元都等于 `x` 的 `usize`。
     #[inline]
     pub(crate) const fn repeat_u16(x: u16) -> usize {
         let mut r = 0usize;
@@ -1318,7 +1317,7 @@ impl usize {
 /// This `enum` is used as the return type for [`f32::classify`] and [`f64::classify`]. See
 /// their documentation for more.
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use std::num::FpCategory;
@@ -1427,7 +1426,7 @@ macro_rules! from_str_int_impl {
             /// For parsing numbers in other bases, such as binary or hexadecimal,
             /// see [`from_str_radix`][Self::from_str_radix].
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             /// use std::str::FromStr;
@@ -1470,17 +1469,17 @@ macro_rules! from_str_int_impl {
             ///
             /// # Panics
             ///
-            /// This function panics if `radix` is not in the range from 2 to 36.
+            /// 如果 `radix` 不在 2 到 36 的范围内，此函数会 panic。
             ///
             /// # See also
-            /// If the string to be parsed is in base 10 (decimal),
-            /// [`from_str`] or [`str::parse`] can also be used.
+            /// 如果要解析的字符串是 10 进制（decimal），也可以使用
+            /// [`from_str`] 或 [`str::parse`]。
             ///
             // FIXME(#122566): These HTML links work around a rustdoc-json test failure.
             /// [`from_str`]: #method.from_str
             /// [`str::parse`]: primitive.str.html#method.parse
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             #[doc = concat!("assert_eq!(", stringify!($int_ty), "::from_str_radix(\"A\", 16), Ok(10));")]
@@ -1512,7 +1511,7 @@ macro_rules! from_str_int_impl {
             /// whitespace) represent an error. Underscores (which are accepted in Rust literals)
             /// also represent an error.
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             /// #![feature(int_from_ascii)]
@@ -1554,9 +1553,9 @@ macro_rules! from_str_int_impl {
             ///
             /// # Panics
             ///
-            /// This function panics if `radix` is not in the range from 2 to 36.
+            /// 如果 `radix` 不在 2 到 36 的范围内，此函数会 panic。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             /// #![feature(int_from_ascii)]

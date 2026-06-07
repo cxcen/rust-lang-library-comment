@@ -1,4 +1,7 @@
-//! Trait implementations for `ByteStr`.
+//! `ByteStr` 的 trait 实现。
+//!
+//! 这些实现把 `ByteStr` 作为字节序列参与比较、哈希和索引。它们不引入 UTF-8
+//! 有效性要求，所有顺序和相等性判断都基于底层 `[u8]` 的语义。
 
 use crate::bstr::ByteStr;
 use crate::cmp::Ordering;
@@ -133,17 +136,17 @@ macro_rules! impl_partial_eq_n {
 #[unstable(feature = "bstr_internals", issue = "none")]
 pub use impl_partial_eq_n;
 
-// PartialOrd with `[u8]` omitted to avoid inference failures
+// 省略与 `[u8]` 的 PartialOrd，避免泛型场景中出现类型推断失败。
 impl_partial_eq!(ByteStr, [u8]);
-// PartialOrd with `&[u8]` omitted to avoid inference failures
+// 省略与 `&[u8]` 的 PartialOrd，避免泛型场景中出现类型推断失败。
 impl_partial_eq!(ByteStr, &[u8]);
-// PartialOrd with `str` omitted to avoid inference failures
+// 省略与 `str` 的 PartialOrd，避免泛型场景中出现类型推断失败。
 impl_partial_eq!(ByteStr, str);
-// PartialOrd with `&str` omitted to avoid inference failures
+// 省略与 `&str` 的 PartialOrd，避免泛型场景中出现类型推断失败。
 impl_partial_eq!(ByteStr, &str);
-// PartialOrd with `[u8; N]` omitted to avoid inference failures
+// 省略与 `[u8; N]` 的 PartialOrd，避免泛型场景中出现类型推断失败。
 impl_partial_eq_n!(ByteStr, [u8; N]);
-// PartialOrd with `[u8; N]` omitted to avoid inference failures
+// 省略与 `&[u8; N]` 的 PartialOrd，避免泛型场景中出现类型推断失败。
 impl_partial_eq_n!(ByteStr, &[u8; N]);
 
 #[unstable(feature = "bstr", issue = "134915")]
@@ -212,12 +215,12 @@ unsafe impl SliceIndex<ByteStr> for usize {
     }
     #[inline]
     unsafe fn get_unchecked(self, slice: *const ByteStr) -> *const Self::Output {
-        // SAFETY: the caller has to uphold the safety contract for `get_unchecked`.
+        // SAFETY: 调用方必须维护 `get_unchecked` 的安全契约；这里仅把透明包装指针转回 `[u8]` 指针。
         unsafe { self.get_unchecked(slice as *const [u8]) }
     }
     #[inline]
     unsafe fn get_unchecked_mut(self, slice: *mut ByteStr) -> *mut Self::Output {
-        // SAFETY: the caller has to uphold the safety contract for `get_unchecked_mut`.
+        // SAFETY: 调用方必须维护 `get_unchecked_mut` 的安全契约；这里仅把透明包装指针转回 `[u8]` 指针。
         unsafe { self.get_unchecked_mut(slice as *mut [u8]) }
     }
     #[inline]
@@ -245,12 +248,12 @@ macro_rules! impl_slice_index {
             }
             #[inline]
             unsafe fn get_unchecked(self, slice: *const ByteStr) -> *const Self::Output {
-                // SAFETY: the caller has to uphold the safety contract for `get_unchecked`.
+                // SAFETY: 调用方必须维护 `get_unchecked` 的安全契约；索引计算委托给底层 `[u8]` 实现。
                 unsafe { self.get_unchecked(slice as *const [u8]) as *const ByteStr }
             }
             #[inline]
             unsafe fn get_unchecked_mut(self, slice: *mut ByteStr) -> *mut Self::Output {
-                // SAFETY: the caller has to uphold the safety contract for `get_unchecked_mut`.
+                // SAFETY: 调用方必须维护 `get_unchecked_mut` 的安全契约；索引计算委托给底层 `[u8]` 实现。
                 unsafe { self.get_unchecked_mut(slice as *mut [u8]) as *mut ByteStr }
             }
             #[inline]

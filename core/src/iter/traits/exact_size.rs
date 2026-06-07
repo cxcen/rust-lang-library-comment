@@ -1,51 +1,48 @@
-/// An iterator that knows its exact length.
+/// 知道自身精确剩余长度的迭代器。
 ///
-/// Many [`Iterator`]s don't know how many times they will iterate, but some do.
-/// If an iterator knows how many times it can iterate, providing access to
-/// that information can be useful. For example, if you want to iterate
-/// backwards, a good start is to know where the end is.
+/// 很多 [`Iterator`] 无法在不执行的情况下知道还会产出多少项，但有些迭代器可以。
+/// 当迭代器能维护精确长度时，把这个信息暴露出来有助于预分配、快速判断是否为空，
+/// 以及实现需要知道末端位置的反向迭代。
 ///
-/// When implementing an `ExactSizeIterator`, you must also implement
-/// [`Iterator`]. When doing so, the implementation of [`Iterator::size_hint`]
-/// *must* return the exact size of the iterator.
+/// 实现 `ExactSizeIterator` 时也必须实现 [`Iterator`]，并且
+/// [`Iterator::size_hint`] *必须* 返回精确长度，即 `(n, Some(n))`。该精确长度表示
+/// 接下来还会返回 `n` 次 [`Some`]，随后返回 [`None`]。
 ///
-/// The [`len`] method has a default implementation, so you usually shouldn't
-/// implement it. However, you may be able to provide a more performant
-/// implementation than the default, so overriding it in this case makes sense.
+/// [`len`] 有默认实现，通常不需要手写。只有在能比默认的 `size_hint` 解包更高效时，
+/// 覆盖它才有意义；覆盖后仍必须和 [`Iterator::size_hint`] 保持一致。
 ///
-/// Note that this trait is a safe trait and as such does *not* and *cannot*
-/// guarantee that the returned length is correct. This means that `unsafe`
-/// code **must not** rely on the correctness of [`Iterator::size_hint`]. The
-/// unstable and unsafe [`TrustedLen`](super::marker::TrustedLen) trait gives
-/// this additional guarantee.
+/// 需要特别注意: 这是 safe trait，因此它本身不能、也不会给 unsafe 代码提供可信
+/// 保证。错误实现会违反 trait 协议，但 unsafe 代码 **不能** 仅凭
+/// `ExactSizeIterator` 或 [`Iterator::size_hint`] 省略边界检查。若 unsafe 消费方
+/// 需要把长度当作内存安全不变量，必须依赖 unstable 且 unsafe 的
+/// [`TrustedLen`](super::marker::TrustedLen)。
 ///
 /// [`len`]: ExactSizeIterator::len
 ///
-/// # When *shouldn't* an adapter be `ExactSizeIterator`?
+/// # 适配器何时不应实现 `ExactSizeIterator`?
 ///
-/// If an adapter makes an iterator *longer*, then it's usually incorrect for
-/// that adapter to implement `ExactSizeIterator`.  The inner exact-sized
-/// iterator might already be `usize::MAX`-long, and thus the length of the
-/// longer adapted iterator would no longer be exactly representable in `usize`.
+/// 如果某个适配器会让迭代器变得*更长*，它通常不应实现 `ExactSizeIterator`。
+/// 内层精确长度迭代器本身可能已经长达 `usize::MAX`；再变长后，结果长度就无法再用
+/// `usize` 精确表示。
 ///
-/// This is why [`Chain<A, B>`](crate::iter::Chain) isn't `ExactSizeIterator`,
-/// even when `A` and `B` are both `ExactSizeIterator`.
+/// 这就是 [`Chain<A, B>`](crate::iter::Chain) 即使在 `A` 和 `B` 都实现
+/// `ExactSizeIterator` 时也不实现该 trait 的原因。
 ///
-/// # Examples
+/// # 示例
 ///
-/// Basic usage:
+/// 基本用法:
 ///
 /// ```
-/// // a finite range knows exactly how many times it will iterate
+/// // 有限 range 精确知道自己还会迭代多少次。
 /// let five = 0..5;
 ///
 /// assert_eq!(5, five.len());
 /// ```
 ///
-/// In the [module-level docs], we implemented an [`Iterator`], `Counter`.
-/// Let's implement `ExactSizeIterator` for it as well:
+/// 在[模块级文档]中，我们实现了一个 [`Iterator`] `Counter`。现在也为它实现
+/// `ExactSizeIterator`:
 ///
-/// [module-level docs]: crate::iter
+/// [模块级文档]: crate::iter
 ///
 /// ```
 /// # struct Counter {
@@ -68,13 +65,13 @@
 /// #     }
 /// # }
 /// impl ExactSizeIterator for Counter {
-///     // We can easily calculate the remaining number of iterations.
+///     // 可以直接计算剩余迭代次数。
 ///     fn len(&self) -> usize {
 ///         5 - self.count
 ///     }
 /// }
 ///
-/// // And now we can use it!
+/// // 现在可以使用它。
 ///
 /// let mut counter = Counter::new();
 ///
@@ -84,27 +81,24 @@
 /// ```
 #[stable(feature = "rust1", since = "1.0.0")]
 pub trait ExactSizeIterator: Iterator {
-    /// Returns the exact remaining length of the iterator.
+    /// 返回迭代器的精确剩余长度。
     ///
-    /// The implementation ensures that the iterator will return exactly `len()`
-    /// more times a [`Some(T)`] value, before returning [`None`].
-    /// This method has a default implementation, so you usually should not
-    /// implement it directly. However, if you can provide a more efficient
-    /// implementation, you can do so. See the [trait-level] docs for an
-    /// example.
+    /// 正确实现保证在返回 [`None`] 前，迭代器还会恰好返回 `len()` 次 [`Some(T)`]。
+    /// 该方法有默认实现，因此通常不应直接实现；如果可以提供更高效的实现，则可以
+    /// 覆盖它。示例见 trait 级文档。
     ///
-    /// This function has the same safety guarantees as the
-    /// [`Iterator::size_hint`] function.
+    /// 本函数与 [`Iterator::size_hint`] 具有相同的安全边界: safe 调用方可以把它作
+    /// 为协议性信息使用，但 unsafe 代码不能仅凭它承担内存安全不变量。
     ///
     /// [trait-level]: ExactSizeIterator
     /// [`Some(T)`]: Some
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage:
+    /// 基本用法:
     ///
     /// ```
-    /// // a finite range knows exactly how many times it will iterate
+    /// // 有限 range 精确知道自己还会迭代多少次。
     /// let mut range = 0..5;
     ///
     /// assert_eq!(5, range.len());
@@ -115,22 +109,20 @@ pub trait ExactSizeIterator: Iterator {
     #[stable(feature = "rust1", since = "1.0.0")]
     fn len(&self) -> usize {
         let (lower, upper) = self.size_hint();
-        // Note: This assertion is overly defensive, but it checks the invariant
-        // guaranteed by the trait. If this trait were rust-internal,
-        // we could use debug_assert!; assert_eq! will check all Rust user
-        // implementations too.
+        // 注意: 这个断言偏防御性，但它检查了该 trait 承诺的不变量。
+        // 如果这个 trait 只在 Rust 内部使用，可以用 debug_assert!；
+        // assert_eq! 会同时检查所有用户实现。
         assert_eq!(upper, Some(lower));
         lower
     }
 
-    /// Returns `true` if the iterator is empty.
+    /// 如果迭代器为空，返回 `true`。
     ///
-    /// This method has a default implementation using
-    /// [`ExactSizeIterator::len()`], so you don't need to implement it yourself.
+    /// 该方法默认通过 [`ExactSizeIterator::len()`] 实现，因此通常不需要自行实现。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage:
+    /// 基本用法:
     ///
     /// ```
     /// #![feature(exact_size_is_empty)]

@@ -1,28 +1,26 @@
-//! This module contains the logic for pivot selection.
+//! 本模块包含枢轴选择逻辑。
 
 use crate::{hint, intrinsics};
 
-// Recursively select a pseudomedian if above this threshold.
+// 超过此阈值时递归选择伪中位数。
 const PSEUDO_MEDIAN_REC_THRESHOLD: usize = 64;
 
-/// Selects a pivot from `v`. Algorithm taken from glidesort by Orson Peters.
+/// 从 `v` 中选择一个枢轴。算法取自 Orson Peters 的 glidesort。
 ///
-/// This chooses a pivot by sampling an adaptive amount of points, approximating
-/// the quality of a median of sqrt(n) elements.
+/// 它通过自适应数量的采样点选择枢轴，近似达到从 sqrt(n) 个元素中取中位数的质量。
 #[inline]
 pub fn choose_pivot<T, F: FnMut(&T, &T) -> bool>(v: &[T], is_less: &mut F) -> usize {
-    // We use unsafe code and raw pointers here because we're dealing with
-    // heavy recursion. Passing safe slices around would involve a lot of
-    // branches and function call overhead.
+    // 这里使用 unsafe 代码和裸指针，因为该逻辑涉及较深递归。
+    // 在递归中传递安全切片会带来大量分支和函数调用开销。
 
     let len = v.len();
     if len < 8 {
         intrinsics::abort();
     }
 
-    // SAFETY: a, b, c point to initialized regions of len_div_8 elements,
-    // satisfying median3 and median3_rec's preconditions as v_base points
-    // to an initialized region of n = len elements.
+    // SAFETY: a、b、c 都指向包含 len_div_8 个元素的已初始化区域；
+    // v_base 指向 n = len 个元素的已初始化区域，因此满足 median3
+    // 和 median3_rec 的前置条件。
     let index = unsafe {
         let v_base = v.as_ptr();
         let len_div_8 = len / 8;
@@ -37,21 +35,20 @@ pub fn choose_pivot<T, F: FnMut(&T, &T) -> bool>(v: &[T], is_less: &mut F) -> us
             median3_rec(a, b, c, len_div_8, is_less).offset_from_unsigned(v_base)
         }
     };
-    // SAFETY: preconditions must have been met for offset_from_unsigned()
+    // SAFETY: 前面必须已经满足 offset_from_unsigned() 的前置条件。
     unsafe {
         hint::assert_unchecked(index < v.len());
         index
     }
 }
 
-/// Calculates an approximate median of 3 elements from sections a, b, c, or
-/// recursively from an approximation of each, if they're large enough. By
-/// dividing the size of each section by 8 when recursing we have logarithmic
-/// recursion depth and overall sample from f(n) = 3*f(n/8) -> f(n) =
-/// O(n^(log(3)/log(8))) ~= O(n^0.528) elements.
+/// 从 a、b、c 三段中计算 3 个元素的近似中位数；如果这些段足够大，
+/// 就先递归计算每段的近似值。
 ///
-/// SAFETY: a, b, c must point to the start of initialized regions of memory of
-/// at least n elements.
+/// 每次递归把每段大小除以 8，因此递归深度为对数级；总体采样量满足
+/// f(n) = 3*f(n/8)，即 f(n) = O(n^(log(3)/log(8))) ~= O(n^0.528) 个元素。
+///
+/// SAFETY: a、b、c 必须指向至少包含 n 个元素的已初始化内存区域开头。
 unsafe fn median3_rec<T, F: FnMut(&T, &T) -> bool>(
     mut a: *const T,
     mut b: *const T,
@@ -59,8 +56,8 @@ unsafe fn median3_rec<T, F: FnMut(&T, &T) -> bool>(
     n: usize,
     is_less: &mut F,
 ) -> *const T {
-    // SAFETY: a, b, c still point to initialized regions of n / 8 elements,
-    // by the exact same logic as in choose_pivot.
+    // SAFETY: 与 choose_pivot 中完全相同的推理可知，a、b、c 仍然指向
+    // 包含 n / 8 个元素的已初始化区域。
     unsafe {
         if n * 8 >= PSEUDO_MEDIAN_REC_THRESHOLD {
             let n8 = n / 8;
@@ -72,23 +69,22 @@ unsafe fn median3_rec<T, F: FnMut(&T, &T) -> bool>(
     }
 }
 
-/// Calculates the median of 3 elements.
+/// 计算 3 个元素的中位数。
 ///
-/// SAFETY: a, b, c must be valid initialized elements.
+/// SAFETY: a、b、c 必须是有效且已初始化的元素。
 #[inline(always)]
 fn median3<T, F: FnMut(&T, &T) -> bool>(a: &T, b: &T, c: &T, is_less: &mut F) -> *const T {
-    // Compiler tends to make this branchless when sensible, and avoids the
-    // third comparison when not.
+    // 编译器通常会在合适时把这里变成无分支代码；否则也会避免第三次比较。
     let x = is_less(a, b);
     let y = is_less(a, c);
     if x == y {
-        // If x=y=0 then b, c <= a. In this case we want to return max(b, c).
-        // If x=y=1 then a < b, c. In this case we want to return min(b, c).
-        // By toggling the outcome of b < c using XOR x we get this behavior.
+        // 如果 x=y=0，则 b、c <= a，此时要返回 max(b, c)。
+        // 如果 x=y=1，则 a < b、c，此时要返回 min(b, c)。
+        // 用 XOR x 翻转 b < c 的结果即可得到这种行为。
         let z = is_less(b, c);
         if z ^ x { c } else { b }
     } else {
-        // Either c <= a < b or b <= a < c, thus a is our median.
+        // 要么 c <= a < b，要么 b <= a < c，因此 a 是中位数。
         a
     }
 }

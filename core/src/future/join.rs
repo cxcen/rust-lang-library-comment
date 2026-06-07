@@ -54,11 +54,11 @@ pub macro join( $($fut:expr),+ $(,)? ) {
     }
 }
 
-// FIXME(danielhenrymantilla): a private macro should need no stability guarantee.
+// FIXME(danielhenrymantilla): 私有宏理论上不应需要稳定性保证。
 #[unstable(feature = "future_join", issue = "91642")]
 /// 为了能够*命名*元组中第 i 个 future(比如想取第 .4 个),用了如下技巧:
 /// `let (_, _, _, _, it, ..) = tuple;`。要做到这一点,需要为第 i 个 future 生成一段
-/// 长度为 `i` 的 `_` 重复序列。因此采用递归“蚕食”(muncher)式的宏展开方式。
+/// 长度为 `i` 的 `_` 重复序列。因此采用递归“逐个取出”的宏展开方式。
 macro join_internal {
     // 递归步骤:把每个 future 映射到它的“位置”(下划线的个数)。
     (
@@ -176,11 +176,11 @@ impl<F: Future> Future for MaybeDone<F> {
     type Output = ();
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        // SAFETY: 对 `f` 做结构性固定(structural pinning):`self` 已被固定,这里只是把
+        // SAFETY: 对 `f` 做结构性固定:`self` 已被固定,这里只是把
         // 固定向内投影到 `Future` 变体中的 `f`,并通过 `Pin::new_unchecked` 轮询它,
         // 全程不移动 `f`。
         unsafe {
-            // 不要把匹配人体工学(match ergonomics)与 unsafe 混用。
+            // 不要把匹配人体工学与 unsafe 混用。
             match *self.as_mut().get_unchecked_mut() {
                 MaybeDone::Future(ref mut f) => {
                     let val = ready!(Pin::new_unchecked(f).poll(cx));

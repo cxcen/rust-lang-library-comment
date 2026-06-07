@@ -258,10 +258,10 @@ impl<T: PointeeSized> *const T {
     /// [`as_ref`]: #method.as_ref
     /// [`as_uninit_ref`]: #method.as_uninit_ref
     ///
-    /// # 安全性（Safety）
+    /// # 安全性(Safety）
     ///
     /// 调用该方法时，你必须确保该指针是
-    /// [convertible to a reference](crate::ptr#pointer-to-reference-conversion)（可转换为引用）的。
+    /// [可转换为引用](crate::ptr#pointer-to-reference-conversion)的。
     ///
     /// # 示例
     ///
@@ -273,7 +273,7 @@ impl<T: PointeeSized> *const T {
     ///     assert_eq!(ptr.as_ref_unchecked(), &10);
     /// }
     /// ```
-    // FIXME: mention it in the docs for `as_ref` and `as_uninit_ref` once stabilized.
+    // FIXME: 稳定后，在 `as_ref` 和 `as_uninit_ref` 的文档中提到这一点。
     #[unstable(feature = "ptr_as_ref_unchecked", issue = "122034")]
     #[inline]
     #[must_use]
@@ -388,7 +388,7 @@ impl<T: PointeeSized> *const T {
     ///
     /// `count` 的单位是 T；例如 `count` 为 3 表示偏移 `3 * size_of::<T>()` 个字节。
     ///
-    /// # 安全性（Safety）
+    /// # 安全性(Safety）
     ///
     /// 该操作本身始终是安全的，但使用其结果指针则不一定安全。
     ///
@@ -510,7 +510,7 @@ impl<T: PointeeSized> *const T {
     ///
     /// [`offset`]: #method.offset
     ///
-    /// # 安全性（Safety）
+    /// # 安全性(Safety）
     ///
     /// 若违反以下任一条件，结果即为未定义行为：
     ///
@@ -530,7 +530,7 @@ impl<T: PointeeSized> *const T {
     /// 象的指针之间的距离在编译期是未知的。不过该要求在运行时同样存在，并且可能被优化所利用。如果
     /// 你想计算不保证来自同一 allocation 的两指针之间的差值，请使用 `(self as isize -
     /// origin as isize) / size_of::<T>()`。
-    // FIXME: recommend `addr()` instead of `as usize` once that is stable.
+    // FIXME: `addr()` 稳定后，建议使用它而不是 `as usize`。
     ///
     /// [`add`]: #method.add
     /// [allocation]: crate::ptr#allocation
@@ -620,7 +620,7 @@ impl<T: PointeeSized> *const T {
     /// # } }
     /// ```
     ///
-    /// # 安全性（Safety）
+    /// # 安全性(Safety）
     ///
     /// - 两指针之间的距离必须非负（`self >= origin`）
     ///
@@ -829,7 +829,7 @@ impl<T: PointeeSized> *const T {
     ///
     /// `count` 的单位是 T；例如 `count` 为 3 表示偏移 `3 * size_of::<T>()` 个字节。
     ///
-    /// # 安全性（Safety）
+    /// # 安全性(Safety）
     ///
     /// 若违反以下任一条件，结果即为未定义行为：
     ///
@@ -930,7 +930,7 @@ impl<T: PointeeSized> *const T {
     ///
     /// `count` 的单位是 T；例如 `count` 为 3 表示偏移 `3 * size_of::<T>()` 个字节。
     ///
-    /// # 安全性（Safety）
+    /// # 安全性(Safety）
     ///
     /// 该操作本身始终是安全的，但使用其结果指针则不一定安全。
     ///
@@ -1003,7 +1003,7 @@ impl<T: PointeeSized> *const T {
     ///
     /// `count` 的单位是 T；例如 `count` 为 3 表示偏移 `3 * size_of::<T>()` 个字节。
     ///
-    /// # 安全性（Safety）
+    /// # 安全性(Safety）
     ///
     /// 该操作本身始终是安全的，但使用其结果指针则不一定安全。
     ///

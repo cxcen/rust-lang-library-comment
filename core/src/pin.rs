@@ -650,26 +650,24 @@
 //! impl Struct {
 //!     fn field(self: Pin<&mut Self>) -> &mut Field {
 //!         // 这没问题，因为 `field` 从不被视为被固定，因此我们无需
-//!         // need to uphold any pinning guarantees for this field in particular. Of course,
-//!         // we must not elsewhere assume this field *is* pinned if we choose to expose
-//!         // such a method!
+//!         // 为这个字段单独维护任何固定保证。当然，如果我们选择暴露
+//!         // 这样的方法，就绝不能在其他地方假定这个字段*已经*被固定！
 //!         unsafe { &mut self.get_unchecked_mut().field }
 //!     }
 //! }
 //! ```
 //!
-//! You may also in this situation <code>impl [Unpin] for Struct {}</code> *even if* the type of
-//! `field` is not [`Unpin`]. Since we have explicitly chosen not to care about pinning guarantees
-//! for `field`, the way `field`'s type interacts with pinning is no longer relevant in the
-//! context of its use in `Struct`.
+//! 在这种情况下，即便 `field` 的类型并未实现 [`Unpin`]，你也可以为 `Struct` 编写
+//! <code>impl [Unpin] for Struct {}</code>。原因是：我们已经明确选择不依赖 `field` 的固定保证，
+//! 因此 `field` 自身的类型如何与固定交互，在它作为 `Struct` 字段被使用的语境中已经不再相关。
 //!
-//! ### Choosing pinning *to be* structural for `field`...
+//! ### 选择固定对 `field` *是*结构化的……
 //!
-//! The other option is to decide that pinning is "structural" for `field`,
-//! meaning that if the struct is pinned then so is the field.
+//! 另一种选择，是决定固定对 `field` 是“结构化的”：也就是说，只要整个结构体被固定，
+//! 这个字段也随之被固定。
 //!
-//! This allows writing a projection that creates a <code>[Pin]<[`&mut Field`]></code>, thus
-//! witnessing that the field is pinned:
+//! 这样就可以编写一个投影方法来创建 <code>[Pin]<[`&mut Field`]></code>，用这个返回类型见证
+//! 该字段确实处于固定状态：
 //!
 //! ```rust,no_run
 //! # use std::pin::Pin;
@@ -1079,7 +1077,7 @@ impl<Ptr: Deref> Pin<Ptr> {
     ///
     /// 如果 `pointer` 解引用得到的是一个 [`Unpin`] 类型，则应改用 [`Pin::new`]。
     ///
-    /// # 安全性（Safety）
+    /// # 安全性(Safety）
     ///
     /// 此构造器是 unsafe 的，因为我们无法保证 `pointer` 所指向的数据是被固定的。固定一个值，其
     /// 核心含义就是作出这样的保证：该值的数据在它被 drop 之前，既不会被移动、其存储也不会失效。
@@ -1328,7 +1326,7 @@ impl<Ptr: DerefMut> Pin<Ptr> {
 impl<Ptr: Deref> Pin<Ptr> {
     /// 解包（unwrap）这个 `Pin<Ptr>`，返回底层的 `Ptr`。
     ///
-    /// # 安全性（Safety）
+    /// # 安全性(Safety）
     ///
     /// 此函数是 unsafe 的。你必须保证在调用此函数之后，你会继续把指针 `Ptr` 当作被固定来对待，
     /// 以便 `Pin` 类型上的不变量能够得到维护。如果使用所得 `Ptr` 的代码没有继续维护固定不变量，
@@ -1356,7 +1354,7 @@ impl<'a, T: ?Sized> Pin<&'a T> {
     /// 访问。然而，这些“固定投影（pinning projection）”有几个陷阱；关于这一话题的更多细节参见
     /// [`pin` 模块][`pin` module] 文档。
     ///
-    /// # 安全性（Safety）
+    /// # 安全性(Safety）
     ///
     /// 此函数是 unsafe 的。你必须保证：只要参数值不移动，你返回的数据就不会移动（例如，因为它是
     /// 那个值的某个字段），并且你也不会从你在内部函数中收到的那个参数中 move 出值。
@@ -1426,7 +1424,7 @@ impl<'a, T: ?Sized> Pin<&'a mut T> {
 
     /// 获取一个指向这个 `Pin` 内部数据的可变引用。
     ///
-    /// # 安全性（Safety）
+    /// # 安全性(Safety）
     ///
     /// 此函数是 unsafe 的。你必须保证你绝不会把数据从你调用此函数时收到的那个可变引用中 move 出去，
     /// 以便 `Pin` 类型上的不变量能够得到维护。
@@ -1446,7 +1444,7 @@ impl<'a, T: ?Sized> Pin<&'a mut T> {
     /// 访问。然而，这些“固定投影（pinning projection）”有几个陷阱；关于这一话题的更多细节参见
     /// [`pin` 模块][`pin` module] 文档。
     ///
-    /// # 安全性（Safety）
+    /// # 安全性(Safety）
     ///
     /// 此函数是 unsafe 的。你必须保证：只要参数值不移动，你返回的数据就不会移动（例如，因为它是
     /// 那个值的某个字段），并且你也不会从你在内部函数中收到的那个参数中 move 出值。
@@ -1635,7 +1633,7 @@ where
 /// 表示“这是一个指针、或一个指针的包装器，且当其被指对象被固定时可以对它执行 unsizing（去定长
 /// 化）”的 trait。
 ///
-/// # 安全性（Safety）
+/// # 安全性(Safety）
 ///
 /// 如果此类型实现了 `Deref`，那么 `deref` 和 `deref_mut` 所返回的具体类型（concrete type）在没有
 /// 一次修改的情况下不得改变。以下操作不被视为修改：

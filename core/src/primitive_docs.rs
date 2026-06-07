@@ -1,19 +1,18 @@
 #[rustc_doc_primitive = "bool"]
 #[doc(alias = "true")]
 #[doc(alias = "false")]
-/// The boolean type.
+/// 布尔类型。
 ///
-/// The `bool` represents a value, which could only be either [`true`] or [`false`]. If you cast
-/// a `bool` into an integer, [`true`] will be 1 and [`false`] will be 0.
+/// `bool` 表示只能是 [`true`] 或 [`false`] 的值。将 `bool` 转换为整数时，
+/// [`true`] 为 1，[`false`] 为 0。
 ///
-/// # Basic usage
+/// # 基本用法
 ///
-/// `bool` implements various traits, such as [`BitAnd`], [`BitOr`], [`Not`], etc.,
-/// which allow us to perform boolean operations using `&`, `|` and `!`.
+/// `bool` 实现了多种 trait，例如 [`BitAnd`]、[`BitOr`]、[`Not`] 等，
+/// 因而可以用 `&`、`|` 和 `!` 执行布尔运算。
 ///
-/// [`if`] requires a `bool` value as its conditional. [`assert!`], which is an
-/// important macro in testing, checks whether an expression is [`true`] and panics
-/// if it isn't.
+/// [`if`] 要求条件为 `bool` 值。[`assert!`] 是测试中重要的宏，
+/// 它检查表达式是否为 [`true`]，否则会 panic。
 ///
 /// ```
 /// let bool_val = true & false | false;
@@ -27,9 +26,9 @@
 /// [`Not`]: ops::Not
 /// [`if`]: ../std/keyword.if.html
 ///
-/// # Examples
+/// # 示例
 ///
-/// A trivial example of the usage of `bool`:
+/// 一个简单的 `bool` 用法示例：
 ///
 /// ```
 /// let praise_the_borrow_checker = true;
@@ -48,10 +47,10 @@
 /// }
 /// ```
 ///
-/// Also, since `bool` implements the [`Copy`] trait, we don't
-/// have to worry about the move semantics (just like the integer and float primitives).
+/// 此外，由于 `bool` 实现了 [`Copy`] trait，因此无需担心移动语义
+/// （与整数和浮点数原语一样）。
 ///
-/// Now an example of `bool` cast to integer type:
+/// 下面是将 `bool` 转换为整数类型的示例：
 ///
 /// ```
 /// assert_eq!(true as i32, 1);
@@ -63,14 +62,12 @@ mod prim_bool {}
 #[rustc_doc_primitive = "never"]
 #[doc(alias = "!")]
 //
-/// The `!` type, also called "never".
+/// `!` 类型，也称为 "never"。
 ///
-/// `!` represents the type of computations which never resolve to any value at all. For example,
-/// the [`exit`] function `fn exit(code: i32) -> !` exits the process without ever returning, and
-/// so returns `!`.
+/// `!` 表示永远不会求得任何值的计算类型。例如，[`exit`] 函数
+/// `fn exit(code: i32) -> !` 会退出进程且永不返回，因此返回 `!`。
 ///
-/// `break`, `continue` and `return` expressions also have type `!`. For example we are allowed to
-/// write:
+/// `break`、`continue` 和 `return` 表达式的类型也都是 `!`。例如可以这样写：
 ///
 /// ```
 /// #![feature(never_type)]
@@ -81,12 +78,11 @@ mod prim_bool {}
 /// # }
 /// ```
 ///
-/// Although the `let` is pointless here, it illustrates the meaning of `!`. Since `x` is never
-/// assigned a value (because `return` returns from the entire function), `x` can be given type
-/// `!`. We could also replace `return 123` with a `panic!` or a never-ending `loop` and this code
-/// would still be valid.
+/// 这里的 `let` 本身没有实际意义，但它展示了 `!` 的含义。由于 `x` 永远不会被赋值
+/// （因为 `return` 会从整个函数返回），所以 `x` 可以具有类型 `!`。也可以将
+/// `return 123` 替换为 `panic!` 或永不结束的 `loop`，这段代码仍然有效。
 ///
-/// A more realistic usage of `!` is in this code:
+/// `!` 更真实的用法见下面的代码：
 ///
 /// ```
 /// # fn get_a_number() -> Option<u32> { None }
@@ -98,19 +94,18 @@ mod prim_bool {}
 /// # }
 /// ```
 ///
-/// Both match arms must produce values of type [`u32`], but since `break` never produces a value
-/// at all we know it can never produce a value which isn't a [`u32`]. This illustrates another
-/// behavior of the `!` type - expressions with type `!` will coerce into any other type.
+/// 两个 match 分支都必须产生 [`u32`] 类型的值，但由于 `break` 根本不会产生值，
+/// 我们知道它也不可能产生一个不是 [`u32`] 的值。这展示了 `!` 类型的另一种行为：
+/// 类型为 `!` 的表达式会强制转换为任何其他类型。
 ///
 /// [`u32`]: prim@u32
 /// [`exit`]: ../std/process/fn.exit.html
 ///
-/// # `!` and generics
+/// # `!` 和泛型
 ///
-/// ## Infallible errors
+/// ## 不可能发生的错误
 ///
-/// The main place you'll see `!` used explicitly is in generic code. Consider the [`FromStr`]
-/// trait:
+/// 最常见的显式使用 `!` 的地方是泛型代码。考虑 [`FromStr`] trait：
 ///
 /// ```
 /// trait FromStr: Sized {
@@ -119,30 +114,28 @@ mod prim_bool {}
 /// }
 /// ```
 ///
-/// When implementing this trait for [`String`] we need to pick a type for [`Err`]. And since
-/// converting a string into a string will never result in an error, the appropriate type is `!`.
-/// (Currently the type actually used is an enum with no variants, though this is only because `!`
-/// was added to Rust at a later date and it may change in the future.) With an [`Err`] type of
-/// `!`, if we have to call [`String::from_str`] for some reason the result will be a
-/// [`Result<String, !>`] which we can unpack like this:
+/// 为 [`String`] 实现这个 trait 时，需要为 [`Err`] 选择一个类型。由于把字符串转换成
+/// 字符串永远不会产生错误，合适的类型就是 `!`。（目前实际使用的是一个没有变体的 enum，
+/// 这只是因为 `!` 是后来才加入 Rust 的，将来可能会改变。）当 [`Err`] 类型为 `!` 时，
+/// 如果出于某种原因需要调用 [`String::from_str`]，结果会是 [`Result<String, !>`]，
+/// 可以像这样解包：
 ///
 /// ```
 /// use std::str::FromStr;
 /// let Ok(s) = String::from_str("hello");
 /// ```
 ///
-/// Since the [`Err`] variant contains a `!`, it can never occur. This means we can exhaustively
-/// match on [`Result<T, !>`] by just taking the [`Ok`] variant. This illustrates another behavior
-/// of `!` - it can be used to "delete" certain enum variants from generic types like `Result`.
+/// 由于 [`Err`] 变体包含 `!`，它永远不会出现。这意味着只处理 [`Ok`] 变体就能对
+/// [`Result<T, !>`] 做穷尽匹配。这展示了 `!` 的另一种行为：它可以从 `Result`
+/// 这样的泛型类型中“删除”某些 enum 变体。
 ///
-/// ## Infinite loops
+/// ## 无限循环
 ///
-/// While [`Result<T, !>`] is very useful for removing errors, `!` can also be used to remove
-/// successes as well. If we think of [`Result<T, !>`] as "if this function returns, it has not
-/// errored," we get a very intuitive idea of [`Result<!, E>`] as well: if the function returns, it
-/// *has* errored.
+/// [`Result<T, !>`] 对移除错误很有用，而 `!` 也可以用来移除成功值。如果把
+/// [`Result<T, !>`] 理解为“如果这个函数返回了，它就没有出错”，那么
+/// [`Result<!, E>`] 也很直观：如果函数返回了，它就*已经*出错。
 ///
-/// For example, consider the case of a simple web server, which can be simplified to:
+/// 例如，考虑一个简单的 web server，可简化为：
 ///
 /// ```ignore (hypothetical-example)
 /// loop {
@@ -152,8 +145,8 @@ mod prim_bool {}
 /// }
 /// ```
 ///
-/// Currently, this isn't ideal, because we simply panic whenever we fail to get a new connection.
-/// Instead, we'd like to keep track of this error, like this:
+/// 这并不理想，因为只要获取新连接失败就会直接 panic。更好的做法是记录这个错误，
+/// 例如：
 ///
 /// ```ignore (hypothetical-example)
 /// loop {
@@ -167,9 +160,8 @@ mod prim_bool {}
 /// }
 /// ```
 ///
-/// Now, when the server disconnects, we exit the loop with an error instead of panicking. While it
-/// might be intuitive to simply return the error, we might want to wrap it in a [`Result<!, E>`]
-/// instead:
+/// 现在，当服务器断开连接时，会带着错误退出循环，而不是 panic。直接返回错误可能更直观，
+/// 但也可以把它包装在 [`Result<!, E>`] 中：
 ///
 /// ```ignore (hypothetical-example)
 /// fn server_loop() -> Result<!, ConnectionError> {
@@ -181,20 +173,20 @@ mod prim_bool {}
 /// }
 /// ```
 ///
-/// Now, we can use `?` instead of `match`, and the return type makes a lot more sense: if the loop
-/// ever stops, it means that an error occurred. We don't even have to wrap the loop in an `Ok`
-/// because `!` coerces to `Result<!, ConnectionError>` automatically.
+/// 现在可以使用 `?` 代替 `match`，返回类型也更符合含义：如果循环停止了，就表示发生了错误。
+/// 甚至不需要把循环包在 `Ok` 中，因为 `!` 会自动强制转换为
+/// `Result<!, ConnectionError>`。
 ///
 /// [`String::from_str`]: str::FromStr::from_str
 /// [`String`]: ../std/string/struct.String.html
 /// [`FromStr`]: str::FromStr
 ///
-/// # `!` and traits
+/// # `!` 和 trait
 ///
-/// When writing your own traits, `!` should have an `impl` whenever there is an obvious `impl`
-/// which doesn't `panic!`. The reason is that functions returning an `impl Trait` where `!`
-/// does not have an `impl` of `Trait` cannot diverge as their only possible code path. In other
-/// words, they can't return `!` from every code path. As an example, this code doesn't compile:
+/// 编写自己的 trait 时，只要存在一个明显且不会 `panic!` 的实现，就应当为 `!` 提供
+/// `impl`。原因是：如果某个函数返回 `impl Trait`，而 `!` 没有实现该 `Trait`，
+/// 那么这个函数不能把发散作为唯一可能的代码路径。换句话说，它不能在每条代码路径上都返回
+/// `!`。例如，下面的代码不能编译：
 ///
 /// ```compile_fail
 /// use std::ops::Add;
@@ -204,7 +196,7 @@ mod prim_bool {}
 /// }
 /// ```
 ///
-/// But this code does:
+/// 但下面的代码可以：
 ///
 /// ```
 /// use std::ops::Add;
@@ -218,16 +210,14 @@ mod prim_bool {}
 /// }
 /// ```
 ///
-/// The reason is that, in the first example, there are many possible types that `!` could coerce
-/// to, because many types implement `Add<u32>`. However, in the second example,
-/// the `else` branch returns a `0`, which the compiler infers from the return type to be of type
-/// `u32`. Since `u32` is a concrete type, `!` can and will be coerced to it. See issue [#36375]
-/// for more information on this quirk of `!`.
+/// 原因是，在第一个示例中，`!` 可以强制转换为很多可能的类型，因为很多类型都实现了
+/// `Add<u32>`。而在第二个示例中，`else` 分支返回 `0`，编译器会根据返回类型将其推断为
+/// `u32`。由于 `u32` 是具体类型，`!` 可以且会被强制转换为它。关于 `!` 的这个细节，
+/// 参见 issue [#36375]。
 ///
 /// [#36375]: https://github.com/rust-lang/rust/issues/36375
 ///
-/// As it turns out, though, most traits can have an `impl` for `!`. Take [`Debug`]
-/// for example:
+/// 不过事实证明，大多数 trait 都可以为 `!` 提供 `impl`。以 [`Debug`] 为例：
 ///
 /// ```
 /// #![feature(never_type)]
@@ -242,15 +232,13 @@ mod prim_bool {}
 /// }
 /// ```
 ///
-/// Once again we're using `!`'s ability to coerce into any other type, in this case
-/// [`fmt::Result`]. Since this method takes a `&!` as an argument we know that it can never be
-/// called (because there is no value of type `!` for it to be called with). Writing `*self`
-/// essentially tells the compiler "We know that this code can never be run, so just treat the
-/// entire function body as having type [`fmt::Result`]". This pattern can be used a lot when
-/// implementing traits for `!`. Generally, any trait which only has methods which take a `self`
-/// parameter should have such an impl.
+/// 这里再次利用了 `!` 可以强制转换为任何其他类型的能力，本例中是 [`fmt::Result`]。
+/// 由于此方法以 `&!` 作为参数，我们知道它永远不可能被调用（因为不存在可供调用的
+/// `!` 类型的值）。写出 `*self` 实质上是在告诉编译器：“我们知道这段代码永远不会运行，
+/// 所以把整个函数体当作 [`fmt::Result`] 类型处理即可”。为 `!` 实现 trait 时经常会用到
+/// 这种模式。通常来说，任何只包含接收 `self` 参数的方法的 trait 都应有这样的 impl。
 ///
-/// On the other hand, one trait which would not be appropriate to implement is [`Default`]:
+/// 另一方面，一个不适合实现的 trait 是 [`Default`]：
 ///
 /// ```
 /// trait Default {
@@ -258,20 +246,19 @@ mod prim_bool {}
 /// }
 /// ```
 ///
-/// Since `!` has no values, it has no default value either. It's true that we could write an
-/// `impl` for this which simply panics, but the same is true for any type (we could `impl
-/// Default` for (eg.) [`File`] by just making [`default()`] panic.)
+/// 由于 `!` 没有任何值，它也没有默认值。确实可以写一个只会 panic 的 `impl`，但任何类型
+/// 都可以这么做（例如，只要让 [`default()`] panic，就能为 [`File`] `impl Default`）。
 ///
 /// [`File`]: ../std/fs/struct.File.html
 /// [`Debug`]: fmt::Debug
 /// [`default()`]: Default::default
 ///
-/// # Never type fallback
+/// # Never 类型回退
 ///
-/// When the compiler sees a value of type `!` in a [coercion site], it implicitly inserts a
-/// coercion to allow the type checker to infer any type:
+/// 当编译器在[强制转换位置][coercion site]看到 `!` 类型的值时，会隐式插入一个强制转换，
+/// 让类型检查器能够推断出任意类型：
 ///
-// FIXME: use `core::convert::absurd` here instead, once it's merged
+// FIXME: `core::convert::absurd` 合并后改用它。
 /// ```rust,ignore (illustrative-and-has-placeholders)
 /// // this
 /// let x: u8 = panic!();
@@ -284,7 +271,7 @@ mod prim_bool {}
 /// fn absurd<T>(_: !) -> T { ... }
 /// ```
 ///
-/// This can lead to compilation errors if the type cannot be inferred:
+/// 如果无法推断出类型，这可能导致编译错误：
 ///
 /// ```compile_fail
 /// // this
@@ -294,18 +281,18 @@ mod prim_bool {}
 /// { absurd(panic!()) }; // error: can't infer the type of `absurd`
 /// ```
 ///
-/// To prevent such errors, the compiler remembers where it inserted `absurd` calls, and
-/// if it can't infer the type, it uses the fallback type instead:
+/// 为了避免这类错误，编译器会记住插入 `absurd` 调用的位置；如果无法推断类型，
+/// 就改用回退类型：
 /// ```rust, ignore
 /// type Fallback = /* An arbitrarily selected type! */;
 /// { absurd::<Fallback>(panic!()) }
 /// ```
 ///
-/// This is what is known as "never type fallback".
+/// 这就是所谓的 "never type fallback"。
 ///
-/// Historically, the fallback type was [`()`], causing confusing behavior where `!` spontaneously
-/// coerced to `()`, even when it would not infer `()` without the fallback. The fallback was changed
-/// to `!` in the [2024 edition], and will be changed in all editions at a later date.
+/// 历史上，回退类型是 [`()`]，这会造成令人困惑的行为：即使没有回退时不会推断为 `()`，
+/// `!` 也会自动强制转换为 `()`。在 [2024 edition] 中，回退类型已改为 `!`，
+/// 以后也会在所有 edition 中改为 `!`。
 ///
 /// [coercion site]: <https://doc.rust-lang.org/reference/type-coercions.html#coercion-sites>
 /// [`()`]: prim@unit
@@ -314,32 +301,29 @@ mod prim_bool {}
 #[unstable(feature = "never_type", issue = "35121")]
 mod prim_never {}
 
-// Required to make auto trait impls render.
-// See src/librustdoc/passes/collect_trait_impls.rs:collect_trait_impls
+// 需要它来渲染 auto trait impl。
+// 参见 src/librustdoc/passes/collect_trait_impls.rs:collect_trait_impls。
 #[doc(hidden)]
 impl ! {}
 
 #[rustc_doc_primitive = "char"]
 #[allow(rustdoc::invalid_rust_codeblocks)]
-/// A character type.
+/// 字符类型。
 ///
-/// The `char` type represents a single character. More specifically, since
-/// 'character' isn't a well-defined concept in Unicode, `char` is a '[Unicode
-/// scalar value]'.
+/// `char` 类型表示一个单独字符。更准确地说，由于 Unicode 中的“字符”并不是定义良好的概念，
+/// `char` 是一个 [Unicode scalar value]。
 ///
-/// This documentation describes a number of methods and trait implementations on the
-/// `char` type. For technical reasons, there is additional, separate
-/// documentation in [the `std::char` module](char/index.html) as well.
+/// 本文档描述了 `char` 类型上的一些方法和 trait 实现。出于技术原因，
+/// [the `std::char` module](char/index.html) 中还有额外的独立文档。
 ///
-/// # Validity and Layout
+/// # 有效性与布局
 ///
-/// A `char` is a '[Unicode scalar value]', which is any '[Unicode code point]'
-/// other than a [surrogate code point]. This has a fixed numerical definition:
-/// code points are in the range 0 to 0x10FFFF, inclusive.
-/// Surrogate code points, used by UTF-16, are in the range 0xD800 to 0xDFFF.
+/// `char` 是 [Unicode scalar value]，也就是除 [surrogate code point] 之外的任何
+/// [Unicode code point]。它有固定的数值定义：code point 位于 0 到 0x10FFFF
+/// 的闭区间内。UTF-16 使用的 surrogate code point 位于 0xD800 到 0xDFFF 的范围内。
 ///
-/// No `char` may be constructed, whether as a literal or at runtime, that is not a
-/// Unicode scalar value. Violating this rule causes undefined behavior.
+/// 无论是作为字面量还是在运行时构造，都不能构造不是 Unicode scalar value 的 `char`。
+/// 违反此规则会导致 undefined behavior。
 ///
 /// ```compile_fail
 /// // Each of these is a compiler error
@@ -356,14 +340,12 @@ impl ! {}
 /// let _ = unsafe { char::from_u32_unchecked(0x110000) };
 /// ```
 ///
-/// Unicode scalar values are also the exact set of values that may be encoded in UTF-8. Because
-/// `char` values are Unicode scalar values and functions may assume [incoming `str` values are
-/// valid UTF-8](primitive.str.html#invariant), it is safe to store any `char` in a `str` or read
-/// any character from a `str` as a `char`.
+/// Unicode scalar value 也正是可以编码为 UTF-8 的值的集合。由于 `char` 值都是
+/// Unicode scalar value，并且函数可以假设[传入的 `str` 值是有效 UTF-8](primitive.str.html#invariant)，
+/// 因此把任何 `char` 存入 `str`，或从 `str` 中把任何字符读作 `char`，都是安全的。
 ///
-/// The gap in valid `char` values is understood by the compiler, so in the
-/// below example the two ranges are understood to cover the whole range of
-/// possible `char` values and there is no error for a [non-exhaustive match].
+/// 编译器理解有效 `char` 值中的空洞，因此在下面的示例中，这两个范围会被认为覆盖了所有可能的
+/// `char` 值，不会产生[非穷尽匹配][non-exhaustive match]错误。
 ///
 /// ```
 /// let c: char = 'a';
@@ -373,13 +355,12 @@ impl ! {}
 /// };
 /// ```
 ///
-/// All Unicode scalar values are valid `char` values, but not all of them represent a real
-/// character. Many Unicode scalar values are not currently assigned to a character, but may be in
-/// the future ("reserved"); some will never be a character ("noncharacters"); and some may be given
-/// different meanings by different users ("private use").
+/// 所有 Unicode scalar value 都是有效的 `char` 值，但并非全部都表示真实字符。
+/// 很多 Unicode scalar value 目前尚未分配给字符，但将来可能会分配（"reserved"）；
+/// 有些永远不会是字符（"noncharacters"）；还有一些可能由不同用户赋予不同含义
+/// （"private use"）。
 ///
-/// `char` is guaranteed to have the same size, alignment, and function call ABI as `u32` on all
-/// platforms.
+/// 保证 `char` 在所有平台上都与 `u32` 具有相同的大小、对齐和函数调用 ABI。
 /// ```
 /// use std::alloc::Layout;
 /// assert_eq!(Layout::new::<char>(), Layout::new::<u32>());
@@ -390,10 +371,10 @@ impl ! {}
 /// [non-exhaustive match]: ../book/ch06-02-match.html#matches-are-exhaustive
 /// [surrogate code point]: https://www.unicode.org/glossary/#surrogate_code_point
 ///
-/// # Representation
+/// # 表示形式
 ///
-/// `char` is always four bytes in size. This is a different representation than
-/// a given character would have as part of a [`String`]. For example:
+/// `char` 的大小始终是四个字节。这不同于某个字符作为 [`String`] 一部分时的表示形式。
+/// 例如：
 ///
 /// ```
 /// let v = vec!['h', 'e', 'l', 'l', 'o'];
@@ -409,9 +390,9 @@ impl ! {}
 ///
 /// [`String`]: ../std/string/struct.String.html
 ///
-/// As always, remember that a human intuition for 'character' might not map to
-/// Unicode's definitions. For example, despite looking similar, the 'é'
-/// character is one Unicode code point while 'é' is two Unicode code points:
+/// 和往常一样，需要记住人们对“字符”的直觉并不一定映射到 Unicode 的定义。
+/// 例如，尽管看起来相似，字符 'é' 是一个 Unicode code point，而 'é' 是两个
+/// Unicode code point：
 ///
 /// ```
 /// let mut chars = "é".chars();
@@ -427,9 +408,8 @@ impl ! {}
 /// assert_eq!(None, chars.next());
 /// ```
 ///
-/// This means that the contents of the first string above _will_ fit into a
-/// `char` while the contents of the second string _will not_. Trying to create
-/// a `char` literal with the contents of the second string gives an error:
+/// 这意味着上面第一个字符串的内容_可以_放入一个 `char`，而第二个字符串的内容_不可以_。
+/// 尝试用第二个字符串的内容创建 `char` 字面量会报错：
 ///
 /// ```text
 /// error: character literal may only contain one codepoint: 'é'
@@ -437,8 +417,7 @@ impl ! {}
 ///         ^^^
 /// ```
 ///
-/// Another implication of the 4-byte fixed size of a `char` is that
-/// per-`char` processing can end up using a lot more memory:
+/// `char` 固定为 4 字节的另一个影响是：按 `char` 处理可能会占用多得多的内存：
 ///
 /// ```
 /// let s = String::from("love: ❤️");
@@ -455,12 +434,11 @@ mod prim_char {}
 #[doc(alias = ")")]
 #[doc(alias = "()")]
 //
-/// The `()` type, also called "unit".
+/// `()` 类型，也称为 "unit"。
 ///
-/// The `()` type has exactly one value `()`, and is used when there
-/// is no other meaningful value that could be returned. `()` is most
-/// commonly seen implicitly: functions without a `-> ...` implicitly
-/// have return type `()`, that is, these are equivalent:
+/// `()` 类型恰好只有一个值 `()`，用于没有其他有意义的返回值时。
+/// `()` 最常以隐式形式出现：没有 `-> ...` 的函数隐式具有返回类型 `()`，
+/// 也就是说下面两种写法等价：
 ///
 /// ```rust
 /// fn long() -> () {}
@@ -468,9 +446,8 @@ mod prim_char {}
 /// fn short() {}
 /// ```
 ///
-/// The semicolon `;` can be used to discard the result of an
-/// expression at the end of a block, making the expression (and thus
-/// the block) evaluate to `()`. For example,
+/// 分号 `;` 可用于丢弃块末尾表达式的结果，使该表达式（从而也使该块）求值为 `()`。
+/// 例如：
 ///
 /// ```rust
 /// fn returns_i64() -> i64 {
@@ -491,8 +468,8 @@ mod prim_char {}
 #[stable(feature = "rust1", since = "1.0.0")]
 mod prim_unit {}
 
-// Required to make auto trait impls render.
-// See src/librustdoc/passes/collect_trait_impls.rs:collect_trait_impls
+// 需要它来渲染 auto trait impl。
+// 参见 src/librustdoc/passes/collect_trait_impls.rs:collect_trait_impls。
 #[doc(hidden)]
 impl () {}
 
@@ -502,28 +479,25 @@ impl () {}
 #[doc(alias = "*const")]
 #[doc(alias = "*mut")]
 //
-/// Raw, unsafe pointers, `*const T`, and `*mut T`.
+/// 裸的 unsafe 指针，`*const T` 和 `*mut T`。
 ///
-/// *[See also the `std::ptr` module](ptr).*
+/// *另见 [`std::ptr` module](ptr)。*
 ///
-/// Working with raw pointers in Rust is uncommon, typically limited to a few patterns. Raw pointers
-/// can be out-of-bounds, unaligned, or [`null`]. However, when loading from or storing to a raw
-/// pointer, it must be [valid] for the given access and aligned. When using a field expression,
-/// tuple index expression, or array/slice index expression on a raw pointer, it follows the rules
-/// of [in-bounds pointer arithmetic][`offset`].
+/// 在 Rust 中使用 raw pointer 并不常见，通常局限于少数几种模式。raw pointer 可以越界、
+/// 未对齐或为 [`null`]。然而，从 raw pointer 加载或向其存储时，它必须对给定访问是
+/// [valid] 的，并且必须对齐。在 raw pointer 上使用字段表达式、元组索引表达式或数组/切片索引
+/// 表达式时，遵循[边界内指针算术][`offset`]的规则。
 ///
-/// Storing through a raw pointer using `*ptr = data` calls `drop` on the old value, so
-/// [`write`] must be used if the type has drop glue and memory is not already
-/// initialized - otherwise `drop` would be called on the uninitialized memory.
+/// 使用 `*ptr = data` 通过 raw pointer 存储会对旧值调用 `drop`，因此如果类型有 drop glue
+/// 且内存尚未初始化，就必须使用 [`write`]；否则会在未初始化内存上调用 `drop`。
 ///
-/// Use the [`null`] and [`null_mut`] functions to create null pointers, and the
-/// [`is_null`] method of the `*const T` and `*mut T` types to check for null.
-/// The `*const T` and `*mut T` types also define the [`offset`] method, for
-/// pointer math.
+/// 使用 [`null`] 和 [`null_mut`] 函数创建空指针，并使用 `*const T` 和 `*mut T` 类型的
+/// [`is_null`] 方法检查是否为空。`*const T` 和 `*mut T` 类型还定义了用于指针计算的
+/// [`offset`] 方法。
 ///
-/// # Common ways to create raw pointers
+/// # 创建 raw pointer 的常见方式
 ///
-/// ## 1. Coerce a reference (`&T`) or mutable reference (`&mut T`).
+/// ## 1. 强制转换引用（`&T`）或可变引用（`&mut T`）。
 ///
 /// ```
 /// let my_num: i32 = 10;
@@ -532,7 +506,7 @@ impl () {}
 /// let my_speed_ptr: *mut i32 = &mut my_speed;
 /// ```
 ///
-/// To get a pointer to a boxed value, dereference the box:
+/// 若要获得指向 boxed 值的指针，请解引用 box：
 ///
 /// ```
 /// let my_num: Box<i32> = Box::new(10);
@@ -541,14 +515,13 @@ impl () {}
 /// let my_speed_ptr: *mut i32 = &mut *my_speed;
 /// ```
 ///
-/// This does not take ownership of the original allocation
-/// and requires no resource management later,
-/// but you must not use the pointer after its lifetime.
+/// 这不会取得原始 allocation 的所有权，之后也不需要资源管理，
+/// 但不得在其生命周期结束后使用该指针。
 ///
-/// ## 2. Consume a box (`Box<T>`).
+/// ## 2. 消耗 box（`Box<T>`）。
 ///
-/// The [`into_raw`] function consumes a box and returns
-/// the raw pointer. It doesn't destroy `T` or deallocate any memory.
+/// [`into_raw`] 函数会消耗一个 box 并返回 raw pointer。它不会销毁 `T`，
+/// 也不会释放任何内存。
 ///
 /// ```
 /// let my_speed: Box<i32> = Box::new(88);
@@ -561,17 +534,14 @@ impl () {}
 /// }
 /// ```
 ///
-/// Note that here the call to [`drop`] is for clarity - it indicates
-/// that we are done with the given value and it should be destroyed.
+/// 请注意，这里调用 [`drop`] 是为了清楚表达：已经不再使用给定值，它应被销毁。
 ///
-/// ## 3. Create it using `&raw`
+/// ## 3. 使用 `&raw` 创建
 ///
-/// Instead of coercing a reference to a raw pointer, you can use the raw borrow
-/// operators `&raw const` (for `*const T`) and `&raw mut` (for `*mut T`).
-/// These operators allow you to create raw pointers to fields to which you cannot
-/// create a reference (without causing undefined behavior), such as an
-/// unaligned field. This might be necessary if packed structs or uninitialized
-/// memory is involved.
+/// 除了将引用强制转换为 raw pointer，也可以使用 raw borrow 运算符：
+/// `&raw const`（用于 `*const T`）和 `&raw mut`（用于 `*mut T`）。这些运算符允许为一些
+/// 无法创建引用（否则会导致 undefined behavior）的字段创建 raw pointer，例如未对齐字段。
+/// 涉及 packed struct 或未初始化内存时，可能需要这样做。
 ///
 /// ```
 /// #[derive(Debug, Default, Copy, Clone)]
@@ -584,7 +554,7 @@ impl () {}
 /// let p = &raw const s.unaligned; // not allowed with coercion
 /// ```
 ///
-/// ## 4. Get it from C.
+/// ## 4. 从 C 获取。
 ///
 /// ```
 /// # mod libc {
@@ -604,9 +574,8 @@ impl () {}
 /// }
 /// ```
 ///
-/// Usually you wouldn't literally use `malloc` and `free` from Rust,
-/// but C APIs hand out a lot of pointers generally, so are a common source
-/// of raw pointers in Rust.
+/// 通常不会在 Rust 中直接使用 `malloc` 和 `free`，但 C API 往往会交出很多指针，
+/// 因此它们是 Rust 中 raw pointer 的常见来源。
 ///
 /// [`null`]: ptr::null
 /// [`null_mut`]: ptr::null_mut
@@ -622,22 +591,20 @@ mod prim_pointer {}
 #[doc(alias = "[]")]
 #[doc(alias = "[T;N]")] // unfortunately, rustdoc doesn't have fuzzy search for aliases
 #[doc(alias = "[T; N]")]
-/// A fixed-size array, denoted `[T; N]`, for the element type, `T`, and the
-/// non-negative compile-time constant size, `N`.
+/// 固定大小数组，写作 `[T; N]`，其中 `T` 是元素类型，`N` 是非负的编译期常量大小。
 ///
-/// There are two syntactic forms for creating an array:
+/// 创建数组有两种语法形式：
 ///
-/// * A list with each element, i.e., `[x, y, z]`.
-/// * A repeat expression `[expr; N]` where `N` is how many times to repeat `expr` in the array. `expr` must either be:
+/// * 列出每个元素的列表，即 `[x, y, z]`。
+/// * 重复表达式 `[expr; N]`，其中 `N` 是在数组中重复 `expr` 的次数。`expr` 必须是以下之一：
 ///
-///   * A value of a type implementing the [`Copy`] trait
-///   * A `const` value
+///   * 实现 [`Copy`] trait 的类型的值
+///   * `const` 值
 ///
-/// Note that `[expr; 0]` is allowed, and produces an empty array.
-/// This will still evaluate `expr`, however, and immediately drop the resulting value, so
-/// be mindful of side effects.
+/// 注意，`[expr; 0]` 是允许的，并会产生空数组。不过它仍会求值 `expr`，
+/// 并立即 drop 得到的值，因此需要留意副作用。
 ///
-/// Arrays of *any* size implement the following traits if the element type allows it:
+/// 如果元素类型允许，*任意*大小的数组都会实现以下 trait：
 ///
 /// - [`Copy`]
 /// - [`Clone`]
@@ -648,33 +615,30 @@ mod prim_pointer {}
 /// - [`AsRef`], [`AsMut`]
 /// - [`Borrow`], [`BorrowMut`]
 ///
-/// Arrays of sizes from 0 to 32 (inclusive) implement the [`Default`] trait
-/// if the element type allows it. As a stopgap, trait implementations are
-/// statically generated up to size 32.
+/// 如果元素类型允许，大小从 0 到 32（含）的数组会实现 [`Default`] trait。
+/// 作为临时措施，trait 实现静态生成到大小 32 为止。
 ///
-/// Arrays of sizes from 1 to 12 (inclusive) implement [`From<Tuple>`], where `Tuple`
-/// is a homogeneous [prim@tuple] of appropriate length.
+/// 大小从 1 到 12（含）的数组会实现 [`From<Tuple>`]，其中 `Tuple` 是长度适当的同质
+/// [prim@tuple]。
 ///
-/// Arrays coerce to [slices (`[T]`)][slice], so a slice method may be called on
-/// an array. Indeed, this provides most of the API for working with arrays.
+/// 数组会强制转换为 [slices (`[T]`)][slice]，因此可以在数组上调用切片方法。
+/// 实际上，这提供了处理数组的大部分 API。
 ///
-/// Slices have a dynamic size and do not coerce to arrays. Instead, use
-/// `slice.try_into().unwrap()` or `<ArrayType>::try_from(slice).unwrap()`.
+/// 切片具有动态大小，不会强制转换为数组。请改用 `slice.try_into().unwrap()` 或
+/// `<ArrayType>::try_from(slice).unwrap()`。
 ///
-/// Array's `try_from(slice)` implementations (and the corresponding `slice.try_into()`
-/// array implementations) succeed if the input slice length is the same as the result
-/// array length. They optimize especially well when the optimizer can easily determine
-/// the slice length, e.g. `<[u8; 4]>::try_from(&slice[4..8]).unwrap()`. Array implements
-/// [TryFrom](crate::convert::TryFrom) returning:
+/// 数组的 `try_from(slice)` 实现（以及对应的 `slice.try_into()` 数组实现）会在输入切片长度
+/// 与结果数组长度相同时成功。当优化器能轻易确定切片长度时，这些转换尤其容易被优化，
+/// 例如 `<[u8; 4]>::try_from(&slice[4..8]).unwrap()`。数组实现
+/// [TryFrom](crate::convert::TryFrom) 时会返回：
 ///
-/// - `[T; N]` copies from the slice's elements
-/// - `&[T; N]` references the original slice's elements
-/// - `&mut [T; N]` references the original slice's elements
+/// - `[T; N]` 从切片元素复制
+/// - `&[T; N]` 引用原始切片的元素
+/// - `&mut [T; N]` 引用原始切片的元素
 ///
-/// You can move elements out of an array with a [slice pattern]. If you want
-/// one element, see [`mem::replace`].
+/// 可以使用 [slice pattern] 从数组中移出元素。如果只想取一个元素，参见 [`mem::replace`]。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// let mut array: [i32; 3] = [0; 3];
@@ -690,7 +654,7 @@ mod prim_pointer {}
 /// }
 /// ```
 ///
-/// You can also iterate over reference to the array's elements:
+/// 也可以通过数组元素的引用进行迭代：
 ///
 /// ```
 /// let array: [i32; 3] = [0; 3];
@@ -698,8 +662,7 @@ mod prim_pointer {}
 /// for x in &array { }
 /// ```
 ///
-/// You can use `<ArrayType>::try_from(slice)` or `slice.try_into()` to get an array from
-/// a slice:
+/// 可以使用 `<ArrayType>::try_from(slice)` 或 `slice.try_into()` 从切片得到数组：
 ///
 /// ```
 /// let bytes: [u8; 3] = [1, 0, 2];
@@ -707,7 +670,7 @@ mod prim_pointer {}
 /// assert_eq!(512, u16::from_le_bytes(bytes[1..3].try_into().unwrap()));
 /// ```
 ///
-/// You can use a [slice pattern] to move elements out of an array:
+/// 可以使用 [slice pattern] 从数组中移出元素：
 ///
 /// ```
 /// fn move_away(_: String) { /* Do interesting things. */ }
@@ -717,20 +680,19 @@ mod prim_pointer {}
 /// move_away(roa);
 /// ```
 ///
-/// Arrays can be created from homogeneous tuples of appropriate length:
+/// 可以从长度适当的同质元组创建数组：
 ///
 /// ```
 /// let tuple: (u32, u32, u32) = (1, 2, 3);
 /// let array: [u32; 3] = tuple.into();
 /// ```
 ///
-/// # Editions
+/// # 版本(Edition)
 ///
-/// Prior to Rust 1.53, arrays did not implement [`IntoIterator`] by value, so the method call
-/// `array.into_iter()` auto-referenced into a [slice iterator](slice::iter). Right now, the old
-/// behavior is preserved in the 2015 and 2018 editions of Rust for compatibility, ignoring
-/// [`IntoIterator`] by value. In the future, the behavior on the 2015 and 2018 edition
-/// might be made consistent to the behavior of later editions.
+/// 在 Rust 1.53 之前，数组没有按值实现 [`IntoIterator`]，因此方法调用
+/// `array.into_iter()` 会自动取引用并得到 [slice iterator](slice::iter)。目前，
+/// 为了兼容性，Rust 2015 和 2018 edition 保留了旧行为，会忽略按值的 [`IntoIterator`]。
+/// 将来，2015 和 2018 edition 上的行为可能会与后续 edition 保持一致。
 ///
 /// ```rust,edition2018
 /// // Rust 2015 and 2018:
@@ -757,8 +719,8 @@ mod prim_pointer {}
 /// }
 /// ```
 ///
-/// Starting in the 2021 edition, `array.into_iter()` uses `IntoIterator` normally to iterate
-/// by value, and `iter()` should be used to iterate by reference like previous editions.
+/// 从 2021 edition 开始，`array.into_iter()` 会正常使用 `IntoIterator` 按值迭代；
+/// 若要像旧 edition 那样按引用迭代，应使用 `iter()`。
 ///
 /// ```rust,edition2021
 /// // Rust 2021:
@@ -778,16 +740,14 @@ mod prim_pointer {}
 /// }
 /// ```
 ///
-/// Future language versions might start treating the `array.into_iter()`
-/// syntax on editions 2015 and 2018 the same as on edition 2021. So code using
-/// those older editions should still be written with this change in mind, to
-/// prevent breakage in the future. The safest way to accomplish this is to
-/// avoid the `into_iter` syntax on those editions. If an edition update is not
-/// viable/desired, there are multiple alternatives:
-/// * use `iter`, equivalent to the old behavior, creating references
-/// * use [`IntoIterator::into_iter`], equivalent to the post-2021 behavior (Rust 1.53+)
-/// * replace `for ... in array.into_iter() {` with `for ... in array {`,
-///   equivalent to the post-2021 behavior (Rust 1.53+)
+/// 未来的语言版本可能会开始把 2015 和 2018 edition 中的 `array.into_iter()` 语法视为与
+/// 2021 edition 相同。因此，使用这些较旧 edition 的代码仍应将这一变化纳入考虑，
+/// 以避免将来破坏兼容性。最安全的做法是在这些 edition 中避免使用 `into_iter` 语法。
+/// 如果无法或不想升级 edition，有几个替代方案：
+/// * 使用 `iter`，等价于旧行为，会创建引用
+/// * 使用 [`IntoIterator::into_iter`]，等价于 2021 之后的行为（Rust 1.53+）
+/// * 将 `for ... in array.into_iter() {` 替换为 `for ... in array {`，
+///   等价于 2021 之后的行为（Rust 1.53+）
 ///
 /// ```rust,edition2018
 /// // Rust 2015 and 2018:
@@ -834,15 +794,13 @@ mod prim_array {}
 #[doc(alias = "[")]
 #[doc(alias = "]")]
 #[doc(alias = "[]")]
-/// A dynamically-sized view into a contiguous sequence, `[T]`.
+/// 指向连续序列的动态大小视图，`[T]`。
 ///
-/// Contiguous here means that elements are laid out so that every element is the same
-/// distance from its neighbors.
+/// 这里的连续意味着元素按布局排列，使每个元素与相邻元素之间的距离都相同。
 ///
-/// *[See also the `std::slice` module](crate::slice).*
+/// *另见 [`std::slice` module](crate::slice)。*
 ///
-/// Slices are a view into a block of memory represented as a pointer and a
-/// length.
+/// 切片是某块内存的视图，由一个指针和一个长度表示。
 ///
 /// ```
 /// // slicing a Vec
@@ -852,10 +810,8 @@ mod prim_array {}
 /// let str_slice: &[&str] = &["one", "two", "three"];
 /// ```
 ///
-/// Slices are either mutable or shared. The shared slice type is `&[T]`,
-/// while the mutable slice type is `&mut [T]`, where `T` represents the element
-/// type. For example, you can mutate the block of memory that a mutable slice
-/// points to:
+/// 切片可以是可变的，也可以是共享的。共享切片类型是 `&[T]`，可变切片类型是 `&mut [T]`，
+/// 其中 `T` 表示元素类型。例如，可以修改可变切片指向的内存块：
 ///
 /// ```
 /// let mut x = [1, 2, 3];
@@ -864,7 +820,7 @@ mod prim_array {}
 /// assert_eq!(x, &[1, 7, 3]);
 /// ```
 ///
-/// It is possible to slice empty subranges of slices by using empty ranges (including `slice.len()..slice.len()`):
+/// 可以使用空范围对切片取空子范围（包括 `slice.len()..slice.len()`）：
 /// ```
 /// let x = [1, 2, 3];
 /// let empty = &x[0..0];   // subslice before the first element
@@ -879,16 +835,15 @@ mod prim_array {}
 /// assert_eq!(empty, &[]);
 /// ```
 ///
-/// It is not allowed to use subranges that start with lower bound bigger than `slice.len()`:
+/// 不允许使用起始下界大于 `slice.len()` 的子范围：
 /// ```should_panic
 /// let x = vec![1, 2, 3];
 /// let _ = &x[4..4];
 /// ```
 ///
-/// As slices store the length of the sequence they refer to, they have twice
-/// the size of pointers to [`Sized`](marker/trait.Sized.html) types.
-/// Also see the reference on
-/// [dynamically sized types](../reference/dynamically-sized-types.html).
+/// 由于切片会存储所引用序列的长度，因此它们的大小是指向
+/// [`Sized`](marker/trait.Sized.html) 类型的指针的两倍。另见 reference 中关于
+/// [dynamically sized types](../reference/dynamically-sized-types.html) 的说明。
 ///
 /// ```
 /// # use std::rc::Rc;
@@ -899,15 +854,14 @@ mod prim_array {}
 /// assert_eq!(2 * pointer_size, size_of::<Rc<[u8]>>());
 /// ```
 ///
-/// ## Trait Implementations
+/// ## Trait 实现
 ///
-/// Some traits are implemented for slices if the element type implements
-/// that trait. This includes [`Eq`], [`Hash`] and [`Ord`].
+/// 如果元素类型实现了某个 trait，切片也会实现其中一些 trait，包括 [`Eq`]、[`Hash`] 和
+/// [`Ord`]。
 ///
-/// ## Iteration
+/// ## 迭代
 ///
-/// The slices implement `IntoIterator`. The iterator yields references to the
-/// slice elements.
+/// 切片实现了 `IntoIterator`。该迭代器会产生切片元素的引用。
 ///
 /// ```
 /// let numbers: &[i32] = &[0, 1, 2];
@@ -916,7 +870,7 @@ mod prim_array {}
 /// }
 /// ```
 ///
-/// The mutable slice yields mutable references to the elements:
+/// 可变切片会产生元素的可变引用：
 ///
 /// ```
 /// let mut scores: &mut [i32] = &mut [7, 8, 9];
@@ -925,14 +879,11 @@ mod prim_array {}
 /// }
 /// ```
 ///
-/// This iterator yields mutable references to the slice's elements, so while
-/// the element type of the slice is `i32`, the element type of the iterator is
-/// `&mut i32`.
+/// 这个迭代器会产生切片元素的可变引用，因此虽然切片的元素类型是 `i32`，
+/// 迭代器的元素类型却是 `&mut i32`。
 ///
-/// * [`.iter`] and [`.iter_mut`] are the explicit methods to return the default
-///   iterators.
-/// * Further methods that return iterators are [`.split`], [`.splitn`],
-///   [`.chunks`], [`.windows`] and more.
+/// * [`.iter`] 和 [`.iter_mut`] 是显式返回默认迭代器的方法。
+/// * 其他返回迭代器的方法还包括 [`.split`]、[`.splitn`]、[`.chunks`]、[`.windows`] 等。
 ///
 /// [`Hash`]: core::hash::Hash
 /// [`.iter`]: slice::iter
@@ -945,35 +896,33 @@ mod prim_array {}
 mod prim_slice {}
 
 #[rustc_doc_primitive = "str"]
-/// String slices.
+/// 字符串切片。
 ///
-/// *[See also the `std::str` module](crate::str).*
+/// *另见 [`std::str` module](crate::str)。*
 ///
-/// The `str` type, also called a 'string slice', is the most primitive string
-/// type. It is usually seen in its borrowed form, `&str`. It is also the type
-/// of string literals, `&'static str`.
+/// `str` 类型也称为“字符串切片”，是最基础的字符串类型。它通常以借用形式 `&str` 出现。
+/// 它也是字符串字面量的类型，即 `&'static str`。
 ///
-/// # Basic Usage
+/// # 基本用法
 ///
-/// String literals are string slices:
+/// 字符串字面量就是字符串切片：
 ///
 /// ```
 /// let hello_world = "Hello, World!";
 /// ```
 ///
-/// Here we have declared a string slice initialized with a string literal.
-/// String literals have a static lifetime, which means the string `hello_world`
-/// is guaranteed to be valid for the duration of the entire program.
-/// We can explicitly specify `hello_world`'s lifetime as well:
+/// 这里声明了一个用字符串字面量初始化的字符串切片。字符串字面量具有 static 生命周期，
+/// 这意味着字符串 `hello_world` 保证在整个程序持续期间都有效。也可以显式指定
+/// `hello_world` 的生命周期：
 ///
 /// ```
 /// let hello_world: &'static str = "Hello, world!";
 /// ```
 ///
-/// # Representation
+/// # 表示形式
 ///
-/// A `&str` is made up of two components: a pointer to some bytes, and a
-/// length. You can look at these with the [`as_ptr`] and [`len`] methods:
+/// `&str` 由两个组件组成：指向某些字节的指针，以及长度。可以用 [`as_ptr`] 和 [`len`]
+/// 方法查看它们：
 ///
 /// ```
 /// use std::slice;
@@ -1003,17 +952,15 @@ mod prim_slice {}
 /// [`as_ptr`]: str::as_ptr
 /// [`len`]: str::len
 ///
-/// Note: This example shows the internals of `&str`. `unsafe` should not be
-/// used to get a string slice under normal circumstances. Use `as_str`
-/// instead.
+/// 注意：此示例展示了 `&str` 的内部结构。通常不应使用 `unsafe` 来获取字符串切片，
+/// 请改用 `as_str`。
 ///
-/// # Invariant
+/// # 不变量
 ///
-/// Rust libraries may assume that string slices are always valid UTF-8.
+/// Rust 库可以假设字符串切片始终是有效的 UTF-8。
 ///
-/// Constructing a non-UTF-8 string slice is not immediate undefined behavior, but any function
-/// called on a string slice may assume that it is valid UTF-8, which means that a non-UTF-8 string
-/// slice can lead to undefined behavior down the road.
+/// 构造非 UTF-8 字符串切片不会立即造成 undefined behavior，但在字符串切片上调用的任何函数
+/// 都可以假设它是有效 UTF-8，这意味着非 UTF-8 字符串切片之后可能导致 undefined behavior。
 #[stable(feature = "rust1", since = "1.0.0")]
 mod prim_str {}
 
@@ -1022,22 +969,19 @@ mod prim_str {}
 #[doc(alias = ")")]
 #[doc(alias = "()")]
 //
-/// A finite heterogeneous sequence, `(T, U, ..)`.
+/// 有限的异质序列，`(T, U, ..)`。
 ///
-/// Let's cover each of those in turn:
+/// 下面逐项说明：
 ///
-/// Tuples are *finite*. In other words, a tuple has a length. Here's a tuple
-/// of length `3`:
+/// 元组是*有限的*。换句话说，元组有长度。下面是一个长度为 `3` 的元组：
 ///
 /// ```
 /// ("hello", 5, 'c');
 /// ```
 ///
-/// 'Length' is also sometimes called 'arity' here; each tuple of a different
-/// length is a different, distinct type.
+/// 这里的“长度”有时也称为 "arity"；不同长度的每个元组都是不同的独立类型。
 ///
-/// Tuples are *heterogeneous*. This means that each element of the tuple can
-/// have a different type. In that tuple above, it has the type:
+/// 元组是*异质的*。这意味着元组中的每个元素都可以具有不同类型。上面的元组具有以下类型：
 ///
 /// ```
 /// # let _:
@@ -1045,8 +989,7 @@ mod prim_str {}
 /// # = ("hello", 5, 'c');
 /// ```
 ///
-/// Tuples are a *sequence*. This means that they can be accessed by position;
-/// this is called 'tuple indexing', and it looks like this:
+/// 元组是一个*序列*。这意味着可以按位置访问其中的元素；这称为“元组索引”，形式如下：
 ///
 /// ```rust
 /// let tuple = ("hello", 5, 'c');
@@ -1056,23 +999,21 @@ mod prim_str {}
 /// assert_eq!(tuple.2, 'c');
 /// ```
 ///
-/// The sequential nature of the tuple applies to its implementations of various
-/// traits. For example, in [`PartialOrd`] and [`Ord`], the elements are compared
-/// sequentially until the first non-equal set is found.
+/// 元组的顺序性也适用于它对各种 trait 的实现。例如，在 [`PartialOrd`] 和 [`Ord`] 中，
+/// 会按顺序比较元素，直到找到第一组不相等的元素。
 ///
-/// For more about tuples, see [the book](../book/ch03-02-data-types.html#the-tuple-type).
+/// 关于元组的更多信息，参见 [the book](../book/ch03-02-data-types.html#the-tuple-type)。
 ///
-// Hardcoded anchor in src/librustdoc/html/format.rs
-// linked to as `#trait-implementations-1`
-/// # Trait implementations
+// src/librustdoc/html/format.rs 中硬编码的锚点。
+// 链接目标为 `#trait-implementations-1`。
+/// # Trait 实现
 ///
-/// In this documentation the shorthand `(T₁, T₂, …, Tₙ)` is used to represent tuples of varying
-/// length. When that is used, any trait bound expressed on `T` applies to each element of the
-/// tuple independently. Note that this is a convenience notation to avoid repetitive
-/// documentation, not valid Rust syntax.
+/// 本文档使用简写 `(T₁, T₂, …, Tₙ)` 表示不同长度的元组。使用这种写法时，
+/// 任何写在 `T` 上的 trait bound 都会独立应用于元组的每个元素。注意，这只是为了避免重复文档
+/// 而使用的便利记法，不是有效的 Rust 语法。
 ///
-/// Due to a temporary restriction in Rust’s type system, the following traits are only
-/// implemented on tuples of arity 12 or less. In the future, this may change:
+/// 由于 Rust 类型系统中的一个临时限制，以下 trait 只为 arity 不超过 12 的元组实现。
+/// 将来这可能会改变：
 ///
 /// * [`PartialEq`]
 /// * [`Eq`]
@@ -1087,9 +1028,8 @@ mod prim_str {}
 /// [`Debug`]: fmt::Debug
 /// [`Hash`]: hash::Hash
 ///
-/// The following traits are implemented for tuples of any length. These traits have
-/// implementations that are automatically generated by the compiler, so are not limited by
-/// missing language features.
+/// 以下 trait 为任意长度的元组实现。这些 trait 的实现由编译器自动生成，
+/// 因而不受缺失语言功能的限制。
 ///
 /// * [`Clone`]
 /// * [`Copy`]
@@ -1102,9 +1042,9 @@ mod prim_str {}
 /// [`UnwindSafe`]: panic::UnwindSafe
 /// [`RefUnwindSafe`]: panic::RefUnwindSafe
 ///
-/// # Examples
+/// # 示例
 ///
-/// Basic usage:
+/// 基本用法：
 ///
 /// ```
 /// let tuple = ("hello", 5, 'c');
@@ -1112,8 +1052,7 @@ mod prim_str {}
 /// assert_eq!(tuple.0, "hello");
 /// ```
 ///
-/// Tuples are often used as a return type when you want to return more than
-/// one value:
+/// 需要返回多个值时，元组常被用作返回类型：
 ///
 /// ```
 /// fn calculate_point() -> (i32, i32) {
@@ -1134,7 +1073,7 @@ mod prim_str {}
 /// assert_eq!(y, 5);
 /// ```
 ///
-/// Homogeneous tuples can be created from arrays of appropriate length:
+/// 可以从长度适当的数组创建同质元组：
 ///
 /// ```
 /// let array: [u32; 3] = [1, 2, 3];
@@ -1144,26 +1083,25 @@ mod prim_str {}
 #[stable(feature = "rust1", since = "1.0.0")]
 mod prim_tuple {}
 
-// Required to make auto trait impls render.
-// See src/librustdoc/passes/collect_trait_impls.rs:collect_trait_impls
+// 需要它来渲染 auto trait impl。
+// 参见 src/librustdoc/passes/collect_trait_impls.rs:collect_trait_impls。
 #[doc(hidden)]
 impl<T> (T,) {}
 
 #[rustc_doc_primitive = "f16"]
 #[doc(alias = "half")]
-/// A 16-bit floating-point type (specifically, the "binary16" type defined in IEEE 754-2008).
+/// 16 位浮点类型（具体来说，是 IEEE 754-2008 中定义的 "binary16" 类型）。
 ///
-/// This type is very similar to [`prim@f32`] but has decreased precision because it uses half as many
-/// bits. Please see [the documentation for `f32`](prim@f32) or [Wikipedia on half-precision
-/// values][wikipedia] for more information.
+/// 此类型与 [`prim@f32`] 非常相似，但由于只使用一半的位数，精度较低。
+/// 更多信息请参见 [`f32` 的文档](prim@f32)或 [Wikipedia on half-precision
+/// values][wikipedia]。
 ///
-/// Note that most common platforms will not support `f16` in hardware without enabling extra target
-/// features, with the notable exception of Apple Silicon (also known as M1, M2, etc.) processors.
-/// Hardware support on x86/x86-64 requires the avx512fp16 or avx10.1 features, while RISC-V requires
-/// Zfh, and Arm/AArch64 requires FEAT_FP16.  Usually the fallback implementation will be to use `f32`
-/// hardware if it exists, and convert between `f16` and `f32` when performing math.
+/// 注意，除 Apple Silicon（也称为 M1、M2 等）处理器这个显著例外外，大多数常见平台如果不启用
+/// 额外 target feature，就没有硬件 `f16` 支持。x86/x86-64 上的硬件支持需要 avx512fp16 或
+/// avx10.1 feature；RISC-V 需要 Zfh；Arm/AArch64 需要 FEAT_FP16。通常，回退实现会在存在
+/// `f32` 硬件时使用它，并在执行数学运算时在 `f16` 和 `f32` 之间转换。
 ///
-/// *[See also the `std::f16::consts` module](crate::f16::consts).*
+/// *另见 [`std::f16::consts` module](crate::f16::consts)。*
 ///
 /// [wikipedia]: https://en.wikipedia.org/wiki/Half-precision_floating-point_format
 #[unstable(feature = "f16", issue = "116909")]
@@ -1171,174 +1109,132 @@ mod prim_f16 {}
 
 #[rustc_doc_primitive = "f32"]
 #[doc(alias = "single")]
-/// A 32-bit floating-point type (specifically, the "binary32" type defined in IEEE 754-2008).
+/// 32 位浮点类型（具体来说，是 IEEE 754-2008 中定义的 "binary32" 类型）。
 ///
-/// This type can represent a wide range of decimal numbers, like `3.5`, `27`,
-/// `-113.75`, `0.0078125`, `34359738368`, `0`, `-1`. So unlike integer types
-/// (such as `i32`), floating-point types can represent non-integer numbers,
-/// too.
+/// 此类型可以表示范围很广的十进制数，例如 `3.5`、`27`、`-113.75`、`0.0078125`、
+/// `34359738368`、`0`、`-1`。因此，与整数类型（如 `i32`）不同，浮点类型也可以表示非整数。
 ///
-/// However, being able to represent this wide range of numbers comes at the
-/// cost of precision: floats can only represent some of the real numbers and
-/// calculation with floats round to a nearby representable number. For example,
-/// `5.0` and `1.0` can be exactly represented as `f32`, but `1.0 / 5.0` results
-/// in `0.20000000298023223876953125` since `0.2` cannot be exactly represented
-/// as `f32`. Note, however, that printing floats with `println` and friends will
-/// often discard insignificant digits: `println!("{}", 1.0f32 / 5.0f32)` will
-/// print `0.2`.
+/// 不过，能够表示这么宽的数值范围是以精度为代价的：浮点数只能表示一部分实数，
+/// 使用浮点数计算时会舍入到附近可表示的数。例如，`5.0` 和 `1.0` 可以精确表示为 `f32`，
+/// 但 `1.0 / 5.0` 的结果是 `0.20000000298023223876953125`，因为 `0.2` 无法精确表示为
+/// `f32`。不过请注意，使用 `println` 等打印浮点数时，通常会丢弃不重要的数字：
+/// `println!("{}", 1.0f32 / 5.0f32)` 会打印 `0.2`。
 ///
-/// Additionally, `f32` can represent some special values:
+/// 此外，`f32` 还能表示一些特殊值：
 ///
-/// - −0.0: IEEE 754 floating-point numbers have a bit that indicates their sign, so −0.0 is a
-///   possible value. For comparison −0.0 = +0.0, but floating-point operations can carry
-///   the sign bit through arithmetic operations. This means −0.0 × +0.0 produces −0.0 and
-///   a negative number rounded to a value smaller than a float can represent also produces −0.0.
+/// - −0.0：IEEE 754 浮点数有一位表示符号，因此 −0.0 是可能的值。比较时 −0.0 = +0.0，
+///   但浮点运算可以在算术操作中携带符号位。这意味着 −0.0 × +0.0 会产生 −0.0，
+///   而负数被舍入到小于浮点数可表示范围的值时也会产生 −0.0。
 /// - [∞](#associatedconstant.INFINITY) and
-///   [−∞](#associatedconstant.NEG_INFINITY): these result from calculations
-///   like `1.0 / 0.0`.
-/// - [NaN (not a number)](#associatedconstant.NAN): this value results from
-///   calculations like `(-1.0).sqrt()`. NaN has some potentially unexpected
-///   behavior:
-///   - It is not equal to any float, including itself! This is the reason `f32`
-///     doesn't implement the `Eq` trait.
-///   - It is also neither smaller nor greater than any float, making it
-///     impossible to sort by the default comparison operation, which is the
-///     reason `f32` doesn't implement the `Ord` trait.
-///   - It is also considered *infectious* as almost all calculations where one
-///     of the operands is NaN will also result in NaN. The explanations on this
-///     page only explicitly document behavior on NaN operands if this default
-///     is deviated from.
-///   - Lastly, there are multiple bit patterns that are considered NaN.
-///     Rust does not currently guarantee that the bit patterns of NaN are
-///     preserved over arithmetic operations, and they are not guaranteed to be
-///     portable or even fully deterministic! This means that there may be some
-///     surprising results upon inspecting the bit patterns,
-///     as the same calculations might produce NaNs with different bit patterns.
-///     This also affects the sign of the NaN: checking `is_sign_positive` or `is_sign_negative` on
-///     a NaN is the most common way to run into these surprising results.
-///     (Checking `x >= 0.0` or `x <= 0.0` avoids those surprises, but also how negative/positive
-///     zero are treated.)
-///     See the section below for what exactly is guaranteed about the bit pattern of a NaN.
+///   [−∞](#associatedconstant.NEG_INFINITY)：它们来自类似 `1.0 / 0.0` 的计算。
+/// - [NaN (not a number)](#associatedconstant.NAN)：这个值来自类似 `(-1.0).sqrt()` 的计算。
+///   NaN 有一些可能出乎意料的行为：
+///   - 它不等于任何浮点数，包括它自己！这就是 `f32` 不实现 `Eq` trait 的原因。
+///   - 它也既不小于也不大于任何浮点数，因此无法使用默认比较操作排序，
+///     这就是 `f32` 不实现 `Ord` trait 的原因。
+///   - 它还被认为是*传染性的*，因为只要某个操作数为 NaN，几乎所有计算的结果也会是 NaN。
+///     本页的说明只有在偏离这个默认行为时，才会显式记录 NaN 操作数上的行为。
+///   - 最后，有多个 bit pattern 会被视为 NaN。Rust 目前不保证 NaN 的 bit pattern 会在算术操作中
+///     被保留，也不保证它们可移植，甚至不保证完全确定！这意味着检查 bit pattern 时可能看到一些
+///     意外结果，因为相同计算可能产生具有不同 bit pattern 的 NaN。这也会影响 NaN 的符号：
+///     在 NaN 上检查 `is_sign_positive` 或 `is_sign_negative` 是最常遇到这些意外结果的方式。
+///     （检查 `x >= 0.0` 或 `x <= 0.0` 可以避免这些意外，但也会影响负零/正零的处理。）
+///     关于 NaN bit pattern 具体保证了什么，请参见下面的章节。
 ///
-/// When a primitive operation (addition, subtraction, multiplication, or
-/// division) is performed on this type, the result is rounded according to the
-/// roundTiesToEven direction defined in IEEE 754-2008. That means:
+/// 在此类型上执行原语运算（加法、减法、乘法或除法）时，结果会按照 IEEE 754-2008
+/// 定义的 roundTiesToEven 方向舍入。这意味着：
 ///
-/// - The result is the representable value closest to the true value, if there
-///   is a unique closest representable value.
-/// - If the true value is exactly half-way between two representable values,
-///   the result is the one with an even least-significant binary digit.
-/// - If the true value's magnitude is ≥ `f32::MAX` + 2<sup>(`f32::MAX_EXP` −
-///   `f32::MANTISSA_DIGITS` − 1)</sup>, the result is ∞ or −∞ (preserving the
-///   true value's sign).
-/// - If the result of a sum exactly equals zero, the outcome is +0.0 unless
-///   both arguments were negative, then it is -0.0. Subtraction `a - b` is
-///   regarded as a sum `a + (-b)`.
+/// - 如果存在唯一最接近真实值的可表示值，结果就是该值。
+/// - 如果真实值恰好位于两个可表示值正中间，结果是最低有效二进制位为偶数的那个值。
+/// - 如果真实值的幅度 ≥ `f32::MAX` + 2<sup>(`f32::MAX_EXP` −
+///   `f32::MANTISSA_DIGITS` − 1)</sup>，结果为 ∞ 或 −∞（保留真实值的符号）。
+/// - 如果求和结果恰好等于零，则结果为 +0.0，除非两个参数都是负数，此时结果为 -0.0。
+///   减法 `a - b` 会被视为求和 `a + (-b)`。
 ///
-/// For more information on floating-point numbers, see [Wikipedia][wikipedia].
+/// 关于浮点数的更多信息，参见 [Wikipedia][wikipedia]。
 ///
-/// *[See also the `std::f32::consts` module](crate::f32::consts).*
+/// *另见 [`std::f32::consts` module](crate::f32::consts)。*
 ///
 /// [wikipedia]: https://en.wikipedia.org/wiki/Single-precision_floating-point_format
 ///
 /// # NaN bit patterns
 ///
-/// This section defines the possible NaN bit patterns returned by floating-point operations.
+/// 本节定义浮点运算可能返回的 NaN bit pattern。
 ///
-/// The bit pattern of a floating-point NaN value is defined by:
-/// - a sign bit.
-/// - a quiet/signaling bit. Rust assumes that the quiet/signaling bit being set to `1` indicates a
-///   quiet NaN (QNaN), and a value of `0` indicates a signaling NaN (SNaN). In the following we
-///   will hence just call it the "quiet bit".
-/// - a payload, which makes up the rest of the significand (i.e., the mantissa) except for the
-///   quiet bit.
+/// 浮点 NaN 值的 bit pattern 由以下部分定义：
+/// - 符号位。
+/// - quiet/signaling 位。Rust 假设 quiet/signaling 位设为 `1` 表示 quiet NaN (QNaN)，
+///   值为 `0` 表示 signaling NaN (SNaN)。下文中会直接称其为 "quiet bit"。
+/// - payload，它构成 significand（即 mantissa）中除 quiet bit 外的其余部分。
 ///
-/// The rules for NaN values differ between *arithmetic* and *non-arithmetic* (or "bitwise")
-/// operations. The non-arithmetic operations are unary `-`, `abs`, `copysign`, `signum`,
-/// `{to,from}_bits`, `{to,from}_{be,le,ne}_bytes` and `is_sign_{positive,negative}`. These
-/// operations are guaranteed to exactly preserve the bit pattern of their input except for possibly
-/// changing the sign bit.
+/// NaN 值的规则在*算术*操作和*非算术*（或 "bitwise"）操作之间不同。非算术操作包括一元 `-`、
+/// `abs`、`copysign`、`signum`、`{to,from}_bits`、`{to,from}_{be,le,ne}_bytes` 以及
+/// `is_sign_{positive,negative}`。这些操作保证精确保留输入的 bit pattern，可能改变符号位除外。
 ///
-/// The following rules apply when a NaN value is returned from an arithmetic operation:
-/// - The result has a non-deterministic sign.
-/// - The quiet bit and payload are non-deterministically chosen from
-///   the following set of options:
+/// 当算术操作返回 NaN 值时，适用以下规则：
+/// - 结果具有非确定性的符号。
+/// - quiet bit 和 payload 会从以下选项集合中非确定性地选择：
 ///
-///   - **Preferred NaN**: The quiet bit is set and the payload is all-zero.
-///   - **Quieting NaN propagation**: The quiet bit is set and the payload is copied from any input
-///     operand that is a NaN. If the inputs and outputs do not have the same payload size (i.e., for
-///     `as` casts), then
-///     - If the output is smaller than the input, low-order bits of the payload get dropped.
-///     - If the output is larger than the input, the payload gets filled up with 0s in the low-order
-///       bits.
-///   - **Unchanged NaN propagation**: The quiet bit and payload are copied from any input operand
-///     that is a NaN. If the inputs and outputs do not have the same size (i.e., for `as` casts), the
-///     same rules as for "quieting NaN propagation" apply, with one caveat: if the output is smaller
-///     than the input, dropping the low-order bits may result in a payload of 0; a payload of 0 is not
-///     possible with a signaling NaN (the all-0 significand encodes an infinity) so unchanged NaN
-///     propagation cannot occur with some inputs.
-///   - **Target-specific NaN**: The quiet bit is set and the payload is picked from a target-specific
-///     set of "extra" possible NaN payloads. The set can depend on the input operand values.
-///     See the table below for the concrete NaNs this set contains on various targets.
+///   - **Preferred NaN**：quiet bit 被设置，payload 全为零。
+///   - **Quieting NaN propagation**：quiet bit 被设置，payload 从任意 NaN 输入操作数复制。
+///     如果输入和输出的 payload 大小不同（即 `as` 转换），则：
+///     - 如果输出小于输入，会丢弃 payload 的低位。
+///     - 如果输出大于输入，会用 0 填充 payload 的低位。
+///   - **Unchanged NaN propagation**：quiet bit 和 payload 从任意 NaN 输入操作数复制。
+///     如果输入和输出大小不同（即 `as` 转换），适用与 "quieting NaN propagation" 相同的规则，
+///     但有一个注意点：如果输出小于输入，丢弃低位可能导致 payload 为 0；payload 为 0
+///     不可能对应 signaling NaN（全 0 significand 编码 infinity），因此 unchanged NaN propagation
+///     对某些输入不会发生。
+///   - **Target-specific NaN**：quiet bit 被设置，payload 从目标特定的“额外”可能 NaN payload
+///     集合中选取。该集合可以依赖输入操作数的值。各目标上这个集合包含的具体 NaN 见下表。
 ///
-/// In particular, if all input NaNs are quiet (or if there are no input NaNs), then the output NaN
-/// is definitely quiet. Signaling NaN outputs can only occur if they are provided as an input
-/// value. Similarly, if all input NaNs are preferred (or if there are no input NaNs) and the target
-/// does not have any "extra" NaN payloads, then the output NaN is guaranteed to be preferred.
+/// 特别地，如果所有输入 NaN 都是 quiet（或者没有输入 NaN），那么输出 NaN 一定是 quiet。
+/// 只有在输入值中提供 signaling NaN 时，才可能产生 signaling NaN 输出。类似地，
+/// 如果所有输入 NaN 都是 preferred（或者没有输入 NaN），且目标没有任何“额外”NaN payload，
+/// 那么保证输出 NaN 为 preferred。
 ///
-/// The non-deterministic choice happens when the operation is executed; i.e., the result of a
-/// NaN-producing floating-point operation is a stable bit pattern (looking at these bits multiple
-/// times will yield consistent results), but running the same operation twice with the same inputs
-/// can produce different results.
+/// 非确定性选择发生在操作执行时；也就是说，产生 NaN 的浮点操作的结果是稳定的 bit pattern
+/// （多次查看这些位会得到一致结果），但使用相同输入运行同一操作两次可能产生不同结果。
 ///
-/// These guarantees are neither stronger nor weaker than those of IEEE 754: IEEE 754 guarantees
-/// that an operation never returns a signaling NaN, whereas it is possible for operations like
-/// `SNAN * 1.0` to return a signaling NaN in Rust. Conversely, IEEE 754 makes no statement at all
-/// about which quiet NaN is returned, whereas Rust restricts the set of possible results to the
-/// ones listed above.
+/// 这些保证既不强于也不弱于 IEEE 754：IEEE 754 保证操作永不返回 signaling NaN，
+/// 而 Rust 中类似 `SNAN * 1.0` 的操作可能返回 signaling NaN。反过来，IEEE 754
+/// 完全不规定返回哪个 quiet NaN，而 Rust 将可能结果限制为上面列出的集合。
 ///
-/// Unless noted otherwise, the same rules also apply to NaNs returned by other library functions
-/// (e.g. `min`, `minimum`, `max`, `maximum`); other aspects of their semantics and which IEEE 754
-/// operation they correspond to are documented with the respective functions.
+/// 除非另有说明，相同规则也适用于其他库函数返回的 NaN（例如 `min`、`minimum`、`max`、
+/// `maximum`）；这些函数语义的其他方面，以及它们对应的 IEEE 754 操作，会在相应函数文档中说明。
 ///
-/// When an arithmetic floating-point operation is executed in `const` context, the same rules
-/// apply: no guarantee is made about which of the NaN bit patterns described above will be
-/// returned. The result does not have to match what happens when executing the same code at
-/// runtime, and the result can vary depending on factors such as compiler version and flags.
+/// 当算术浮点操作在 `const` 上下文中执行时，适用相同规则：不保证会返回上述哪一种 NaN bit pattern。
+/// 结果不必与运行时执行同一代码时一致，并且结果可能随编译器版本、flag 等因素变化。
 ///
-/// ### Target-specific "extra" NaN values
+/// ### 目标特定的“额外”NaN 值
 // FIXME: Is there a better place to put this?
 ///
-/// | `target_arch` | Extra payloads possible on this platform |
+/// | `target_arch` | 此平台上可能的额外 payload |
 /// |---------------|------------------------------------------|
-// Sorted alphabetically
-/// | `aarch64`, `arm`, `arm64ec`, `loongarch64`, `powerpc` (except when `target_abi = "spe"`), `powerpc64`, `riscv32`, `riscv64`, `s390x`, `x86`, `x86_64` | None |
-/// | `nvptx64` | All payloads |
-/// | `sparc`, `sparc64` | The all-one payload |
-/// | `wasm32`, `wasm64` | If all input NaNs are quiet with all-zero payload: None.<br> Otherwise: all payloads. |
+// 按字母顺序排序
+/// | `aarch64`, `arm`, `arm64ec`, `loongarch64`, `powerpc` (except when `target_abi = "spe"`), `powerpc64`, `riscv32`, `riscv64`, `s390x`, `x86`, `x86_64` | 无 |
+/// | `nvptx64` | 所有 payload |
+/// | `sparc`, `sparc64` | 全 1 payload |
+/// | `wasm32`, `wasm64` | 如果所有输入 NaN 都是 quiet 且 payload 全为零：无。<br> 否则：所有 payload。 |
 ///
-/// For targets not in this table, all payloads are possible.
+/// 对于表中未列出的目标，所有 payload 都是可能的。
 ///
-/// # Algebraic operators
+/// # 代数运算符
 ///
-/// Algebraic operators of the form `a.algebraic_*(b)` allow the compiler to optimize
-/// floating point operations using all the usual algebraic properties of real numbers --
-/// despite the fact that those properties do *not* hold on floating point numbers.
-/// This can give a great performance boost since it may unlock vectorization.
+/// `a.algebraic_*(b)` 形式的代数运算符允许编译器使用实数通常具备的全部代数性质
+/// 来优化浮点运算，即使这些性质在浮点数上*并不*成立。
+/// 这可能解锁向量化，从而显著提升性能。
 ///
-/// The exact set of optimizations is unspecified but typically allows combining operations,
-/// rearranging series of operations based on mathematical properties, converting between division
-/// and reciprocal multiplication, and disregarding the sign of zero. This means that the results of
-/// elementary operations may have undefined precision, and "non-mathematical" values
-/// such as NaN, +/-Inf, or -0.0 may behave in unexpected ways, but these operations
-/// will never cause undefined behavior.
+/// 具体允许的优化集合未作规定，但通常允许合并操作、根据数学性质重排一系列操作、
+/// 在除法与乘以倒数之间转换，以及忽略零的符号。这意味着基本运算的结果可能具有
+/// 未定义的精度，而 NaN、+/-Inf 或 -0.0 这类“非数学”值可能以意外方式表现；
+/// 但这些操作绝不会造成未定义行为。
 ///
-/// Because of the unpredictable nature of compiler optimizations, the same inputs may produce
-/// different results even within a single program run. **Unsafe code must not rely on any property
-/// of the return value for soundness.** However, implementations will generally do their best to
-/// pick a reasonable tradeoff between performance and accuracy of the result.
+/// 由于编译器优化具有不可预测性，即使在单次程序运行期间，相同输入也可能产生不同结果。
+/// **unsafe code 不得依赖返回值的任何性质来保证健全性。**
+/// 不过，实现通常会尽力在性能和结果准确性之间选择合理的折中。
 ///
-/// For example:
+/// 例如：
 ///
 /// ```
 /// # #![feature(float_algebraic)]
@@ -1351,7 +1247,7 @@ mod prim_f16 {}
 /// x = a.algebraic_add(b).algebraic_add(c).algebraic_add(d);
 /// ```
 ///
-/// May be rewritten as:
+/// 可能被改写为：
 ///
 /// ```
 /// # #![allow(unused_assignments)]
@@ -1368,13 +1264,12 @@ mod prim_f32 {}
 
 #[rustc_doc_primitive = "f64"]
 #[doc(alias = "double")]
-/// A 64-bit floating-point type (specifically, the "binary64" type defined in IEEE 754-2008).
+/// 64 位浮点类型（具体而言，是 IEEE 754-2008 定义的 "binary64" 类型）。
 ///
-/// This type is very similar to [`prim@f32`], but has increased precision by using twice as many
-/// bits. Please see [the documentation for `f32`](prim@f32) or [Wikipedia on double-precision
-/// values][wikipedia] for more information.
+/// 此类型与 [`prim@f32`] 非常相似，但使用两倍的位数来提高精度。更多信息请参阅
+/// [`f32` 的文档](prim@f32)或 [Wikipedia 上关于双精度值的条目][wikipedia]。
 ///
-/// *[See also the `std::f64::consts` module](crate::f64::consts).*
+/// *[另请参阅 `std::f64::consts` 模块](crate::f64::consts)。*
 ///
 /// [wikipedia]: https://en.wikipedia.org/wiki/Double-precision_floating-point_format
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -1382,22 +1277,22 @@ mod prim_f64 {}
 
 #[rustc_doc_primitive = "f128"]
 #[doc(alias = "quad")]
-/// A 128-bit floating-point type (specifically, the "binary128" type defined in IEEE 754-2008).
+/// 128 位浮点类型（具体而言，是 IEEE 754-2008 定义的 "binary128" 类型）。
 ///
-/// This type is very similar to [`prim@f32`] and [`prim@f64`], but has increased precision by using twice
-/// as many bits as `f64`. Please see [the documentation for `f32`](prim@f32) or [Wikipedia on
-/// quad-precision values][wikipedia] for more information.
+/// 此类型与 [`prim@f32`] 和 [`prim@f64`] 非常相似，但使用 `f64` 两倍的位数来提高精度。
+/// 更多信息请参阅 [`f32` 的文档](prim@f32)或
+/// [Wikipedia 上关于四精度值的条目][wikipedia]。
 ///
-/// Note that no platforms have hardware support for `f128` without enabling target specific features,
-/// as for all instruction set architectures `f128` is considered an optional feature.  Only Power ISA
-/// ("PowerPC") and RISC-V (via the Q extension) specify it, and only certain microarchitectures
-/// actually implement it. For x86-64 and AArch64, ISA support is not even specified, so it will always
-/// be a software implementation significantly slower than `f64`.
+/// 注意，如果不启用目标特定 feature，没有任何平台为 `f128` 提供硬件支持；
+/// 对所有指令集架构而言，`f128` 都被视为可选 feature。只有 Power ISA ("PowerPC")
+/// 和 RISC-V（通过 Q 扩展）规定了它，并且只有部分微架构实际实现了它。
+/// 对于 x86-64 和 AArch64，甚至没有规定 ISA 支持，因此它始终是明显慢于 `f64`
+/// 的软件实现。
 ///
-/// _Note: `f128` support is incomplete. Many platforms will not be able to link math functions. On
-/// x86 in particular, these functions do link but their results are always incorrect._
+/// _注意：`f128` 支持尚不完整。许多平台将无法链接数学函数。尤其是在 x86 上，
+/// 这些函数虽然可以链接，但结果始终不正确。_
 ///
-/// *[See also the `std::f128::consts` module](crate::f128::consts).*
+/// *[另请参阅 `std::f128::consts` 模块](crate::f128::consts)。*
 ///
 /// [wikipedia]: https://en.wikipedia.org/wiki/Quadruple-precision_floating-point_format
 #[unstable(feature = "f128", issue = "116909")]
@@ -1405,95 +1300,92 @@ mod prim_f128 {}
 
 #[rustc_doc_primitive = "i8"]
 //
-/// The 8-bit signed integer type.
+/// 8 位有符号整数类型。
 #[stable(feature = "rust1", since = "1.0.0")]
 mod prim_i8 {}
 
 #[rustc_doc_primitive = "i16"]
 //
-/// The 16-bit signed integer type.
+/// 16 位有符号整数类型。
 #[stable(feature = "rust1", since = "1.0.0")]
 mod prim_i16 {}
 
 #[rustc_doc_primitive = "i32"]
 //
-/// The 32-bit signed integer type.
+/// 32 位有符号整数类型。
 #[stable(feature = "rust1", since = "1.0.0")]
 mod prim_i32 {}
 
 #[rustc_doc_primitive = "i64"]
 //
-/// The 64-bit signed integer type.
+/// 64 位有符号整数类型。
 #[stable(feature = "rust1", since = "1.0.0")]
 mod prim_i64 {}
 
 #[rustc_doc_primitive = "i128"]
 //
-/// The 128-bit signed integer type.
+/// 128 位有符号整数类型。
 ///
-/// # ABI compatibility
+/// # ABI 兼容性
 ///
-/// Rust's `i128` is expected to be ABI-compatible with C's `__int128` on platforms where the type
-/// is available, which includes most 64-bit architectures. If any platforms that do not specify
-/// `__int128` are updated to introduce it, the Rust `i128` ABI on relevant targets will be changed
-/// to match.
+/// 在提供 C `__int128` 的平台上，Rust 的 `i128` 预期与其 ABI 兼容，这包括大多数
+/// 64 位架构。如果某些未规定 `__int128` 的平台更新后引入了它，相关目标上的 Rust
+/// `i128` ABI 将被改为与之匹配。
 ///
-/// It is important to note that in C, `__int128` is _not_ the same as `_BitInt(128)`, and the two
-/// types are allowed to have different ABIs. In particular, on x86, `__int128` and `_BitInt(128)`
-/// do not use the same alignment. `i128` is intended to always match `__int128` and does not
-/// attempt to match `_BitInt(128)` on platforms without `__int128`.
+/// 需要注意的是，在 C 中，`__int128` 与 `_BitInt(128)` _并不_相同，并且这两个类型
+/// 允许具有不同的 ABI。尤其是在 x86 上，`__int128` 与 `_BitInt(128)` 不使用相同的对齐。
+/// `i128` 旨在始终匹配 `__int128`，而不会在没有 `__int128` 的平台上尝试匹配
+/// `_BitInt(128)`。
 #[stable(feature = "i128", since = "1.26.0")]
 mod prim_i128 {}
 
 #[rustc_doc_primitive = "u8"]
 //
-/// The 8-bit unsigned integer type.
+/// 8 位无符号整数类型。
 #[stable(feature = "rust1", since = "1.0.0")]
 mod prim_u8 {}
 
 #[rustc_doc_primitive = "u16"]
 //
-/// The 16-bit unsigned integer type.
+/// 16 位无符号整数类型。
 #[stable(feature = "rust1", since = "1.0.0")]
 mod prim_u16 {}
 
 #[rustc_doc_primitive = "u32"]
 //
-/// The 32-bit unsigned integer type.
+/// 32 位无符号整数类型。
 #[stable(feature = "rust1", since = "1.0.0")]
 mod prim_u32 {}
 
 #[rustc_doc_primitive = "u64"]
 //
-/// The 64-bit unsigned integer type.
+/// 64 位无符号整数类型。
 #[stable(feature = "rust1", since = "1.0.0")]
 mod prim_u64 {}
 
 #[rustc_doc_primitive = "u128"]
 //
-/// The 128-bit unsigned integer type.
+/// 128 位无符号整数类型。
 ///
-/// Please see [the documentation for `i128`](prim@i128) for information on ABI compatibility.
+/// 关于 ABI 兼容性的信息，请参阅 [`i128` 的文档](prim@i128)。
 #[stable(feature = "i128", since = "1.26.0")]
 mod prim_u128 {}
 
 #[rustc_doc_primitive = "isize"]
 //
-/// The pointer-sized signed integer type.
+/// 指针大小的有符号整数类型。
 ///
-/// The size of this primitive is how many bytes it takes to reference any
-/// location in memory. For example, on a 32 bit target, this is 4 bytes
-/// and on a 64 bit target, this is 8 bytes.
+/// 此原语的大小等于引用内存中任意位置所需的字节数。例如，在 32 位目标上它是 4 字节，
+/// 在 64 位目标上它是 8 字节。
 #[stable(feature = "rust1", since = "1.0.0")]
 mod prim_isize {}
 
 #[rustc_doc_primitive = "usize"]
 //
-/// The pointer-sized unsigned integer type.
+/// 指针大小的无符号整数类型。
 ///
-/// The size of this primitive is how many bytes it takes to reference any
-/// location in memory. For example, on a 32 bit target, this is 4 bytes
-/// and on a 64 bit target, this is 8 bytes.
+/// 此原语的大小等于引用内存中任意位置所需的字节数。例如，在 32 位目标上它是 4 字节，
+/// 在 64 位目标上它是 8 字节。
 #[stable(feature = "rust1", since = "1.0.0")]
 mod prim_usize {}
 
@@ -1501,38 +1393,33 @@ mod prim_usize {}
 #[doc(alias = "&")]
 #[doc(alias = "&mut")]
 //
-/// References, `&T` and `&mut T`.
+/// 引用，即 `&T` 和 `&mut T`。
 ///
-/// A reference represents a borrow of some owned value. You can get one by using the `&` or `&mut`
-/// operators on a value, or by using a [`ref`](../std/keyword.ref.html) or
-/// <code>[ref](../std/keyword.ref.html) [mut](../std/keyword.mut.html)</code> pattern.
+/// 引用表示对某个被拥有值的借用。可以通过对值使用 `&` 或 `&mut` 运算符来取得引用，
+/// 也可以通过 [`ref`](../std/keyword.ref.html) 或
+/// <code>[ref](../std/keyword.ref.html) [mut](../std/keyword.mut.html)</code> 模式取得引用。
 ///
-/// For those familiar with pointers, a reference is just a pointer that is assumed to be
-/// aligned, not null, and pointing to memory containing a valid value of `T` - for example,
-/// <code>&[bool]</code> can only point to an allocation containing the integer values `1`
-/// ([`true`](../std/keyword.true.html)) or `0` ([`false`](../std/keyword.false.html)), but
-/// creating a <code>&[bool]</code> that points to an allocation containing
-/// the value `3` causes undefined behavior.
-/// In fact, <code>[Option]\<&T></code> has the same memory representation as a
-/// nullable but aligned pointer, and can be passed across FFI boundaries as such.
+/// 对熟悉指针的人来说，引用只是一个被假定为已对齐、非 null，且指向包含有效 `T` 值的
+/// 内存的指针。例如，<code>&[bool]</code> 只能指向包含整数值 `1`
+/// ([`true`](../std/keyword.true.html)) 或 `0` ([`false`](../std/keyword.false.html)) 的分配，
+/// 但创建一个指向包含值 `3` 的分配的 <code>&[bool]</code> 会造成未定义行为。
+/// 实际上，<code>[Option]\<&T></code> 与可为 null 但已对齐的指针具有相同的内存表示，
+/// 并且可以按这种形式跨 FFI 边界传递。
 ///
-/// In most cases, references can be used much like the original value. Field access, method
-/// calling, and indexing work the same (save for mutability rules, of course). In addition, the
-/// comparison operators transparently defer to the referent's implementation, allowing references
-/// to be compared the same as owned values.
+/// 在大多数情况下，引用可以像原始值一样使用。字段访问、方法调用和索引的工作方式相同
+/// （当然，可变性规则除外）。此外，比较运算符会透明地委托给被引用对象的实现，
+/// 因而引用可以像被拥有值一样比较。
 ///
-/// References have a lifetime attached to them, which represents the scope for which the borrow is
-/// valid. A lifetime is said to "outlive" another one if its representative scope is as long or
-/// longer than the other. The `'static` lifetime is the longest lifetime, which represents the
-/// total life of the program. For example, string literals have a `'static` lifetime because the
-/// text data is embedded into the binary of the program, rather than in an allocation that needs
-/// to be dynamically managed.
+/// 引用带有一个 lifetime，表示该借用有效的作用域。如果某个 lifetime 所代表的作用域
+/// 与另一个一样长或更长，就称它 "outlive" 另一个 lifetime。`'static` lifetime 是最长的
+/// lifetime，表示程序的整个生命周期。例如，字符串字面量具有 `'static` lifetime，
+/// 因为文本数据嵌入在程序二进制文件中，而不是位于需要动态管理的分配中。
 ///
-/// `&mut T` references can be freely coerced into `&T` references with the same referent type, and
-/// references with longer lifetimes can be freely coerced into references with shorter ones.
+/// `&mut T` 引用可以自由强制转换为具有相同被引用类型的 `&T` 引用，
+/// lifetime 较长的引用也可以自由强制转换为 lifetime 较短的引用。
 ///
-/// [`PartialEq`] will compare referenced values. It is possible to compare the reference address
-/// using reference-pointer coercion and raw pointer equality via [`ptr::eq`].
+/// [`PartialEq`] 会比较被引用的值。也可以通过引用到指针的强制转换，
+/// 并借助 [`ptr::eq`] 的原始指针相等性来比较引用地址。
 ///
 /// ```
 /// use std::ptr;
@@ -1550,17 +1437,17 @@ mod prim_usize {}
 /// assert!(!ptr::eq(five_ref, other_five_ref));
 /// ```
 ///
-/// For more information on how to use references, see [the book's section on "References and
-/// Borrowing"][book-refs].
+/// 关于如何使用引用的更多信息，请参阅 [the book 中关于 "References and
+/// Borrowing" 的章节][book-refs]。
 ///
 /// [book-refs]: ../book/ch04-02-references-and-borrowing.html
 ///
-/// # Trait implementations
+/// # Trait 实现
 ///
-/// The following traits are implemented for all `&T`, regardless of the type of its referent:
+/// 以下 trait 为所有 `&T` 实现，无论其被引用对象的类型是什么：
 ///
 /// * [`Copy`]
-/// * [`Clone`] \(Note that this will not defer to `T`'s `Clone` implementation if it exists!)
+/// * [`Clone`] \(注意，即使 `T` 存在 `Clone` 实现，也不会委托给它！)
 /// * [`Deref`]
 /// * [`Borrow`]
 /// * [`fmt::Pointer`]
@@ -1568,9 +1455,8 @@ mod prim_usize {}
 /// [`Deref`]: ops::Deref
 /// [`Borrow`]: borrow::Borrow
 ///
-/// `&mut T` references get all of the above except `Copy` and `Clone` (to prevent creating
-/// multiple simultaneous mutable borrows), plus the following, regardless of the type of its
-/// referent:
+/// `&mut T` 引用会获得以上除 `Copy` 和 `Clone` 之外的所有实现（以防止创建多个同时存在的可变借用），
+/// 并且还会获得以下实现，无论其被引用对象的类型是什么：
 ///
 /// * [`DerefMut`]
 /// * [`BorrowMut`]
@@ -1579,16 +1465,15 @@ mod prim_usize {}
 /// [`BorrowMut`]: borrow::BorrowMut
 /// [bool]: prim@bool
 ///
-/// The following traits are implemented on `&T` references if the underlying `T` also implements
-/// that trait:
+/// 如果底层的 `T` 也实现了相应 trait，则 `&T` 引用会实现以下 trait：
 ///
-/// * All the traits in [`std::fmt`] except [`fmt::Pointer`] (which is implemented regardless of the type of its referent) and [`fmt::Write`]
+/// * [`std::fmt`] 中除 [`fmt::Pointer`]（无论被引用对象类型如何都会实现）和 [`fmt::Write`] 之外的所有 trait
 /// * [`PartialOrd`]
 /// * [`Ord`]
 /// * [`PartialEq`]
 /// * [`Eq`]
 /// * [`AsRef`]
-/// * [`Fn`] \(in addition, `&T` references get [`FnMut`] and [`FnOnce`] if `T: Fn`)
+/// * [`Fn`] \(此外，如果 `T: Fn`，`&T` 引用还会获得 [`FnMut`] 和 [`FnOnce`])
 /// * [`Hash`]
 /// * [`ToSocketAddrs`]
 /// * [`Sync`]
@@ -1597,11 +1482,11 @@ mod prim_usize {}
 /// [`Hash`]: hash::Hash
 /// [`ToSocketAddrs`]: ../std/net/trait.ToSocketAddrs.html
 ///
-/// `&mut T` references get all of the above except `ToSocketAddrs`, plus the following, if `T`
-/// implements that trait:
+/// 如果 `T` 实现相应 trait，则 `&mut T` 引用会获得以上除 `ToSocketAddrs` 之外的所有实现，
+/// 并额外获得以下实现：
 ///
 /// * [`AsMut`]
-/// * [`FnMut`] \(in addition, `&mut T` references get [`FnOnce`] if `T: FnMut`)
+/// * [`FnMut`] \(此外，如果 `T: FnMut`，`&mut T` 引用还会获得 [`FnOnce`])
 /// * [`fmt::Write`]
 /// * [`Iterator`]
 /// * [`DoubleEndedIterator`]
@@ -1621,38 +1506,34 @@ mod prim_usize {}
 /// [`Read`]: ../std/io/trait.Read.html
 /// [`io::Write`]: ../std/io/trait.Write.html
 ///
-/// In addition, `&T` references implement [`Send`] if and only if `T` implements [`Sync`].
+/// 此外，当且仅当 `T` 实现 [`Sync`] 时，`&T` 引用才实现 [`Send`]。
 ///
-/// Note that due to method call deref coercion, simply calling a trait method will act like they
-/// work on references as well as they do on owned values! The implementations described here are
-/// meant for generic contexts, where the final type `T` is a type parameter or otherwise not
-/// locally known.
+/// 注意，由于方法调用时的 deref coercion，直接调用 trait 方法时，看起来这些方法在引用上
+/// 和在被拥有值上一样可用！这里描述的实现面向泛型上下文，在这些上下文中最终类型 `T`
+/// 是类型参数，或者以其他方式无法在本地确定。
 ///
-/// # Safety
+/// # 安全性(Safety）
 ///
-/// For all types, `T: ?Sized`, and for all `t: &T` or `t: &mut T`, when such values cross an API
-/// boundary, the following invariants must generally be upheld:
+/// 对所有类型 `T: ?Sized`，以及所有 `t: &T` 或 `t: &mut T`，当这些值跨越 API 边界时，
+/// 通常必须维持以下不变式：
 ///
-/// * `t` is non-null
-/// * `t` is aligned to `align_of_val(t)`
-/// * if `size_of_val(t) > 0`, then `t` is dereferenceable for `size_of_val(t)` many bytes
+/// * `t` 非 null
+/// * `t` 按 `align_of_val(t)` 对齐
+/// * 如果 `size_of_val(t) > 0`，则 `t` 对 `size_of_val(t)` 个字节是可解引用的
 ///
-/// If `t` points at address `a`, being "dereferenceable" for N bytes means that the memory range
-/// `[a, a + N)` is all contained within a single [allocation].
+/// 如果 `t` 指向地址 `a`，对 N 个字节“可解引用”表示内存范围 `[a, a + N)` 全部包含在
+/// 单个[分配][allocation]中。
 ///
-/// For instance, this means that unsafe code in a safe function may assume these invariants are
-/// ensured of arguments passed by the caller, and it may assume that these invariants are ensured
-/// of return values from any safe functions it calls.
+/// 例如，这意味着 safe 函数中的 unsafe code 可以假定调用者传入的参数满足这些不变式，
+/// 也可以假定它所调用的任何 safe 函数的返回值满足这些不变式。
 ///
-/// For the other direction, things are more complicated: when unsafe code passes arguments
-/// to safe functions or returns values from safe functions, they generally must *at least*
-/// not violate these invariants. The full requirements are stronger, as the reference generally
-/// must point to data that is safe to use as type `T`.
+/// 反过来情况更复杂：当 unsafe code 向 safe 函数传递参数，或从 safe 函数返回值时，
+/// 它们通常*至少*不能违反这些不变式。完整要求更强，因为引用通常必须指向可安全地作为
+/// 类型 `T` 使用的数据。
 ///
-/// It is not decided yet whether unsafe code may violate these invariants temporarily on internal
-/// data. As a consequence, unsafe code which violates these invariants temporarily on internal data
-/// may be unsound or become unsound in future versions of Rust depending on how this question is
-/// decided.
+/// unsafe code 是否可以在内部数据上暂时违反这些不变式，目前尚未决定。因此，
+/// 在内部数据上暂时违反这些不变式的 unsafe code，可能已经不健全，或者会随着未来
+/// Rust 版本对此问题的决定而变得不健全。
 ///
 /// [allocation]: ptr#allocation
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -1660,23 +1541,20 @@ mod prim_ref {}
 
 #[rustc_doc_primitive = "fn"]
 //
-/// Function pointers, like `fn(usize) -> bool`.
+/// 函数指针，例如 `fn(usize) -> bool`。
 ///
-/// *See also the traits [`Fn`], [`FnMut`], and [`FnOnce`].*
+/// *另请参阅 [`Fn`]、[`FnMut`] 和 [`FnOnce`] trait。*
 ///
-/// Function pointers are pointers that point to *code*, not data. They can be called
-/// just like functions. Like references, function pointers are, among other things, assumed to
-/// not be null, so if you want to pass a function pointer over FFI and be able to accommodate null
-/// pointers, make your type [`Option<fn()>`](core::option#options-and-pointers-nullable-pointers)
-/// with your required signature.
+/// 函数指针是指向*代码*而非数据的指针。它们可以像函数一样被调用。与引用类似，
+/// 函数指针也被假定为非 null 等；因此，如果想通过 FFI 传递函数指针且需要容纳 null 指针，
+/// 请用所需签名构造 [`Option<fn()>`](core::option#options-and-pointers-nullable-pointers)
+/// 类型。
 ///
-/// Note that FFI requires additional care to ensure that the ABI for both sides of the call match.
-/// The exact requirements are not currently documented.
+/// 注意，FFI 需要额外小心，以确保调用双方的 ABI 匹配。确切要求目前尚未文档化。
 ///
-/// ### Safety
+/// ### 安全性(Safety）
 ///
-/// Plain function pointers are obtained by casting either plain functions, or closures that don't
-/// capture an environment:
+/// 普通函数指针可通过转换普通函数，或不捕获环境的闭包来获得：
 ///
 /// ```
 /// fn add_one(x: usize) -> usize {
@@ -1690,9 +1568,8 @@ mod prim_ref {}
 /// assert_eq!(clos(5), 10);
 /// ```
 ///
-/// In addition to varying based on their signature, function pointers come in two flavors: safe
-/// and unsafe. Plain `fn()` function pointers can only point to safe functions,
-/// while `unsafe fn()` function pointers can point to safe or unsafe functions.
+/// 除了会随签名变化外，函数指针还分为 safe 和 unsafe 两种。普通 `fn()` 函数指针
+/// 只能指向 safe 函数，而 `unsafe fn()` 函数指针可以指向 safe 或 unsafe 函数。
 ///
 /// ```
 /// fn add_one(x: usize) -> usize {
@@ -1714,40 +1591,33 @@ mod prim_ref {}
 ///
 /// ### ABI
 ///
-/// On top of that, function pointers can vary based on what ABI they use. This
-/// is achieved by adding the `extern` keyword before the type, followed by the
-/// ABI in question. The default ABI is "Rust", i.e., `fn()` is the exact same
-/// type as `extern "Rust" fn()`. A pointer to a function with C ABI would have
-/// type `extern "C" fn()`.
+/// 除此之外，函数指针还可能因所用 ABI 而变化。这通过在类型前添加 `extern` 关键字，
+/// 并在其后写出相关 ABI 来实现。默认 ABI 是 "Rust"，也就是说，`fn()` 与
+/// `extern "Rust" fn()` 是完全相同的类型。指向 C ABI 函数的指针类型则是
+/// `extern "C" fn()`。
 ///
-/// `extern "ABI" { ... }` blocks declare functions with ABI "ABI". The default
-/// here is "C", i.e., functions declared in an `extern {...}` block have "C"
-/// ABI.
+/// `extern "ABI" { ... }` 块声明具有 "ABI" ABI 的函数。这里的默认值是 "C"，
+/// 也就是说，在 `extern {...}` 块中声明的函数具有 "C" ABI。
 ///
-/// For more information and a list of supported ABIs, see [the nomicon's
-/// section on foreign calling conventions][nomicon-abi].
+/// 更多信息以及受支持 ABI 的列表，请参阅 [the nomicon 中关于外部调用约定的章节][nomicon-abi]。
 ///
 /// [nomicon-abi]: ../nomicon/ffi.html#foreign-calling-conventions
 ///
-/// ### Variadic functions
+/// ### 可变参数函数
 ///
-/// Extern function declarations with the "C" or "cdecl" ABIs can also be *variadic*, allowing them
-/// to be called with a variable number of arguments. Normal Rust functions, even those with an
-/// `extern "ABI"`, cannot be variadic. For more information, see [the nomicon's section on
-/// variadic functions][nomicon-variadic].
+/// 使用 "C" 或 "cdecl" ABI 的 extern 函数声明也可以是*可变参数*的，允许用可变数量的参数调用。
+/// 普通 Rust 函数即使带有 `extern "ABI"`，也不能是可变参数函数。更多信息请参阅
+/// [the nomicon 中关于可变参数函数的章节][nomicon-variadic]。
 ///
 /// [nomicon-variadic]: ../nomicon/ffi.html#variadic-functions
 ///
-/// ### Creating function pointers
+/// ### 创建函数指针
 ///
-/// When `bar` is the name of a function, then the expression `bar` is *not* a
-/// function pointer. Rather, it denotes a value of an unnameable type that
-/// uniquely identifies the function `bar`. The value is zero-sized because the
-/// type already identifies the function. This has the advantage that "calling"
-/// the value (it implements the `Fn*` traits) does not require dynamic
-/// dispatch.
+/// 当 `bar` 是函数名时，表达式 `bar` *不是*函数指针。相反，它表示一个不可命名类型的值，
+/// 该类型唯一标识函数 `bar`。由于类型已经标识了该函数，这个值是零大小的。
+/// 这样做的优点是“调用”这个值（它实现了 `Fn*` trait）不需要动态分发。
 ///
-/// This zero-sized type *coerces* to a regular function pointer. For example:
+/// 这个零大小类型会*强制转换*为常规函数指针。例如：
 ///
 /// ```rust
 /// fn bar(x: i32) {}
@@ -1761,20 +1631,19 @@ mod prim_ref {}
 /// let footgun = &bar; // this is a shared reference to the zero-sized type identifying `bar`
 /// ```
 ///
-/// The last line shows that `&bar` is not a function pointer either. Rather, it
-/// is a reference to the function-specific ZST. `&bar` is basically never what you
-/// want when `bar` is a function.
+/// 最后一行表明 `&bar` 也不是函数指针。它其实是对函数特定 ZST 的引用。
+/// 当 `bar` 是函数时，`&bar` 基本上永远不是你想要的东西。
 ///
-/// ### Casting to and from integers
+/// ### 与整数互相转换
 ///
-/// You can cast function pointers directly to integers:
+/// 可以将函数指针直接转换为整数：
 ///
 /// ```rust
 /// let fnptr: fn(i32) -> i32 = |x| x+2;
 /// let fnptr_addr = fnptr as usize;
 /// ```
 ///
-/// However, a direct cast back is not possible. You need to use `transmute`:
+/// 不过，不能直接转换回来。需要使用 `transmute`：
 ///
 /// ```rust
 /// # #[cfg(not(miri))] { // FIXME: use strict provenance APIs once they are stable, then remove this `cfg`
@@ -1786,118 +1655,103 @@ mod prim_ref {}
 /// # }
 /// ```
 ///
-/// Crucially, we `as`-cast to a raw pointer before `transmute`ing to a function pointer.
-/// This avoids an integer-to-pointer `transmute`, which can be problematic.
-/// Transmuting between raw pointers and function pointers (i.e., two pointer types) is fine.
+/// 关键在于，我们在 `transmute` 为函数指针之前，先用 `as` 转换为原始指针。
+/// 这避免了从整数到指针的 `transmute`，后者可能有问题。
+/// 在原始指针和函数指针之间（即两个指针类型之间）进行 transmute 是可以的。
 ///
-/// Note that all of this is not portable to platforms where function pointers and data pointers
-/// have different sizes.
+/// 注意，如果某个平台上的函数指针和数据指针大小不同，上述做法就不具备可移植性。
 ///
-/// ### ABI compatibility
+/// ### ABI 兼容性
 ///
-/// Generally, when a function is declared with one signature and called via a function pointer with
-/// a different signature, the two signatures must be *ABI-compatible* or else calling the function
-/// via that function pointer is Undefined Behavior. ABI compatibility is a lot stricter than merely
-/// having the same memory layout; for example, even if `i32` and `f32` have the same size and
-/// alignment, they might be passed in different registers and hence not be ABI-compatible.
+/// 一般来说，如果函数以某个签名声明，却通过具有不同签名的函数指针调用，
+/// 这两个签名必须 *ABI 兼容*，否则通过该函数指针调用函数就是未定义行为。
+/// ABI 兼容性远比仅仅具有相同内存布局更严格；例如，即使 `i32` 和 `f32` 具有相同的大小和对齐，
+/// 它们也可能通过不同寄存器传递，因此并不 ABI 兼容。
 ///
-/// ABI compatibility as a concern only arises in code that alters the type of function pointers,
-/// and code that imports functions via `extern` blocks. Altering the type of function pointers is
-/// wildly unsafe (as in, a lot more unsafe than even [`transmute_copy`][mem::transmute_copy]), and
-/// should only occur in the most exceptional circumstances. Most Rust code just imports functions
-/// via `use`. So, most likely you do not have to worry about ABI compatibility.
+/// 只有修改函数指针类型的代码，以及通过 `extern` 块导入函数的代码，才需要关注 ABI 兼容性。
+/// 修改函数指针类型极其 unsafe（也就是说，甚至比 [`transmute_copy`][mem::transmute_copy]
+/// 还要 unsafe 得多），应当只在最特殊的情况下发生。大多数 Rust 代码只是通过 `use`
+/// 导入函数。因此，你很可能不必担心 ABI 兼容性。
 ///
-/// But assuming such circumstances, what are the rules? For this section, we are only considering
-/// the ABI of direct Rust-to-Rust calls (with both definition and callsite visible to the
-/// Rust compiler), not linking in general -- once functions are imported via `extern` blocks, there
-/// are more things to consider that we do not go into here. Note that this also applies to
-/// passing/calling functions across language boundaries via function pointers.
+/// 但假定确实处于这种情况，规则是什么？本节只考虑直接 Rust-to-Rust 调用的 ABI
+/// （定义和调用点都对 Rust 编译器可见），而不是一般意义上的链接。一旦通过 `extern`
+/// 块导入函数，就还有更多需要考虑的事项，这里不展开。注意，这也适用于通过函数指针
+/// 跨语言边界传递/调用函数。
 ///
-/// **Nothing in this section should be taken as a guarantee for non-Rust-to-Rust calls, even with
-/// types from `core::ffi` or `libc`**.
+/// **本节中的任何内容都不应被视为对非 Rust-to-Rust 调用的保证，即使使用的是来自
+/// `core::ffi` 或 `libc` 的类型**。
 ///
-/// For two signatures to be considered *ABI-compatible*, they must use a compatible ABI string,
-/// must take the same number of arguments, and the individual argument types and the return types
-/// must be ABI-compatible. The ABI string is declared via `extern "ABI" fn(...) -> ...`; note that
-/// `fn name(...) -> ...` implicitly uses the `"Rust"` ABI string and `extern fn name(...) -> ...`
-/// implicitly uses the `"C"` ABI string.
+/// 要让两个签名被认为 *ABI 兼容*，它们必须使用兼容的 ABI 字符串，必须接受相同数量的参数，
+/// 并且各个参数类型和返回类型也必须 ABI 兼容。ABI 字符串通过
+/// `extern "ABI" fn(...) -> ...` 声明；注意，`fn name(...) -> ...` 隐式使用 `"Rust"`
+/// ABI 字符串，而 `extern fn name(...) -> ...` 隐式使用 `"C"` ABI 字符串。
 ///
-/// The ABI strings are guaranteed to be compatible if they are the same, or if the caller ABI
-/// string is `$X-unwind` and the callee ABI string is `$X`, where `$X` is one of the following:
-/// "C", "aapcs", "fastcall", "stdcall", "system", "sysv64", "thiscall", "vectorcall", "win64".
+/// 如果 ABI 字符串相同，或者调用方 ABI 字符串是 `$X-unwind` 且被调用方 ABI 字符串是 `$X`，
+/// 则保证它们兼容，其中 `$X` 是以下之一：
+/// "C"、"aapcs"、"fastcall"、"stdcall"、"system"、"sysv64"、"thiscall"、"vectorcall"、"win64"。
 ///
-/// The following types are guaranteed to be ABI-compatible:
+/// 保证以下类型 ABI 兼容：
 ///
-/// - `*const T`, `*mut T`, `&T`, `&mut T`, `Box<T>` (specifically, only `Box<T, Global>`), and
-///   `NonNull<T>` are all ABI-compatible with each other for all `T`. They are also ABI-compatible
-///   with each other for _different_ `T` if they have the same metadata type (`<T as
-///   Pointee>::Metadata`).
-/// - `usize` is ABI-compatible with the `uN` integer type of the same size, and likewise `isize` is
-///   ABI-compatible with the `iN` integer type of the same size.
-/// - `char` is ABI-compatible with `u32`.
-/// - Any two `fn` (function pointer) types are ABI-compatible with each other if they have the same
-///   ABI string or the ABI string only differs in a trailing `-unwind`, independent of the rest of
-///   their signature. (This means you can pass `fn()` to a function expecting `fn(i32)`, and the
-///   call will be valid ABI-wise. The callee receives the result of transmuting the function pointer
-///   from `fn()` to `fn(i32)`; that transmutation is itself a well-defined operation, it's just
-///   almost certainly UB to later call that function pointer.)
-/// - Any two types with size 0 and alignment 1 are ABI-compatible.
-/// - A `repr(transparent)` type `T` is ABI-compatible with its unique non-trivial field, i.e., the
-///   unique field that doesn't have size 0 and alignment 1 (if there is such a field).
-/// - `i32` is ABI-compatible with `NonZero<i32>`, and similar for all other integer types.
-/// - If `T` is guaranteed to be subject to the [null pointer
-///   optimization](option/index.html#representation), and `E` is an enum satisfying the following
-///   requirements, then `T` and `E` are ABI-compatible. Such an enum `E` is called "option-like".
-///   - The enum `E` uses the [`Rust` representation], and is not modified by the `align` or
-///     `packed` representation modifiers.
-///   - The enum `E` has exactly two variants.
-///   - One variant has exactly one field, of type `T`.
-///   - All fields of the other variant are zero-sized with 1-byte alignment.
+/// - 对所有 `T`，`*const T`、`*mut T`、`&T`、`&mut T`、`Box<T>`（具体而言，仅
+///   `Box<T, Global>`）和 `NonNull<T>` 彼此 ABI 兼容。如果不同 `T` 具有相同的
+///   元数据类型（`<T as Pointee>::Metadata`），它们之间也 ABI 兼容。
+/// - `usize` 与相同大小的 `uN` 整数类型 ABI 兼容；同样，`isize` 与相同大小的
+///   `iN` 整数类型 ABI 兼容。
+/// - `char` 与 `u32` ABI 兼容。
+/// - 任意两个 `fn`（函数指针）类型只要具有相同 ABI 字符串，或者 ABI 字符串仅在末尾
+///   `-unwind` 上不同，就彼此 ABI 兼容，与签名的其余部分无关。（这意味着可以把
+///   `fn()` 传给期望 `fn(i32)` 的函数，并且该调用在 ABI 意义上有效。被调用方收到的是
+///   将函数指针从 `fn()` transmute 到 `fn(i32)` 的结果；该 transmute 本身是明确定义的操作，
+///   只是之后调用该函数指针几乎必然是 UB。）
+/// - 任意两个大小为 0 且对齐为 1 的类型 ABI 兼容。
+/// - `repr(transparent)` 类型 `T` 与其唯一非平凡字段 ABI 兼容，也就是唯一一个
+///   大小不是 0 且对齐不是 1 的字段（如果存在这样的字段）。
+/// - `i32` 与 `NonZero<i32>` ABI 兼容，其他整数类型也类似。
+/// - 如果保证 `T` 受[空指针优化](option/index.html#representation)约束，
+///   且 `E` 是满足以下要求的 enum，则 `T` 和 `E` ABI 兼容。这样的 enum `E`
+///   称为 "option-like"。
+///   - enum `E` 使用 [`Rust` representation]，且未被 `align` 或 `packed` 表示修饰符修改。
+///   - enum `E` 恰好有两个变体。
+///   - 一个变体恰好有一个类型为 `T` 的字段。
+///   - 另一个变体的所有字段都是零大小且 1 字节对齐。
 ///
-/// Furthermore, ABI compatibility satisfies the following general properties:
+/// 此外，ABI 兼容性满足以下一般性质：
 ///
-/// - Every type is ABI-compatible with itself.
-/// - If `T1` and `T2` are ABI-compatible and `T2` and `T3` are ABI-compatible, then so are `T1` and
-///   `T3` (i.e., ABI-compatibility is transitive).
-/// - If `T1` and `T2` are ABI-compatible, then so are `T2` and `T1` (i.e., ABI-compatibility is
-///   symmetric).
+/// - 每个类型都与自身 ABI 兼容。
+/// - 如果 `T1` 与 `T2` ABI 兼容，且 `T2` 与 `T3` ABI 兼容，则 `T1` 与 `T3`
+///   也 ABI 兼容（即 ABI 兼容性具有传递性）。
+/// - 如果 `T1` 与 `T2` ABI 兼容，则 `T2` 与 `T1` 也 ABI 兼容
+///   （即 ABI 兼容性具有对称性）。
 ///
-/// More signatures can be ABI-compatible on specific targets, but that should not be relied upon
-/// since it is not portable and not a stable guarantee.
+/// 在特定目标上，更多签名可能 ABI 兼容，但不应依赖这一点，因为它不可移植，
+/// 也不是稳定保证。
 ///
-/// Noteworthy cases of types *not* being ABI-compatible in general are:
-/// * `bool` vs `u8`, `i32` vs `u32`, `char` vs `i32`: on some targets, the calling conventions for
-///   these types differ in terms of what they guarantee for the remaining bits in the register that
-///   are not used by the value.
-/// * `i32` vs `f32` are not compatible either, as has already been mentioned above.
-/// * `struct Foo(u32)` and `u32` are not compatible (without `repr(transparent)`) since structs are
-///   aggregate types and often passed in a different way than primitives like `i32`.
+/// 一些值得注意的、通常*不* ABI 兼容的类型情形包括：
+/// * `bool` vs `u8`、`i32` vs `u32`、`char` vs `i32`：在某些目标上，这些类型的调用约定
+///   对寄存器中未被值使用的剩余位所提供的保证不同。
+/// * `i32` vs `f32` 也不兼容，如前文所述。
+/// * `struct Foo(u32)` 和 `u32` 不兼容（没有 `repr(transparent)` 时），因为 struct
+///   是聚合类型，通常以不同于 `i32` 这类原语的方式传递。
 ///
-/// Note that these rules describe when two completely known types are ABI-compatible. When
-/// considering ABI compatibility of a type declared in another crate (including the standard
-/// library), consider that any type that has a private field or the `#[non_exhaustive]` attribute
-/// may change its layout as a non-breaking update unless documented otherwise -- so for instance,
-/// even if such a type is a 1-ZST or `repr(transparent)` right now, this might change with any
-/// library version bump.
+/// 注意，这些规则描述的是两个完全已知的类型何时 ABI 兼容。在考虑另一个 crate
+/// （包括标准库）中声明的类型的 ABI 兼容性时，需要注意，任何具有私有字段或
+/// `#[non_exhaustive]` 属性的类型，除非另有文档说明，都可能在非破坏性更新中改变布局。
+/// 因此，例如，即使这样的类型现在是 1-ZST 或 `repr(transparent)`，它也可能随着任意库版本
+/// 升级而改变。
 ///
-/// If the declared signature and the signature of the function pointer are ABI-compatible, then the
-/// function call behaves as if every argument was [`transmute`d][mem::transmute] from the
-/// type in the function pointer to the type at the function declaration, and the return value is
-/// [`transmute`d][mem::transmute] from the type in the declaration to the type in the
-/// pointer. All the usual caveats and concerns around transmutation apply; for instance, if the
-/// function expects a `NonZero<i32>` and the function pointer uses the ABI-compatible type
-/// `Option<NonZero<i32>>`, and the value used for the argument is `None`, then this call is Undefined
-/// Behavior since transmuting `None::<NonZero<i32>>` to `NonZero<i32>` violates the non-zero
-/// requirement.
+/// 如果声明签名与函数指针签名 ABI 兼容，则函数调用的行为就像每个参数都从函数指针中的类型
+/// [`transmute`][mem::transmute] 到函数声明处的类型，且返回值从声明中的类型
+/// [`transmute`][mem::transmute] 到指针中的类型。关于 transmute 转换的所有常规注意事项和顾虑
+/// 都适用；例如，如果函数期望 `NonZero<i32>`，而函数指针使用 ABI 兼容的类型
+/// `Option<NonZero<i32>>`，且用作参数的值是 `None`，那么此调用就是未定义行为，
+/// 因为将 `None::<NonZero<i32>>` transmute 为 `NonZero<i32>` 违反了非零要求。
 ///
-/// ### Trait implementations
+/// ### Trait 实现
 ///
-/// In this documentation the shorthand `fn(T₁, T₂, …, Tₙ)` is used to represent non-variadic
-/// function pointers of varying length. Note that this is a convenience notation to avoid
-/// repetitive documentation, not valid Rust syntax.
+/// 在本文档中，简写 `fn(T₁, T₂, …, Tₙ)` 用来表示不同长度的非可变参数函数指针。
+/// 注意，这只是用于避免重复文档的便利记法，并不是有效的 Rust 语法。
 ///
-/// The following traits are implemented for function pointers with any number of arguments and
-/// any ABI.
+/// 以下 trait 为具有任意参数数量和任意 ABI 的函数指针实现。
 ///
 /// * [`PartialEq`]
 /// * [`Eq`]
@@ -1914,10 +1768,9 @@ mod prim_ref {}
 /// * [`UnwindSafe`]
 /// * [`RefUnwindSafe`]
 ///
-/// Note that while this type implements `PartialEq`, comparing function pointers is unreliable:
-/// pointers to the same function can compare inequal (because functions are duplicated in multiple
-/// codegen units), and pointers to *different* functions can compare equal (since identical
-/// functions can be deduplicated within a codegen unit).
+/// 注意，虽然此类型实现了 `PartialEq`，但比较函数指针并不可靠：指向同一函数的指针可能比较为不相等
+/// （因为函数会在多个 codegen unit 中重复），指向*不同*函数的指针也可能比较为相等
+/// （因为相同函数可能在一个 codegen unit 内被去重）。
 ///
 /// [`Hash`]: hash::Hash
 /// [`Pointer`]: fmt::Pointer
@@ -1925,12 +1778,12 @@ mod prim_ref {}
 /// [`RefUnwindSafe`]: panic::RefUnwindSafe
 /// [`Rust` representation]: <https://doc.rust-lang.org/reference/type-layout.html#the-rust-representation>
 ///
-/// In addition, all *safe* function pointers implement [`Fn`], [`FnMut`], and [`FnOnce`], because
-/// these traits are specially known to the compiler.
+/// 此外，所有 *safe* 函数指针都实现 [`Fn`]、[`FnMut`] 和 [`FnOnce`]，因为这些 trait
+/// 是编译器特别知道的。
 #[stable(feature = "rust1", since = "1.0.0")]
 mod prim_fn {}
 
-// Required to make auto trait impls render.
-// See src/librustdoc/passes/collect_trait_impls.rs:collect_trait_impls
+// 需要它来渲染 auto trait impl。
+// 参见 src/librustdoc/passes/collect_trait_impls.rs:collect_trait_impls。
 #[doc(hidden)]
 impl<Ret, T> fn(T) -> Ret {}

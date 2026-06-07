@@ -163,7 +163,7 @@ impl<T: ?Sized> fmt::Debug for UnsafePinned<T> {
 impl<T: CoerceUnsized<U>, U> CoerceUnsized<UnsafePinned<U>> for UnsafePinned<T> {}
 
 // 允许那些包装了 `UnsafePinned` 的类型也实现 `DispatchFromDyn`，从而成为 dyn 兼容的方法接收者
-// （receiver）。
+// （也就是方法的 `self` 参数）。
 // 注意，目前 `UnsafePinned` 本身还不能作为方法接收者，因为它没有实现 Deref。
 // 换句话说：
 // `self: UnsafePinned<&Self>` 不行

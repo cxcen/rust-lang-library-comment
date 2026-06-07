@@ -20,18 +20,20 @@ pub trait AsyncIterator {
     /// 尝试取出本异步迭代器的下一个值;如果该值尚不可用,则登记当前任务以便后续被唤醒;如果异步
     /// 迭代器已耗尽,则返回 `None`。
     ///
-    /// # 返回值(Return value)
+    /// # 返回值
     ///
     /// 有几种可能的返回值,各自表示一种不同的异步迭代器状态:
     ///
     /// - `Poll::Pending` 表示本异步迭代器的下一个值尚未就绪。实现会确保:当下一个值可能就绪时,
     ///   当前任务会被通知(唤醒)。这与 [`Future::poll`](crate::future::Future::poll) 的契约一致——
-    ///   返回 `Pending` 前必须已安排好唤醒,否则任务将永久挂起。
+    ///   返回 `Pending` 前必须已安排好唤醒,否则任务将永久挂起。若多次 `poll_next` 都返回
+    ///   `Pending`,实现应以最近一次调用传入的 [`Context`](crate::task::Context) 中的 waker 为准。
     ///
     /// - `Poll::Ready(Some(val))` 表示异步迭代器已成功产出一个值 `val`,并且在后续的 `poll_next`
     ///   调用中可能继续产出更多的值。
     ///
-    /// - `Poll::Ready(None)` 表示异步迭代器已终止,不应再次调用 `poll_next`。
+    /// - `Poll::Ready(None)` 表示异步迭代器已终止。调用方看到这一结果后应停止轮询;它不应假定后续
+    ///   再次调用 `poll_next` 还能恢复产出元素。
     ///
     /// # Panics
     ///

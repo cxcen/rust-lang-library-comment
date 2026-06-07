@@ -8,10 +8,9 @@ use crate::iter::{
 use crate::num::NonZero;
 use crate::ops::{ControlFlow, Try};
 
-/// An iterator that skips over `n` elements of `iter`.
+/// 跳过 `iter` 前 `n` 个元素的迭代器。
 ///
-/// This `struct` is created by the [`skip`] method on [`Iterator`]. See its
-/// documentation for more.
+/// 该 `struct` 由 [`Iterator`] 上的 [`skip`] 方法创建。更多信息见该方法文档。
 ///
 /// [`skip`]: Iterator::skip
 /// [`Iterator`]: trait.Iterator.html
@@ -49,18 +48,17 @@ where
     fn nth(&mut self, n: usize) -> Option<I::Item> {
         if self.n > 0 {
             let skip: usize = crate::mem::take(&mut self.n);
-            // Checked add to handle overflow case.
+            // 使用 checked add 处理溢出情况。
             let n = match skip.checked_add(n) {
                 Some(nth) => nth,
                 None => {
-                    // In case of overflow, load skip value, before loading `n`.
-                    // Because the amount of elements to iterate is beyond `usize::MAX`, this
-                    // is split into two `nth` calls where the `skip` `nth` call is discarded.
+                    // 发生溢出时，先加载 skip 值，再加载 `n`。由于要迭代的元素数量超过
+                    // `usize::MAX`，这里拆成两次 `nth` 调用，其中 `skip` 的 `nth` 结果会被丢弃。
                     self.iter.nth(skip - 1)?;
                     n
                 }
             };
-            // Load nth element including skip.
+            // 加载包含 skip 后的第 n 个元素。
             self.iter.nth(n)
         } else {
             self.iter.nth(n)
@@ -70,7 +68,7 @@ where
     #[inline]
     fn count(mut self) -> usize {
         if self.n > 0 {
-            // nth(n) skips n+1
+            // nth(n) 会跳过 n+1 项。
             if self.iter.nth(self.n - 1).is_none() {
                 return 0;
             }
@@ -81,7 +79,7 @@ where
     #[inline]
     fn last(mut self) -> Option<I::Item> {
         if self.n > 0 {
-            // nth(n) skips n+1
+            // nth(n) 会跳过 n+1 项。
             self.iter.nth(self.n - 1)?;
         }
         self.iter.last()
@@ -110,7 +108,7 @@ where
         let n = self.n;
         self.n = 0;
         if n > 0 {
-            // nth(n) skips n+1
+            // nth(n) 会跳过 n+1 项。
             if self.iter.nth(n - 1).is_none() {
                 return try { init };
             }
@@ -146,7 +144,7 @@ where
         n -= advanced_inner.saturating_sub(skip_inner);
         self.n = self.n.saturating_sub(advanced_inner);
 
-        // skip_and_advance may have saturated
+        // skip_and_advance 可能已经饱和。
         if unlikely(remainder == 0 && n > 0) {
             n = match self.iter.advance_by(n) {
                 Ok(()) => 0,
@@ -162,16 +160,12 @@ where
     where
         Self: TrustedRandomAccessNoCoerce,
     {
-        // SAFETY: the caller must uphold the contract for
-        // `Iterator::__iterator_get_unchecked`.
+        // SAFETY: 调用方必须维护 `Iterator::__iterator_get_unchecked` 的契约。
         //
-        // Dropping the skipped prefix when index 0 is passed is safe
-        // since
-        // * the caller passing index 0 means that the inner iterator has more items than `self.n`
-        // * TRA contract requires that get_unchecked will only be called once
-        //   (unless elements are copyable)
-        // * it does not conflict with in-place iteration since index 0 must be accessed
-        //   before something is written into the storage used by the prefix
+        // 传入索引 0 时 drop 被跳过的前缀是安全的，因为:
+        // * 调用方传入索引 0 意味着内层迭代器拥有超过 `self.n` 个元素；
+        // * TRA 契约要求 get_unchecked 只会被调用一次(除非元素可复制)；
+        // * 这不会与原地迭代冲突，因为在向前缀使用的存储写入内容之前，必须先访问索引 0。
         unsafe {
             if Self::MAY_HAVE_SIDE_EFFECT && idx == 0 {
                 for skipped_idx in 0..self.n {
@@ -203,7 +197,7 @@ where
             self.iter.nth_back(n)
         } else {
             if len > 0 {
-                // consume the original iterator
+                // 消耗原始迭代器。
                 self.iter.nth_back(len - 1);
             }
             None
@@ -257,7 +251,7 @@ where
 
     #[inline]
     unsafe fn as_inner(&mut self) -> &mut I::Source {
-        // SAFETY: unsafe function forwarding to unsafe function with the same requirements
+        // SAFETY: 转发到具有相同要求的 unsafe 函数。
         unsafe { SourceIter::as_inner(&mut self.iter) }
     }
 }
@@ -281,9 +275,8 @@ where
     const MAY_HAVE_SIDE_EFFECT: bool = I::MAY_HAVE_SIDE_EFFECT;
 }
 
-// SAFETY: This adapter is shortening. TrustedLen requires the upper bound to be calculated correctly.
-// These requirements can only be satisfied when the upper bound of the inner iterator's upper
-// bound is never `None`. I: TrustedRandomAccess happens to provide this guarantee while
-// I: TrustedLen would not.
+// SAFETY: 该适配器只会缩短长度。TrustedLen 要求正确计算上界。
+// 只有当内部 iterator 的上界永远不是 `None` 时，才能满足这些要求。
+// I: TrustedRandomAccess 正好提供这个保证，而 I: TrustedLen 不提供。
 #[unstable(feature = "trusted_len", issue = "37572")]
 unsafe impl<I> TrustedLen for Skip<I> where I: Iterator + TrustedRandomAccess {}

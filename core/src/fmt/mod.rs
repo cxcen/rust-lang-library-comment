@@ -1,4 +1,9 @@
-//! Utilities for formatting and printing strings.
+//! 字符串格式化与打印的核心工具。
+//!
+//! `core::fmt` 定义的是格式化协议本身:各类格式化 trait、`Formatter` 状态、
+//! `Arguments` 的预编译表示,以及 `write!`/`format_args!` 依赖的无分配写入接口。
+//! 它不负责分配字符串,也不直接访问 OS;panic 消息、日志框架以及 `std` 中的
+//! `format!`/`println!` 最终都会经由这里的协议把值写入某个输出目标。
 
 #![stable(feature = "rust1", since = "1.0.0")]
 
@@ -22,17 +27,17 @@ mod rt;
 
 #[stable(feature = "fmt_flags_align", since = "1.28.0")]
 #[rustc_diagnostic_item = "Alignment"]
-/// Possible alignments returned by `Formatter::align`
+/// `Formatter::align` 可能返回的对齐方式。
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Alignment {
     #[stable(feature = "fmt_flags_align", since = "1.28.0")]
-    /// Indication that contents should be left-aligned.
+    /// 表示内容应当左对齐。
     Left,
     #[stable(feature = "fmt_flags_align", since = "1.28.0")]
-    /// Indication that contents should be right-aligned.
+    /// 表示内容应当右对齐。
     Right,
     #[stable(feature = "fmt_flags_align", since = "1.28.0")]
-    /// Indication that contents should be center-aligned.
+    /// 表示内容应当居中对齐。
     Center,
 }
 
@@ -44,9 +49,12 @@ pub use self::builders::{DebugList, DebugMap, DebugSet, DebugStruct, DebugTuple}
 #[stable(feature = "fmt_from_fn", since = "1.93.0")]
 pub use self::builders::{FromFn, from_fn};
 
-/// The type returned by formatter methods.
+/// 格式化方法返回的类型。
 ///
-/// # Examples
+/// `fmt::Result` 只表达“向 `Formatter` 背后的输出目标写入是否继续成功”。
+/// 它不是 `Display` 或 `Debug` 实现用来报告业务错误的通道。
+///
+/// # 示例
 ///
 /// ```
 /// use std::fmt;
@@ -71,30 +79,27 @@ pub use self::builders::{FromFn, from_fn};
 #[stable(feature = "rust1", since = "1.0.0")]
 pub type Result = result::Result<(), Error>;
 
-/// The error type which is returned from formatting a message into a stream.
+/// 把消息格式化到某个流时可能返回的错误类型。
 ///
-/// This type does not support transmission of an error other than that an error
-/// occurred. This is because, despite the existence of this error,
-/// string formatting is considered an infallible operation.
-/// `fmt()` implementors should not return this `Error` unless they received it from their
-/// [`Formatter`]. The only time your code should create a new instance of this
-/// error is when implementing `fmt::Write`, in order to cancel the formatting operation when
-/// writing to the underlying stream fails.
+/// 这个类型除了“发生过某个错误”之外,不承载任何额外错误信息。原因是:
+/// 虽然存在这个错误类型,字符串格式化本身仍被视为不可失败的操作。
+/// `fmt()` 实现者只有在从传入的 [`Formatter`] 收到这个 `Error` 时才应返回它。
+/// 代码主动创建新的 `fmt::Error` 的主要场景,是实现 `fmt::Write` 时底层流拒绝
+/// 继续接收文本,从而需要中止整次格式化操作。
 ///
-/// Any extra information must be arranged to be transmitted through some other means,
-/// such as storing it in a field to be consulted after the formatting operation has been
-/// cancelled. (For example, this is how [`std::io::Write::write_fmt()`] propagates IO errors
-/// during writing.)
+/// 如果需要传递额外信息,必须通过其他机制安排,例如把具体错误存入某个字段,
+/// 待格式化操作被取消后再读取。[`std::io::Write::write_fmt()`] 在写入过程中
+/// 传播 IO 错误时,采用的就是这种模式。
 ///
-/// This type, `fmt::Error`, should not be
-/// confused with [`std::io::Error`] or [`std::error::Error`], which you may also
-/// have in scope.
+/// 不要把 `fmt::Error` 与可能同样在作用域中的 [`std::io::Error`] 或
+/// [`std::error::Error`] 混淆。前者只是格式化协议里的中止信号,后两者才携带
+/// 具体错误种类或错误链。
 ///
 /// [`std::io::Error`]: ../../std/io/struct.Error.html
 /// [`std::io::Write::write_fmt()`]: ../../std/io/trait.Write.html#method.write_fmt
 /// [`std::error::Error`]: ../../std/error/trait.Error.html
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```rust
 /// use std::fmt::{self, write};
@@ -108,35 +113,33 @@ pub type Result = result::Result<(), Error>;
 #[derive(Copy, Clone, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Error;
 
-/// A trait for writing or formatting into Unicode-accepting buffers or streams.
+/// 向接受 Unicode 的缓冲区或流写入/格式化文本的 trait。
 ///
-/// This trait only accepts UTF-8–encoded data and is not [flushable]. If you only
-/// want to accept Unicode and you don't need flushing, you should implement this trait;
-/// otherwise you should implement [`std::io::Write`].
+/// 这个 trait 只接受 UTF-8 编码的数据,并且不可 [flushable]。如果目标只需要接收
+/// Unicode 文本且不需要 flush 语义,应实现这个 trait;否则应实现 [`std::io::Write`]。
+///
+/// `write!` 会通过 `write_fmt` 把 `format_args!` 生成的 [`Arguments`] 交给这里。
+/// 这也是 panic 文本和日志文本能够在无分配或延迟分配路径上写入最终 sink 的基础。
 ///
 /// [`std::io::Write`]: ../../std/io/trait.Write.html
 /// [flushable]: ../../std/io/trait.Write.html#tymethod.flush
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_diagnostic_item = "FmtWrite"]
 pub trait Write {
-    /// Writes a string slice into this writer, returning whether the write
-    /// succeeded.
+    /// 向此 writer 写入一个字符串切片,并返回写入是否成功。
     ///
-    /// This method can only succeed if the entire string slice was successfully
-    /// written, and this method will not return until all data has been
-    /// written or an error occurs.
+    /// 只有整个字符串切片都被成功写入时,此方法才算成功。它不会在部分写入后
+    /// 报告成功;要么写完全部数据,要么在底层目标拒绝继续接收文本时返回错误。
     ///
-    /// # Errors
+    /// # 错误
     ///
-    /// This function will return an instance of [`std::fmt::Error`][Error] on error.
+    /// 出错时,此函数会返回 [`std::fmt::Error`][Error]。
     ///
-    /// The purpose of that error is to abort the formatting operation when the underlying
-    /// destination encounters some error preventing it from accepting more text;
-    /// in particular, it does not communicate any information about *what* error occurred.
-    /// It should generally be propagated rather than handled, at least when implementing
-    /// formatting traits.
+    /// 这个错误的目的,是在底层目标遇到某种无法继续接收文本的问题时中止格式化操作;
+    /// 它并不传达“具体发生了什么错误”。至少在实现格式化 trait 时,通常应继续向上传播
+    /// 这个错误,而不是在本层处理它。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::fmt::{Error, Write};
@@ -153,18 +156,16 @@ pub trait Write {
     #[stable(feature = "rust1", since = "1.0.0")]
     fn write_str(&mut self, s: &str) -> Result;
 
-    /// Writes a [`char`] into this writer, returning whether the write succeeded.
+    /// 向此 writer 写入一个 [`char`],并返回写入是否成功。
     ///
-    /// A single [`char`] may be encoded as more than one byte.
-    /// This method can only succeed if the entire byte sequence was successfully
-    /// written, and this method will not return until all data has been
-    /// written or an error occurs.
+    /// 单个 [`char`] 可能会被编码为多个字节。只有整个 UTF-8 字节序列都被成功写入时,
+    /// 此方法才算成功;它不会在部分写入后报告成功。
     ///
-    /// # Errors
+    /// # 错误
     ///
-    /// This function will return an instance of [`Error`] on error.
+    /// 出错时,此函数会返回 [`Error`]。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::fmt::{Error, Write};
@@ -184,17 +185,16 @@ pub trait Write {
         self.write_str(c.encode_utf8(&mut [0; char::MAX_LEN_UTF8]))
     }
 
-    /// Glue for usage of the [`write!`] macro with implementors of this trait.
+    /// 供 [`write!`] 宏配合此 trait 的实现者使用的衔接方法。
     ///
-    /// This method should generally not be invoked manually, but rather through
-    /// the [`write!`] macro itself.
+    /// 通常不应手动调用此方法,而应通过 [`write!`] 宏调用。宏会先用
+    /// [`format_args!`] 构造 [`Arguments`],再把它传给 `write_fmt`。
     ///
-    /// # Errors
+    /// # 错误
     ///
-    /// This function will return an instance of [`Error`] on error. Please see
-    /// [write_str](Write::write_str) for details.
+    /// 出错时,此函数会返回 [`Error`]。细节见 [write_str](Write::write_str)。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::fmt::{Error, Write};
@@ -210,8 +210,7 @@ pub trait Write {
     /// ```
     #[stable(feature = "rust1", since = "1.0.0")]
     fn write_fmt(&mut self, args: Arguments<'_>) -> Result {
-        // We use a specialization for `Sized` types to avoid an indirection
-        // through `&mut self`
+        // 对 `Sized` 类型使用 specialization,避免经由 `&mut self` 多走一层间接调用。
         trait SpecWriteFmt {
             fn spec_write_fmt(self, args: Arguments<'_>) -> Result;
         }
@@ -257,35 +256,35 @@ impl<W: Write + ?Sized> Write for &mut W {
     }
 }
 
-/// The signedness of a [`Formatter`] (or of a [`FormattingOptions`]).
+/// [`Formatter`] 或 [`FormattingOptions`] 当前请求的符号显示方式。
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[unstable(feature = "formatting_options", issue = "118117")]
 pub enum Sign {
-    /// Represents the `+` flag.
+    /// 表示 `+` flag。
     Plus,
-    /// Represents the `-` flag.
+    /// 表示 `-` flag。
     Minus,
 }
 
-/// Specifies whether the [`Debug`] trait should use lower-/upper-case
-/// hexadecimal or normal integers.
+/// 指定 [`Debug`] trait 是否应使用小写/大写十六进制,还是使用普通整数格式。
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[unstable(feature = "formatting_options", issue = "118117")]
 pub enum DebugAsHex {
-    /// Use lower-case hexadecimal integers for the `Debug` trait (like [the `x?` type](../../std/fmt/index.html#formatting-traits)).
+    /// 让 `Debug` trait 使用小写十六进制整数,类似 [`x?` 格式](../../std/fmt/index.html#formatting-traits)。
     Lower,
-    /// Use upper-case hexadecimal integers for the `Debug` trait (like [the `X?` type](../../std/fmt/index.html#formatting-traits)).
+    /// 让 `Debug` trait 使用大写十六进制整数,类似 [`X?` 格式](../../std/fmt/index.html#formatting-traits)。
     Upper,
 }
 
-/// Options for formatting.
+/// 格式化选项。
 ///
-/// `FormattingOptions` is a [`Formatter`] without an attached [`Write`] trait.
-/// It is mainly used to construct `Formatter` instances.
+/// `FormattingOptions` 可以看作尚未附加 [`Write`] 目标的 [`Formatter`] 状态。
+/// 它主要用于构造 `Formatter` 实例,保存 width、precision、fill、alignment、
+/// `#`、`0`、符号和 Debug 十六进制模式等格式化控制位。
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[unstable(feature = "formatting_options", issue = "118117")]
 pub struct FormattingOptions {
-    /// Flags, with the following bit fields:
+    /// flags 字段,按如下 bit field 编码:
     ///
     /// ```text
     ///   31  30  29  28  27  26  25  24  23  22  21  20                              0
@@ -293,26 +292,26 @@ pub struct FormattingOptions {
     /// │ 0 │ align │ p │ w │ X?│ x?│'0'│ # │ - │ + │               fill               │
     /// └───┴───────┴───┴───┴───┴───┴───┴───┴───┴───┴──────────────────────────────────┘
     ///   │     │     │   │  └─┬───────────────────┘ └─┬──────────────────────────────┘
-    ///   │     │     │   │    │                       └─ The fill character (21 bits char).
-    ///   │     │     │   │    └─ The debug upper/lower hex, zero pad, alternate, and plus/minus flags.
-    ///   │     │     │   └─ Whether a width is set. (The value is stored separately.)
-    ///   │     │     └─ Whether a precision is set. (The value is stored separately.)
-    ///   │     ├─ 0: Align left. (<)
-    ///   │     ├─ 1: Align right. (>)
-    ///   │     ├─ 2: Align center. (^)
-    ///   │     └─ 3: Alignment not set. (default)
-    ///   └─ Always zero.
+    ///   │     │     │   │    │                       └─ fill 字符(21 位 char)。
+    ///   │     │     │   │    └─ Debug 大/小写十六进制、补零、alternate、正负号 flags。
+    ///   │     │     │   └─ 是否设置了 width。(具体值单独存储。)
+    ///   │     │     └─ 是否设置了 precision。(具体值单独存储。)
+    ///   │     ├─ 0: 左对齐。(<)
+    ///   │     ├─ 1: 右对齐。(>)
+    ///   │     ├─ 2: 居中对齐。(^)
+    ///   │     └─ 3: 未设置 alignment。(默认)
+    ///   └─ 始终为 0。
     /// ```
-    // Note: This could use a pattern type with range 0x0000_0000..=0x7dd0ffff.
-    // It's unclear if that's useful, though.
+    // 注意:这里可以使用范围为 0x0000_0000..=0x7dd0ffff 的 pattern type,
+    // 但目前不清楚那是否有实际价值。
     flags: u32,
-    /// Width if width flag (bit 27) above is set. Otherwise, always 0.
+    /// 若上面的 width flag(bit 27) 已设置,则保存 width;否则始终为 0。
     width: u16,
-    /// Precision if precision flag (bit 28) above is set. Otherwise, always 0.
+    /// 若上面的 precision flag(bit 28) 已设置,则保存 precision;否则始终为 0。
     precision: u16,
 }
 
-// This needs to match with compiler/rustc_ast_lowering/src/format.rs.
+// 这里必须与 compiler/rustc_ast_lowering/src/format.rs 保持一致。
 mod flags {
     pub(super) const SIGN_PLUS_FLAG: u32 = 1 << 21;
     pub(super) const SIGN_MINUS_FLAG: u32 = 1 << 22;
@@ -330,29 +329,25 @@ mod flags {
 }
 
 impl FormattingOptions {
-    /// Construct a new `FormatterBuilder` with the supplied `Write` trait
-    /// object for output that is equivalent to the `{}` formatting
-    /// specifier:
+    /// 构造一组等价于 `{}` 格式说明符的默认格式化选项。
     ///
-    /// - no flags,
-    /// - filled with spaces,
-    /// - no alignment,
-    /// - no width,
-    /// - no precision, and
-    /// - no [`DebugAsHex`] output mode.
+    /// - 没有 flags,
+    /// - 使用空格填充,
+    /// - 没有 alignment,
+    /// - 没有 width,
+    /// - 没有 precision,
+    /// - 没有 [`DebugAsHex`] 输出模式。
     #[unstable(feature = "formatting_options", issue = "118117")]
     pub const fn new() -> Self {
         Self { flags: ' ' as u32 | flags::ALIGN_UNKNOWN, width: 0, precision: 0 }
     }
 
-    /// Sets or removes the sign (the `+` or the `-` flag).
+    /// 设置或移除符号 flag(`+` 或 `-`)。
     ///
-    /// - `+`: This is intended for numeric types and indicates that the sign
-    ///   should always be printed. By default only the negative sign of signed
-    ///   values is printed, and the sign of positive or unsigned values is
-    ///   omitted. This flag indicates that the correct sign (+ or -) should
-    ///   always be printed.
-    /// - `-`: Currently not used
+    /// - `+`: 面向数值类型,表示始终打印符号。默认情况下,只有有符号值为负时
+    ///   才会打印负号,正数和无符号值的符号会被省略。设置此 flag 后,
+    ///   应始终打印正确符号(+ 或 -)。
+    /// - `-`: 当前未使用。
     #[unstable(feature = "formatting_options", issue = "118117")]
     pub const fn sign(&mut self, sign: Option<Sign>) -> &mut Self {
         let sign = match sign {
@@ -363,9 +358,10 @@ impl FormattingOptions {
         self.flags = self.flags & !(flags::SIGN_PLUS_FLAG | flags::SIGN_MINUS_FLAG) | sign;
         self
     }
-    /// Sets or unsets the `0` flag.
+    /// 设置或取消 `0` flag。
     ///
-    /// This is used to indicate for integer formats that the padding to width should both be done with a 0 character as well as be sign-aware
+    /// 对整数格式而言,这表示为了达到 width 而进行的填充应使用 `0` 字符,
+    /// 并且应感知符号位置,即符号和前缀通常位于补零之前。
     #[unstable(feature = "formatting_options", issue = "118117")]
     pub const fn sign_aware_zero_pad(&mut self, sign_aware_zero_pad: bool) -> &mut Self {
         if sign_aware_zero_pad {
@@ -375,14 +371,13 @@ impl FormattingOptions {
         }
         self
     }
-    /// Sets or unsets the `#` flag.
+    /// 设置或取消 `#` flag。
     ///
-    /// This flag indicates that the "alternate" form of printing should be
-    /// used. The alternate forms are:
-    /// - [`Debug`] : pretty-print the [`Debug`] formatting (adds linebreaks and indentation)
-    /// - [`LowerHex`] as well as [`UpperHex`] - precedes the argument with a `0x`
-    /// - [`Octal`] - precedes the argument with a `0o`
-    /// - [`Binary`] - precedes the argument with a `0b`
+    /// 这个 flag 表示应使用“alternate”形式打印。常见 alternate 形式包括:
+    /// - [`Debug`]: pretty-print [`Debug`] 格式化结果,添加换行和缩进。
+    /// - [`LowerHex`] 与 [`UpperHex`]: 在参数前添加 `0x`。
+    /// - [`Octal`]: 在参数前添加 `0o`。
+    /// - [`Binary`]: 在参数前添加 `0b`。
     #[unstable(feature = "formatting_options", issue = "118117")]
     pub const fn alternate(&mut self, alternate: bool) -> &mut Self {
         if alternate {
@@ -392,21 +387,18 @@ impl FormattingOptions {
         }
         self
     }
-    /// Sets the fill character.
+    /// 设置填充字符。
     ///
-    /// The optional fill character and alignment is provided normally in
-    /// conjunction with the width parameter. This indicates that if the value
-    /// being formatted is smaller than width some extra characters will be
-    /// printed around it.
+    /// 可选填充字符通常与 alignment 和 width 一起提供。若被格式化值的文本长度
+    /// 小于 width,`Formatter` 会在其周围写入额外填充字符以补足宽度。
     #[unstable(feature = "formatting_options", issue = "118117")]
     pub const fn fill(&mut self, fill: char) -> &mut Self {
         self.flags = self.flags & (u32::MAX << 21) | fill as u32;
         self
     }
-    /// Sets or removes the alignment.
+    /// 设置或移除 alignment。
     ///
-    /// The alignment specifies how the value being formatted should be
-    /// positioned if it is smaller than the width of the formatter.
+    /// 当被格式化值短于 `Formatter` 的 width 时,alignment 指定该值应如何摆放。
     #[unstable(feature = "formatting_options", issue = "118117")]
     pub const fn align(&mut self, align: Option<Alignment>) -> &mut Self {
         let align: u32 = match align {
@@ -418,12 +410,11 @@ impl FormattingOptions {
         self.flags = self.flags & !flags::ALIGN_BITS | align;
         self
     }
-    /// Sets or removes the width.
+    /// 设置或移除 width。
     ///
-    /// This is a parameter for the “minimum width” that the format should take
-    /// up. If the value’s string does not fill up this many characters, then
-    /// the padding specified by [`FormattingOptions::fill`]/[`FormattingOptions::align`]
-    /// will be used to take up the required space.
+    /// 这是格式化结果应占据的“最小宽度”。如果值的字符串表示没有填满这么多字符,
+    /// 就会使用 [`FormattingOptions::fill`] 和 [`FormattingOptions::align`]
+    /// 指定的规则补足所需空间。
     #[unstable(feature = "formatting_options", issue = "118117")]
     pub const fn width(&mut self, width: Option<u16>) -> &mut Self {
         if let Some(width) = width {
@@ -435,15 +426,12 @@ impl FormattingOptions {
         }
         self
     }
-    /// Sets or removes the precision.
+    /// 设置或移除 precision。
     ///
-    /// - For non-numeric types, this can be considered a “maximum width”. If
-    ///   the resulting string is longer than this width, then it is truncated
-    ///   down to this many characters and that truncated value is emitted with
-    ///   proper fill, alignment and width if those parameters are set.
-    /// - For integral types, this is ignored.
-    /// - For floating-point types, this indicates how many digits after the
-    /// decimal point should be printed.
+    /// - 对非数值类型,precision 可视为“最大宽度”。若结果字符串长于此宽度,
+    ///   会先截断到这么多字符,再结合已设置的 fill、alignment 和 width 输出。
+    /// - 对整数类型,precision 会被忽略。
+    /// - 对浮点类型,precision 表示小数点后应打印多少位数字。
     #[unstable(feature = "formatting_options", issue = "118117")]
     pub const fn precision(&mut self, precision: Option<u16>) -> &mut Self {
         if let Some(precision) = precision {
@@ -455,8 +443,7 @@ impl FormattingOptions {
         }
         self
     }
-    /// Specifies whether the [`Debug`] trait should use lower-/upper-case
-    /// hexadecimal or normal integers
+    /// 指定 [`Debug`] trait 应使用小写/大写十六进制,还是使用普通整数。
     #[unstable(feature = "formatting_options", issue = "118117")]
     pub const fn debug_as_hex(&mut self, debug_as_hex: Option<DebugAsHex>) -> &mut Self {
         let debug_as_hex = match debug_as_hex {
@@ -469,7 +456,7 @@ impl FormattingOptions {
         self
     }
 
-    /// Returns the current sign (the `+` or the `-` flag).
+    /// 返回当前符号 flag(`+` 或 `-`)。
     #[unstable(feature = "formatting_options", issue = "118117")]
     pub const fn get_sign(&self) -> Option<Sign> {
         if self.flags & flags::SIGN_PLUS_FLAG != 0 {
@@ -480,23 +467,23 @@ impl FormattingOptions {
             None
         }
     }
-    /// Returns the current `0` flag.
+    /// 返回当前 `0` flag。
     #[unstable(feature = "formatting_options", issue = "118117")]
     pub const fn get_sign_aware_zero_pad(&self) -> bool {
         self.flags & flags::SIGN_AWARE_ZERO_PAD_FLAG != 0
     }
-    /// Returns the current `#` flag.
+    /// 返回当前 `#` flag。
     #[unstable(feature = "formatting_options", issue = "118117")]
     pub const fn get_alternate(&self) -> bool {
         self.flags & flags::ALTERNATE_FLAG != 0
     }
-    /// Returns the current fill character.
+    /// 返回当前填充字符。
     #[unstable(feature = "formatting_options", issue = "118117")]
     pub const fn get_fill(&self) -> char {
-        // SAFETY: We only ever put a valid `char` in the lower 21 bits of the flags field.
+        // SAFETY: 我们只会把有效 `char` 放入 flags 字段的低 21 位。
         unsafe { char::from_u32_unchecked(self.flags & 0x1FFFFF) }
     }
-    /// Returns the current alignment.
+    /// 返回当前 alignment。
     #[unstable(feature = "formatting_options", issue = "118117")]
     pub const fn get_align(&self) -> Option<Alignment> {
         match self.flags & flags::ALIGN_BITS {
@@ -506,17 +493,17 @@ impl FormattingOptions {
             _ => None,
         }
     }
-    /// Returns the current width.
+    /// 返回当前 width。
     #[unstable(feature = "formatting_options", issue = "118117")]
     pub const fn get_width(&self) -> Option<u16> {
         if self.flags & flags::WIDTH_FLAG != 0 { Some(self.width) } else { None }
     }
-    /// Returns the current precision.
+    /// 返回当前 precision。
     #[unstable(feature = "formatting_options", issue = "118117")]
     pub const fn get_precision(&self) -> Option<u16> {
         if self.flags & flags::PRECISION_FLAG != 0 { Some(self.precision) } else { None }
     }
-    /// Returns the current precision.
+    /// 返回当前 Debug 十六进制输出模式。
     #[unstable(feature = "formatting_options", issue = "118117")]
     pub const fn get_debug_as_hex(&self) -> Option<DebugAsHex> {
         if self.flags & flags::DEBUG_LOWER_HEX_FLAG != 0 {
@@ -528,9 +515,9 @@ impl FormattingOptions {
         }
     }
 
-    /// Creates a [`Formatter`] that writes its output to the given [`Write`] trait.
+    /// 创建一个把输出写入给定 [`Write`] trait 对象的 [`Formatter`]。
     ///
-    /// You may alternatively use [`Formatter::new()`].
+    /// 也可以改用 [`Formatter::new()`]。
     #[unstable(feature = "formatting_options", issue = "118117")]
     pub const fn create_formatter<'a>(self, write: &'a mut (dyn Write + 'a)) -> Formatter<'a> {
         Formatter { options: self, buf: write }
@@ -539,22 +526,23 @@ impl FormattingOptions {
 
 #[unstable(feature = "formatting_options", issue = "118117")]
 impl Default for FormattingOptions {
-    /// Same as [`FormattingOptions::new()`].
+    /// 等同于 [`FormattingOptions::new()`]。
     fn default() -> Self {
-        // The `#[derive(Default)]` implementation would set `fill` to `\0` instead of space.
+        // `#[derive(Default)]` 实现会把 `fill` 设成 `\0` 而不是空格。
         Self::new()
     }
 }
 
-/// Configuration for formatting.
+/// 格式化配置和输出目标。
 ///
-/// A `Formatter` represents various options related to formatting. Users do not
-/// construct `Formatter`s directly; a mutable reference to one is passed to
-/// the `fmt` method of all formatting traits, like [`Debug`] and [`Display`].
+/// `Formatter` 表示一次格式化调用的状态:width、precision、fill、alignment、
+/// flags 以及底层 [`Write`] sink。用户通常不会直接构造 `Formatter`;所有格式化
+/// trait 的 `fmt` 方法,例如 [`Debug`] 和 [`Display`],都会接收一个
+/// `&mut Formatter`。
 ///
-/// To interact with a `Formatter`, you'll call various methods to change the
-/// various options related to formatting. For examples, please see the
-/// documentation of the methods defined on `Formatter` below.
+/// `Display` 实现通常生成面向用户的、稳定且可读的文本;`Debug` 实现则面向开发者
+/// 和诊断场景,会尊重 `#?` 等调试 flag。与 `Formatter` 交互时,可以调用下方方法
+/// 查询这些状态,或派生带不同 [`FormattingOptions`] 的临时 `Formatter`。
 #[allow(missing_debug_implementations)]
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_diagnostic_item = "Formatter"]
@@ -565,38 +553,39 @@ pub struct Formatter<'a> {
 }
 
 impl<'a> Formatter<'a> {
-    /// Creates a new formatter with given [`FormattingOptions`].
+    /// 使用给定 [`FormattingOptions`] 创建新的 `Formatter`。
     ///
-    /// If `write` is a reference to a formatter, it is recommended to use
-    /// [`Formatter::with_options`] instead as this can borrow the underlying
-    /// `write`, thereby bypassing one layer of indirection.
+    /// 如果 `write` 本身是对另一个 formatter 的引用,建议改用
+    /// [`Formatter::with_options`],因为它可以直接借用底层 `write`,
+    /// 从而绕过一层间接调用。
     ///
-    /// You may alternatively use [`FormattingOptions::create_formatter()`].
+    /// 也可以改用 [`FormattingOptions::create_formatter()`]。
     #[unstable(feature = "formatting_options", issue = "118117")]
     pub const fn new(write: &'a mut (dyn Write + 'a), options: FormattingOptions) -> Self {
         Formatter { options, buf: write }
     }
 
-    /// Creates a new formatter based on this one with given [`FormattingOptions`].
+    /// 基于当前 formatter 和给定 [`FormattingOptions`] 创建新的 formatter。
     #[unstable(feature = "formatting_options", issue = "118117")]
     pub const fn with_options<'b>(&'b mut self, options: FormattingOptions) -> Formatter<'b> {
         Formatter { options, buf: self.buf }
     }
 }
 
-/// This structure represents a safely precompiled version of a format string
-/// and its arguments. This cannot be generated at runtime because it cannot
-/// safely be done, so no constructors are given and the fields are private
-/// to prevent modification.
+/// 表示格式字符串及其实参的安全预编译版本。
 ///
-/// The [`format_args!`] macro will safely create an instance of this structure.
-/// The macro validates the format string at compile-time so usage of the
-/// [`write()`] and [`format()`] functions can be safely performed.
+/// 这个结构不能在运行时任意生成,因为运行时无法重新证明模板编码、参数类型和
+/// 生命周期都匹配;因此它没有公开构造器,字段也保持私有以防被修改。
 ///
-/// You can use the `Arguments<'a>` that [`format_args!`] returns in `Debug`
-/// and `Display` contexts as seen below. The example also shows that `Debug`
-/// and `Display` format to the same thing: the interpolated format string
-/// in `format_args!`.
+/// [`format_args!`] 宏会安全地创建此结构的实例。宏在编译期验证格式字符串,
+/// 从而让 [`write()`] 和 [`format()`] 能安全消费该结构。
+///
+/// [`format_args!`] 返回的 `Arguments<'a>` 可以在 `Debug` 和 `Display` 上下文中使用,
+/// 如下例所示。示例也展示了 `Arguments` 自身的 `Debug` 和 `Display` 输出相同:
+/// 它们都会输出 `format_args!` 插值后的格式字符串。
+///
+/// 生命周期 `'a` 来自被格式化实参的借用。通常应立即把 `Arguments` 传给
+/// `write!`、日志或 panic 设施;除纯静态字符串表示外,不要把它保存得比实参更久。
 ///
 /// ```rust
 /// let debug = format!("{:?}", format_args!("{} foo {:?}", 1, 2));
@@ -607,108 +596,100 @@ impl<'a> Formatter<'a> {
 ///
 /// [`format()`]: ../../std/fmt/fn.format.html
 //
-// Internal representation:
+// 内部表示:
 //
-// fmt::Arguments is represented in one of two ways:
+// fmt::Arguments 有两种表示方式:
 //
-// 1) String literal representation (e.g. format_args!("hello"))
+// 1) 字符串字面量表示(例如 format_args!("hello"))
 //             ┌────────────────────────────────┐
 //   template: │           *const u8            │ ─▷ "hello"
 //             ├──────────────────────────────┬─┤
-//   args:     │             len              │1│ (lowest bit is 1; field contains `len << 1 | 1`)
+//   args:     │             len              │1│ (最低位为 1;字段包含 `len << 1 | 1`)
 //             └──────────────────────────────┴─┘
-//   In this representation, there are no placeholders and `fmt::Arguments::as_str()` returns Some.
-//   The pointer points to the start of a static `str`. The length is given by `args as usize >> 1`.
-//   (The length of a `&str` is isize::MAX at most, so it always fits in a usize minus one bit.)
+//   在这种表示中没有占位符,`fmt::Arguments::as_str()` 会返回 Some。
+//   指针指向一个静态 `str` 的起始位置。长度由 `args as usize >> 1` 给出。
+//   (`&str` 的长度最大为 isize::MAX,因此总能放入少一位的 usize。)
 //
-//   `fmt::Arguments::from_str()` constructs this representation from a `&'static str`.
+//   `fmt::Arguments::from_str()` 会从 `&'static str` 构造这种表示。
 //
-// 2) Placeholders representation (e.g. format_args!("hello {name}\n"))
+// 2) 占位符表示(例如 format_args!("hello {name}\n"))
 //             ┌────────────────────────────────┐
 //   template: │           *const u8            │ ─▷ b"\x06hello \xC0\x01\n\x00"
 //             ├────────────────────────────────┤
-//   args:     │     &'a [Argument<'a>; _]     0│ (lower bit is 0 due to alignment of Argument type)
+//   args:     │     &'a [Argument<'a>; _]     0│ (因 Argument 类型对齐要求,低位为 0)
 //             └────────────────────────────────┘
-//   In this representation, the template is a byte sequence encoding both the literal string pieces
-//   and the placeholders (including their options/flags).
+//   在这种表示中,template 是一段同时编码字面量字符串片段和占位符
+//   (包括其 options/flags)的字节序列。
 //
-//   The `args` pointer points to an array of `fmt::Argument<'a>` values, of sufficient length to
-//   match the placeholders in the template.
+//   `args` 指针指向一个 `fmt::Argument<'a>` 数组,其长度必须足以匹配 template 中的占位符。
 //
-//   `fmt::Arguments::new()` constructs this representation from a template byte slice and a slice
-//   of arguments. This function is unsafe, as the template is assumed to be valid and the args
-//   slice is assumed to have elements matching the template.
+//   `fmt::Arguments::new()` 从 template 字节切片和 arguments 切片构造这种表示。
+//   该函数是 unsafe 的,因为它假定 template 已经合法,且 args 切片中的元素与 template 匹配。
 //
-//   The template byte sequence is the concatenation of parts of the following types:
+//   template 字节序列由以下类型的片段拼接而成:
 //
-//   - Literal string piece:
-//         Pieces that must be formatted verbatim (e.g. "hello " and "\n" in "hello {name}\n")
-//         appear literally in the template byte sequence, prefixed by their length.
+//   - 字面量字符串片段:
+//         必须原样格式化的片段(例如 "hello {name}\n" 中的 "hello " 和 "\n")
+//         会按字面值出现在 template 字节序列中,前面带有长度。
 //
-//         For pieces of up to 127 bytes, these are  represented as a single byte containing the
-//         length followed directly by the bytes of the string:
+//         对最多 127 字节的片段,用一个包含长度的单字节表示,后面直接跟字符串字节:
 //         ┌───┬────────────────────────────┐
 //         │len│    `len` bytes (utf-8)     │ (e.g. b"\x06hello ")
 //         └───┴────────────────────────────┘
 //
-//         For larger pieces up to u16::MAX bytes, these are  represented as a 0x80 followed by
-//         their length in 16-bit little endian, followed by the bytes of the string:
+//         对更大的、最多 u16::MAX 字节的片段,用 0x80 后跟 16 位小端长度表示,
+//         再跟字符串字节:
 //         ┌────┬─────────┬───────────────────────────┐
 //         │0x80│   len   │   `len` bytes (utf-8)     │ (e.g. b"\x80\x00\x01hello … ")
 //         └────┴─────────┴───────────────────────────┘
 //
-//         Longer pieces are split into multiple pieces of max u16::MAX bytes (at utf-8 boundaries).
+//         更长片段会在 UTF-8 边界上拆分为多个最大 u16::MAX 字节的片段。
 //
-//   - Placeholder:
-//         Placeholders (e.g. `{name}` in "hello {name}") are represented as a byte with the highest
-//         two bits set, followed by zero or more fields depending on the flags in the first byte:
+//   - 占位符:
+//         占位符(例如 "hello {name}" 中的 `{name}`)表示为最高两位已设置的一个字节,
+//         后面根据首字节中的 flags 跟随零个或多个字段:
 //         ┌──────────┬┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┬┄┄┄┄┄┄┄┄┄┄┄┬┄┄┄┄┄┄┄┄┄┄┄┬┄┄┄┄┄┄┄┄┄┄┄┐
 //         │0b11______│       flags       ┊   width   ┊ precision ┊ arg_index ┊ (e.g. b"\xC2\x05\0")
 //         └────││││││┴┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┴┄┄┄┄┄┄┄┄┄┄┄┴┄┄┄┄┄┄┄┄┄┄┄┴┄┄┄┄┄┄┄┄┄┄┄┘
 //              ││││││        32 bit          16 bit      16 bit      16 bit
-//              │││││└─ flags present
-//              ││││└─ width present
-//              │││└─ precision present
-//              ││└─ arg_index present
-//              │└─ width indirect
-//              └─ precision indirect
+//              │││││└─ 存在 flags
+//              ││││└─ 存在 width
+//              │││└─ 存在 precision
+//              ││└─ 存在 arg_index
+//              │└─ width 为间接索引
+//              └─ precision 为间接索引
 //
-//         All fields other than the first byte are optional and only present when their
-//         corresponding flag is set in the first byte.
+//         除首字节外,其他字段都是可选的;只有首字节中对应 flag 被设置时才会出现。
 //
-//         So, a fully default placeholder without any options is just a single byte:
+//         因此,没有任何 options 的完全默认占位符只是一个单字节:
 //         ┌──────────┐
 //         │0b11000000│ (b"\xC0")
 //         └──────────┘
 //
-//         The fields are stored as little endian.
+//         各字段按小端格式存储。
 //
-//         The `flags` fields corresponds to the `flags` field of `FormattingOptions`.
-//         See doc comment of `FormattingOptions::flags` for details.
+//         `flags` 字段对应 `FormattingOptions` 的 `flags` 字段。细节见
+//         `FormattingOptions::flags` 的文档注释。
 //
-//         The `width` and `precision` fields correspond to their respective fields in
-//         `FormattingOptions`. However, if their "indirect" flag is set, the field contains the
-//         index in the `args` array where the dynamic width or precision is stored, rather than the
-//         value directly.
+//         `width` 和 `precision` 字段分别对应 `FormattingOptions` 中的同名字段。
+//         但若它们的“indirect” flag 被设置,字段中保存的是动态 width 或 precision
+//         在 `args` 数组中的索引,而不是直接值。
 //
-//         The `arg_index` field is the index into the `args` array for the argument to be
-//         formatted.
+//         `arg_index` 字段是待格式化参数在 `args` 数组中的索引。
 //
-//         If omitted, the flags, width and precision of the default FormattingOptions::new() are
-//         used.
+//         若省略,则使用默认 `FormattingOptions::new()` 的 flags、width 和 precision。
 //
-//         If the `arg_index` is omitted, the next argument in the `args` array is used (starting
-//         at 0).
+//         若省略 `arg_index`,则使用 `args` 数组中的下一个参数(从 0 开始)。
 //
-//   - End:
-//         A single zero byte marks the end of the template:
+//   - 结束:
+//         单个零字节标记 template 结束:
 //         ┌───┐
 //         │ 0 │ ("\0")
 //         └───┘
 //
-//         (Note that a zero byte may also occur naturally as part of the string pieces or flags,
-//         width, precision and arg_index fields above. That is, the template byte sequence ends
-//         with a 0 byte, but isn't terminated by the first 0 byte.)
+//         (注意,零字节也可能自然出现在上面的字符串片段或 flags、width、precision、
+//         arg_index 字段中。也就是说,template 字节序列以 0 字节结束,
+//         但不是由第一个 0 字节终止。)
 //
 #[lang = "format_arguments"]
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -718,25 +699,25 @@ pub struct Arguments<'a> {
     args: NonNull<rt::Argument<'a>>,
 }
 
-/// Used by the format_args!() macro to create a fmt::Arguments object.
+/// 供 format_args!() 宏创建 fmt::Arguments 对象时使用。
 #[doc(hidden)]
 #[rustc_diagnostic_item = "FmtArgumentsNew"]
 #[unstable(feature = "fmt_internals", issue = "none")]
 impl<'a> Arguments<'a> {
-    // SAFETY: The caller must ensure that the provided template and args encode a valid
-    // fmt::Arguments, as documented above.
+    // SAFETY: 调用方必须保证传入的 template 与 args 按上文所述编码出合法的
+    // fmt::Arguments。
     #[inline]
     pub unsafe fn new<const N: usize, const M: usize>(
         template: &'a [u8; N],
         args: &'a [rt::Argument<'a>; M],
     ) -> Arguments<'a> {
-        // SAFETY: Responsibility of the caller.
+        // SAFETY: 这是调用方的责任。
         unsafe { Arguments { template: mem::transmute(template), args: mem::transmute(args) } }
     }
 
-    // Same as `from_str`, but not const.
-    // Used by format_args!() expansion when arguments are inlined,
-    // e.g. format_args!("{}", 123), which is not allowed in const.
+    // 与 `from_str` 相同,但不是 const。
+    // 当 format_args!() 展开中内联了参数时使用,例如 format_args!("{}", 123),
+    // 这种形式不允许出现在 const 中。
     #[inline]
     pub fn from_str_nonconst(s: &'static str) -> Arguments<'a> {
         Arguments::from_str(s)
@@ -746,43 +727,43 @@ impl<'a> Arguments<'a> {
 #[doc(hidden)]
 #[unstable(feature = "fmt_internals", issue = "none")]
 impl<'a> Arguments<'a> {
-    /// Estimates the length of the formatted text.
+    /// 估算格式化后文本的长度。
     ///
-    /// This is intended to be used for setting initial `String` capacity
-    /// when using `format!`. Note: this is neither the lower nor upper bound.
+    /// 该值用于 `format!` 设置初始 `String` 容量。注意:这既不是下界也不是上界,
+    /// 只是减少常见重新分配次数的启发式估算。
     #[inline]
     pub fn estimated_capacity(&self) -> usize {
         if let Some(s) = self.as_str() {
             return s.len();
         }
-        // Iterate over the template, counting the length of literal pieces.
+        // 遍历 template,统计字面量片段的长度。
         let mut length = 0usize;
         let mut starts_with_placeholder = false;
         let mut template = self.template;
         loop {
-            // SAFETY: We can assume the template is valid.
+            // SAFETY: 可以假定 template 合法。
             unsafe {
                 let n = template.read();
                 template = template.add(1);
                 if n == 0 {
-                    // End of template.
+                    // template 结束。
                     break;
                 } else if n < 128 {
-                    // Short literal string piece.
+                    // 短字面量字符串片段。
                     length += n as usize;
                     template = template.add(n as usize);
                 } else if n == 128 {
-                    // Long literal string piece.
+                    // 长字面量字符串片段。
                     let len = usize::from(u16::from_le_bytes(template.cast_array().read()));
                     length += len;
                     template = template.add(2 + len);
                 } else {
                     assert_unchecked(n >= 0xC0);
-                    // Placeholder piece.
+                    // 占位符片段。
                     if length == 0 {
                         starts_with_placeholder = true;
                     }
-                    // Skip remainder of placeholder:
+                    // 跳过占位符剩余部分:
                     let skip = (n & 1 != 0) as usize * 4 // flags (32 bit)
                         + (n & 2 != 0) as usize * 2  // width     (16 bit)
                         + (n & 4 != 0) as usize * 2  // precision (16 bit)
@@ -793,27 +774,25 @@ impl<'a> Arguments<'a> {
         }
 
         if starts_with_placeholder && length < 16 {
-            // If the format string starts with a placeholder,
-            // don't preallocate anything, unless length
-            // of literal pieces is significant.
+            // 如果格式字符串以占位符开头,且字面量片段长度并不显著,
+            // 就不预分配任何容量。
             0
         } else {
-            // There are some placeholders, so any additional push
-            // will reallocate the string. To avoid that,
-            // we're "pre-doubling" the capacity here.
+            // 存在一些占位符时,后续 push 可能导致 String 重新分配。
+            // 为避免这种情况,这里预先把容量“翻倍”。
             length.wrapping_mul(2)
         }
     }
 }
 
 impl<'a> Arguments<'a> {
-    /// Create a `fmt::Arguments` object for a single static string.
+    /// 为单个静态字符串创建 `fmt::Arguments` 对象。
     ///
-    /// Formatting this `fmt::Arguments` will just produce the string as-is.
+    /// 格式化这个 `fmt::Arguments` 只会原样产生该字符串。
     #[inline]
     #[unstable(feature = "fmt_arguments_from_str", issue = "148905")]
     pub const fn from_str(s: &'static str) -> Arguments<'a> {
-        // SAFETY: This is the "static str" representation of fmt::Arguments; see above.
+        // SAFETY: 这是 fmt::Arguments 的“static str”表示;见上面的编码说明。
         unsafe {
             Arguments {
                 template: mem::transmute(s.as_ptr()),
@@ -822,28 +801,25 @@ impl<'a> Arguments<'a> {
         }
     }
 
-    /// Gets the formatted string, if it has no arguments to be formatted at runtime.
+    /// 若该值没有需要在运行时格式化的参数,则取得格式化后的字符串。
     ///
-    /// This can be used to avoid allocations in some cases.
+    /// 某些情况下可用它避免分配。
     ///
-    /// # Guarantees
+/// # 保证
     ///
-    /// For `format_args!("just a literal")`, this function is guaranteed to
-    /// return `Some("just a literal")`.
+    /// 对 `format_args!("just a literal")`,此函数保证返回
+    /// `Some("just a literal")`。
     ///
-    /// For most cases with placeholders, this function will return `None`.
+    /// 对大多数带占位符的情况,此函数会返回 `None`。
     ///
-    /// However, the compiler may perform optimizations that can cause this
-    /// function to return `Some(_)` even if the format string contains
-    /// placeholders. For example, `format_args!("Hello, {}!", "world")` may be
-    /// optimized to `format_args!("Hello, world!")`, such that `as_str()`
-    /// returns `Some("Hello, world!")`.
+    /// 不过编译器可能执行优化,使得即使格式字符串包含占位符,此函数也返回
+    /// `Some(_)`。例如 `format_args!("Hello, {}!", "world")` 可能被优化为
+    /// `format_args!("Hello, world!")`,从而让 `as_str()` 返回
+    /// `Some("Hello, world!")`。
     ///
-    /// The behavior for anything but the trivial case (without placeholders)
-    /// is not guaranteed, and should not be relied upon for anything other
-    /// than optimization.
+    /// 除无占位符的简单情况外,其他行为都不保证稳定,也不应被除优化以外的逻辑依赖。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```rust
     /// use std::fmt::Arguments;
@@ -869,14 +845,14 @@ impl<'a> Arguments<'a> {
     #[must_use]
     #[inline]
     pub const fn as_str(&self) -> Option<&'static str> {
-        // SAFETY: During const eval, `self.args` must have come from a usize,
-        // not a pointer, because that's the only way to create a fmt::Arguments in const.
-        // (I.e. only fmt::Arguments::from_str is const, fmt::Arguments::new is not.)
+        // SAFETY: 在 const eval 期间,`self.args` 必须来自 usize 而不是指针,
+        // 因为这是在 const 中创建 fmt::Arguments 的唯一方式。
+        // (也就是说,只有 fmt::Arguments::from_str 是 const,fmt::Arguments::new 不是。)
         //
-        // Outside const eval, transmuting a pointer to a usize is fine.
+        // 在 const eval 之外,把指针 transmute 为 usize 是可以的。
         let bits: usize = unsafe { mem::transmute(self.args) };
         if bits & 1 == 1 {
-            // SAFETY: This fmt::Arguments stores a &'static str. See encoding documentation above.
+            // SAFETY: 这个 fmt::Arguments 保存的是 &'static str。见上面的编码文档。
             Some(unsafe {
                 str::from_utf8_unchecked(crate::slice::from_raw_parts(
                     self.template.as_ptr(),
@@ -888,7 +864,7 @@ impl<'a> Arguments<'a> {
         }
     }
 
-    /// Same as [`Arguments::as_str`], but will only return `Some(s)` if it can be determined at compile time.
+    /// 与 [`Arguments::as_str`] 相同,但只有在编译期能确定时才会返回 `Some(s)`。
     #[unstable(feature = "fmt_internals", reason = "internal to standard library", issue = "none")]
     #[must_use]
     #[inline]
@@ -899,7 +875,7 @@ impl<'a> Arguments<'a> {
     }
 }
 
-// Manually implementing these results in better error messages.
+// 手写这些实现可以得到更好的错误消息。
 #[stable(feature = "rust1", since = "1.0.0")]
 impl !Send for Arguments<'_> {}
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -919,34 +895,32 @@ impl Display for Arguments<'_> {
     }
 }
 
-/// `?` formatting.
+/// `?` 格式化。
 ///
-/// `Debug` should format the output in a programmer-facing, debugging context.
+/// `Debug` 应在面向程序员的调试上下文中格式化输出。
 ///
-/// Generally speaking, you should just `derive` a `Debug` implementation.
+/// 一般来说,应优先直接 `derive` 一个 `Debug` 实现。
 ///
-/// When used with the alternate format specifier `#?`, the output is pretty-printed.
+/// 与 alternate 格式说明符 `#?` 一起使用时,输出会被 pretty-print。
 ///
-/// For more information on formatters, see [the module-level documentation][module].
+/// 关于 formatter 的更多信息,见[模块级文档][module]。
 ///
 /// [module]: ../../std/fmt/index.html
 ///
-/// This trait can be used with `#[derive]` if all fields implement `Debug`. When
-/// `derive`d for structs, it will use the name of the `struct`, then `{`, then a
-/// comma-separated list of each field's name and `Debug` value, then `}`. For
-/// `enum`s, it will use the name of the variant and, if applicable, `(`, then the
-/// `Debug` values of the fields, then `)`.
+/// 如果所有字段都实现了 `Debug`,这个 trait 可以配合 `#[derive]` 使用。对结构体
+/// derive 时,输出会依次包含 `struct` 名、`{`、逗号分隔的字段名及其 `Debug` 值、
+/// 然后是 `}`。对 `enum` 而言,输出会包含变体名;若该变体带字段,则还会包含 `(`
+/// 字段的 `Debug` 值以及 `)`。
 ///
-/// # Stability
+/// # 稳定性
 ///
-/// Derived `Debug` formats are not stable, and so may change with future Rust
-/// versions. Additionally, `Debug` implementations of types provided by the
-/// standard library (`std`, `core`, `alloc`, etc.) are not stable, and
-/// may also change with future Rust versions.
+/// derive 得到的 `Debug` 格式不保证稳定,未来 Rust 版本可能改变它。同样,
+/// 标准库(`std`、`core`、`alloc` 等)提供类型的 `Debug` 实现也不保证稳定,
+/// 未来版本可能改变。
 ///
-/// # Examples
+/// # 示例
 ///
-/// Deriving an implementation:
+/// 派生一个实现:
 ///
 /// ```
 /// #[derive(Debug)]
@@ -963,7 +937,7 @@ impl Display for Arguments<'_> {
 /// );
 /// ```
 ///
-/// Manually implementing:
+/// 手写一个实现:
 ///
 /// ```
 /// use std::fmt;
@@ -990,15 +964,13 @@ impl Display for Arguments<'_> {
 /// );
 /// ```
 ///
-/// There are a number of helper methods on the [`Formatter`] struct to help you with manual
-/// implementations, such as [`debug_struct`].
+/// [`Formatter`] 结构体上有若干辅助方法可帮助手写实现,例如 [`debug_struct`]。
 ///
 /// [`debug_struct`]: Formatter::debug_struct
 ///
-/// Types that do not wish to use the standard suite of debug representations
-/// provided by the `Formatter` trait (`debug_struct`, `debug_tuple`,
-/// `debug_list`, `debug_set`, `debug_map`) can do something totally custom by
-/// manually writing an arbitrary representation to the `Formatter`.
+/// 不想使用 `Formatter` 提供的标准 debug 表示套件(`debug_struct`、`debug_tuple`、
+/// `debug_list`、`debug_set`、`debug_map`)的类型,也可以手动向 `Formatter`
+/// 写入任意自定义表示。
 ///
 /// ```
 /// # use std::fmt;
@@ -1014,10 +986,10 @@ impl Display for Arguments<'_> {
 /// }
 /// ```
 ///
-/// `Debug` implementations using either `derive` or the debug builder API
-/// on [`Formatter`] support pretty-printing using the alternate flag: `{:#?}`.
+/// 通过 `derive` 或 [`Formatter`] 上 debug builder API 写出的 `Debug` 实现,
+/// 都支持使用 alternate flag `{:#?}` 进行美化打印(pretty-print)。
 ///
-/// Pretty-printing with `#?`:
+/// 使用 `#?` 进行 pretty-print:
 ///
 /// ```
 /// #[derive(Debug)]
@@ -1052,7 +1024,7 @@ impl Display for Arguments<'_> {
 pub trait Debug: PointeeSized {
     #[doc = include_str!("fmt_trait_method_doc.md")]
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::fmt;
@@ -1083,9 +1055,9 @@ pub trait Debug: PointeeSized {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result;
 }
 
-// Separate module to reexport the macro `Debug` from prelude without the trait `Debug`.
+// 单独模块用于从 prelude 重新导出宏 `Debug`,但不重新导出 trait `Debug`。
 pub(crate) mod macros {
-    /// Derive macro generating an impl of the trait `Debug`.
+    /// 生成 `Debug` trait 实现的 derive 宏。
     #[rustc_builtin_macro]
     #[stable(feature = "builtin_macro_prelude", since = "1.38.0")]
     #[allow_internal_unstable(core_intrinsics, fmt_helpers_for_derive)]
@@ -1097,56 +1069,49 @@ pub(crate) mod macros {
 #[doc(inline)]
 pub use macros::Debug;
 
-/// Format trait for an empty format, `{}`.
+/// 空格式 `{}` 对应的格式化 trait。
 ///
-/// Implementing this trait for a type will automatically implement the
-/// [`ToString`][tostring] trait for the type, allowing the usage
-/// of the [`.to_string()`][tostring_function] method. Prefer implementing
-/// the `Display` trait for a type, rather than [`ToString`][tostring].
+/// 为某个类型实现此 trait 会自动为该类型实现 [`ToString`][tostring] trait,
+/// 从而允许使用 [`.to_string()`][tostring_function] 方法。应优先为类型实现
+/// `Display` trait,而不是直接实现 [`ToString`][tostring]。
 ///
-/// `Display` is similar to [`Debug`], but `Display` is for user-facing
-/// output, and so cannot be derived.
+/// `Display` 与 [`Debug`] 类似,但 `Display` 面向用户可见输出,因此不能 derive。
+/// 换言之,`Debug` 更强调诊断信息完整性和开发者可读性,而 `Display` 应表达该类型
+/// 最自然、最适合展示给人的文本形式。
 ///
-/// For more information on formatters, see [the module-level documentation][module].
+/// 关于 formatter 的更多信息,见[模块级文档][module]。
 ///
 /// [module]: ../../std/fmt/index.html
 /// [tostring]: ../../std/string/trait.ToString.html
 /// [tostring_function]: ../../std/string/trait.ToString.html#tymethod.to_string
 ///
-/// # Completeness and parseability
+/// # 完整性与可解析性
 ///
-/// `Display` for a type might not necessarily be a lossless or complete representation of the type.
-/// It may omit internal state, precision, or other information the type does not consider important
-/// for user-facing output, as determined by the type. As such, the output of `Display` might not be
-/// possible to parse, and even if it is, the result of parsing might not exactly match the original
-/// value.
+/// 某个类型的 `Display` 不一定是该类型的无损或完整表示。类型可以按照自己的定义,
+/// 省略不适合用户可见输出的内部状态、精度或其他信息。因此 `Display` 输出未必能被解析;
+/// 即使能解析,解析结果也未必与原始值完全相同。
 ///
-/// However, if a type has a lossless `Display` implementation whose output is meant to be
-/// conveniently machine-parseable and not just meant for human consumption, then the type may wish
-/// to accept the same format in `FromStr`, and document that usage. Having both `Display` and
-/// `FromStr` implementations where the result of `Display` cannot be parsed with `FromStr` may
-/// surprise users.
+/// 但如果某个类型的 `Display` 实现是无损的,且其输出不仅供人阅读,也有意便于机器解析,
+/// 那么该类型通常应考虑在 `FromStr` 中接受同一格式,并在文档中说明这一点。若同时存在
+/// `Display` 和 `FromStr` 实现,但 `Display` 的结果无法被 `FromStr` 解析,可能会让用户意外。
 ///
-/// # Internationalization
+/// # 国际化
 ///
-/// Because a type can only have one `Display` implementation, it is often preferable
-/// to only implement `Display` when there is a single most "obvious" way that
-/// values can be formatted as text. This could mean formatting according to the
-/// "invariant" culture and "undefined" locale, or it could mean that the type
-/// display is designed for a specific culture/locale, such as developer logs.
+/// 因为一个类型只能有一个 `Display` 实现,通常只有在值存在单一、最“显然”的文本格式时
+/// 才适合实现 `Display`。这可能意味着按“invariant”文化和“undefined” locale 格式化,
+/// 也可能意味着该类型的展示文本就是为某个特定文化/locale 设计的,例如开发者日志。
 ///
-/// If not all values have a justifiably canonical textual format or if you want
-/// to support alternative formats not covered by the standard set of possible
-/// [formatting traits], the most flexible approach is display adapters: methods
-/// like [`str::escape_default`] or [`Path::display`] which create a wrapper
-/// implementing `Display` to output the specific display format.
+/// 如果并非所有值都有合理的规范文本格式,或者你想支持标准 [formatting traits]
+/// 未覆盖的替代格式,最灵活的做法是提供 display adapter:例如
+/// [`str::escape_default`] 或 [`Path::display`] 这类方法,创建一个实现 `Display`
+/// 的包装器来输出特定展示格式。
 ///
 /// [formatting traits]: ../../std/fmt/index.html#formatting-traits
 /// [`Path::display`]: ../../std/path/struct.Path.html#method.display
 ///
-/// # Examples
+/// # 示例
 ///
-/// Implementing `Display` on a type:
+/// 为某个类型实现 `Display`:
 ///
 /// ```
 /// use std::fmt;
@@ -1186,7 +1151,7 @@ pub use macros::Debug;
 pub trait Display: PointeeSized {
     #[doc = include_str!("fmt_trait_method_doc.md")]
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::fmt;
@@ -1211,25 +1176,24 @@ pub trait Display: PointeeSized {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result;
 }
 
-/// `o` formatting.
+/// `o` 格式化。
 ///
-/// The `Octal` trait should format its output as a number in base-8.
+/// `Octal` trait 应把输出格式化为八进制数。
 ///
-/// For primitive signed integers (`i8` to `i128`, and `isize`),
-/// negative values are formatted as the two’s complement representation.
+/// 对原始有符号整数(`i8` 到 `i128` 以及 `isize`)而言,负值会按二进制补码表示格式化。
 ///
-/// The alternate flag, `#`, adds a `0o` in front of the output.
+/// alternate flag `#` 会在输出前添加 `0o`。
 ///
-/// For more information on formatters, see [the module-level documentation][module].
+/// 关于 formatter 的更多信息,见[模块级文档][module]。
 ///
 /// [module]: ../../std/fmt/index.html
 ///
-/// # Examples
+/// # 示例
 ///
-/// Basic usage with `i32`:
+/// `i32` 的基本用法:
 ///
 /// ```
-/// let x = 42; // 42 is '52' in octal
+/// let x = 42; // 42 的八进制表示是 '52'
 ///
 /// assert_eq!(format!("{x:o}"), "52");
 /// assert_eq!(format!("{x:#o}"), "0o52");
@@ -1237,7 +1201,7 @@ pub trait Display: PointeeSized {
 /// assert_eq!(format!("{:o}", -16), "37777777760");
 /// ```
 ///
-/// Implementing `Octal` on a type:
+/// 为某个类型实现 `Octal`:
 ///
 /// ```
 /// use std::fmt;
@@ -1248,7 +1212,7 @@ pub trait Display: PointeeSized {
 ///     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 ///         let val = self.0;
 ///
-///         fmt::Octal::fmt(&val, f) // delegate to i32's implementation
+///         fmt::Octal::fmt(&val, f) // 委托给 i32 的实现
 ///     }
 /// }
 ///
@@ -1265,25 +1229,24 @@ pub trait Octal: PointeeSized {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result;
 }
 
-/// `b` formatting.
+/// `b` 格式化。
 ///
-/// The `Binary` trait should format its output as a number in binary.
+/// `Binary` trait 应把输出格式化为二进制数。
 ///
-/// For primitive signed integers ([`i8`] to [`i128`], and [`isize`]),
-/// negative values are formatted as the two’s complement representation.
+/// 对原始有符号整数([`i8`] 到 [`i128`] 以及 [`isize`])而言,负值会按二进制补码表示格式化。
 ///
-/// The alternate flag, `#`, adds a `0b` in front of the output.
+/// alternate flag `#` 会在输出前添加 `0b`。
 ///
-/// For more information on formatters, see [the module-level documentation][module].
+/// 关于 formatter 的更多信息,见[模块级文档][module]。
 ///
 /// [module]: ../../std/fmt/index.html
 ///
-/// # Examples
+/// # 示例
 ///
-/// Basic usage with [`i32`]:
+/// [`i32`] 的基本用法:
 ///
 /// ```
-/// let x = 42; // 42 is '101010' in binary
+/// let x = 42; // 42 的二进制表示是 '101010'
 ///
 /// assert_eq!(format!("{x:b}"), "101010");
 /// assert_eq!(format!("{x:#b}"), "0b101010");
@@ -1291,7 +1254,7 @@ pub trait Octal: PointeeSized {
 /// assert_eq!(format!("{:b}", -16), "11111111111111111111111111110000");
 /// ```
 ///
-/// Implementing `Binary` on a type:
+/// 为某个类型实现 `Binary`:
 ///
 /// ```
 /// use std::fmt;
@@ -1302,7 +1265,7 @@ pub trait Octal: PointeeSized {
 ///     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 ///         let val = self.0;
 ///
-///         fmt::Binary::fmt(&val, f) // delegate to i32's implementation
+///         fmt::Binary::fmt(&val, f) // 委托给 i32 的实现
 ///     }
 /// }
 ///
@@ -1311,8 +1274,8 @@ pub trait Octal: PointeeSized {
 /// assert_eq!(format!("l as binary is: {l:b}"), "l as binary is: 1101011");
 ///
 /// assert_eq!(
-///     // Note that the `0b` prefix added by `#` is included in the total width, so we
-///     // need to add two to correctly display all 32 bits.
+///     // 注意,`#` 添加的 `0b` 前缀会计入总宽度,因此需要额外加二,
+///     // 才能正确显示全部 32 位。
 ///     format!("l as binary is: {l:#034b}"),
 ///     "l as binary is: 0b00000000000000000000000001101011"
 /// );
@@ -1324,26 +1287,24 @@ pub trait Binary: PointeeSized {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result;
 }
 
-/// `x` formatting.
+/// `x` 格式化。
 ///
-/// The `LowerHex` trait should format its output as a number in hexadecimal, with `a` through `f`
-/// in lower case.
+/// `LowerHex` trait 应把输出格式化为十六进制数,并使用小写的 `a` 到 `f`。
 ///
-/// For primitive signed integers (`i8` to `i128`, and `isize`),
-/// negative values are formatted as the two’s complement representation.
+/// 对原始有符号整数(`i8` 到 `i128` 以及 `isize`)而言,负值会按二进制补码表示格式化。
 ///
-/// The alternate flag, `#`, adds a `0x` in front of the output.
+/// alternate flag `#` 会在输出前添加 `0x`。
 ///
-/// For more information on formatters, see [the module-level documentation][module].
+/// 关于 formatter 的更多信息,见[模块级文档][module]。
 ///
 /// [module]: ../../std/fmt/index.html
 ///
-/// # Examples
+/// # 示例
 ///
-/// Basic usage with `i32`:
+/// `i32` 的基本用法:
 ///
 /// ```
-/// let y = 42; // 42 is '2a' in hex
+/// let y = 42; // 42 的十六进制表示是 '2a'
 ///
 /// assert_eq!(format!("{y:x}"), "2a");
 /// assert_eq!(format!("{y:#x}"), "0x2a");
@@ -1351,7 +1312,7 @@ pub trait Binary: PointeeSized {
 /// assert_eq!(format!("{:x}", -16), "fffffff0");
 /// ```
 ///
-/// Implementing `LowerHex` on a type:
+/// 为某个类型实现 `LowerHex`:
 ///
 /// ```
 /// use std::fmt;
@@ -1362,7 +1323,7 @@ pub trait Binary: PointeeSized {
 ///     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 ///         let val = self.0;
 ///
-///         fmt::LowerHex::fmt(&val, f) // delegate to i32's implementation
+///         fmt::LowerHex::fmt(&val, f) // 委托给 i32 的实现
 ///     }
 /// }
 ///
@@ -1379,26 +1340,24 @@ pub trait LowerHex: PointeeSized {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result;
 }
 
-/// `X` formatting.
+/// `X` 格式化。
 ///
-/// The `UpperHex` trait should format its output as a number in hexadecimal, with `A` through `F`
-/// in upper case.
+/// `UpperHex` trait 应把输出格式化为十六进制数,并使用大写的 `A` 到 `F`。
 ///
-/// For primitive signed integers (`i8` to `i128`, and `isize`),
-/// negative values are formatted as the two’s complement representation.
+/// 对原始有符号整数(`i8` 到 `i128` 以及 `isize`)而言,负值会按二进制补码表示格式化。
 ///
-/// The alternate flag, `#`, adds a `0x` in front of the output.
+/// alternate flag `#` 会在输出前添加 `0x`。
 ///
-/// For more information on formatters, see [the module-level documentation][module].
+/// 关于 formatter 的更多信息,见[模块级文档][module]。
 ///
 /// [module]: ../../std/fmt/index.html
 ///
-/// # Examples
+/// # 示例
 ///
-/// Basic usage with `i32`:
+/// `i32` 的基本用法:
 ///
 /// ```
-/// let y = 42; // 42 is '2A' in hex
+/// let y = 42; // 42 的十六进制表示是 '2A'
 ///
 /// assert_eq!(format!("{y:X}"), "2A");
 /// assert_eq!(format!("{y:#X}"), "0x2A");
@@ -1406,7 +1365,7 @@ pub trait LowerHex: PointeeSized {
 /// assert_eq!(format!("{:X}", -16), "FFFFFFF0");
 /// ```
 ///
-/// Implementing `UpperHex` on a type:
+/// 为某个类型实现 `UpperHex`:
 ///
 /// ```
 /// use std::fmt;
@@ -1417,7 +1376,7 @@ pub trait LowerHex: PointeeSized {
 ///     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 ///         let val = self.0;
 ///
-///         fmt::UpperHex::fmt(&val, f) // delegate to i32's implementation
+///         fmt::UpperHex::fmt(&val, f) // 委托给 i32 的实现
 ///     }
 /// }
 ///
@@ -1434,34 +1393,32 @@ pub trait UpperHex: PointeeSized {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result;
 }
 
-/// `p` formatting.
+/// `p` 格式化。
 ///
-/// The `Pointer` trait should format its output as a memory location. This is commonly presented
-/// as hexadecimal. For more information on formatters, see [the module-level documentation][module].
+/// `Pointer` trait 应把输出格式化为内存位置。它通常以十六进制呈现。
+/// 关于 formatter 的更多信息,见[模块级文档][module]。
 ///
-/// Printing of pointers is not a reliable way to discover how Rust programs are implemented.
-/// The act of reading an address changes the program itself, and may change how the data is represented
-/// in memory, and may affect which optimizations are applied to the code.
+/// 打印指针并不是理解 Rust 程序实际实现方式的可靠方法。读取地址这一行为本身会改变程序,
+/// 可能改变数据在内存中的表示,也可能影响编译器对代码应用哪些优化。
 ///
-/// The printed pointer values are not guaranteed to be stable nor unique identifiers of objects.
-/// Rust allows moving values to different memory locations, and may reuse the same memory locations
-/// for different purposes.
+/// 打印出来的指针值既不保证稳定,也不保证是对象的唯一标识符。Rust 允许把值移动到
+/// 不同内存位置,也允许为不同用途复用同一内存位置。
 ///
-/// There is no guarantee that the printed value can be converted back to a pointer.
+/// 不能保证打印出的值可以被转换回指针。
 ///
 /// [module]: ../../std/fmt/index.html
 ///
-/// # Examples
+/// # 示例
 ///
-/// Basic usage with `&i32`:
+/// `&i32` 的基本用法:
 ///
 /// ```
 /// let x = &42;
 ///
-/// let address = format!("{x:p}"); // this produces something like '0x7f06092ac6d0'
+/// let address = format!("{x:p}"); // 这会产生类似 '0x7f06092ac6d0' 的文本
 /// ```
 ///
-/// Implementing `Pointer` on a type:
+/// 为某个类型实现 `Pointer`:
 ///
 /// ```
 /// use std::fmt;
@@ -1470,7 +1427,7 @@ pub trait UpperHex: PointeeSized {
 ///
 /// impl fmt::Pointer for Length {
 ///     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-///         // use `as` to convert to a `*const T`, which implements Pointer, which we can use
+///         // 使用 `as` 转换为 `*const T`;它实现了 Pointer,可供这里复用
 ///
 ///         let ptr = self as *const Self;
 ///         fmt::Pointer::fmt(&ptr, f)
@@ -1493,25 +1450,25 @@ pub trait Pointer: PointeeSized {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result;
 }
 
-/// `e` formatting.
+/// `e` 格式化。
 ///
-/// The `LowerExp` trait should format its output in scientific notation with a lower-case `e`.
+/// `LowerExp` trait 应使用带小写 `e` 的科学计数法格式化输出。
 ///
-/// For more information on formatters, see [the module-level documentation][module].
+/// 关于 formatter 的更多信息,见[模块级文档][module]。
 ///
 /// [module]: ../../std/fmt/index.html
 ///
-/// # Examples
+/// # 示例
 ///
-/// Basic usage with `f64`:
+/// `f64` 的基本用法:
 ///
 /// ```
-/// let x = 42.0; // 42.0 is '4.2e1' in scientific notation
+/// let x = 42.0; // 42.0 的科学计数法表示是 '4.2e1'
 ///
 /// assert_eq!(format!("{x:e}"), "4.2e1");
 /// ```
 ///
-/// Implementing `LowerExp` on a type:
+/// 为某个类型实现 `LowerExp`:
 ///
 /// ```
 /// use std::fmt;
@@ -1521,7 +1478,7 @@ pub trait Pointer: PointeeSized {
 /// impl fmt::LowerExp for Length {
 ///     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 ///         let val = f64::from(self.0);
-///         fmt::LowerExp::fmt(&val, f) // delegate to f64's implementation
+///         fmt::LowerExp::fmt(&val, f) // 委托给 f64 的实现
 ///     }
 /// }
 ///
@@ -1544,25 +1501,25 @@ pub trait LowerExp: PointeeSized {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result;
 }
 
-/// `E` formatting.
+/// `E` 格式化。
 ///
-/// The `UpperExp` trait should format its output in scientific notation with an upper-case `E`.
+/// `UpperExp` trait 应使用带大写 `E` 的科学计数法格式化输出。
 ///
-/// For more information on formatters, see [the module-level documentation][module].
+/// 关于 formatter 的更多信息,见[模块级文档][module]。
 ///
 /// [module]: ../../std/fmt/index.html
 ///
-/// # Examples
+/// # 示例
 ///
-/// Basic usage with `f64`:
+/// `f64` 的基本用法:
 ///
 /// ```
-/// let x = 42.0; // 42.0 is '4.2E1' in scientific notation
+/// let x = 42.0; // 42.0 的科学计数法表示是 '4.2E1'
 ///
 /// assert_eq!(format!("{x:E}"), "4.2E1");
 /// ```
 ///
-/// Implementing `UpperExp` on a type:
+/// 为某个类型实现 `UpperExp`:
 ///
 /// ```
 /// use std::fmt;
@@ -1572,7 +1529,7 @@ pub trait LowerExp: PointeeSized {
 /// impl fmt::UpperExp for Length {
 ///     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 ///         let val = f64::from(self.0);
-///         fmt::UpperExp::fmt(&val, f) // delegate to f64's implementation
+///         fmt::UpperExp::fmt(&val, f) // 委托给 f64 的实现
 ///     }
 /// }
 ///
@@ -1595,15 +1552,15 @@ pub trait UpperExp: PointeeSized {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result;
 }
 
-/// Takes an output stream and an `Arguments` struct that can be precompiled with
-/// the `format_args!` macro.
+/// 接收一个输出流和一个可由 `format_args!` 宏预编译的 `Arguments` 结构。
 ///
-/// The arguments will be formatted according to the specified format string
-/// into the output stream provided.
+/// 这些实参会按照指定格式字符串被格式化到提供的输出流中。该函数是 `write!`
+/// 宏最终调用的核心入口之一,因此 panic 消息、日志和无分配格式化路径都会依赖它
+/// 正确解释 `Arguments` 的模板编码。
 ///
-/// # Examples
+/// # 示例
 ///
-/// Basic usage:
+/// 基本用法:
 ///
 /// ```
 /// use std::fmt;
@@ -1614,7 +1571,7 @@ pub trait UpperExp: PointeeSized {
 /// assert_eq!(output, "Hello world!");
 /// ```
 ///
-/// Please note that using [`write!`] might be preferable. Example:
+/// 请注意,使用 [`write!`] 可能更合适。示例:
 ///
 /// ```
 /// use std::fmt::Write;
@@ -1637,12 +1594,12 @@ pub fn write(output: &mut dyn Write, fmt: Arguments<'_>) -> Result {
 
     let mut arg_index = 0;
 
-    // See comment on `fmt::Arguments` for the details of how the template is encoded.
+    // template 编码细节见 `fmt::Arguments` 上的注释。
 
-    // This must match the encoding from `expand_format_args` in
-    // compiler/rustc_ast_lowering/src/format.rs.
+    // 这里必须匹配 compiler/rustc_ast_lowering/src/format.rs 中
+    // `expand_format_args` 生成的编码。
     loop {
-        // SAFETY: We can assume the template is valid.
+        // SAFETY: 可以假定 template 合法。
         let n = unsafe {
             let n = template.read();
             template = template.add(1);
@@ -1650,12 +1607,12 @@ pub fn write(output: &mut dyn Write, fmt: Arguments<'_>) -> Result {
         };
 
         if n == 0 {
-            // End of template.
+            // template 结束。
             return Ok(());
         } else if n < 0x80 {
-            // Literal string piece of length `n`.
+            // 长度为 `n` 的字面量字符串片段。
 
-            // SAFETY: We can assume the strings in the template are valid.
+            // SAFETY: 可以假定 template 中的字符串合法。
             let s = unsafe {
                 let s = crate::str::from_raw_parts(template.as_ptr(), n as usize);
                 template = template.add(n as usize);
@@ -1663,9 +1620,9 @@ pub fn write(output: &mut dyn Write, fmt: Arguments<'_>) -> Result {
             };
             output.write_str(s)?;
         } else if n == 0x80 {
-            // Literal string piece with a 16-bit length.
+            // 带 16 位长度的字面量字符串片段。
 
-            // SAFETY: We can assume the strings in the template are valid.
+            // SAFETY: 可以假定 template 中的字符串合法。
             let s = unsafe {
                 let len = usize::from(u16::from_le_bytes(template.cast_array().read()));
                 template = template.add(2);
@@ -1675,11 +1632,11 @@ pub fn write(output: &mut dyn Write, fmt: Arguments<'_>) -> Result {
             };
             output.write_str(s)?;
         } else if n == 0xC0 {
-            // Placeholder for next argument with default options.
+            // 使用默认 options 的下一个参数占位符。
             //
-            // Having this as a separate case improves performance for the common case.
+            // 把它作为独立分支可以优化最常见情况的性能。
 
-            // SAFETY: We can assume the template only refers to arguments that exist.
+            // SAFETY: 可以假定 template 只引用实际存在的参数。
             unsafe {
                 args.add(arg_index)
                     .as_ref()
@@ -1687,14 +1644,14 @@ pub fn write(output: &mut dyn Write, fmt: Arguments<'_>) -> Result {
             }
             arg_index += 1;
         } else {
-            // SAFETY: We can assume the template is valid.
+            // SAFETY: 可以假定 template 合法。
             unsafe { assert_unchecked(n > 0xC0) };
 
-            // Placeholder with custom options.
+            // 带自定义 options 的占位符。
 
             let mut opt = FormattingOptions::new();
 
-            // SAFETY: We can assume the template is valid.
+            // SAFETY: 可以假定 template 合法。
             unsafe {
                 if n & 1 != 0 {
                     opt.flags = u32::from_le_bytes(template.cast_array().read());
@@ -1714,22 +1671,22 @@ pub fn write(output: &mut dyn Write, fmt: Arguments<'_>) -> Result {
                 }
             }
             if n & 16 != 0 {
-                // Dynamic width from a usize argument.
-                // SAFETY: We can assume the template only refers to arguments that exist.
+                // 从 usize 参数读取动态 width。
+                // SAFETY: 可以假定 template 只引用实际存在的参数。
                 unsafe {
                     opt.width = args.add(opt.width as usize).as_ref().as_u16().unwrap_unchecked();
                 }
             }
             if n & 32 != 0 {
-                // Dynamic precision from a usize argument.
-                // SAFETY: We can assume the template only refers to arguments that exist.
+                // 从 usize 参数读取动态 precision。
+                // SAFETY: 可以假定 template 只引用实际存在的参数。
                 unsafe {
                     opt.precision =
                         args.add(opt.precision as usize).as_ref().as_u16().unwrap_unchecked();
                 }
             }
 
-            // SAFETY: We can assume the template only refers to arguments that exist.
+            // SAFETY: 可以假定 template 只引用实际存在的参数。
             unsafe {
                 args.add(arg_index).as_ref().fmt(&mut Formatter::new(output, opt))?;
             }
@@ -1738,7 +1695,7 @@ pub fn write(output: &mut dyn Write, fmt: Arguments<'_>) -> Result {
     }
 }
 
-/// Padding after the end of something. Returned by `Formatter::padding`.
+/// 某个被填充对象之后的填充。由 `Formatter::padding` 返回。
 #[must_use = "don't forget to write the post padding"]
 pub(crate) struct PostPadding {
     fill: char,
@@ -1750,7 +1707,7 @@ impl PostPadding {
         PostPadding { fill, padding }
     }
 
-    /// Writes this post padding.
+    /// 写入这段后置填充。
     pub(crate) fn write(self, f: &mut Formatter<'_>) -> Result {
         for _ in 0..self.padding {
             f.buf.write_char(self.fill)?;
@@ -1766,32 +1723,29 @@ impl<'a> Formatter<'a> {
         F: FnOnce(&'b mut (dyn Write + 'b)) -> &'c mut (dyn Write + 'c),
     {
         Formatter {
-            // We want to change this
+            // 这里替换底层输出缓冲区。
             buf: wrap(self.buf),
 
-            // And preserve these
+            // 这里保留格式化选项。
             options: self.options,
         }
     }
 
-    // Helper methods used for padding and processing formatting arguments that
-    // all formatting traits can use.
+    // 所有格式化 trait 都可复用的辅助方法,用于填充和处理格式化参数。
 
-    /// Performs the correct padding for an integer which has already been
-    /// emitted into a str. The str should *not* contain the sign for the
-    /// integer, that will be added by this method.
+    /// 对已经写入 `str` 的整数文本执行正确填充。
     ///
-    /// # Arguments
+    /// 传入的 `str` 不应包含整数符号;符号会由此方法根据 `Formatter` 的状态添加。
     ///
-    /// * is_nonnegative - whether the original integer was either positive or zero.
-    /// * prefix - if the '#' character (Alternate) is provided, this
-    ///   is the prefix to put in front of the number.
-    /// * buf - the byte array that the number has been formatted into
+    /// # 参数
     ///
-    /// This function will correctly account for the flags provided as well as
-    /// the minimum width. It will not take precision into account.
+    /// * is_nonnegative - 原始整数是否为正数或零。
+    /// * prefix - 若提供了 `#` 字符(Alternate),这是应放在数字前面的前缀。
+    /// * buf - 已格式化出数字文本的字节数组。
     ///
-    /// # Examples
+    /// 此函数会正确考虑传入的 flags 和最小宽度,但不会考虑 precision。
+    ///
+    /// # 示例
     ///
     /// ```
     /// use std::fmt;
@@ -1808,7 +1762,7 @@ impl<'a> Formatter<'a> {
     ///
     /// impl fmt::Display for Foo {
     ///     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-    ///         // We need to remove "-" from the number output.
+    ///         // 需要从数字输出中移除 "-"。
     ///         let tmp = self.nb.abs().to_string();
     ///
     ///         formatter.pad_integral(self.nb >= 0, "Foo ", &tmp)
@@ -1841,7 +1795,7 @@ impl<'a> Formatter<'a> {
             None
         };
 
-        // Writes the sign if it exists, and then the prefix if it was requested
+        // 如果存在符号则先写入符号,随后按需写入前缀。
         #[inline(never)]
         fn write_prefix(f: &mut Formatter<'_>, sign: Option<char>, prefix: Option<&str>) -> Result {
             if let Some(c) = sign {
@@ -1850,15 +1804,14 @@ impl<'a> Formatter<'a> {
             if let Some(prefix) = prefix { f.buf.write_str(prefix) } else { Ok(()) }
         }
 
-        // The `width` field is more of a `min-width` parameter at this point.
+        // 到这里,`width` 字段更像是 `min-width` 参数。
         let min = self.options.width;
         if width >= usize::from(min) {
-            // We're over the minimum width, so then we can just write the bytes.
+            // 已达到最小宽度,因此可以直接写入字节。
             write_prefix(self, sign, prefix)?;
             self.buf.write_str(buf)
         } else if self.sign_aware_zero_pad() {
-            // The sign and prefix goes before the padding if the fill character
-            // is zero
+            // 当填充字符为零时,符号和前缀位于填充之前。
             let old_options = self.options;
             self.options.fill('0').align(Some(Alignment::Right));
             write_prefix(self, sign, prefix)?;
@@ -1868,7 +1821,7 @@ impl<'a> Formatter<'a> {
             self.options = old_options;
             Ok(())
         } else {
-            // Otherwise, the sign and prefix goes after the padding
+            // 否则,符号和前缀位于填充之后。
             let post_padding = self.padding(min - width as u16, Alignment::Right)?;
             write_prefix(self, sign, prefix)?;
             self.buf.write_str(buf)?;
@@ -1876,20 +1829,17 @@ impl<'a> Formatter<'a> {
         }
     }
 
-    /// Takes a string slice and emits it to the internal buffer after applying
-    /// the relevant formatting flags specified.
+    /// 接收一个字符串切片,应用相关格式化 flags 后将其写入内部缓冲区。
     ///
-    /// The flags recognized for generic strings are:
+    /// 泛型字符串会识别以下 flags:
     ///
-    /// * width - the minimum width of what to emit
-    /// * fill/align - what to emit and where to emit it if the string
-    ///                provided needs to be padded
-    /// * precision - the maximum length to emit, the string is truncated if it
-    ///               is longer than this length
+    /// * width - 待输出内容的最小宽度。
+    /// * fill/align - 当传入字符串需要填充时,填充什么以及填充到哪里。
+    /// * precision - 待输出内容的最大长度;若字符串更长,会截断到该长度。
     ///
-    /// Notably this function ignores the `flag` parameters.
+    /// 特别地,此函数会忽略 `flag` 参数。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::fmt;
@@ -1907,47 +1857,42 @@ impl<'a> Formatter<'a> {
     /// ```
     #[stable(feature = "rust1", since = "1.0.0")]
     pub fn pad(&mut self, s: &str) -> Result {
-        // Make sure there's a fast path up front.
+        // 先保留一条快速路径。
         if self.options.flags & (flags::WIDTH_FLAG | flags::PRECISION_FLAG) == 0 {
             return self.buf.write_str(s);
         }
 
-        // The `precision` field can be interpreted as a maximum width for the
-        // string being formatted.
+        // 对正在格式化的字符串而言,`precision` 字段可解释为最大宽度。
         let (s, char_count) = if let Some(max_char_count) = self.options.get_precision() {
             let mut iter = s.char_indices();
             let remaining = match iter.advance_by(usize::from(max_char_count)) {
                 Ok(()) => 0,
                 Err(remaining) => remaining.get(),
             };
-            // SAFETY: The offset of `.char_indices()` is guaranteed to be
-            // in-bounds and between character boundaries.
+            // SAFETY: `.char_indices()` 的 offset 保证在边界内且位于字符边界上。
             let truncated = unsafe { s.get_unchecked(..iter.offset()) };
             (truncated, usize::from(max_char_count) - remaining)
         } else {
-            // Use the optimized char counting algorithm for the full string.
+            // 对完整字符串使用优化过的字符计数算法。
             (s, s.chars().count())
         };
 
-        // The `width` field is more of a minimum width parameter at this point.
+        // 到这里,`width` 字段更像是最小宽度参数。
         if char_count < usize::from(self.options.width) {
-            // If we're under the minimum width, then fill up the minimum width
-            // with the specified string + some alignment.
+            // 如果尚未达到最小宽度,则使用指定字符串加上某种 alignment 补足最小宽度。
             let post_padding =
                 self.padding(self.options.width - char_count as u16, Alignment::Left)?;
             self.buf.write_str(s)?;
             post_padding.write(self)
         } else {
-            // If we're over the minimum width or there is no minimum width, we
-            // can just emit the string.
+            // 如果已达到最小宽度,或者没有最小宽度,则可以直接输出字符串。
             self.buf.write_str(s)
         }
     }
 
-    /// Writes the pre-padding and returns the unwritten post-padding.
+    /// 写入前置填充,并返回尚未写入的后置填充。
     ///
-    /// Callers are responsible for ensuring post-padding is written after the
-    /// thing that is being padded.
+    /// 调用方负责确保在被填充对象之后写入返回的后置填充。
     pub(crate) fn padding(
         &mut self,
         padding: u16,
@@ -1969,45 +1914,44 @@ impl<'a> Formatter<'a> {
         Ok(PostPadding::new(fill, padding - padding_left))
     }
 
-    /// Takes the formatted parts and applies the padding.
+    /// 接收已经拆分好的格式化片段并应用填充。
     ///
-    /// Assumes that the caller already has rendered the parts with required precision,
-    /// so that `self.precision` can be ignored.
+    /// 这里假定调用方已经按所需 precision 渲染好这些片段,因此可以忽略
+    /// `self.precision`。
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// Any `numfmt::Part::Copy` parts in `formatted` must contain valid UTF-8.
+    /// `formatted` 中任何 `numfmt::Part::Copy` 片段都必须包含合法 UTF-8。
     unsafe fn pad_formatted_parts(&mut self, formatted: &numfmt::Formatted<'_>) -> Result {
         if self.options.width == 0 {
-            // this is the common case and we take a shortcut
-            // SAFETY: Per the precondition.
+            // 这是常见情况,因此走快捷路径。
+            // SAFETY: 根据前置条件。
             unsafe { self.write_formatted_parts(formatted) }
         } else {
-            // for the sign-aware zero padding, we render the sign first and
-            // behave as if we had no sign from the beginning.
+            // 对 sign-aware zero padding,先渲染符号,之后表现得像一开始就没有符号。
             let mut formatted = formatted.clone();
             let mut width = self.options.width;
             let old_options = self.options;
             if self.sign_aware_zero_pad() {
-                // a sign always goes first
+                // 符号总是最先出现。
                 let sign = formatted.sign;
                 self.buf.write_str(sign)?;
 
-                // remove the sign from the formatted parts
+                // 从 formatted parts 中移除符号。
                 formatted.sign = "";
                 width = width.saturating_sub(sign.len() as u16);
                 self.options.fill('0').align(Some(Alignment::Right));
             }
 
-            // remaining parts go through the ordinary padding process.
+            // 剩余片段走普通填充流程。
             let len = formatted.len();
             let ret = if usize::from(width) <= len {
-                // no padding
-                // SAFETY: Per the precondition.
+                // 不需要填充。
+                // SAFETY: 根据前置条件。
                 unsafe { self.write_formatted_parts(&formatted) }
             } else {
                 let post_padding = self.padding(width - len as u16, Alignment::Right)?;
-                // SAFETY: Per the precondition.
+                // SAFETY: 根据前置条件。
                 unsafe {
                     self.write_formatted_parts(&formatted)?;
                 }
@@ -2018,15 +1962,15 @@ impl<'a> Formatter<'a> {
         }
     }
 
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// Any `numfmt::Part::Copy` parts in `formatted` must contain valid UTF-8.
+    /// `formatted` 中任何 `numfmt::Part::Copy` 片段都必须包含合法 UTF-8。
     unsafe fn write_formatted_parts(&mut self, formatted: &numfmt::Formatted<'_>) -> Result {
         unsafe fn write_bytes(buf: &mut dyn Write, s: &[u8]) -> Result {
-            // SAFETY: This is used for `numfmt::Part::Num` and `numfmt::Part::Copy`.
-            // It's safe to use for `numfmt::Part::Num` since every char `c` is between
-            // `b'0'` and `b'9'`, which means `s` is valid UTF-8. It's safe to use for
-            // `numfmt::Part::Copy` due to this function's precondition.
+            // SAFETY: 此函数用于 `numfmt::Part::Num` 和 `numfmt::Part::Copy`。
+            // 对 `numfmt::Part::Num` 是安全的,因为每个字符 `c` 都位于 `b'0'`
+            // 到 `b'9'` 之间,这意味着 `s` 是合法 UTF-8。对 `numfmt::Part::Copy`
+            // 是安全的,因为本函数有相应前置条件。
             buf.write_str(unsafe { str::from_utf8_unchecked(s) })
         }
 
@@ -2036,7 +1980,7 @@ impl<'a> Formatter<'a> {
         for part in formatted.parts {
             match *part {
                 numfmt::Part::Zero(mut nzeroes) => {
-                    const ZEROES: &str = // 64 zeroes
+                    const ZEROES: &str = // 64 个零
                         "0000000000000000000000000000000000000000000000000000000000000000";
                     while nzeroes > ZEROES.len() {
                         self.buf.write_str(ZEROES)?;
@@ -2053,12 +1997,12 @@ impl<'a> Formatter<'a> {
                         *c = b'0' + (v % 10) as u8;
                         v /= 10;
                     }
-                    // SAFETY: Per the precondition.
+                    // SAFETY: 根据前置条件。
                     unsafe {
                         write_bytes(self.buf, &s[..len])?;
                     }
                 }
-                // SAFETY: Per the precondition.
+                // SAFETY: 根据前置条件。
                 numfmt::Part::Copy(buf) => unsafe {
                     write_bytes(self.buf, buf)?;
                 },
@@ -2067,10 +2011,9 @@ impl<'a> Formatter<'a> {
         Ok(())
     }
 
-    /// Writes some data to the underlying buffer contained within this
-    /// formatter.
+    /// 向此 formatter 包含的底层缓冲区写入一些数据。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::fmt;
@@ -2080,7 +2023,7 @@ impl<'a> Formatter<'a> {
     /// impl fmt::Display for Foo {
     ///     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
     ///         formatter.write_str("Foo")
-    ///         // This is equivalent to:
+    ///         // 这等价于:
     ///         // write!(formatter, "Foo")
     ///     }
     /// }
@@ -2093,14 +2036,13 @@ impl<'a> Formatter<'a> {
         self.buf.write_str(data)
     }
 
-    /// Glue for usage of the [`write!`] macro with implementors of this trait.
+    /// 供 [`write!`] 宏配合此 trait 的实现者使用的衔接方法。
     ///
-    /// This method should generally not be invoked manually, but rather through
-    /// the [`write!`] macro itself.
+    /// 通常不应手动调用此方法,而应通过 [`write!`] 宏调用。
     ///
-    /// Writes some formatted information into this instance.
+    /// 向此实例写入一些已格式化的信息。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::fmt;
@@ -2126,7 +2068,7 @@ impl<'a> Formatter<'a> {
         }
     }
 
-    /// Returns flags for formatting.
+    /// 返回格式化 flags。
     #[must_use]
     #[stable(feature = "rust1", since = "1.0.0")]
     #[deprecated(
@@ -2135,14 +2077,14 @@ impl<'a> Formatter<'a> {
                 or `sign_aware_zero_pad` methods instead"
     )]
     pub fn flags(&self) -> u32 {
-        // Extract the debug upper/lower hex, zero pad, alternate, and plus/minus flags
-        // to stay compatible with older versions of Rust.
+        // 提取 Debug 大/小写十六进制、补零、alternate 和正负号 flags,
+        // 以保持与旧 Rust 版本兼容。
         self.options.flags >> 21 & 0x3F
     }
 
-    /// Returns the character used as 'fill' whenever there is alignment.
+    /// 当存在 alignment 时,返回用作 fill 的字符。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::fmt;
@@ -2163,7 +2105,7 @@ impl<'a> Formatter<'a> {
     ///     }
     /// }
     ///
-    /// // We set alignment to the right with ">".
+    /// // 使用 ">" 把 alignment 设置为右对齐。
     /// assert_eq!(format!("{Foo:G>3}"), "GGG");
     /// assert_eq!(format!("{Foo:t>6}"), "tttttt");
     /// ```
@@ -2173,9 +2115,9 @@ impl<'a> Formatter<'a> {
         self.options.get_fill()
     }
 
-    /// Returns a flag indicating what form of alignment was requested.
+    /// 返回一个 flag,表示请求了哪种 alignment。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::fmt::{self, Alignment};
@@ -2208,9 +2150,9 @@ impl<'a> Formatter<'a> {
         self.options.get_align()
     }
 
-    /// Returns the optionally specified integer width that the output should be.
+    /// 返回输出应使用的可选整数 width。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::fmt;
@@ -2220,10 +2162,10 @@ impl<'a> Formatter<'a> {
     /// impl fmt::Display for Foo {
     ///     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
     ///         if let Some(width) = formatter.width() {
-    ///             // If we received a width, we use it
+    ///             // 如果收到 width,就使用它。
     ///             write!(formatter, "{:width$}", format!("Foo({})", self.0), width = width)
     ///         } else {
-    ///             // Otherwise we do nothing special
+    ///             // 否则不做特殊处理。
     ///             write!(formatter, "Foo({})", self.0)
     ///         }
     ///     }
@@ -2242,10 +2184,10 @@ impl<'a> Formatter<'a> {
         }
     }
 
-    /// Returns the optionally specified precision for numeric types.
-    /// Alternatively, the maximum width for string types.
+    /// 返回数值类型可选指定的 precision。
+    /// 对字符串类型,它也可以表示最大宽度。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::fmt;
@@ -2255,10 +2197,10 @@ impl<'a> Formatter<'a> {
     /// impl fmt::Display for Foo {
     ///     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
     ///         if let Some(precision) = formatter.precision() {
-    ///             // If we received a precision, we use it.
+    ///             // 如果收到 precision,就使用它。
     ///             write!(formatter, "Foo({1:.*})", precision, self.0)
     ///         } else {
-    ///             // Otherwise we default to 2.
+    ///             // 否则默认使用 2。
     ///             write!(formatter, "Foo({:.2})", self.0)
     ///         }
     ///     }
@@ -2277,9 +2219,9 @@ impl<'a> Formatter<'a> {
         }
     }
 
-    /// Determines if the `+` flag was specified.
+    /// 判断是否指定了 `+` flag。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::fmt;
@@ -2309,9 +2251,9 @@ impl<'a> Formatter<'a> {
         self.options.flags & flags::SIGN_PLUS_FLAG != 0
     }
 
-    /// Determines if the `-` flag was specified.
+    /// 判断是否指定了 `-` flag。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::fmt;
@@ -2321,7 +2263,7 @@ impl<'a> Formatter<'a> {
     /// impl fmt::Display for Foo {
     ///     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
     ///         if formatter.sign_minus() {
-    ///             // You want a minus sign? Have one!
+    ///             // 想要负号?这里给一个。
     ///             write!(formatter, "-Foo({})", self.0)
     ///         } else {
     ///             write!(formatter, "Foo({})", self.0)
@@ -2338,9 +2280,9 @@ impl<'a> Formatter<'a> {
         self.options.flags & flags::SIGN_MINUS_FLAG != 0
     }
 
-    /// Determines if the `#` flag was specified.
+    /// 判断是否指定了 `#` flag。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::fmt;
@@ -2366,9 +2308,9 @@ impl<'a> Formatter<'a> {
         self.options.flags & flags::ALTERNATE_FLAG != 0
     }
 
-    /// Determines if the `0` flag was specified.
+    /// 判断是否指定了 `0` flag。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::fmt;
@@ -2379,7 +2321,7 @@ impl<'a> Formatter<'a> {
     ///     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
     ///         assert!(formatter.sign_aware_zero_pad());
     ///         assert_eq!(formatter.width(), Some(4));
-    ///         // We ignore the formatter's options.
+    ///         // 这里忽略 formatter 的 options。
     ///         write!(formatter, "{}", self.0)
     ///     }
     /// }
@@ -2392,7 +2334,7 @@ impl<'a> Formatter<'a> {
         self.options.flags & flags::SIGN_AWARE_ZERO_PAD_FLAG != 0
     }
 
-    // FIXME: Decide what public API we want for these two flags.
+    // FIXME: 决定这两个 flags 应采用什么公开 API。
     // https://github.com/rust-lang/rust/issues/48584
     fn debug_lower_hex(&self) -> bool {
         self.options.flags & flags::DEBUG_LOWER_HEX_FLAG != 0
@@ -2401,12 +2343,11 @@ impl<'a> Formatter<'a> {
         self.options.flags & flags::DEBUG_UPPER_HEX_FLAG != 0
     }
 
-    /// Creates a [`DebugStruct`] builder designed to assist with creation of
-    /// [`fmt::Debug`] implementations for structs.
+    /// 创建一个 [`DebugStruct`] builder,用于辅助为结构体编写 [`fmt::Debug`] 实现。
     ///
     /// [`fmt::Debug`]: self::Debug
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```rust
     /// use std::fmt;
@@ -2442,9 +2383,8 @@ impl<'a> Formatter<'a> {
         builders::debug_struct_new(self, name)
     }
 
-    /// Shrinks `derive(Debug)` code, for faster compilation and smaller
-    /// binaries. `debug_struct_fields_finish` is more general, but this is
-    /// faster for 1 field.
+    /// 缩小 `derive(Debug)` 生成的代码,以加快编译并减小二进制体积。
+    /// `debug_struct_fields_finish` 更通用,但此方法在 1 个字段时更快。
     #[doc(hidden)]
     #[unstable(feature = "fmt_helpers_for_derive", issue = "none")]
     pub fn debug_struct_field1_finish<'b>(
@@ -2458,9 +2398,8 @@ impl<'a> Formatter<'a> {
         builder.finish()
     }
 
-    /// Shrinks `derive(Debug)` code, for faster compilation and smaller
-    /// binaries. `debug_struct_fields_finish` is more general, but this is
-    /// faster for 2 fields.
+    /// 缩小 `derive(Debug)` 生成的代码,以加快编译并减小二进制体积。
+    /// `debug_struct_fields_finish` 更通用,但此方法在 2 个字段时更快。
     #[doc(hidden)]
     #[unstable(feature = "fmt_helpers_for_derive", issue = "none")]
     pub fn debug_struct_field2_finish<'b>(
@@ -2477,9 +2416,8 @@ impl<'a> Formatter<'a> {
         builder.finish()
     }
 
-    /// Shrinks `derive(Debug)` code, for faster compilation and smaller
-    /// binaries. `debug_struct_fields_finish` is more general, but this is
-    /// faster for 3 fields.
+    /// 缩小 `derive(Debug)` 生成的代码,以加快编译并减小二进制体积。
+    /// `debug_struct_fields_finish` 更通用,但此方法在 3 个字段时更快。
     #[doc(hidden)]
     #[unstable(feature = "fmt_helpers_for_derive", issue = "none")]
     pub fn debug_struct_field3_finish<'b>(
@@ -2499,9 +2437,8 @@ impl<'a> Formatter<'a> {
         builder.finish()
     }
 
-    /// Shrinks `derive(Debug)` code, for faster compilation and smaller
-    /// binaries. `debug_struct_fields_finish` is more general, but this is
-    /// faster for 4 fields.
+    /// 缩小 `derive(Debug)` 生成的代码,以加快编译并减小二进制体积。
+    /// `debug_struct_fields_finish` 更通用,但此方法在 4 个字段时更快。
     #[doc(hidden)]
     #[unstable(feature = "fmt_helpers_for_derive", issue = "none")]
     pub fn debug_struct_field4_finish<'b>(
@@ -2524,9 +2461,8 @@ impl<'a> Formatter<'a> {
         builder.finish()
     }
 
-    /// Shrinks `derive(Debug)` code, for faster compilation and smaller
-    /// binaries. `debug_struct_fields_finish` is more general, but this is
-    /// faster for 5 fields.
+    /// 缩小 `derive(Debug)` 生成的代码,以加快编译并减小二进制体积。
+    /// `debug_struct_fields_finish` 更通用,但此方法在 5 个字段时更快。
     #[doc(hidden)]
     #[unstable(feature = "fmt_helpers_for_derive", issue = "none")]
     pub fn debug_struct_field5_finish<'b>(
@@ -2552,8 +2488,8 @@ impl<'a> Formatter<'a> {
         builder.finish()
     }
 
-    /// Shrinks `derive(Debug)` code, for faster compilation and smaller binaries.
-    /// For the cases not covered by `debug_struct_field[12345]_finish`.
+    /// 缩小 `derive(Debug)` 生成的代码,以加快编译并减小二进制体积。
+    /// 用于 `debug_struct_field[12345]_finish` 未覆盖的情况。
     #[doc(hidden)]
     #[unstable(feature = "fmt_helpers_for_derive", issue = "none")]
     pub fn debug_struct_fields_finish<'b>(
@@ -2570,10 +2506,9 @@ impl<'a> Formatter<'a> {
         builder.finish()
     }
 
-    /// Creates a `DebugTuple` builder designed to assist with creation of
-    /// `fmt::Debug` implementations for tuple structs.
+    /// 创建一个 `DebugTuple` builder,用于辅助为元组结构体编写 `fmt::Debug` 实现。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```rust
     /// use std::fmt;
@@ -2601,9 +2536,8 @@ impl<'a> Formatter<'a> {
         builders::debug_tuple_new(self, name)
     }
 
-    /// Shrinks `derive(Debug)` code, for faster compilation and smaller
-    /// binaries. `debug_tuple_fields_finish` is more general, but this is faster
-    /// for 1 field.
+    /// 缩小 `derive(Debug)` 生成的代码,以加快编译并减小二进制体积。
+    /// `debug_tuple_fields_finish` 更通用,但此方法在 1 个字段时更快。
     #[doc(hidden)]
     #[unstable(feature = "fmt_helpers_for_derive", issue = "none")]
     pub fn debug_tuple_field1_finish<'b>(&'b mut self, name: &str, value1: &dyn Debug) -> Result {
@@ -2612,9 +2546,8 @@ impl<'a> Formatter<'a> {
         builder.finish()
     }
 
-    /// Shrinks `derive(Debug)` code, for faster compilation and smaller
-    /// binaries. `debug_tuple_fields_finish` is more general, but this is faster
-    /// for 2 fields.
+    /// 缩小 `derive(Debug)` 生成的代码,以加快编译并减小二进制体积。
+    /// `debug_tuple_fields_finish` 更通用,但此方法在 2 个字段时更快。
     #[doc(hidden)]
     #[unstable(feature = "fmt_helpers_for_derive", issue = "none")]
     pub fn debug_tuple_field2_finish<'b>(
@@ -2629,9 +2562,8 @@ impl<'a> Formatter<'a> {
         builder.finish()
     }
 
-    /// Shrinks `derive(Debug)` code, for faster compilation and smaller
-    /// binaries. `debug_tuple_fields_finish` is more general, but this is faster
-    /// for 3 fields.
+    /// 缩小 `derive(Debug)` 生成的代码,以加快编译并减小二进制体积。
+    /// `debug_tuple_fields_finish` 更通用,但此方法在 3 个字段时更快。
     #[doc(hidden)]
     #[unstable(feature = "fmt_helpers_for_derive", issue = "none")]
     pub fn debug_tuple_field3_finish<'b>(
@@ -2648,9 +2580,8 @@ impl<'a> Formatter<'a> {
         builder.finish()
     }
 
-    /// Shrinks `derive(Debug)` code, for faster compilation and smaller
-    /// binaries. `debug_tuple_fields_finish` is more general, but this is faster
-    /// for 4 fields.
+    /// 缩小 `derive(Debug)` 生成的代码,以加快编译并减小二进制体积。
+    /// `debug_tuple_fields_finish` 更通用,但此方法在 4 个字段时更快。
     #[doc(hidden)]
     #[unstable(feature = "fmt_helpers_for_derive", issue = "none")]
     pub fn debug_tuple_field4_finish<'b>(
@@ -2669,9 +2600,8 @@ impl<'a> Formatter<'a> {
         builder.finish()
     }
 
-    /// Shrinks `derive(Debug)` code, for faster compilation and smaller
-    /// binaries. `debug_tuple_fields_finish` is more general, but this is faster
-    /// for 5 fields.
+    /// 缩小 `derive(Debug)` 生成的代码,以加快编译并减小二进制体积。
+    /// `debug_tuple_fields_finish` 更通用,但此方法在 5 个字段时更快。
     #[doc(hidden)]
     #[unstable(feature = "fmt_helpers_for_derive", issue = "none")]
     pub fn debug_tuple_field5_finish<'b>(
@@ -2692,8 +2622,8 @@ impl<'a> Formatter<'a> {
         builder.finish()
     }
 
-    /// Shrinks `derive(Debug)` code, for faster compilation and smaller
-    /// binaries. For the cases not covered by `debug_tuple_field[12345]_finish`.
+    /// 缩小 `derive(Debug)` 生成的代码,以加快编译并减小二进制体积。
+    /// 用于 `debug_tuple_field[12345]_finish` 未覆盖的情况。
     #[doc(hidden)]
     #[unstable(feature = "fmt_helpers_for_derive", issue = "none")]
     pub fn debug_tuple_fields_finish<'b>(
@@ -2708,10 +2638,9 @@ impl<'a> Formatter<'a> {
         builder.finish()
     }
 
-    /// Creates a `DebugList` builder designed to assist with creation of
-    /// `fmt::Debug` implementations for list-like structures.
+    /// 创建一个 `DebugList` builder,用于辅助为类列表结构编写 `fmt::Debug` 实现。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```rust
     /// use std::fmt;
@@ -2731,10 +2660,9 @@ impl<'a> Formatter<'a> {
         builders::debug_list_new(self)
     }
 
-    /// Creates a `DebugSet` builder designed to assist with creation of
-    /// `fmt::Debug` implementations for set-like structures.
+    /// 创建一个 `DebugSet` builder,用于辅助为类集合结构编写 `fmt::Debug` 实现。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```rust
     /// use std::fmt;
@@ -2752,8 +2680,8 @@ impl<'a> Formatter<'a> {
     ///
     /// [`format_args!`]: crate::format_args
     ///
-    /// In this more complex example, we use [`format_args!`] and `.debug_set()`
-    /// to build a list of match arms:
+    /// 在这个更复杂的示例中,我们使用 [`format_args!`] 和 `.debug_set()`
+    /// 构造 match arms 列表:
     ///
     /// ```rust
     /// use std::fmt;
@@ -2789,10 +2717,9 @@ impl<'a> Formatter<'a> {
         builders::debug_set_new(self)
     }
 
-    /// Creates a `DebugMap` builder designed to assist with creation of
-    /// `fmt::Debug` implementations for map-like structures.
+    /// 创建一个 `DebugMap` builder,用于辅助为类映射结构编写 `fmt::Debug` 实现。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```rust
     /// use std::fmt;
@@ -2815,13 +2742,13 @@ impl<'a> Formatter<'a> {
         builders::debug_map_new(self)
     }
 
-    /// Returns the sign of this formatter (`+` or `-`).
+    /// 返回此 formatter 的符号设置(`+` 或 `-`)。
     #[unstable(feature = "formatting_options", issue = "118117")]
     pub const fn sign(&self) -> Option<Sign> {
         self.options.get_sign()
     }
 
-    /// Returns the formatting options this formatter corresponds to.
+    /// 返回此 formatter 对应的格式化选项。
     #[unstable(feature = "formatting_options", issue = "118117")]
     pub const fn options(&self) -> FormattingOptions {
         self.options
@@ -2855,7 +2782,7 @@ impl Display for Error {
     }
 }
 
-// Implementations of the core formatting traits
+// 核心格式化 trait 的实现
 
 macro_rules! fmt_refs {
     ($($tr:ident),*) => {
@@ -2910,15 +2837,15 @@ impl Debug for str {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         f.write_char('"')?;
 
-        // substring we know is printable
+        // 已知可打印的子串范围。
         let mut printable_range = 0..0;
 
         fn needs_escape(b: u8) -> bool {
             b > 0x7E || b < 0x20 || b == b'\\' || b == b'"'
         }
 
-        // the loop here first skips over runs of printable ASCII as a fast path.
-        // other chars (unicode, or ASCII that needs escaping) are then handled per-`char`.
+        // 这里的循环先把连续可打印 ASCII 作为快速路径跳过。
+        // 其他字符(Unicode,或需要转义的 ASCII)再逐个 `char` 处理。
         let mut rest = self;
         while rest.len() > 0 {
             let Some(non_printable_start) = rest.as_bytes().iter().position(|&b| needs_escape(b))
@@ -2928,7 +2855,7 @@ impl Debug for str {
             };
 
             printable_range.end += non_printable_start;
-            // SAFETY: the position was derived from an iterator, so is known to be within bounds, and at a char boundary
+            // SAFETY: 该位置来自迭代器,因此已知在边界内且位于字符边界上。
             rest = unsafe { rest.get_unchecked(non_printable_start..) };
 
             let mut chars = rest.chars();
@@ -3000,21 +2927,18 @@ impl<T: PointeeSized> Pointer for *const T {
     }
 }
 
-/// Since the formatting will be identical for all pointer types, uses a
-/// non-monomorphized implementation for the actual formatting to reduce the
-/// amount of codegen work needed.
+/// 由于所有指针类型的格式化结果相同,实际格式化使用非单态化实现,
+/// 以减少所需的 codegen 工作量。
 ///
-/// This uses `ptr_addr: usize` and not `ptr: *const ()` to be able to use this for
-/// `fn(...) -> ...` without using [problematic] "Oxford Casts".
+/// 这里使用 `ptr_addr: usize` 而不是 `ptr: *const ()`,是为了让此函数也能用于
+/// `fn(...) -> ...`,且无需使用有问题的 "Oxford Casts"。
 ///
 /// [problematic]: https://github.com/rust-lang/rust/issues/95489
 pub(crate) fn pointer_fmt_inner(ptr_addr: usize, f: &mut Formatter<'_>) -> Result {
     let old_options = f.options;
 
-    // The alternate flag is already treated by LowerHex as being special-
-    // it denotes whether to prefix with 0x. We use it to work out whether
-    // or not to zero extend, and then unconditionally set it to get the
-    // prefix.
+    // LowerHex 已经把 alternate flag 当作特殊情况处理:它表示是否加上 0x 前缀。
+    // 我们用它判断是否需要补零扩展,随后无条件设置它以取得前缀。
     if f.options.get_alternate() {
         f.options.sign_aware_zero_pad(true);
 
@@ -3052,7 +2976,7 @@ impl<T: PointeeSized> Pointer for &mut T {
     }
 }
 
-// Implementation of Display/Debug for various core types
+// 各种 core 类型的 Display/Debug 实现
 
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<T: PointeeSized> Debug for *const T {
@@ -3178,6 +3102,6 @@ impl<T: ?Sized> Debug for SyncUnsafeCell<T> {
     }
 }
 
-// If you expected tests to be here, look instead at coretests/tests/fmt/;
-// it's a lot easier than creating all of the rt::Piece structures here.
-// There are also tests in alloctests/tests/fmt.rs, for those that need allocations.
+// 如果你原本预期测试在这里,请改看 coretests/tests/fmt/;
+// 那比在这里构造所有 rt::Piece 结构容易得多。
+// 对需要分配的场景,alloctests/tests/fmt.rs 中也有测试。

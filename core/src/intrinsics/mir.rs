@@ -41,11 +41,11 @@
 //!
 //! `custom_mir` 属性告诉编译器把该函数当作自定义 MIR 来对待。该属性只对函数有效——
 //! 没有办法把自定义 MIR 插入到另一个函数的中间。`dialect` 和 `phase` 参数指明你在这里插入的是
-//! [哪个版本的 MIR][dialect docs]。一般来说，如果你希望你的 MIR 经过完整的 MIR 流水线处理，
+//! [哪个版本的 MIR][dialect 文档]。一般来说，如果你希望你的 MIR 经过完整的 MIR 流水线处理，
 //! 就用 `#![custom_mir(dialect = "built")]`；如果不希望，就用
 //! `#![custom_mir(dialect = "runtime", phase = "optimized")]`。
 //!
-//! [dialect docs]:
+//! [dialect 文档]:
 //!     https://doc.rust-lang.org/nightly/nightly-rustc/rustc_middle/mir/enum.MirPhase.html
 //!
 //! [`mir!`] 宏的输入是：
@@ -313,7 +313,7 @@ macro_rules! define {
     }
 }
 
-// 栈展开动作（Unwind actions）
+// 栈展开动作
 pub struct UnwindActionArg;
 define!(
     "mir_unwind_continue",

@@ -61,7 +61,7 @@ use crate::{fmt, hash, intrinsics, mem, ptr};
 /// 共享引用创建可变引用同理。在不借助 `UnsafeCell<T>` 的前提下使用这个 `From` 实现时,
 /// 确保 `as_mut` 永不被调用、`as_ptr` 永不用于改写,是你的责任。
 ///
-/// # Representation
+/// # 表示形式(Representation)
 ///
 /// 得益于 [null pointer optimization](即上文的 niche 优化),`NonNull<T>` 与
 /// `Option<NonNull<T>>` 保证具有相同的大小和对齐:
@@ -259,7 +259,7 @@ impl<T: PointeeSized> NonNull<T> {
     ///
     /// 这是安全的构造方式:空指针检查由本方法完成,从而把非空不变量的维护交给类型自身。
     ///
-    /// # Panics during const evaluation
+    /// # Panics
     ///
     /// 在 const 求值期间,如果无法判定指针是否为空,本方法将 panic。更多信息参见
     /// [`is_null`]。

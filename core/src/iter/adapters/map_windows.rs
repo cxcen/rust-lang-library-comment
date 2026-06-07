@@ -2,10 +2,9 @@ use crate::iter::FusedIterator;
 use crate::mem::MaybeUninit;
 use crate::{fmt, ptr};
 
-/// An iterator over the mapped windows of another iterator.
+/// 在另一个迭代器的窗口上执行映射后得到的迭代器。
 ///
-/// This `struct` is created by the [`Iterator::map_windows`]. See its
-/// documentation for more information.
+/// 该 `struct` 由 [`Iterator::map_windows`] 创建。更多公开语义见该方法文档。
 #[must_use = "iterators are lazy and do nothing unless consumed"]
 #[unstable(feature = "iter_map_windows", issue = "87155")]
 pub struct MapWindows<I: Iterator, F, const N: usize> {
@@ -14,33 +13,28 @@ pub struct MapWindows<I: Iterator, F, const N: usize> {
 }
 
 struct MapWindowsInner<I: Iterator, const N: usize> {
-    // We fuse the inner iterator because there shouldn't be "holes" in
-    // the sliding window. Once the iterator returns a `None`, we make
-    // our `MapWindows` iterator return `None` forever.
+    // 这里会 fuse 内层迭代器，因为滑动窗口中不应出现“空洞”。一旦底层迭代器返回
+    // `None`，`MapWindows` 就会永久返回 `None`。
     iter: Option<I>,
-    // Since iterators are assumed lazy, i.e. it only yields an item when
-    // `Iterator::next()` is called, and `MapWindows` is not an exception.
+    // 迭代器默认是惰性的: 只有调用 `Iterator::next()` 时才产出元素。
+    // `MapWindows` 也遵守这一点。
     //
-    // Before the first iteration, we keep the buffer `None`. When the user
-    // first call `next` or other methods that makes the iterator advance,
-    // we collect the first `N` items yielded from the inner iterator and
-    // put it into the buffer.
+    // 第一次迭代前，缓冲区保持为 `None`。用户第一次调用 `next` 或其他会推进迭代器
+    // 的方法时，我们才从内层迭代器收集前 `N` 项并放入缓冲区。
     //
-    // When the inner iterator has returned a `None` (i.e. fused), we take
-    // away this `buffer` and leave it `None` to reclaim its resources.
+    // 当内层迭代器已经返回 `None`(即被 fused)时，我们取走这个 `buffer` 并保持为
+    // `None`，以回收其资源。
     //
-    // FIXME: should we shrink the size of `buffer` using niche optimization?
+    // FIXME: 是否应该利用 niche 优化缩小 `buffer` 的大小?
     buffer: Option<Buffer<I::Item, N>>,
 }
 
-// `Buffer` uses two times of space to reduce moves among the iterations.
-// `Buffer<T, N>` is semantically `[MaybeUninit<T>; 2 * N]`. However, due
-// to limitations of const generics, we use this different type. Note that
-// it has the same underlying memory layout.
+// `Buffer` 使用两倍空间来减少迭代过程中的元素移动。
+// `Buffer<T, N>` 在语义上是 `[MaybeUninit<T>; 2 * N]`。但受 const generics 限制，
+// 这里使用了不同类型；它具有相同的底层内存布局。
 struct Buffer<T, const N: usize> {
-    // Invariant: `self.buffer[self.start..self.start + N]` is initialized,
-    // with all other elements being uninitialized. This also
-    // implies that `self.start <= N`.
+    // 不变量: `self.buffer[self.start..self.start + N]` 已初始化，
+    // 其他元素未初始化。这也推出 `self.start <= N`。
     buffer: [[MaybeUninit<T>; N]; 2],
     start: usize,
 }
@@ -49,7 +43,7 @@ impl<I: Iterator, F, const N: usize> MapWindows<I, F, N> {
     pub(in crate::iter) fn new(iter: I, f: F) -> Self {
         assert!(N != 0, "array in `Iterator::map_windows` must contain more than 0 elements");
 
-        // Only ZST arrays' length can be so large.
+        // 只有 ZST 数组的长度才可能大到这里。
         if size_of::<I::Item>() == 0 {
             assert!(
                 N.checked_mul(2).is_some(),
@@ -70,18 +64,16 @@ impl<I: Iterator, const N: usize> MapWindowsInner<I, N> {
     fn next_window(&mut self) -> Option<&[I::Item; N]> {
         let iter = self.iter.as_mut()?;
         match self.buffer {
-            // It is the first time to advance. We collect
-            // the first `N` items from `self.iter` to initialize `self.buffer`.
+            // 第一次推进。收集 `self.iter` 的前 `N` 项来初始化 `self.buffer`。
             None => self.buffer = Buffer::try_from_iter(iter),
             Some(ref mut buffer) => match iter.next() {
                 None => {
-                    // Fuse the inner iterator since it yields a `None`.
+                    // 内层迭代器已经产出 `None`，因此把它 fuse。
                     self.iter.take();
                     self.buffer.take();
                 }
-                // Advance the iterator. We first call `next` before changing our buffer
-                // at all. This means that if `next` panics, our invariant is upheld and
-                // our `Drop` impl drops the correct elements.
+                // 推进迭代器。先调用 `next`，再修改缓冲区。这样如果 `next` panic，
+                // 我们的不变量仍然成立，`Drop` 实现也会 drop 正确的元素。
                 Some(item) => buffer.push(item),
             },
         }
@@ -92,13 +84,12 @@ impl<I: Iterator, const N: usize> MapWindowsInner<I, N> {
         let Some(ref iter) = self.iter else { return (0, Some(0)) };
         let (lo, hi) = iter.size_hint();
         if self.buffer.is_some() {
-            // If the first `N` items are already yielded by the inner iterator,
-            // the size hint is then equal to the that of the inner iterator's.
+            // 如果内层迭代器已经产出了前 `N` 项，则 size hint 等于内层迭代器的
+            // size hint。
             (lo, hi)
         } else {
-            // If the first `N` items are not yet yielded by the inner iterator,
-            // the first `N` elements should be counted as one window, so both bounds
-            // should subtract `N - 1`.
+            // 如果内层迭代器尚未产出前 `N` 项，则前 `N` 个元素应计为一个窗口，
+            // 因此两个边界都应减去 `N - 1`。
             (lo.saturating_sub(N - 1), hi.map(|hi| hi.saturating_sub(N - 1)))
         }
     }
@@ -126,7 +117,7 @@ impl<T, const N: usize> Buffer<T, N> {
     fn as_array_ref(&self) -> &[T; N] {
         debug_assert!(self.start + N <= 2 * N);
 
-        // SAFETY: our invariant guarantees these elements are initialized.
+        // SAFETY: 不变量保证这些元素已经初始化。
         unsafe { &*self.buffer_ptr().add(self.start).cast() }
     }
 
@@ -134,21 +125,19 @@ impl<T, const N: usize> Buffer<T, N> {
     fn as_uninit_array_mut(&mut self) -> &mut MaybeUninit<[T; N]> {
         debug_assert!(self.start + N <= 2 * N);
 
-        // SAFETY: our invariant guarantees these elements are in bounds.
+        // SAFETY: 不变量保证这些元素在边界内。
         unsafe { &mut *self.buffer_mut_ptr().add(self.start).cast() }
     }
 
-    /// Pushes a new item `next` to the back, and pops the front-most one.
+    /// 把新项 `next` 推入后端，并弹出最前端的一项。
     ///
-    /// All the elements will be shifted to the front end when pushing reaches
-    /// the back end.
+    /// 当推入位置到达后端时，所有元素都会被移动到前端。
     fn push(&mut self, next: T) {
         let buffer_mut_ptr = self.buffer_mut_ptr();
         debug_assert!(self.start + N <= 2 * N);
 
         let to_drop = if self.start == N {
-            // We have reached the end of our buffer and have to copy
-            // everything to the start. Example layout for N = 3.
+            // 已经到达缓冲区末端，必须把所有内容复制回开头。N = 3 时布局如下。
             //
             //    0   1   2   3   4   5            0   1   2   3   4   5
             //  ┌───┬───┬───┬───┬───┬───┐        ┌───┬───┬───┬───┬───┬───┐
@@ -157,13 +146,11 @@ impl<T, const N: usize> Buffer<T, N> {
             //                ↑                    ↑
             //              start                start
 
-            // SAFETY: the two pointers are valid for reads/writes of N -1
-            // elements because our array's size is semantically 2 * N. The
-            // regions also don't overlap for the same reason.
+            // SAFETY: 两个指针对 N - 1 个元素的读写有效，因为数组语义大小是 2 * N。
+            // 两个区域也因此不重叠。
             //
-            // We leave the old elements in place. As soon as `start` is set
-            // to 0, we treat them as uninitialized and treat their copies
-            // as initialized.
+            // 旧元素留在原位。一旦 `start` 设为 0，就把它们视为未初始化，并把副本视为
+            // 已初始化。
             let to_drop = unsafe {
                 ptr::copy_nonoverlapping(buffer_mut_ptr.add(self.start + 1), buffer_mut_ptr, N - 1);
                 (*buffer_mut_ptr.add(N - 1)).write(next);
@@ -172,11 +159,10 @@ impl<T, const N: usize> Buffer<T, N> {
             self.start = 0;
             to_drop
         } else {
-            // SAFETY: `self.start` is < N as guaranteed by the invariant
-            // plus the check above. Even if the drop at the end panics,
-            // the invariant is upheld.
+            // SAFETY: 不变量加上上面的检查保证 `self.start < N`。
+            // 即使末尾的 drop panic，不变量也仍然成立。
             //
-            // Example layout for N = 3:
+            // N = 3 时的布局:
             //
             //    0   1   2   3   4   5            0   1   2   3   4   5
             //  ┌───┬───┬───┬───┬───┬───┐        ┌───┬───┬───┬───┬───┬───┐
@@ -193,8 +179,7 @@ impl<T, const N: usize> Buffer<T, N> {
             to_drop
         };
 
-        // SAFETY: the index is valid and this is element `a` in the
-        // diagram above and has not been dropped yet.
+        // SAFETY: 该索引有效，并且这是上图中的元素 `a`，尚未被 drop。
         unsafe { ptr::drop_in_place(to_drop.cast_init()) };
     }
 }
@@ -222,8 +207,7 @@ where
 
 impl<T, const N: usize> Drop for Buffer<T, N> {
     fn drop(&mut self) {
-        // SAFETY: our invariant guarantees that N elements starting from
-        // `self.start` are initialized. We drop them here.
+        // SAFETY: 不变量保证从 `self.start` 开始的 N 个元素已经初始化。这里 drop 它们。
         unsafe {
             let initialized_part: *mut [T] = crate::ptr::slice_from_raw_parts_mut(
                 self.buffer_mut_ptr().add(self.start).cast(),
@@ -253,8 +237,8 @@ where
     }
 }
 
-// Note that even if the inner iterator not fused, the `MapWindows` is still fused,
-// because we don't allow "holes" in the mapping window.
+// 注意，即使内层迭代器不是 fused，`MapWindows` 仍然是 fused，
+// 因为映射窗口中不允许出现“空洞”。
 #[unstable(feature = "iter_map_windows", issue = "87155")]
 impl<I, F, R, const N: usize> FusedIterator for MapWindows<I, F, N>
 where

@@ -1,7 +1,6 @@
-//! Defines primitive types that match C's type definitions for FFI compatibility.
+//! 定义与 C 类型定义匹配的基本类型,用于 FFI 兼容。
 //!
-//! This module is intentionally standalone to facilitate parsing when retrieving
-//! core C types.
+//! 本模块有意保持独立,以便提取 core C 类型时解析。
 
 macro_rules! type_alias {
     {
@@ -36,74 +35,71 @@ type_alias! { "c_double.md", c_double = f64; }
 
 mod c_char_definition {
     crate::cfg_select! {
-        // These are the targets on which c_char is unsigned. Usually the
-        // signedness is the same for all target_os values on a given architecture
-        // but there are some exceptions (see isSignedCharDefault() in clang).
+        // 以下目标上的 c_char 是无符号的。通常同一架构上的所有 target_os 都拥有相同符号性,
+        // 但也存在例外(见 clang 中的 isSignedCharDefault())。
         // aarch64:
-        //   Section 10 "Arm C and C++ language mappings" in Procedure Call Standard for the Arm®
-        //   64-bit Architecture (AArch64) says C/C++ char is unsigned byte.
+        //   Procedure Call Standard for the Arm® 64-bit Architecture (AArch64)
+        //   第 10 节 "Arm C and C++ language mappings" 说明 C/C++ char 是 unsigned byte。
         //   https://github.com/ARM-software/abi-aa/blob/2024Q3/aapcs64/aapcs64.rst#arm-c-and-c-language-mappings
         // arm:
-        //   Section 8 "Arm C and C++ Language Mappings" in Procedure Call Standard for the Arm®
-        //   Architecture says C/C++ char is unsigned byte.
+        //   Procedure Call Standard for the Arm® Architecture 第 8 节
+        //   "Arm C and C++ Language Mappings" 说明 C/C++ char 是 unsigned byte。
         //   https://github.com/ARM-software/abi-aa/blob/2024Q3/aapcs32/aapcs32.rst#arm-c-and-c-language-mappings
         // csky:
-        //   Section 2.1.2 "Primary Data Type" in C-SKY V2 CPU Applications Binary Interface
-        //   Standards Manual says ANSI C char is unsigned byte.
+        //   C-SKY V2 CPU Applications Binary Interface Standards Manual 第 2.1.2 节
+        //   "Primary Data Type" 说明 ANSI C char 是 unsigned byte。
         //   https://github.com/c-sky/csky-doc/blob/9f7121f7d40970ba5cc0f15716da033db2bb9d07/C-SKY_V2_CPU_Applications_Binary_Interface_Standards_Manual.pdf
-        //   Note: this doesn't seem to match Clang's default (https://github.com/rust-lang/rust/issues/129945).
+        //   注意:这似乎与 Clang 默认值不匹配(https://github.com/rust-lang/rust/issues/129945)。
         // hexagon:
-        //   Section 3.1 "Basic data type" in Qualcomm Hexagon™ Application
-        //   Binary Interface User Guide says "By default, the `char` data type is unsigned."
+        //   Qualcomm Hexagon™ Application Binary Interface User Guide 第 3.1 节
+        //   "Basic data type" 说明默认情况下 `char` 数据类型是 unsigned。
         //   https://docs.qualcomm.com/bundle/publicresource/80-N2040-23_REV_K_Qualcomm_Hexagon_Application_Binary_Interface_User_Guide.pdf
         // msp430:
-        //   Section 2.1 "Basic Types" in MSP430 Embedded Application Binary
-        //   Interface says "The char type is unsigned by default".
+        //   MSP430 Embedded Application Binary Interface 第 2.1 节 "Basic Types"
+        //   说明 char 类型默认是 unsigned。
         //   https://www.ti.com/lit/an/slaa534a/slaa534a.pdf
         // powerpc/powerpc64:
-        //   - PPC32 SysV: "Table 3-1 Scalar Types" in System V Application Binary Interface PowerPC
-        //     Processor Supplement says ANSI C char is unsigned byte
+        //   - PPC32 SysV: System V Application Binary Interface PowerPC Processor Supplement
+        //     中的 "Table 3-1 Scalar Types" 说明 ANSI C char 是 unsigned byte
         //     https://refspecs.linuxfoundation.org/elf/elfspec_ppc.pdf
-        //   - PPC64 ELFv1: Section 3.1.4 "Fundamental Types" in 64-bit PowerPC ELF Application
-        //     Binary Interface Supplement 1.9 says ANSI C is unsigned byte
+        //   - PPC64 ELFv1: 64-bit PowerPC ELF Application Binary Interface Supplement 1.9
+        //     的 Section 3.1.4 "Fundamental Types" 说明 ANSI C char 是 unsigned byte
         //     https://refspecs.linuxfoundation.org/ELF/ppc64/PPC-elf64abi.html#FUND-TYPE
-        //   - PPC64 ELFv2: Section 2.1.2.2 "Fundamental Types" in 64-Bit ELF V2 ABI Specification
-        //     says char is unsigned byte
+        //   - PPC64 ELFv2: 64-Bit ELF V2 ABI Specification 的 Section 2.1.2.2
+        //     "Fundamental Types" 说明 char 是 unsigned byte
         //     https://openpowerfoundation.org/specifications/64bitelfabi/
-        //   - AIX: XL C for AIX Language Reference says "By default, char behaves like an unsigned char."
+        //   - AIX: XL C for AIX Language Reference 说明默认情况下 char 的行为类似 unsigned char。
         //     https://www.ibm.com/docs/en/xl-c-aix/13.1.3?topic=specifiers-character-types
         // riscv32/riscv64:
-        //   C/C++ type representations section in RISC-V Calling Conventions
-        //   page in RISC-V ELF psABI Document says "char is unsigned."
+        //   RISC-V ELF psABI Document 的 RISC-V Calling Conventions 页中
+        //   C/C++ type representations 小节说明 char 是 unsigned。
         //   https://github.com/riscv-non-isa/riscv-elf-psabi-doc/blob/draft-20240829-13bfa9f54634cb60d86b9b333e109f077805b4b3/riscv-cc.adoc#cc-type-representations
         // s390x:
-        //   - ELF: "Table 1.1.: Scalar types" in ELF Application Binary Interface s390x Supplement
-        //     Version 1.6.1 categorize ISO C char in unsigned integer
+        //   - ELF: ELF Application Binary Interface s390x Supplement Version 1.6.1 中的
+        //     "Table 1.1.: Scalar types" 把 ISO C char 归类为 unsigned integer
         //     https://github.com/IBM/s390x-abi/releases/tag/v1.6.1
-        //   - z/OS: XL C/C++ Language Reference says: "By default, char behaves like an unsigned char."
+        //   - z/OS: XL C/C++ Language Reference 说明默认情况下 char 的行为类似 unsigned char。
         //     https://www.ibm.com/docs/en/zos/3.1.0?topic=specifiers-character-types
         // xtensa:
-        //   Section 2.17.1 "Data Types and Alignment" of Xtensa LX Microprocessor Overview handbook
-        //   says "`char` type is unsigned by default".
+        //   Xtensa LX Microprocessor Overview handbook 第 2.17.1 节
+        //   "Data Types and Alignment" 说明 `char` 类型默认是 unsigned。
         //   https://loboris.eu/ESP32/Xtensa_lx%20Overview%20handbook.pdf
         //
-        // On the following operating systems, c_char is signed by default, regardless of architecture.
-        // Darwin (macOS, iOS, etc.):
-        //   Apple targets' c_char is signed by default even on arm
+        // 在以下操作系统上,无论架构如何,c_char 默认都是有符号的。
+        // Darwin(macOS、iOS 等):
+        //   Apple 目标即使在 arm 上,c_char 默认也是有符号的
         //   https://developer.apple.com/documentation/xcode/writing-arm64-code-for-apple-platforms#Handle-data-types-and-data-alignment-properly
         // Windows:
-        //   Windows MSVC C++ Language Reference says "Microsoft-specific: Variables of type char
-        //   are promoted to int as if from type signed char by default, unless the /J compilation
-        //   option is used."
+        //   Windows MSVC C++ Language Reference 说明:除非使用 /J 编译选项,否则 char 类型变量
+        //   默认会像 signed char 那样提升为 int。
         //   https://learn.microsoft.com/en-us/cpp/cpp/fundamental-types-cpp?view=msvc-170#character-types
         // Vita:
-        //   Chars are signed by default on the Vita, and VITASDK follows that convention.
+        //   Vita 上 char 默认有符号,VITASDK 遵循该约定。
         //   https://github.com/vitasdk/buildscripts/blob/09c533b771591ecde88864b6acad28ffb688dbd4/patches/gcc/0001-gcc-10.patch#L33-L34
         //
         // L4Re:
-        //   The kernel builds with -funsigned-char on all targets (but userspace follows the
-        //   architecture defaults). As we only have a target for userspace apps so there are no
-        //   special cases for L4Re below.
+        //   内核在所有目标上都以 -funsigned-char 构建(但用户空间遵循架构默认值)。
+        //   由于我们只有用户空间应用目标,所以下面不为 L4Re 设置特殊情况。
         //   https://github.com/rust-lang/rust/pull/132975#issuecomment-2484645240
         all(
             not(windows),
@@ -125,7 +121,7 @@ mod c_char_definition {
         ) => {
             pub(super) type c_char = u8;
         }
-        // On every other target, c_char is signed.
+        // 在所有其他目标上,c_char 是有符号的。
         _ => {
             pub(super) type c_char = i8;
         }
@@ -136,38 +132,35 @@ mod c_long_definition {
     crate::cfg_select! {
         any(
             all(target_pointer_width = "64", not(windows)),
-            // wasm32 Linux ABI uses 64-bit long
+            // wasm32 Linux ABI 使用 64 位 long。
             all(target_arch = "wasm32", target_os = "linux")
         ) => {
             pub(super) type c_long = i64;
             pub(super) type c_ulong = u64;
         }
         _ => {
-            // The minimal size of `long` in the C standard is 32 bits
+            // C 标准中 `long` 的最小大小为 32 位。
             pub(super) type c_long = i32;
             pub(super) type c_ulong = u32;
         }
     }
 }
 
-/// Equivalent to C's `size_t` type, from `stddef.h` (or `cstddef` for C++).
+/// 等价于 C 的 `size_t` 类型,来自 `stddef.h`(或 C++ 的 `cstddef`)。
 ///
-/// This type is currently always [`usize`], however in the future there may be
-/// platforms where this is not the case.
+/// 本类型目前始终是 [`usize`],但未来可能存在不满足这一点的平台。
 #[unstable(feature = "c_size_t", issue = "88345")]
 pub type c_size_t = usize;
 
-/// Equivalent to C's `ptrdiff_t` type, from `stddef.h` (or `cstddef` for C++).
+/// 等价于 C 的 `ptrdiff_t` 类型,来自 `stddef.h`(或 C++ 的 `cstddef`)。
 ///
-/// This type is currently always [`isize`], however in the future there may be
-/// platforms where this is not the case.
+/// 本类型目前始终是 [`isize`],但未来可能存在不满足这一点的平台。
 #[unstable(feature = "c_size_t", issue = "88345")]
 pub type c_ptrdiff_t = isize;
 
-/// Equivalent to C's `ssize_t` (on POSIX) or `SSIZE_T` (on Windows) type.
+/// 等价于 C 的 `ssize_t`(POSIX 上)或 `SSIZE_T`(Windows 上)类型。
 ///
-/// This type is currently always [`isize`], however in the future there may be
-/// platforms where this is not the case.
+/// 本类型目前始终是 [`isize`],但未来可能存在不满足这一点的平台。
 #[unstable(feature = "c_size_t", issue = "88345")]
 pub type c_ssize_t = isize;
 

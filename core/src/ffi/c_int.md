@@ -1,5 +1,5 @@
-Equivalent to C's `signed int` (`int`) type.
+等价于 C 的 `signed int`(`int`)类型。
 
-This type will almost always be [`i32`], but may differ on some esoteric systems. The C standard technically only requires that this type be a signed integer that is at least the size of a [`short`]; some systems define it as an [`i16`], for example.
+本类型几乎总是 [`i32`],但在少数特殊系统上可能不同。C 标准技术上只要求它是大小至少等于 [`short`] 的有符号整数;例如某些系统会把它定义为 [`i16`]。
 
 [`short`]: c_short

@@ -1,6 +1,11 @@
-//! Slice management and manipulation.
+//! 切片管理与操作。
 //!
-//! For more details see [`std::slice`].
+//! 切片是 Rust 中“指向连续元素序列的胖指针”：指针部分指向第一个元素，metadata 是元素个数。
+//! 本模块提供不拥有内存的视图操作、索引、分割、迭代、排序和与裸指针之间的转换。
+//! 安全 API 会把越界暴露为 panic 或 `None`，unsafe API 则把边界、初始化、对齐和 aliasing
+//! 不变量交给调用方；违反这些契约会破坏编译器对引用的基本假设并导致 UB。
+//!
+//! 更多细节见 [`std::slice`]。
 //!
 //! [`std::slice`]: ../../std/slice/index.html
 
@@ -24,7 +29,7 @@ use crate::{fmt, hint, ptr, range, slice};
     reason = "exposed from core to be reused in std; use the memchr crate"
 )]
 #[doc(hidden)]
-/// Pure Rust memchr implementation, taken from rust-memchr
+/// 纯 Rust 的 memchr 实现，来源于 rust-memchr。
 pub mod memchr;
 
 #[unstable(
@@ -77,11 +82,10 @@ pub use raw::{from_mut_ptr_range, from_ptr_range};
 #[stable(feature = "rust1", since = "1.0.0")]
 pub use raw::{from_raw_parts, from_raw_parts_mut};
 
-/// Calculates the direction and split point of a one-sided range.
+/// 计算单侧范围的分割方向和分割点。
 ///
-/// This is a helper function for `split_off` and `split_off_mut` that returns
-/// the direction of the split (front or back) as well as the index at
-/// which to split. Returns `None` if the split index would overflow.
+/// 这是 `split_off` 与 `split_off_mut` 的辅助函数：它返回从前端还是后端分割，
+/// 以及实际的分割索引。如果闭合终点加一会溢出，则返回 `None`。
 #[inline]
 fn split_point_of(range: impl OneSidedRange<usize>) -> Option<(Direction, usize)> {
     use OneSidedRangeBound::{End, EndInclusive, StartInclusive};
@@ -99,9 +103,12 @@ enum Direction {
 }
 
 impl<T> [T] {
-    /// Returns the number of elements in the slice.
+    /// 返回切片中的元素个数。
     ///
-    /// # Examples
+    /// 这是胖指针 metadata 中保存的长度，不是字节数；切片覆盖的字节数取决于
+    /// `size_of::<T>()`。
+    ///
+    /// # 示例
     ///
     /// ```
     /// let a = [1, 2, 3];
@@ -117,9 +124,9 @@ impl<T> [T] {
         ptr::metadata(self)
     }
 
-    /// Returns `true` if the slice has a length of 0.
+    /// 如果切片长度为 0，返回 `true`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let a = [1, 2, 3];
@@ -137,9 +144,9 @@ impl<T> [T] {
         self.len() == 0
     }
 
-    /// Returns the first element of the slice, or `None` if it is empty.
+    /// 返回切片第一个元素；如果切片为空则返回 `None`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let v = [10, 40, 30];
@@ -156,9 +163,9 @@ impl<T> [T] {
         if let [first, ..] = self { Some(first) } else { None }
     }
 
-    /// Returns a mutable reference to the first element of the slice, or `None` if it is empty.
+    /// 返回切片第一个元素的可变引用；如果切片为空则返回 `None`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let x = &mut [0, 1, 2];
@@ -179,9 +186,9 @@ impl<T> [T] {
         if let [first, ..] = self { Some(first) } else { None }
     }
 
-    /// Returns the first and all the rest of the elements of the slice, or `None` if it is empty.
+    /// 返回第一个元素以及剩余元素切片；如果切片为空则返回 `None`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let x = &[0, 1, 2];
@@ -199,9 +206,9 @@ impl<T> [T] {
         if let [first, tail @ ..] = self { Some((first, tail)) } else { None }
     }
 
-    /// Returns the first and all the rest of the elements of the slice, or `None` if it is empty.
+    /// 返回第一个元素的可变引用以及剩余元素的可变切片；如果切片为空则返回 `None`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let x = &mut [0, 1, 2];
@@ -221,9 +228,9 @@ impl<T> [T] {
         if let [first, tail @ ..] = self { Some((first, tail)) } else { None }
     }
 
-    /// Returns the last and all the rest of the elements of the slice, or `None` if it is empty.
+    /// 返回最后一个元素以及它之前的所有元素；如果切片为空则返回 `None`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let x = &[0, 1, 2];
@@ -241,9 +248,9 @@ impl<T> [T] {
         if let [init @ .., last] = self { Some((last, init)) } else { None }
     }
 
-    /// Returns the last and all the rest of the elements of the slice, or `None` if it is empty.
+    /// 返回最后一个元素的可变引用以及它之前所有元素的可变切片；如果切片为空则返回 `None`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let x = &mut [0, 1, 2];
@@ -263,9 +270,9 @@ impl<T> [T] {
         if let [init @ .., last] = self { Some((last, init)) } else { None }
     }
 
-    /// Returns the last element of the slice, or `None` if it is empty.
+    /// 返回切片最后一个元素；如果切片为空则返回 `None`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let v = [10, 40, 30];
@@ -282,9 +289,9 @@ impl<T> [T] {
         if let [.., last] = self { Some(last) } else { None }
     }
 
-    /// Returns a mutable reference to the last item in the slice, or `None` if it is empty.
+    /// 返回切片最后一个元素的可变引用；如果切片为空则返回 `None`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let x = &mut [0, 1, 2];
@@ -305,11 +312,11 @@ impl<T> [T] {
         if let [.., last] = self { Some(last) } else { None }
     }
 
-    /// Returns an array reference to the first `N` items in the slice.
+    /// 返回切片前 `N` 个元素组成的数组引用。
+///
+    /// 如果切片长度小于 `N`，返回 `None`。返回的是 `[T; N]` 引用，因此长度在类型层面固定。
     ///
-    /// If the slice is not at least `N` in length, this will return `None`.
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let u = [10, 40, 30];
@@ -328,17 +335,16 @@ impl<T> [T] {
         if self.len() < N {
             None
         } else {
-            // SAFETY: We explicitly check for the correct number of elements,
-            //   and do not let the reference outlive the slice.
+            // SAFETY: 已显式检查元素个数至少为 `N`，并且返回引用不会超过原切片生命周期。
             Some(unsafe { &*(self.as_ptr().cast_array()) })
         }
     }
 
-    /// Returns a mutable array reference to the first `N` items in the slice.
+    /// 返回切片前 `N` 个元素组成的可变数组引用。
+///
+    /// 如果切片长度小于 `N`，返回 `None`。
     ///
-    /// If the slice is not at least `N` in length, this will return `None`.
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let x = &mut [0, 1, 2];
@@ -358,18 +364,17 @@ impl<T> [T] {
         if self.len() < N {
             None
         } else {
-            // SAFETY: We explicitly check for the correct number of elements,
-            //   do not let the reference outlive the slice,
-            //   and require exclusive access to the entire slice to mutate the chunk.
+            // SAFETY: 已显式检查元素个数至少为 `N`；返回引用不超过原切片生命周期；
+            // `&mut self` 提供整个切片的独占访问权，因此可安全地产生可变数组引用。
             Some(unsafe { &mut *(self.as_mut_ptr().cast_array()) })
         }
     }
 
-    /// Returns an array reference to the first `N` items in the slice and the remaining slice.
+    /// 返回切片前 `N` 个元素组成的数组引用，以及剩余元素切片。
+///
+    /// 如果切片长度小于 `N`，返回 `None`。
     ///
-    /// If the slice is not at least `N` in length, this will return `None`.
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let x = &[0, 1, 2];
@@ -387,17 +392,15 @@ impl<T> [T] {
     pub const fn split_first_chunk<const N: usize>(&self) -> Option<(&[T; N], &[T])> {
         let Some((first, tail)) = self.split_at_checked(N) else { return None };
 
-        // SAFETY: We explicitly check for the correct number of elements,
-        //   and do not let the references outlive the slice.
+        // SAFETY: `split_at_checked(N)` 已证明前缀恰有 `N` 个元素，返回引用不超过原切片生命周期。
         Some((unsafe { &*(first.as_ptr().cast_array()) }, tail))
     }
 
-    /// Returns a mutable array reference to the first `N` items in the slice and the remaining
-    /// slice.
+    /// 返回切片前 `N` 个元素组成的可变数组引用，以及剩余元素的可变切片。
+///
+    /// 如果切片长度小于 `N`，返回 `None`。
     ///
-    /// If the slice is not at least `N` in length, this will return `None`.
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let x = &mut [0, 1, 2];
@@ -419,17 +422,16 @@ impl<T> [T] {
     ) -> Option<(&mut [T; N], &mut [T])> {
         let Some((first, tail)) = self.split_at_mut_checked(N) else { return None };
 
-        // SAFETY: We explicitly check for the correct number of elements,
-        //   do not let the reference outlive the slice,
-        //   and enforce exclusive mutability of the chunk by the split.
+        // SAFETY: `split_at_mut_checked(N)` 已证明前缀恰有 `N` 个元素，并把两个可变切片
+        // 分成不重叠区域；返回引用不超过原切片生命周期。
         Some((unsafe { &mut *(first.as_mut_ptr().cast_array()) }, tail))
     }
 
-    /// Returns an array reference to the last `N` items in the slice and the remaining slice.
+    /// 返回切片最后 `N` 个元素组成的数组引用，以及剩余的前缀切片。
+///
+    /// 如果切片长度小于 `N`，返回 `None`。
     ///
-    /// If the slice is not at least `N` in length, this will return `None`.
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let x = &[0, 1, 2];
@@ -448,17 +450,16 @@ impl<T> [T] {
         let Some(index) = self.len().checked_sub(N) else { return None };
         let (init, last) = self.split_at(index);
 
-        // SAFETY: We explicitly check for the correct number of elements,
-        //   and do not let the references outlive the slice.
+        // SAFETY: `checked_sub(N)` 与 `split_at(index)` 已证明后缀恰有 `N` 个元素，
+        // 返回引用不超过原切片生命周期。
         Some((init, unsafe { &*(last.as_ptr().cast_array()) }))
     }
 
-    /// Returns a mutable array reference to the last `N` items in the slice and the remaining
-    /// slice.
+    /// 返回切片最后 `N` 个元素组成的可变数组引用，以及剩余前缀的可变切片。
+///
+    /// 如果切片长度小于 `N`，返回 `None`。
     ///
-    /// If the slice is not at least `N` in length, this will return `None`.
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let x = &mut [0, 1, 2];
@@ -481,17 +482,16 @@ impl<T> [T] {
         let Some(index) = self.len().checked_sub(N) else { return None };
         let (init, last) = self.split_at_mut(index);
 
-        // SAFETY: We explicitly check for the correct number of elements,
-        //   do not let the reference outlive the slice,
-        //   and enforce exclusive mutability of the chunk by the split.
+        // SAFETY: `split_at_mut(index)` 把前缀和后缀分成不重叠区域，后缀长度恰为 `N`；
+        // 返回引用不超过原切片生命周期。
         Some((init, unsafe { &mut *(last.as_mut_ptr().cast_array()) }))
     }
 
-    /// Returns an array reference to the last `N` items in the slice.
+    /// 返回切片最后 `N` 个元素组成的数组引用。
+///
+    /// 如果切片长度小于 `N`，返回 `None`。
     ///
-    /// If the slice is not at least `N` in length, this will return `None`.
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let u = [10, 40, 30];
@@ -507,20 +507,20 @@ impl<T> [T] {
     #[stable(feature = "slice_first_last_chunk", since = "1.77.0")]
     #[rustc_const_stable(feature = "const_slice_last_chunk", since = "1.80.0")]
     pub const fn last_chunk<const N: usize>(&self) -> Option<&[T; N]> {
-        // FIXME(const-hack): Without const traits, we need this instead of `get`.
+        // FIXME(const-hack): 缺少 const traits 时，需要用这种写法代替 `get`。
         let Some(index) = self.len().checked_sub(N) else { return None };
         let (_, last) = self.split_at(index);
 
-        // SAFETY: We explicitly check for the correct number of elements,
-        //   and do not let the references outlive the slice.
+        // SAFETY: `checked_sub(N)` 与 `split_at(index)` 已证明后缀恰有 `N` 个元素，
+        // 返回引用不超过原切片生命周期。
         Some(unsafe { &*(last.as_ptr().cast_array()) })
     }
 
-    /// Returns a mutable array reference to the last `N` items in the slice.
+    /// 返回切片最后 `N` 个元素组成的可变数组引用。
+///
+    /// 如果切片长度小于 `N`，返回 `None`。
     ///
-    /// If the slice is not at least `N` in length, this will return `None`.
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let x = &mut [0, 1, 2];
@@ -537,25 +537,20 @@ impl<T> [T] {
     #[stable(feature = "slice_first_last_chunk", since = "1.77.0")]
     #[rustc_const_stable(feature = "const_slice_first_last_chunk", since = "1.83.0")]
     pub const fn last_chunk_mut<const N: usize>(&mut self) -> Option<&mut [T; N]> {
-        // FIXME(const-hack): Without const traits, we need this instead of `get`.
+        // FIXME(const-hack): 缺少 const traits 时，需要用这种写法代替 `get`。
         let Some(index) = self.len().checked_sub(N) else { return None };
         let (_, last) = self.split_at_mut(index);
 
-        // SAFETY: We explicitly check for the correct number of elements,
-        //   do not let the reference outlive the slice,
-        //   and require exclusive access to the entire slice to mutate the chunk.
+        // SAFETY: 已证明后缀恰有 `N` 个元素；`&mut self` 提供独占访问权，返回引用不超过原切片生命周期。
         Some(unsafe { &mut *(last.as_mut_ptr().cast_array()) })
     }
 
-    /// Returns a reference to an element or subslice depending on the type of
-    /// index.
+    /// 根据索引类型返回某个元素或子切片的共享引用。
     ///
-    /// - If given a position, returns a reference to the element at that
-    ///   position or `None` if out of bounds.
-    /// - If given a range, returns the subslice corresponding to that range,
-    ///   or `None` if out of bounds.
+    /// - 如果传入单个位置，位置在边界内则返回对应元素引用，越界则返回 `None`。
+    /// - 如果传入范围，范围在边界内则返回对应子切片，越界或反向范围则返回 `None`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let v = [10, 40, 30];
@@ -576,12 +571,14 @@ impl<T> [T] {
         index.get(self)
     }
 
-    /// Returns a mutable reference to an element or subslice depending on the
-    /// type of index (see [`get`]) or `None` if the index is out of bounds.
+    /// 根据索引类型返回某个元素或子切片的可变引用；索引越界时返回 `None`。
+    ///
+    /// 语义与 [`get`] 相同，但返回值带有可变借用，因此成功时会把对应元素或子切片的
+    /// 可变访问权借出。
     ///
     /// [`get`]: slice::get
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let x = &mut [0, 1, 2];
@@ -603,25 +600,24 @@ impl<T> [T] {
         index.get_mut(self)
     }
 
-    /// Returns a reference to an element or subslice, without doing bounds
-    /// checking.
+    /// 不做边界检查，直接返回某个元素或子切片的共享引用。
+///
+    /// 安全替代方案见 [`get`]。
     ///
-    /// For a safe alternative see [`get`].
+    /// # 安全性(Safety）
     ///
-    /// # Safety
-    ///
-    /// Calling this method with an out-of-bounds index is *[undefined behavior]*
-    /// even if the resulting reference is not used.
-    ///
-    /// You can think of this like `.get(index).unwrap_unchecked()`.  It's UB
-    /// to call `.get_unchecked(len)`, even if you immediately convert to a
-    /// pointer.  And it's UB to call `.get_unchecked(..len + 1)`,
-    /// `.get_unchecked(..=len)`, or similar.
+    /// 使用越界索引调用本方法是 *[undefined behavior]*，即使得到的引用之后没有被使用。
+///
+    /// 可以把它理解为 `.get(index).unwrap_unchecked()`：调用方必须先证明索引满足
+    /// 对应 `SliceIndex` 的边界条件。调用 `.get_unchecked(len)` 是 UB，哪怕立刻把
+    /// 结果转换成裸指针；调用 `.get_unchecked(..len + 1)`、`.get_unchecked(..=len)`
+    /// 或类似越界范围同样是 UB。`get_unchecked` 不只是“省略 panic”，它把越界不存在
+    /// 作为优化前提交给编译器。
     ///
     /// [`get`]: slice::get
     /// [undefined behavior]: https://doc.rust-lang.org/reference/behavior-considered-undefined.html
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let x = &[1, 2, 4];
@@ -640,31 +636,29 @@ impl<T> [T] {
     where
         I: [const] SliceIndex<Self>,
     {
-        // SAFETY: the caller must uphold most of the safety requirements for `get_unchecked`;
-        // the slice is dereferenceable because `self` is a safe reference.
-        // The returned pointer is safe because impls of `SliceIndex` have to guarantee that it is.
+        // SAFETY: 调用方必须维护 `get_unchecked` 的索引边界契约；`self` 是安全引用，
+        // 因而切片本身可解引用。`SliceIndex` 的 unsafe 实现负责保证返回指针对应
+        // 一个可形成共享引用的有效输出。
         unsafe { &*index.get_unchecked(self) }
     }
 
-    /// Returns a mutable reference to an element or subslice, without doing
-    /// bounds checking.
+    /// 不做边界检查，直接返回某个元素或子切片的可变引用。
+///
+    /// 安全替代方案见 [`get_mut`]。
     ///
-    /// For a safe alternative see [`get_mut`].
+    /// # 安全性(Safety）
     ///
-    /// # Safety
-    ///
-    /// Calling this method with an out-of-bounds index is *[undefined behavior]*
-    /// even if the resulting reference is not used.
-    ///
-    /// You can think of this like `.get_mut(index).unwrap_unchecked()`.  It's
-    /// UB to call `.get_unchecked_mut(len)`, even if you immediately convert
-    /// to a pointer.  And it's UB to call `.get_unchecked_mut(..len + 1)`,
-    /// `.get_unchecked_mut(..=len)`, or similar.
+    /// 使用越界索引调用本方法是 *[undefined behavior]*，即使得到的引用之后没有被使用。
+///
+    /// 可以把它理解为 `.get_mut(index).unwrap_unchecked()`。调用
+    /// `.get_unchecked_mut(len)` 是 UB，哪怕立刻把结果转换成裸指针；
+    /// 调用 `.get_unchecked_mut(..len + 1)`、`.get_unchecked_mut(..=len)` 或类似
+    /// 越界范围同样是 UB。可变版本还要求返回区域与任何其它活跃引用不发生 aliasing。
     ///
     /// [`get_mut`]: slice::get_mut
     /// [undefined behavior]: https://doc.rust-lang.org/reference/behavior-considered-undefined.html
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let x = &mut [1, 2, 4];
@@ -685,25 +679,23 @@ impl<T> [T] {
     where
         I: [const] SliceIndex<Self>,
     {
-        // SAFETY: the caller must uphold the safety requirements for `get_unchecked_mut`;
-        // the slice is dereferenceable because `self` is a safe reference.
-        // The returned pointer is safe because impls of `SliceIndex` have to guarantee that it is.
+        // SAFETY: 调用方必须维护 `get_unchecked_mut` 的边界与唯一访问契约；`self`
+        // 是安全可变引用，切片本身可解引用。`SliceIndex` 的 unsafe 实现负责保证
+        // 返回指针对应一个有效且可唯一借用的输出。
         unsafe { &mut *index.get_unchecked_mut(self) }
     }
 
-    /// Returns a raw pointer to the slice's buffer.
+    /// 返回指向切片缓冲区起始位置的裸共享指针。
+///
+    /// 调用方必须保证切片比返回指针活得更久，否则该指针会悬垂。
+///
+    /// 调用方还必须保证：不能通过这个指针或从它直接派生出的指针写入其指向的内存，
+    /// 除非写入发生在 `UnsafeCell` 内部。需要修改切片内容时应使用 [`as_mut_ptr`]，
+    /// 以免破坏共享引用的 aliasing 契约。
+///
+    /// 如果切片背后的容器被修改并导致缓冲区重新分配，先前取得的所有指针都会失效。
     ///
-    /// The caller must ensure that the slice outlives the pointer this
-    /// function returns, or else it will end up dangling.
-    ///
-    /// The caller must also ensure that the memory the pointer (non-transitively) points to
-    /// is never written to (except inside an `UnsafeCell`) using this pointer or any pointer
-    /// derived from it. If you need to mutate the contents of the slice, use [`as_mut_ptr`].
-    ///
-    /// Modifying the container referenced by this slice may cause its buffer
-    /// to be reallocated, which would also make any pointers to it invalid.
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let x = &[1, 2, 4];
@@ -727,15 +719,14 @@ impl<T> [T] {
         self as *const [T] as *const T
     }
 
-    /// Returns an unsafe mutable pointer to the slice's buffer.
+    /// 返回指向切片缓冲区起始位置的裸可变指针。
+///
+    /// 调用方必须保证切片比返回指针活得更久，否则该指针会悬垂。
+///
+    /// 如果切片背后的容器被修改并导致缓冲区重新分配，先前取得的所有指针都会失效。
+    /// 使用该指针写入时仍需遵守裸指针和 `&mut [T]` 的 aliasing 规则。
     ///
-    /// The caller must ensure that the slice outlives the pointer this
-    /// function returns, or else it will end up dangling.
-    ///
-    /// Modifying the container referenced by this slice may cause its buffer
-    /// to be reallocated, which would also make any pointers to it invalid.
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let x = &mut [1, 2, 4];
@@ -758,23 +749,18 @@ impl<T> [T] {
         self as *mut [T] as *mut T
     }
 
-    /// Returns the two raw pointers spanning the slice.
-    ///
-    /// The returned range is half-open, which means that the end pointer
-    /// points *one past* the last element of the slice. This way, an empty
-    /// slice is represented by two equal pointers, and the difference between
-    /// the two pointers represents the size of the slice.
-    ///
-    /// See [`as_ptr`] for warnings on using these pointers. The end pointer
-    /// requires extra caution, as it does not point to a valid element in the
-    /// slice.
-    ///
-    /// This function is useful for interacting with foreign interfaces which
-    /// use two pointers to refer to a range of elements in memory, as is
-    /// common in C++.
-    ///
-    /// It can also be useful to check if a pointer to an element refers to an
-    /// element of this slice:
+    /// 返回横跨整个切片的两个裸共享指针。
+///
+    /// 返回范围是半开区间，表示 `start..end`。其中 `end` 指向最后一个元素之后的
+    /// *一过末尾* 位置。这样空切片可表示为两个相等指针，两个指针之间的距离表示切片长度。
+///
+    /// 使用这些指针时请参阅 [`as_ptr`] 的注意事项。`end` 指针需要额外谨慎，
+    /// 因为它不指向切片中的有效元素，不能被解引用。
+///
+    /// 该函数适合与使用两个指针表示元素范围的外部接口交互，例如 C++ 常见的
+    /// `[begin, end)` 约定。
+///
+    /// 它也可用于检查某个元素指针是否落在此切片范围内：
     ///
     /// ```
     /// let a = [1, 2, 3];
@@ -792,41 +778,32 @@ impl<T> [T] {
     #[must_use]
     pub const fn as_ptr_range(&self) -> Range<*const T> {
         let start = self.as_ptr();
-        // SAFETY: The `add` here is safe, because:
+        // SAFETY: 这里调用 `add` 是安全的，原因如下：
         //
-        //   - Both pointers are part of the same object, as pointing directly
-        //     past the object also counts.
+        //   - 起始指针和一过末尾指针都属于同一个对象；直接指向对象之后的位置也算同一范围。
         //
-        //   - The size of the slice is never larger than `isize::MAX` bytes, as
-        //     noted here:
+        //   - 切片大小不会超过 `isize::MAX` 字节，相关约定见：
         //       - https://github.com/rust-lang/unsafe-code-guidelines/issues/102#issuecomment-473340447
         //       - https://doc.rust-lang.org/reference/behavior-considered-undefined.html
         //       - https://doc.rust-lang.org/core/slice/fn.from_raw_parts.html#safety
-        //     (This doesn't seem normative yet, but the very same assumption is
-        //     made in many places, including the Index implementation of slices.)
+        //     （这看起来尚未完全规范化，但切片的 Index 实现等多处代码都依赖同一假设。）
         //
-        //   - There is no wrapping around involved, as slices do not wrap past
-        //     the end of the address space.
+        //   - 切片不会绕过地址空间末尾，因此这里不存在地址回绕。
         //
-        // See the documentation of [`pointer::add`].
+        // 另见 [`pointer::add`] 的文档。
         let end = unsafe { start.add(self.len()) };
         start..end
     }
 
-    /// Returns the two unsafe mutable pointers spanning the slice.
-    ///
-    /// The returned range is half-open, which means that the end pointer
-    /// points *one past* the last element of the slice. This way, an empty
-    /// slice is represented by two equal pointers, and the difference between
-    /// the two pointers represents the size of the slice.
-    ///
-    /// See [`as_mut_ptr`] for warnings on using these pointers. The end
-    /// pointer requires extra caution, as it does not point to a valid element
-    /// in the slice.
-    ///
-    /// This function is useful for interacting with foreign interfaces which
-    /// use two pointers to refer to a range of elements in memory, as is
-    /// common in C++.
+    /// 返回横跨整个切片的两个裸可变指针。
+///
+    /// 返回范围是半开区间，`end` 指向最后一个元素之后的 *一过末尾* 位置。
+    /// 空切片会得到两个相等指针，两个指针的距离表示切片长度。
+///
+    /// 使用这些指针时请参阅 [`as_mut_ptr`] 的注意事项。`end` 不指向有效元素，不能解引用；
+    /// 对范围内元素写入时还必须维护可变访问的唯一性。
+///
+    /// 该函数适合与使用 `[begin, end)` 两指针约定的外部接口交互，例如 C++。
     ///
     /// [`as_mut_ptr`]: slice::as_mut_ptr
     #[stable(feature = "slice_ptr_range", since = "1.48.0")]
@@ -835,14 +812,14 @@ impl<T> [T] {
     #[must_use]
     pub const fn as_mut_ptr_range(&mut self) -> Range<*mut T> {
         let start = self.as_mut_ptr();
-        // SAFETY: See as_ptr_range() above for why `add` here is safe.
+        // SAFETY: 见上方 as_ptr_range() 对这里调用 `add` 安全性的说明。
         let end = unsafe { start.add(self.len()) };
         start..end
     }
 
-    /// Gets a reference to the underlying array.
-    ///
-    /// If `N` is not exactly equal to the length of `self`, then this method returns `None`.
+    /// 获取底层数组的共享引用。
+///
+    /// 只有当 `N` 与 `self.len()` 完全相等时才返回 `Some(&[T; N])`，否则返回 `None`。
     #[stable(feature = "core_slice_as_array", since = "1.93.0")]
     #[rustc_const_stable(feature = "core_slice_as_array", since = "1.93.0")]
     #[inline]
@@ -851,7 +828,8 @@ impl<T> [T] {
         if self.len() == N {
             let ptr = self.as_ptr().cast_array();
 
-            // SAFETY: The underlying array of a slice can be reinterpreted as an actual array `[T; N]` if `N` is not greater than the slice's length.
+            // SAFETY: 已检查 `N == self.len()`，因此切片覆盖的元素序列可重新解释为
+            // 同长度的实际数组 `[T; N]`，且引用生命周期不超过原切片。
             let me = unsafe { &*ptr };
             Some(me)
         } else {
@@ -859,9 +837,9 @@ impl<T> [T] {
         }
     }
 
-    /// Gets a mutable reference to the slice's underlying array.
-    ///
-    /// If `N` is not exactly equal to the length of `self`, then this method returns `None`.
+    /// 获取底层数组的可变引用。
+///
+    /// 只有当 `N` 与 `self.len()` 完全相等时才返回 `Some(&mut [T; N])`，否则返回 `None`。
     #[stable(feature = "core_slice_as_array", since = "1.93.0")]
     #[rustc_const_stable(feature = "core_slice_as_array", since = "1.93.0")]
     #[inline]
@@ -870,7 +848,8 @@ impl<T> [T] {
         if self.len() == N {
             let ptr = self.as_mut_ptr().cast_array();
 
-            // SAFETY: The underlying array of a slice can be reinterpreted as an actual array `[T; N]` if `N` is not greater than the slice's length.
+            // SAFETY: 已检查 `N == self.len()`，且 `&mut self` 保证独占访问，因此可把
+            // 同长度切片重新解释为 `[T; N]` 的可变引用。
             let me = unsafe { &mut *ptr };
             Some(me)
         } else {
@@ -878,20 +857,20 @@ impl<T> [T] {
         }
     }
 
-    /// Swaps two elements in the slice.
-    ///
-    /// If `a` equals to `b`, it's guaranteed that elements won't change value.
-    ///
-    /// # Arguments
-    ///
-    /// * a - The index of the first element
-    /// * b - The index of the second element
+    /// 交换切片中的两个元素。
+///
+    /// 如果 `a == b`，元素值保证不会发生变化。
+///
+    /// # 参数
+///
+    /// * a - 第一个元素的索引
+    /// * b - 第二个元素的索引
     ///
     /// # Panics
     ///
-    /// Panics if `a` or `b` are out of bounds.
+    /// 如果 `a` 或 `b` 越界，本函数会 panic。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let mut v = ["a", "b", "c", "d", "e"];
@@ -903,40 +882,38 @@ impl<T> [T] {
     #[inline]
     #[track_caller]
     pub const fn swap(&mut self, a: usize, b: usize) {
-        // FIXME: use swap_unchecked here (https://github.com/rust-lang/rust/pull/88540#issuecomment-944344343)
-        // Can't take two mutable loans from one vector, so instead use raw pointers.
+        // FIXME: 在这里使用 swap_unchecked（https://github.com/rust-lang/rust/pull/88540#issuecomment-944344343）。
+        // 不能从同一个切片同时取得两个可变借用，因此改用裸指针。
         let pa = &raw mut self[a];
         let pb = &raw mut self[b];
-        // SAFETY: `pa` and `pb` have been created from safe mutable references and refer
-        // to elements in the slice and therefore are guaranteed to be valid and aligned.
-        // Note that accessing the elements behind `a` and `b` is checked and will
-        // panic when out of bounds.
+        // SAFETY: `pa` 和 `pb` 来自安全的可变引用，指向切片内元素，因此有效且对齐。
+        // 对 `a` 与 `b` 的元素访问已经经过边界检查，越界时会先 panic。
         unsafe {
             ptr::swap(pa, pb);
         }
     }
 
-    /// Swaps two elements in the slice, without doing bounds checking.
+    /// 不做边界检查，交换切片中的两个元素。
     ///
-    /// For a safe alternative see [`swap`].
+    /// 安全替代方案见 [`swap`]。
     ///
-    /// # Arguments
+    /// # 参数
     ///
-    /// * a - The index of the first element
-    /// * b - The index of the second element
+    /// * a - 第一个元素的索引
+    /// * b - 第二个元素的索引
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// Calling this method with an out-of-bounds index is *[undefined behavior]*.
-    /// The caller has to ensure that `a < self.len()` and `b < self.len()`.
+    /// 使用越界索引调用本方法是 *[undefined behavior]*。调用方必须保证
+    /// `a < self.len()` 且 `b < self.len()`；这里不会做 panic 边界检查。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(slice_swap_unchecked)]
     ///
     /// let mut v = ["a", "b", "c", "d"];
-    /// // SAFETY: we know that 1 and 3 are both indices of the slice
+    /// // SAFETY: 我们知道 1 和 3 都是该切片内的有效索引。
     /// unsafe { v.swap_unchecked(1, 3) };
     /// assert!(v == ["a", "d", "c", "b"]);
     /// ```
@@ -957,15 +934,15 @@ impl<T> [T] {
         );
 
         let ptr = self.as_mut_ptr();
-        // SAFETY: caller has to guarantee that `a < self.len()` and `b < self.len()`
+        // SAFETY: 调用方必须保证 `a < self.len()` 且 `b < self.len()`。
         unsafe {
             ptr::swap(ptr.add(a), ptr.add(b));
         }
     }
 
-    /// Reverses the order of elements in the slice, in place.
+    /// 原地反转切片中的元素顺序。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let mut v = [1, 2, 3];
@@ -979,12 +956,10 @@ impl<T> [T] {
         let half_len = self.len() / 2;
         let Range { start, end } = self.as_mut_ptr_range();
 
-        // These slices will skip the middle item for an odd length,
-        // since that one doesn't need to move.
+        // 如果长度为奇数，这两个切片会跳过中间元素，因为中间元素不需要移动。
         let (front_half, back_half) =
-            // SAFETY: Both are subparts of the original slice, so the memory
-            // range is valid, and they don't overlap because they're each only
-            // half (or less) of the original slice.
+            // SAFETY: 两者都是原切片的子区域，因此内存范围有效；它们各自至多占原切片一半，
+            // 所以不会重叠。
             unsafe {
                 (
                     slice::from_raw_parts_mut(start, half_len),
@@ -992,9 +967,8 @@ impl<T> [T] {
                 )
             };
 
-        // Introducing a function boundary here means that the two halves
-        // get `noalias` markers, allowing better optimization as LLVM
-        // knows that they're disjoint, unlike in the original slice.
+        // 在这里引入函数边界，可以让两个半区获得 `noalias` 标记；LLVM 因而知道它们互不重叠，
+        // 相比直接在原切片上操作更利于优化。
         revswap(front_half, back_half, half_len);
 
         #[inline]
@@ -1002,11 +976,9 @@ impl<T> [T] {
             debug_assert!(a.len() == n);
             debug_assert!(b.len() == n);
 
-            // Because this function is first compiled in isolation,
-            // this check tells LLVM that the indexing below is
-            // in-bounds. Then after inlining -- once the actual
-            // lengths of the slices are known -- it's removed.
-            // FIXME(const_trait_impl) replace with let (a, b) = (&mut a[..n], &mut b[..n]);
+            // 这个函数会先独立编译；该检查告诉 LLVM 下面的索引位于边界内。
+            // 内联之后，实际切片长度已知，这个检查会被移除。
+            // FIXME(const_trait_impl): 替换为 let (a, b) = (&mut a[..n], &mut b[..n]);
             let (a, _) = a.split_at_mut(n);
             let (b, _) = b.split_at_mut(n);
 
@@ -1018,11 +990,11 @@ impl<T> [T] {
         }
     }
 
-    /// Returns an iterator over the slice.
+    /// 返回遍历切片的迭代器。
+///
+    /// 迭代器按从头到尾的顺序产出所有元素的共享引用。
     ///
-    /// The iterator yields all items from start to end.
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let x = &[1, 2, 4];
@@ -1041,11 +1013,11 @@ impl<T> [T] {
         Iter::new(self)
     }
 
-    /// Returns an iterator that allows modifying each value.
+    /// 返回允许逐个修改元素的迭代器。
+///
+    /// 迭代器按从头到尾的顺序产出所有元素的可变引用；这些可变引用互不重叠。
     ///
-    /// The iterator yields all items from start to end.
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let x = &mut [1, 2, 4];
@@ -1061,15 +1033,15 @@ impl<T> [T] {
         IterMut::new(self)
     }
 
-    /// Returns an iterator over all contiguous windows of length
-    /// `size`. The windows overlap. If the slice is shorter than
-    /// `size`, the iterator returns no values.
+    /// 返回遍历所有长度为 `size` 的连续窗口的迭代器。
+    ///
+    /// 相邻窗口会重叠。如果切片短于 `size`，迭代器不产生任何值。
     ///
     /// # Panics
     ///
-    /// Panics if `size` is zero.
+    /// 如果 `size` 为 0，本函数会 panic。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let slice = ['l', 'o', 'r', 'e', 'm'];
@@ -1080,7 +1052,7 @@ impl<T> [T] {
     /// assert!(iter.next().is_none());
     /// ```
     ///
-    /// If the slice is shorter than `size`:
+    /// 当切片短于 `size` 时：
     ///
     /// ```
     /// let slice = ['f', 'o', 'o'];
@@ -1088,12 +1060,11 @@ impl<T> [T] {
     /// assert!(iter.next().is_none());
     /// ```
     ///
-    /// Because the [Iterator] trait cannot represent the required lifetimes,
-    /// there is no `windows_mut` analog to `windows`;
-    /// `[0,1,2].windows_mut(2).collect()` would violate [the rules of references]
-    /// (though a [LendingIterator] analog is possible). You can sometimes use
-    /// [`Cell::as_slice_of_cells`](crate::cell::Cell::as_slice_of_cells) in
-    /// conjunction with `windows` instead:
+    /// 因为 [Iterator] trait 无法表达这种重叠可变窗口所需的生命周期，标准切片没有
+    /// `windows_mut`。例如 `[0,1,2].windows_mut(2).collect()` 会同时持有重叠的
+    /// `&mut`，违反 [the rules of references]。类似 [LendingIterator] 的抽象可以表达
+    /// 这种模式；在某些场景下，也可以结合
+    /// [`Cell::as_slice_of_cells`](crate::cell::Cell::as_slice_of_cells) 与 `windows` 使用。
     ///
     /// [the rules of references]: https://doc.rust-lang.org/book/ch04-02-references-and-borrowing.html#the-rules-of-references
     /// [LendingIterator]: https://blog.rust-lang.org/2022/10/28/gats-stabilization.html
@@ -1117,24 +1088,22 @@ impl<T> [T] {
         Windows::new(self, size)
     }
 
-    /// Returns an iterator over `chunk_size` elements of the slice at a time, starting at the
-    /// beginning of the slice.
-    ///
-    /// The chunks are slices and do not overlap. If `chunk_size` does not divide the length of the
-    /// slice, then the last chunk will not have length `chunk_size`.
-    ///
-    /// See [`chunks_exact`] for a variant of this iterator that returns chunks of always exactly
-    /// `chunk_size` elements, and [`rchunks`] for the same iterator but starting at the end of the
-    /// slice.
-    ///
-    /// If your `chunk_size` is a constant, consider using [`as_chunks`] instead, which will
-    /// give references to arrays of exactly that length, rather than slices.
+    /// 返回从切片开头开始、每次遍历 `chunk_size` 个元素的迭代器。
+///
+    /// 每个 chunk 都是一个不重叠的子切片。如果 `chunk_size` 不能整除切片长度，
+    /// 最后一个 chunk 的长度会小于 `chunk_size`。
+///
+    /// 如果需要只返回长度恰好为 `chunk_size` 的 chunk，见 [`chunks_exact`]；
+    /// 如果需要从切片末尾开始的同类迭代器，见 [`rchunks`]。
+///
+    /// 如果 `chunk_size` 是常量，考虑使用 [`as_chunks`]；它返回固定长度数组引用，
+    /// 而不是普通切片引用。
     ///
     /// # Panics
     ///
-    /// Panics if `chunk_size` is zero.
+    /// 如果 `chunk_size` 为 0，本函数会 panic。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let slice = ['l', 'o', 'r', 'e', 'm'];
@@ -1157,24 +1126,22 @@ impl<T> [T] {
         Chunks::new(self, chunk_size)
     }
 
-    /// Returns an iterator over `chunk_size` elements of the slice at a time, starting at the
-    /// beginning of the slice.
-    ///
-    /// The chunks are mutable slices, and do not overlap. If `chunk_size` does not divide the
-    /// length of the slice, then the last chunk will not have length `chunk_size`.
-    ///
-    /// See [`chunks_exact_mut`] for a variant of this iterator that returns chunks of always
-    /// exactly `chunk_size` elements, and [`rchunks_mut`] for the same iterator but starting at
-    /// the end of the slice.
-    ///
-    /// If your `chunk_size` is a constant, consider using [`as_chunks_mut`] instead, which will
-    /// give references to arrays of exactly that length, rather than slices.
+    /// 返回从切片开头开始、每次遍历 `chunk_size` 个元素的可变迭代器。
+///
+    /// 每个 chunk 都是互不重叠的可变子切片。如果 `chunk_size` 不能整除切片长度，
+    /// 最后一个 chunk 的长度会小于 `chunk_size`。
+///
+    /// 如果需要只返回长度恰好为 `chunk_size` 的可变 chunk，见 [`chunks_exact_mut`]；
+    /// 如果需要从切片末尾开始的同类迭代器，见 [`rchunks_mut`]。
+///
+    /// 如果 `chunk_size` 是常量，考虑使用 [`as_chunks_mut`]；它返回固定长度数组的可变引用，
+    /// 而不是普通切片引用。
     ///
     /// # Panics
     ///
-    /// Panics if `chunk_size` is zero.
+    /// 如果 `chunk_size` 为 0，本函数会 panic。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let v = &mut [0, 0, 0, 0, 0];
@@ -1201,27 +1168,26 @@ impl<T> [T] {
         ChunksMut::new(self, chunk_size)
     }
 
-    /// Returns an iterator over `chunk_size` elements of the slice at a time, starting at the
-    /// beginning of the slice.
+    /// 返回从切片开头开始、每次遍历 `chunk_size` 个元素的迭代器。
     ///
-    /// The chunks are slices and do not overlap. If `chunk_size` does not divide the length of the
-    /// slice, then the last up to `chunk_size-1` elements will be omitted and can be retrieved
-    /// from the `remainder` function of the iterator.
+    /// 每个 chunk 都是互不重叠的子切片。如果 `chunk_size` 不能整除切片长度，
+    /// 最后最多 `chunk_size-1` 个元素会被省略，并可通过迭代器的 `remainder`
+    /// 函数取回。
     ///
-    /// Due to each chunk having exactly `chunk_size` elements, the compiler can often optimize the
-    /// resulting code better than in the case of [`chunks`].
+    /// 由于每个 chunk 的长度都恰好是 `chunk_size`，编译器通常能比 [`chunks`]
+    /// 的情况更好地优化生成代码。
     ///
-    /// See [`chunks`] for a variant of this iterator that also returns the remainder as a smaller
-    /// chunk, and [`rchunks_exact`] for the same iterator but starting at the end of the slice.
+    /// 若需要把 remainder 也作为较小 chunk 返回，见 [`chunks`]；若需要从切片末尾
+    /// 开始的同类迭代器，见 [`rchunks_exact`]。
     ///
-    /// If your `chunk_size` is a constant, consider using [`as_chunks`] instead, which will
-    /// give references to arrays of exactly that length, rather than slices.
+    /// 如果 `chunk_size` 是常量，考虑使用 [`as_chunks`]；它返回固定长度数组引用，
+    /// 而不是普通切片引用。
     ///
     /// # Panics
     ///
-    /// Panics if `chunk_size` is zero.
+    /// 如果 `chunk_size` 为 0，本函数会 panic。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let slice = ['l', 'o', 'r', 'e', 'm'];
@@ -1244,28 +1210,26 @@ impl<T> [T] {
         ChunksExact::new(self, chunk_size)
     }
 
-    /// Returns an iterator over `chunk_size` elements of the slice at a time, starting at the
-    /// beginning of the slice.
+    /// 返回从切片开头开始、每次遍历 `chunk_size` 个元素的可变迭代器。
     ///
-    /// The chunks are mutable slices, and do not overlap. If `chunk_size` does not divide the
-    /// length of the slice, then the last up to `chunk_size-1` elements will be omitted and can be
-    /// retrieved from the `into_remainder` function of the iterator.
+    /// 每个 chunk 都是互不重叠的可变子切片。如果 `chunk_size` 不能整除切片长度，
+    /// 最后最多 `chunk_size-1` 个元素会被省略，并可通过迭代器的 `into_remainder`
+    /// 函数取回。
     ///
-    /// Due to each chunk having exactly `chunk_size` elements, the compiler can often optimize the
-    /// resulting code better than in the case of [`chunks_mut`].
+    /// 由于每个 chunk 的长度都恰好是 `chunk_size`，编译器通常能比 [`chunks_mut`]
+    /// 的情况更好地优化生成代码。
     ///
-    /// See [`chunks_mut`] for a variant of this iterator that also returns the remainder as a
-    /// smaller chunk, and [`rchunks_exact_mut`] for the same iterator but starting at the end of
-    /// the slice.
+    /// 若需要把 remainder 也作为较小 chunk 返回，见 [`chunks_mut`]；若需要从切片末尾
+    /// 开始的同类迭代器，见 [`rchunks_exact_mut`]。
     ///
-    /// If your `chunk_size` is a constant, consider using [`as_chunks_mut`] instead, which will
-    /// give references to arrays of exactly that length, rather than slices.
+    /// 如果 `chunk_size` 是常量，考虑使用 [`as_chunks_mut`]；它返回固定长度数组的可变引用，
+    /// 而不是普通切片引用。
     ///
     /// # Panics
     ///
-    /// Panics if `chunk_size` is zero.
+    /// 如果 `chunk_size` 为 0，本函数会 panic。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let v = &mut [0, 0, 0, 0, 0];
@@ -1292,43 +1256,42 @@ impl<T> [T] {
         ChunksExactMut::new(self, chunk_size)
     }
 
-    /// Splits the slice into a slice of `N`-element arrays,
-    /// assuming that there's no remainder.
+    /// 在假设没有 remainder 的前提下，把切片拆成 `N` 元素数组切片。
     ///
-    /// This is the inverse operation to [`as_flattened`].
+    /// 这是 [`as_flattened`] 的逆操作。
     ///
     /// [`as_flattened`]: slice::as_flattened
     ///
-    /// As this is `unsafe`, consider whether you could use [`as_chunks`] or
-    /// [`as_rchunks`] instead, perhaps via something like
-    /// `if let (chunks, []) = slice.as_chunks()` or
+    /// 由于它是 `unsafe`，应考虑是否可改用 [`as_chunks`] 或 [`as_rchunks`]，
+    /// 例如通过类似下面的写法：
+    /// `if let (chunks, []) = slice.as_chunks()` 或
     /// `let (chunks, []) = slice.as_chunks() else { unreachable!() };`.
     ///
     /// [`as_chunks`]: slice::as_chunks
     /// [`as_rchunks`]: slice::as_rchunks
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// This may only be called when
-    /// - The slice splits exactly into `N`-element chunks (aka `self.len() % N == 0`).
-    /// - `N != 0`.
+    /// 只能在满足以下条件时调用：
+    /// - 切片能被精确分成 `N` 元素 chunk（即 `self.len() % N == 0`）。
+    /// - `N != 0`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let slice: &[char] = &['l', 'o', 'r', 'e', 'm', '!'];
     /// let chunks: &[[char; 1]] =
-    ///     // SAFETY: 1-element chunks never have remainder
+    ///     // SAFETY: 1 元素 chunk 永远没有 remainder。
     ///     unsafe { slice.as_chunks_unchecked() };
     /// assert_eq!(chunks, &[['l'], ['o'], ['r'], ['e'], ['m'], ['!']]);
     /// let chunks: &[[char; 3]] =
-    ///     // SAFETY: The slice length (6) is a multiple of 3
+    ///     // SAFETY: 切片长度 (6) 是 3 的倍数。
     ///     unsafe { slice.as_chunks_unchecked() };
     /// assert_eq!(chunks, &[['l', 'o', 'r'], ['e', 'm', '!']]);
     ///
-    /// // These would be unsound:
-    /// // let chunks: &[[_; 5]] = slice.as_chunks_unchecked() // The slice length is not a multiple of 5
-    /// // let chunks: &[[_; 0]] = slice.as_chunks_unchecked() // Zero-length chunks are never allowed
+    /// // 这些调用都是不健全的：
+    /// // let chunks: &[[_; 5]] = slice.as_chunks_unchecked() // 切片长度不是 5 的倍数。
+    /// // let chunks: &[[_; 0]] = slice.as_chunks_unchecked() // 永远不允许零长度 chunk。
     /// ```
     #[stable(feature = "slice_as_chunks", since = "1.88.0")]
     #[rustc_const_stable(feature = "slice_as_chunks", since = "1.88.0")]
@@ -1341,36 +1304,33 @@ impl<T> [T] {
             "slice::as_chunks_unchecked requires `N != 0` and the slice to split exactly into `N`-element chunks",
             (n: usize = N, len: usize = self.len()) => n != 0 && len.is_multiple_of(n),
         );
-        // SAFETY: Caller must guarantee that `N` is nonzero and exactly divides the slice length
+        // SAFETY: 调用方必须保证 `N` 非零，并且能整除切片长度。
         let new_len = unsafe { exact_div(self.len(), N) };
-        // SAFETY: We cast a slice of `new_len * N` elements into
-        // a slice of `new_len` many `N` elements chunks.
+        // SAFETY: 把一个包含 `new_len * N` 个元素的切片转换成
+        // 一个包含 `new_len` 个 `N` 元素 chunk 的切片。
         unsafe { from_raw_parts(self.as_ptr().cast(), new_len) }
     }
 
-    /// Splits the slice into a slice of `N`-element arrays,
-    /// starting at the beginning of the slice,
-    /// and a remainder slice with length strictly less than `N`.
+    /// 从切片开头开始，把切片拆成 `N` 元素数组切片和一个长度严格小于 `N` 的 remainder 切片。
     ///
-    /// The remainder is meaningful in the division sense.  Given
-    /// `let (chunks, remainder) = slice.as_chunks()`, then:
-    /// - `chunks.len()` equals `slice.len() / N`,
-    /// - `remainder.len()` equals `slice.len() % N`, and
-    /// - `slice.len()` equals `chunks.len() * N + remainder.len()`.
+    /// remainder 在除法意义上有定义。给定
+    /// `let (chunks, remainder) = slice.as_chunks()`，则：
+    /// - `chunks.len()` 等于 `slice.len() / N`；
+    /// - `remainder.len()` 等于 `slice.len() % N`；
+    /// - `slice.len()` 等于 `chunks.len() * N + remainder.len()`。
     ///
-    /// You can flatten the chunks back into a slice-of-`T` with [`as_flattened`].
+    /// 可使用 [`as_flattened`] 把 chunk 重新展平成 `T` 切片。
     ///
     /// [`as_flattened`]: slice::as_flattened
     ///
     /// # Panics
     ///
-    /// Panics if `N` is zero.
+    /// 如果 `N` 为零则 panic。
     ///
-    /// Note that this check is against a const generic parameter, not a runtime
-    /// value, and thus a particular monomorphization will either always panic
-    /// or it will never panic.
+    /// 注意，该检查针对的是 const generic 参数，而不是运行时值；
+    /// 因此某个特定单态化要么总是 panic，要么永不 panic。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let slice = ['l', 'o', 'r', 'e', 'm'];
@@ -1379,8 +1339,7 @@ impl<T> [T] {
     /// assert_eq!(remainder, &['m']);
     /// ```
     ///
-    /// If you expect the slice to be an exact multiple, you can combine
-    /// `let`-`else` with an empty slice pattern:
+    /// 如果预期切片长度正好是倍数，可将 `let`-`else` 与空切片模式结合使用：
     /// ```
     /// let slice = ['R', 'u', 's', 't'];
     /// let (chunks, []) = slice.as_chunks::<2>() else {
@@ -1396,38 +1355,33 @@ impl<T> [T] {
     pub const fn as_chunks<const N: usize>(&self) -> (&[[T; N]], &[T]) {
         assert!(N != 0, "chunk size must be non-zero");
         let len_rounded_down = self.len() / N * N;
-        // SAFETY: The rounded-down value is always the same or smaller than the
-        // original length, and thus must be in-bounds of the slice.
+        // SAFETY: 向下取整后的值始终小于或等于原始长度，因此必定位于切片边界内。
         let (multiple_of_n, remainder) = unsafe { self.split_at_unchecked(len_rounded_down) };
-        // SAFETY: We already panicked for zero, and ensured by construction
-        // that the length of the subslice is a multiple of N.
+        // SAFETY: 已经对零值 panic，并通过构造保证子切片长度是 N 的倍数。
         let array_slice = unsafe { multiple_of_n.as_chunks_unchecked() };
         (array_slice, remainder)
     }
 
-    /// Splits the slice into a slice of `N`-element arrays,
-    /// starting at the end of the slice,
-    /// and a remainder slice with length strictly less than `N`.
+    /// 从切片末尾开始，把切片拆成 `N` 元素数组切片和一个长度严格小于 `N` 的 remainder 切片。
     ///
-    /// The remainder is meaningful in the division sense.  Given
-    /// `let (remainder, chunks) = slice.as_rchunks()`, then:
-    /// - `remainder.len()` equals `slice.len() % N`,
-    /// - `chunks.len()` equals `slice.len() / N`, and
-    /// - `slice.len()` equals `chunks.len() * N + remainder.len()`.
+    /// remainder 在除法意义上有定义。给定
+    /// `let (remainder, chunks) = slice.as_rchunks()`，则：
+    /// - `remainder.len()` 等于 `slice.len() % N`；
+    /// - `chunks.len()` 等于 `slice.len() / N`；
+    /// - `slice.len()` 等于 `chunks.len() * N + remainder.len()`。
     ///
-    /// You can flatten the chunks back into a slice-of-`T` with [`as_flattened`].
+    /// 可使用 [`as_flattened`] 把 chunk 重新展平成 `T` 切片。
     ///
     /// [`as_flattened`]: slice::as_flattened
     ///
     /// # Panics
     ///
-    /// Panics if `N` is zero.
+    /// 如果 `N` 为零则 panic。
     ///
-    /// Note that this check is against a const generic parameter, not a runtime
-    /// value, and thus a particular monomorphization will either always panic
-    /// or it will never panic.
+    /// 注意，该检查针对的是 const generic 参数，而不是运行时值；
+    /// 因此某个特定单态化要么总是 panic，要么永不 panic。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let slice = ['l', 'o', 'r', 'e', 'm'];
@@ -1444,51 +1398,49 @@ impl<T> [T] {
         assert!(N != 0, "chunk size must be non-zero");
         let len = self.len() / N;
         let (remainder, multiple_of_n) = self.split_at(self.len() - len * N);
-        // SAFETY: We already panicked for zero, and ensured by construction
-        // that the length of the subslice is a multiple of N.
+        // SAFETY: 已经对零值 panic，并通过构造保证子切片长度是 N 的倍数。
         let array_slice = unsafe { multiple_of_n.as_chunks_unchecked() };
         (remainder, array_slice)
     }
 
-    /// Splits the slice into a slice of `N`-element arrays,
-    /// assuming that there's no remainder.
+    /// 在假设没有 remainder 的前提下，把切片拆成 `N` 元素数组切片。
     ///
-    /// This is the inverse operation to [`as_flattened_mut`].
+    /// 这是 [`as_flattened_mut`] 的逆操作。
     ///
     /// [`as_flattened_mut`]: slice::as_flattened_mut
     ///
-    /// As this is `unsafe`, consider whether you could use [`as_chunks_mut`] or
-    /// [`as_rchunks_mut`] instead, perhaps via something like
-    /// `if let (chunks, []) = slice.as_chunks_mut()` or
+    /// 由于它是 `unsafe`，应考虑是否可改用 [`as_chunks_mut`] 或 [`as_rchunks_mut`]，
+    /// 例如通过类似下面的写法：
+    /// `if let (chunks, []) = slice.as_chunks_mut()` 或
     /// `let (chunks, []) = slice.as_chunks_mut() else { unreachable!() };`.
     ///
     /// [`as_chunks_mut`]: slice::as_chunks_mut
     /// [`as_rchunks_mut`]: slice::as_rchunks_mut
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// This may only be called when
-    /// - The slice splits exactly into `N`-element chunks (aka `self.len() % N == 0`).
-    /// - `N != 0`.
+    /// 只能在满足以下条件时调用：
+    /// - 切片能被精确分成 `N` 元素 chunk（即 `self.len() % N == 0`）。
+    /// - `N != 0`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let slice: &mut [char] = &mut ['l', 'o', 'r', 'e', 'm', '!'];
     /// let chunks: &mut [[char; 1]] =
-    ///     // SAFETY: 1-element chunks never have remainder
+    ///     // SAFETY: 1 元素 chunk 永远没有 remainder。
     ///     unsafe { slice.as_chunks_unchecked_mut() };
     /// chunks[0] = ['L'];
     /// assert_eq!(chunks, &[['L'], ['o'], ['r'], ['e'], ['m'], ['!']]);
     /// let chunks: &mut [[char; 3]] =
-    ///     // SAFETY: The slice length (6) is a multiple of 3
+    ///     // SAFETY: 切片长度 (6) 是 3 的倍数。
     ///     unsafe { slice.as_chunks_unchecked_mut() };
     /// chunks[1] = ['a', 'x', '?'];
     /// assert_eq!(slice, &['L', 'o', 'r', 'a', 'x', '?']);
     ///
-    /// // These would be unsound:
-    /// // let chunks: &[[_; 5]] = slice.as_chunks_unchecked_mut() // The slice length is not a multiple of 5
-    /// // let chunks: &[[_; 0]] = slice.as_chunks_unchecked_mut() // Zero-length chunks are never allowed
+    /// // 这些调用都是不健全的：
+    /// // let chunks: &[[_; 5]] = slice.as_chunks_unchecked_mut() // 切片长度不是 5 的倍数。
+    /// // let chunks: &[[_; 0]] = slice.as_chunks_unchecked_mut() // 永远不允许零长度 chunk。
     /// ```
     #[stable(feature = "slice_as_chunks", since = "1.88.0")]
     #[rustc_const_stable(feature = "slice_as_chunks", since = "1.88.0")]
@@ -1501,36 +1453,34 @@ impl<T> [T] {
             "slice::as_chunks_unchecked requires `N != 0` and the slice to split exactly into `N`-element chunks",
             (n: usize = N, len: usize = self.len()) => n != 0 && len.is_multiple_of(n)
         );
-        // SAFETY: Caller must guarantee that `N` is nonzero and exactly divides the slice length
+        // SAFETY: 调用方必须保证 `N` 非零，并且能整除切片长度。
         let new_len = unsafe { exact_div(self.len(), N) };
-        // SAFETY: We cast a slice of `new_len * N` elements into
-        // a slice of `new_len` many `N` elements chunks.
+        // SAFETY: 把一个包含 `new_len * N` 个元素的切片转换成
+        // 一个包含 `new_len` 个 `N` 元素 chunk 的切片。
         unsafe { from_raw_parts_mut(self.as_mut_ptr().cast(), new_len) }
     }
 
-    /// Splits the slice into a slice of `N`-element arrays,
-    /// starting at the beginning of the slice,
-    /// and a remainder slice with length strictly less than `N`.
+    /// 从切片开头开始，把切片拆成 `N` 元素数组切片和一个长度严格小于 `N` 的
+    /// remainder 切片。
     ///
-    /// The remainder is meaningful in the division sense.  Given
-    /// `let (chunks, remainder) = slice.as_chunks_mut()`, then:
-    /// - `chunks.len()` equals `slice.len() / N`,
-    /// - `remainder.len()` equals `slice.len() % N`, and
-    /// - `slice.len()` equals `chunks.len() * N + remainder.len()`.
+    /// remainder 在除法意义上有定义。给定
+    /// `let (chunks, remainder) = slice.as_chunks_mut()`，则：
+    /// - `chunks.len()` 等于 `slice.len() / N`；
+    /// - `remainder.len()` 等于 `slice.len() % N`；
+    /// - `slice.len()` 等于 `chunks.len() * N + remainder.len()`。
     ///
-    /// You can flatten the chunks back into a slice-of-`T` with [`as_flattened_mut`].
+    /// 可使用 [`as_flattened_mut`] 把 chunk 重新展平成 `T` 切片。
     ///
     /// [`as_flattened_mut`]: slice::as_flattened_mut
     ///
     /// # Panics
     ///
-    /// Panics if `N` is zero.
+    /// 如果 `N` 为零则 panic。
     ///
-    /// Note that this check is against a const generic parameter, not a runtime
-    /// value, and thus a particular monomorphization will either always panic
-    /// or it will never panic.
+    /// 注意，该检查针对的是 const generic 参数，而不是运行时值；
+    /// 因此某个特定单态化要么总是 panic，要么永不 panic。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let v = &mut [0, 0, 0, 0, 0];
@@ -1552,38 +1502,34 @@ impl<T> [T] {
     pub const fn as_chunks_mut<const N: usize>(&mut self) -> (&mut [[T; N]], &mut [T]) {
         assert!(N != 0, "chunk size must be non-zero");
         let len_rounded_down = self.len() / N * N;
-        // SAFETY: The rounded-down value is always the same or smaller than the
-        // original length, and thus must be in-bounds of the slice.
+        // SAFETY: 向下取整后的值始终小于或等于原始长度，因此必定位于切片边界内。
         let (multiple_of_n, remainder) = unsafe { self.split_at_mut_unchecked(len_rounded_down) };
-        // SAFETY: We already panicked for zero, and ensured by construction
-        // that the length of the subslice is a multiple of N.
+        // SAFETY: 已经对零值 panic，并通过构造保证子切片长度是 N 的倍数。
         let array_slice = unsafe { multiple_of_n.as_chunks_unchecked_mut() };
         (array_slice, remainder)
     }
 
-    /// Splits the slice into a slice of `N`-element arrays,
-    /// starting at the end of the slice,
-    /// and a remainder slice with length strictly less than `N`.
+    /// 从切片末尾开始，把切片拆成 `N` 元素数组切片和一个长度严格小于 `N` 的
+    /// remainder 切片。
     ///
-    /// The remainder is meaningful in the division sense.  Given
-    /// `let (remainder, chunks) = slice.as_rchunks_mut()`, then:
-    /// - `remainder.len()` equals `slice.len() % N`,
-    /// - `chunks.len()` equals `slice.len() / N`, and
-    /// - `slice.len()` equals `chunks.len() * N + remainder.len()`.
+    /// remainder 在除法意义上有定义。给定
+    /// `let (remainder, chunks) = slice.as_rchunks_mut()`，则：
+    /// - `remainder.len()` 等于 `slice.len() % N`；
+    /// - `chunks.len()` 等于 `slice.len() / N`；
+    /// - `slice.len()` 等于 `chunks.len() * N + remainder.len()`。
     ///
-    /// You can flatten the chunks back into a slice-of-`T` with [`as_flattened_mut`].
+    /// 可使用 [`as_flattened_mut`] 把 chunk 重新展平成 `T` 切片。
     ///
     /// [`as_flattened_mut`]: slice::as_flattened_mut
     ///
     /// # Panics
     ///
-    /// Panics if `N` is zero.
+    /// 如果 `N` 为零则 panic。
     ///
-    /// Note that this check is against a const generic parameter, not a runtime
-    /// value, and thus a particular monomorphization will either always panic
-    /// or it will never panic.
+    /// 注意，该检查针对的是 const generic 参数，而不是运行时值；
+    /// 因此某个特定单态化要么总是 panic，要么永不 panic。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let v = &mut [0, 0, 0, 0, 0];
@@ -1606,28 +1552,25 @@ impl<T> [T] {
         assert!(N != 0, "chunk size must be non-zero");
         let len = self.len() / N;
         let (remainder, multiple_of_n) = self.split_at_mut(self.len() - len * N);
-        // SAFETY: We already panicked for zero, and ensured by construction
-        // that the length of the subslice is a multiple of N.
+        // SAFETY: 已经对零值 panic，并通过构造保证子切片长度是 N 的倍数。
         let array_slice = unsafe { multiple_of_n.as_chunks_unchecked_mut() };
         (remainder, array_slice)
     }
 
-    /// Returns an iterator over overlapping windows of `N` elements of a slice,
-    /// starting at the beginning of the slice.
+    /// 返回从切片开头开始、遍历所有重叠 `N` 元素窗口的迭代器。
     ///
-    /// This is the const generic equivalent of [`windows`].
+    /// 这是 [`windows`] 的 const generic 等价版本。
     ///
-    /// If `N` is greater than the size of the slice, it will return no windows.
+    /// 如果 `N` 大于切片长度，则不返回任何窗口。
     ///
     /// # Panics
     ///
-    /// Panics if `N` is zero.
+    /// 如果 `N` 为零则 panic。
     ///
-    /// Note that this check is against a const generic parameter, not a runtime
-    /// value, and thus a particular monomorphization will either always panic
-    /// or it will never panic.
+    /// 注意，该检查针对的是 const generic 参数，而不是运行时值；
+    /// 因此某个特定单态化要么总是 panic，要么永不 panic。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let slice = [0, 1, 2, 3];
@@ -1648,24 +1591,22 @@ impl<T> [T] {
         ArrayWindows::new(self)
     }
 
-    /// Returns an iterator over `chunk_size` elements of the slice at a time, starting at the end
-    /// of the slice.
+    /// 返回从切片末尾开始、每次遍历 `chunk_size` 个元素的迭代器。
     ///
-    /// The chunks are slices and do not overlap. If `chunk_size` does not divide the length of the
-    /// slice, then the last chunk will not have length `chunk_size`.
+    /// 每个 chunk 都是互不重叠的子切片。如果 `chunk_size` 不能整除切片长度，
+    /// 最后一个 chunk 的长度会小于 `chunk_size`。
     ///
-    /// See [`rchunks_exact`] for a variant of this iterator that returns chunks of always exactly
-    /// `chunk_size` elements, and [`chunks`] for the same iterator but starting at the beginning
-    /// of the slice.
+    /// 若需要只返回长度恰好为 `chunk_size` 的 chunk，见 [`rchunks_exact`]；
+    /// 若需要从切片开头开始的同类迭代器，见 [`chunks`]。
     ///
-    /// If your `chunk_size` is a constant, consider using [`as_rchunks`] instead, which will
-    /// give references to arrays of exactly that length, rather than slices.
+    /// 如果 `chunk_size` 是常量，考虑使用 [`as_rchunks`]；它返回固定长度数组引用，
+    /// 而不是普通切片引用。
     ///
     /// # Panics
     ///
-    /// Panics if `chunk_size` is zero.
+    /// 如果 `chunk_size` 为 0，本函数会 panic。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let slice = ['l', 'o', 'r', 'e', 'm'];
@@ -1688,24 +1629,22 @@ impl<T> [T] {
         RChunks::new(self, chunk_size)
     }
 
-    /// Returns an iterator over `chunk_size` elements of the slice at a time, starting at the end
-    /// of the slice.
+    /// 返回从切片末尾开始、每次遍历 `chunk_size` 个元素的可变迭代器。
     ///
-    /// The chunks are mutable slices, and do not overlap. If `chunk_size` does not divide the
-    /// length of the slice, then the last chunk will not have length `chunk_size`.
+    /// 每个 chunk 都是互不重叠的可变子切片。如果 `chunk_size` 不能整除切片长度，
+    /// 最后一个 chunk 的长度会小于 `chunk_size`。
     ///
-    /// See [`rchunks_exact_mut`] for a variant of this iterator that returns chunks of always
-    /// exactly `chunk_size` elements, and [`chunks_mut`] for the same iterator but starting at the
-    /// beginning of the slice.
+    /// 若需要只返回长度恰好为 `chunk_size` 的可变 chunk，见 [`rchunks_exact_mut`]；
+    /// 若需要从切片开头开始的同类迭代器，见 [`chunks_mut`]。
     ///
-    /// If your `chunk_size` is a constant, consider using [`as_rchunks_mut`] instead, which will
-    /// give references to arrays of exactly that length, rather than slices.
+    /// 如果 `chunk_size` 是常量，考虑使用 [`as_rchunks_mut`]；它返回固定长度数组的可变引用，
+    /// 而不是普通切片引用。
     ///
     /// # Panics
     ///
-    /// Panics if `chunk_size` is zero.
+    /// 如果 `chunk_size` 为 0，本函数会 panic。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let v = &mut [0, 0, 0, 0, 0];
@@ -1732,28 +1671,26 @@ impl<T> [T] {
         RChunksMut::new(self, chunk_size)
     }
 
-    /// Returns an iterator over `chunk_size` elements of the slice at a time, starting at the
-    /// end of the slice.
+    /// 返回从切片末尾开始、每次遍历 `chunk_size` 个元素的迭代器。
     ///
-    /// The chunks are slices and do not overlap. If `chunk_size` does not divide the length of the
-    /// slice, then the last up to `chunk_size-1` elements will be omitted and can be retrieved
-    /// from the `remainder` function of the iterator.
+    /// 每个 chunk 都是互不重叠的子切片。如果 `chunk_size` 不能整除切片长度，
+    /// 最后最多 `chunk_size-1` 个元素会被省略，并可通过迭代器的 `remainder`
+    /// 函数取回。
     ///
-    /// Due to each chunk having exactly `chunk_size` elements, the compiler can often optimize the
-    /// resulting code better than in the case of [`rchunks`].
+    /// 由于每个 chunk 的长度都恰好是 `chunk_size`，编译器通常能比 [`rchunks`]
+    /// 的情况更好地优化生成代码。
     ///
-    /// See [`rchunks`] for a variant of this iterator that also returns the remainder as a smaller
-    /// chunk, and [`chunks_exact`] for the same iterator but starting at the beginning of the
-    /// slice.
+    /// 若需要把 remainder 也作为较小 chunk 返回，见 [`rchunks`]；若需要从切片开头
+    /// 开始的同类迭代器，见 [`chunks_exact`]。
     ///
-    /// If your `chunk_size` is a constant, consider using [`as_rchunks`] instead, which will
-    /// give references to arrays of exactly that length, rather than slices.
+    /// 如果 `chunk_size` 是常量，考虑使用 [`as_rchunks`]；它返回固定长度数组引用，
+    /// 而不是普通切片引用。
     ///
     /// # Panics
     ///
-    /// Panics if `chunk_size` is zero.
+    /// 如果 `chunk_size` 为 0，本函数会 panic。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let slice = ['l', 'o', 'r', 'e', 'm'];
@@ -1777,28 +1714,26 @@ impl<T> [T] {
         RChunksExact::new(self, chunk_size)
     }
 
-    /// Returns an iterator over `chunk_size` elements of the slice at a time, starting at the end
-    /// of the slice.
+    /// 返回从切片末尾开始、每次遍历 `chunk_size` 个元素的可变迭代器。
     ///
-    /// The chunks are mutable slices, and do not overlap. If `chunk_size` does not divide the
-    /// length of the slice, then the last up to `chunk_size-1` elements will be omitted and can be
-    /// retrieved from the `into_remainder` function of the iterator.
+    /// 每个 chunk 都是互不重叠的可变子切片。如果 `chunk_size` 不能整除切片长度，
+    /// 最后最多 `chunk_size-1` 个元素会被省略，并可通过迭代器的 `into_remainder`
+    /// 函数取回。
     ///
-    /// Due to each chunk having exactly `chunk_size` elements, the compiler can often optimize the
-    /// resulting code better than in the case of [`chunks_mut`].
+    /// 由于每个 chunk 的长度都恰好是 `chunk_size`，编译器通常能比 [`chunks_mut`]
+    /// 的情况更好地优化生成代码。
     ///
-    /// See [`rchunks_mut`] for a variant of this iterator that also returns the remainder as a
-    /// smaller chunk, and [`chunks_exact_mut`] for the same iterator but starting at the beginning
-    /// of the slice.
+    /// 若需要把 remainder 也作为较小 chunk 返回，见 [`rchunks_mut`]；若需要从切片开头
+    /// 开始的同类迭代器，见 [`chunks_exact_mut`]。
     ///
-    /// If your `chunk_size` is a constant, consider using [`as_rchunks_mut`] instead, which will
-    /// give references to arrays of exactly that length, rather than slices.
+    /// 如果 `chunk_size` 是常量，考虑使用 [`as_rchunks_mut`]；它返回固定长度数组的可变引用，
+    /// 而不是普通切片引用。
     ///
     /// # Panics
     ///
-    /// Panics if `chunk_size` is zero.
+    /// 如果 `chunk_size` 为 0，本函数会 panic。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let v = &mut [0, 0, 0, 0, 0];
@@ -1826,14 +1761,12 @@ impl<T> [T] {
         RChunksExactMut::new(self, chunk_size)
     }
 
-    /// Returns an iterator over the slice producing non-overlapping runs
-    /// of elements using the predicate to separate them.
+    /// 返回一个迭代器，它按谓词分隔切片，产出互不重叠的连续 run。
     ///
-    /// The predicate is called for every pair of consecutive elements,
-    /// meaning that it is called on `slice[0]` and `slice[1]`,
-    /// followed by `slice[1]` and `slice[2]`, and so on.
+    /// 谓词会对每一对相邻元素调用：先传入 `slice[0]` 与 `slice[1]`，
+    /// 然后是 `slice[1]` 与 `slice[2]`，依此类推。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let slice = &[1, 1, 1, 3, 3, 2, 2, 2];
@@ -1846,7 +1779,7 @@ impl<T> [T] {
     /// assert_eq!(iter.next(), None);
     /// ```
     ///
-    /// This method can be used to extract the sorted subslices:
+    /// 该方法可用于提取已排序的子切片：
     ///
     /// ```
     /// let slice = &[1, 1, 2, 3, 2, 3, 2, 3, 4];
@@ -1868,14 +1801,12 @@ impl<T> [T] {
         ChunkBy::new(self, pred)
     }
 
-    /// Returns an iterator over the slice producing non-overlapping mutable
-    /// runs of elements using the predicate to separate them.
+    /// 返回一个迭代器，它按谓词分隔切片，产出互不重叠的可变连续 run。
     ///
-    /// The predicate is called for every pair of consecutive elements,
-    /// meaning that it is called on `slice[0]` and `slice[1]`,
-    /// followed by `slice[1]` and `slice[2]`, and so on.
+    /// 谓词会对每一对相邻元素调用：先传入 `slice[0]` 与 `slice[1]`，
+    /// 然后是 `slice[1]` 与 `slice[2]`，依此类推。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let slice = &mut [1, 1, 1, 3, 3, 2, 2, 2];
@@ -1888,7 +1819,7 @@ impl<T> [T] {
     /// assert_eq!(iter.next(), None);
     /// ```
     ///
-    /// This method can be used to extract the sorted subslices:
+    /// 该方法可用于提取已排序的子切片：
     ///
     /// ```
     /// let slice = &mut [1, 1, 2, 3, 2, 3, 2, 3, 4];
@@ -1910,18 +1841,18 @@ impl<T> [T] {
         ChunkByMut::new(self, pred)
     }
 
-    /// Divides one slice into two at an index.
-    ///
-    /// The first will contain all indices from `[0, mid)` (excluding
-    /// the index `mid` itself) and the second will contain all
-    /// indices from `[mid, len)` (excluding the index `len` itself).
+    /// 在指定索引处把一个切片分成两个共享切片。
+///
+    /// 第一个切片包含 `[0, mid)` 的所有索引，不包含 `mid` 本身；第二个切片包含
+    /// `[mid, len)` 的所有索引，不包含 `len` 本身。`mid == 0` 或 `mid == len`
+    /// 时其中一侧为空切片。
     ///
     /// # Panics
     ///
-    /// Panics if `mid > len`.  For a non-panicking alternative see
-    /// [`split_at_checked`](slice::split_at_checked).
+    /// 如果 `mid > len`，本函数会 panic。非 panic 替代方案见
+    /// [`split_at_checked`](slice::split_at_checked)。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let v = ['a', 'b', 'c'];
@@ -1956,18 +1887,18 @@ impl<T> [T] {
         }
     }
 
-    /// Divides one mutable slice into two at an index.
-    ///
-    /// The first will contain all indices from `[0, mid)` (excluding
-    /// the index `mid` itself) and the second will contain all
-    /// indices from `[mid, len)` (excluding the index `len` itself).
+    /// 在指定索引处把一个可变切片分成两个互不重叠的可变切片。
+///
+    /// 第一个切片包含 `[0, mid)` 的所有索引，不包含 `mid` 本身；第二个切片包含
+    /// `[mid, len)` 的所有索引，不包含 `len` 本身。两个返回值覆盖原切片的不同区域，
+    /// 因而可以同时作为 `&mut [T]` 暴露。
     ///
     /// # Panics
     ///
-    /// Panics if `mid > len`.  For a non-panicking alternative see
-    /// [`split_at_mut_checked`](slice::split_at_mut_checked).
+    /// 如果 `mid > len`，本函数会 panic。非 panic 替代方案见
+    /// [`split_at_mut_checked`](slice::split_at_mut_checked)。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let mut v = [1, 0, 3, 0, 5, 6];
@@ -1990,24 +1921,24 @@ impl<T> [T] {
         }
     }
 
-    /// Divides one slice into two at an index, without doing bounds checking.
+    /// 不做边界检查，在指定索引处把一个切片分成两个共享切片。
+///
+    /// 第一个切片包含 `[0, mid)` 的所有索引，不包含 `mid` 本身；第二个切片包含
+    /// `[mid, len)` 的所有索引，不包含 `len` 本身。
+///
+    /// 安全替代方案见 [`split_at`]。
     ///
-    /// The first will contain all indices from `[0, mid)` (excluding
-    /// the index `mid` itself) and the second will contain all
-    /// indices from `[mid, len)` (excluding the index `len` itself).
+    /// # 安全性(Safety）
     ///
-    /// For a safe alternative see [`split_at`].
-    ///
-    /// # Safety
-    ///
-    /// Calling this method with an out-of-bounds index is *[undefined behavior]*
-    /// even if the resulting reference is not used. The caller has to ensure that
-    /// `0 <= mid <= self.len()`.
+    /// 使用越界索引调用本方法是 *[undefined behavior]*，即使得到的引用之后没有被使用。
+    /// 调用方必须保证 `mid <= self.len()`。由于 `mid` 是 `usize`，`0 <= mid` 自动成立。
+    /// 这个不变量同时保证 `ptr.add(mid)` 位于同一 allocation 内，且右侧长度
+    /// `self.len() - mid` 不会下溢。
     ///
     /// [`split_at`]: slice::split_at
     /// [undefined behavior]: https://doc.rust-lang.org/reference/behavior-considered-undefined.html
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let v = ['a', 'b', 'c'];
@@ -2036,9 +1967,8 @@ impl<T> [T] {
     #[must_use]
     #[track_caller]
     pub const unsafe fn split_at_unchecked(&self, mid: usize) -> (&[T], &[T]) {
-        // FIXME(const-hack): the const function `from_raw_parts` is used to make this
-        // function const; previously the implementation used
-        // `(self.get_unchecked(..mid), self.get_unchecked(mid..))`
+        // FIXME(const-hack): 为了让本函数成为 const fn，这里使用 const 版本的
+        // `from_raw_parts`；此前实现使用 `(self.get_unchecked(..mid), self.get_unchecked(mid..))`。
 
         let len = self.len();
         let ptr = self.as_ptr();
@@ -2049,32 +1979,32 @@ impl<T> [T] {
             (mid: usize = mid, len: usize = len) => mid <= len,
         );
 
-        // SAFETY: Caller has to check that `0 <= mid <= self.len()`
+        // SAFETY: 调用方必须保证 `mid <= self.len()`；`self` 是有效切片引用，因此
+        // `ptr..ptr.add(len)` 位于同一 allocation 内，左右两个共享切片范围有效。
         unsafe { (from_raw_parts(ptr, mid), from_raw_parts(ptr.add(mid), unchecked_sub(len, mid))) }
     }
 
-    /// Divides one mutable slice into two at an index, without doing bounds checking.
+    /// 不做边界检查，在指定索引处把一个可变切片分成两个可变切片。
+///
+    /// 第一个切片包含 `[0, mid)` 的所有索引，不包含 `mid` 本身；第二个切片包含
+    /// `[mid, len)` 的所有索引，不包含 `len` 本身。
+///
+    /// 安全替代方案见 [`split_at_mut`]。
     ///
-    /// The first will contain all indices from `[0, mid)` (excluding
-    /// the index `mid` itself) and the second will contain all
-    /// indices from `[mid, len)` (excluding the index `len` itself).
+    /// # 安全性(Safety）
     ///
-    /// For a safe alternative see [`split_at_mut`].
-    ///
-    /// # Safety
-    ///
-    /// Calling this method with an out-of-bounds index is *[undefined behavior]*
-    /// even if the resulting reference is not used. The caller has to ensure that
-    /// `0 <= mid <= self.len()`.
+    /// 使用越界索引调用本方法是 *[undefined behavior]*，即使得到的引用之后没有被使用。
+    /// 调用方必须保证 `mid <= self.len()`。这个不变量保证左右两个范围都位于原切片内；
+    /// 可变版本还依赖 `[0, mid)` 与 `[mid, len)` 不重叠，才能同时返回两个 `&mut [T]`。
     ///
     /// [`split_at_mut`]: slice::split_at_mut
     /// [undefined behavior]: https://doc.rust-lang.org/reference/behavior-considered-undefined.html
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let mut v = [1, 0, 3, 0, 5, 6];
-    /// // scoped to restrict the lifetime of the borrows
+    /// // 用作用域限制两个可变借用的生命周期。
     /// unsafe {
     ///     let (left, right) = v.split_at_mut_unchecked(2);
     ///     assert_eq!(left, [1, 0]);
@@ -2099,10 +2029,10 @@ impl<T> [T] {
             (mid: usize = mid, len: usize = len) => mid <= len,
         );
 
-        // SAFETY: Caller has to check that `0 <= mid <= self.len()`.
+        // SAFETY: 调用方必须保证 `mid <= self.len()`。
         //
-        // `[ptr; mid]` and `[mid; len]` are not overlapping, so returning a mutable reference
-        // is fine.
+        // `[ptr, ptr + mid)` 与 `[ptr + mid, ptr + len)` 不重叠，因此可以同时返回
+        // 两个可变切片引用。
         unsafe {
             (
                 from_raw_parts_mut(ptr, mid),
@@ -2111,17 +2041,14 @@ impl<T> [T] {
         }
     }
 
-    /// Divides one slice into two at an index, returning `None` if the slice is
-    /// too short.
+    /// 在指定索引处把切片分成两个共享切片；如果切片太短则返回 `None`。
+///
+    /// 如果 `mid <= len`，返回一对子切片：第一个包含 `[0, mid)` 的所有索引，
+    /// 第二个包含 `[mid, len)` 的所有索引。
+///
+    /// 如果 `mid > len`，返回 `None`。
     ///
-    /// If `mid ≤ len` returns a pair of slices where the first will contain all
-    /// indices from `[0, mid)` (excluding the index `mid` itself) and the
-    /// second will contain all indices from `[mid, len)` (excluding the index
-    /// `len` itself).
-    ///
-    /// Otherwise, if `mid > len`, returns `None`.
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let v = [1, -2, 3, -4, 5, -6];
@@ -2152,25 +2079,22 @@ impl<T> [T] {
     #[must_use]
     pub const fn split_at_checked(&self, mid: usize) -> Option<(&[T], &[T])> {
         if mid <= self.len() {
-            // SAFETY: `[ptr; mid]` and `[mid; len]` are inside `self`, which
-            // fulfills the requirements of `split_at_unchecked`.
+            // SAFETY: `[0, mid)` 和 `[mid, len)` 都位于 `self` 内，满足
+            // `split_at_unchecked` 的 `mid <= len` 前置条件。
             Some(unsafe { self.split_at_unchecked(mid) })
         } else {
             None
         }
     }
 
-    /// Divides one mutable slice into two at an index, returning `None` if the
-    /// slice is too short.
+    /// 在指定索引处把可变切片分成两个可变切片；如果切片太短则返回 `None`。
+///
+    /// 如果 `mid <= len`，返回一对互不重叠的可变子切片：第一个包含 `[0, mid)`，
+    /// 第二个包含 `[mid, len)`。
+///
+    /// 如果 `mid > len`，返回 `None`。
     ///
-    /// If `mid ≤ len` returns a pair of slices where the first will contain all
-    /// indices from `[0, mid)` (excluding the index `mid` itself) and the
-    /// second will contain all indices from `[mid, len)` (excluding the index
-    /// `len` itself).
-    ///
-    /// Otherwise, if `mid > len`, returns `None`.
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let mut v = [1, 0, 3, 0, 5, 6];
@@ -2191,18 +2115,19 @@ impl<T> [T] {
     #[must_use]
     pub const fn split_at_mut_checked(&mut self, mid: usize) -> Option<(&mut [T], &mut [T])> {
         if mid <= self.len() {
-            // SAFETY: `[ptr; mid]` and `[mid; len]` are inside `self`, which
-            // fulfills the requirements of `split_at_unchecked`.
+            // SAFETY: `[0, mid)` 和 `[mid, len)` 都位于 `self` 内且不重叠，满足
+            // `split_at_mut_unchecked` 的前置条件。
             Some(unsafe { self.split_at_mut_unchecked(mid) })
         } else {
             None
         }
     }
 
-    /// Returns an iterator over subslices separated by elements that match
-    /// `pred`. The matched element is not contained in the subslices.
+    /// 返回按满足 `pred` 的元素分隔出的子切片迭代器。
     ///
-    /// # Examples
+    /// 匹配到的分隔元素本身不会包含在任何返回的子切片中。
+    ///
+    /// # 示例
     ///
     /// ```
     /// let slice = [10, 40, 33, 20];
@@ -2213,10 +2138,8 @@ impl<T> [T] {
     /// assert!(iter.next().is_none());
     /// ```
     ///
-    /// If the first element is matched, an empty slice will be the first item
-    /// returned by the iterator. Similarly, if the last element in the slice
-    /// is matched, an empty slice will be the last item returned by the
-    /// iterator:
+    /// 如果第一个元素就匹配，迭代器返回的第一个条目为空切片。类似地，如果最后一个元素匹配，
+    /// 迭代器返回的最后一个条目为空切片：
     ///
     /// ```
     /// let slice = [10, 40, 33];
@@ -2227,8 +2150,7 @@ impl<T> [T] {
     /// assert!(iter.next().is_none());
     /// ```
     ///
-    /// If two matched elements are directly adjacent, an empty slice will be
-    /// present between them:
+    /// 如果两个匹配元素直接相邻，它们之间也会产生一个空切片：
     ///
     /// ```
     /// let slice = [10, 6, 33, 20];
@@ -2248,10 +2170,11 @@ impl<T> [T] {
         Split::new(self, pred)
     }
 
-    /// Returns an iterator over mutable subslices separated by elements that
-    /// match `pred`. The matched element is not contained in the subslices.
+    /// 返回按满足 `pred` 的元素分隔出的可变子切片迭代器。
     ///
-    /// # Examples
+    /// 匹配到的分隔元素本身不会包含在任何返回的可变子切片中；各子切片互不重叠。
+    ///
+    /// # 示例
     ///
     /// ```
     /// let mut v = [10, 40, 30, 20, 60, 50];
@@ -2270,11 +2193,11 @@ impl<T> [T] {
         SplitMut::new(self, pred)
     }
 
-    /// Returns an iterator over subslices separated by elements that match
-    /// `pred`. The matched element is contained in the end of the previous
-    /// subslice as a terminator.
+    /// 返回按满足 `pred` 的元素分隔出的子切片迭代器，并把匹配元素包含在前一个子切片末尾。
     ///
-    /// # Examples
+    /// 匹配元素在语义上作为前一段的终止符。
+    ///
+    /// # 示例
     ///
     /// ```
     /// let slice = [10, 40, 33, 20];
@@ -2285,9 +2208,8 @@ impl<T> [T] {
     /// assert!(iter.next().is_none());
     /// ```
     ///
-    /// If the last element of the slice is matched,
-    /// that element will be considered the terminator of the preceding slice.
-    /// That slice will be the last item returned by the iterator.
+    /// 如果切片最后一个元素匹配，该元素会被视为前一段的终止符；那一段会成为迭代器返回的
+    /// 最后一个条目。
     ///
     /// ```
     /// let slice = [3, 10, 40, 33];
@@ -2306,11 +2228,12 @@ impl<T> [T] {
         SplitInclusive::new(self, pred)
     }
 
-    /// Returns an iterator over mutable subslices separated by elements that
-    /// match `pred`. The matched element is contained in the previous
-    /// subslice as a terminator.
+    /// 返回按满足 `pred` 的元素分隔出的可变子切片迭代器，并把匹配元素包含在前一个
+    /// 子切片末尾。
     ///
-    /// # Examples
+    /// 匹配元素在语义上作为前一段的终止符。
+    ///
+    /// # 示例
     ///
     /// ```
     /// let mut v = [10, 40, 30, 20, 60, 50];
@@ -2330,11 +2253,11 @@ impl<T> [T] {
         SplitInclusiveMut::new(self, pred)
     }
 
-    /// Returns an iterator over subslices separated by elements that match
-    /// `pred`, starting at the end of the slice and working backwards.
-    /// The matched element is not contained in the subslices.
+    /// 返回按满足 `pred` 的元素分隔出的子切片迭代器，从切片末尾开始反向工作。
     ///
-    /// # Examples
+    /// 匹配到的分隔元素本身不会包含在任何返回的子切片中。
+    ///
+    /// # 示例
     ///
     /// ```
     /// let slice = [11, 22, 33, 0, 44, 55];
@@ -2345,8 +2268,8 @@ impl<T> [T] {
     /// assert_eq!(iter.next(), None);
     /// ```
     ///
-    /// As with `split()`, if the first or last element is matched, an empty
-    /// slice will be the first (or last) item returned by the iterator.
+    /// 与 `split()` 一样，如果第一个或最后一个元素匹配，迭代器返回的第一个
+    /// （或最后一个）条目会是空切片。
     ///
     /// ```
     /// let v = &[0, 1, 1, 2, 3, 5, 8];
@@ -2366,11 +2289,11 @@ impl<T> [T] {
         RSplit::new(self, pred)
     }
 
-    /// Returns an iterator over mutable subslices separated by elements that
-    /// match `pred`, starting at the end of the slice and working
-    /// backwards. The matched element is not contained in the subslices.
+    /// 返回按满足 `pred` 的元素分隔出的可变子切片迭代器，从切片末尾开始反向工作。
     ///
-    /// # Examples
+    /// 匹配到的分隔元素本身不会包含在任何返回的可变子切片中；各子切片互不重叠。
+    ///
+    /// # 示例
     ///
     /// ```
     /// let mut v = [100, 400, 300, 200, 600, 500];
@@ -2392,17 +2315,16 @@ impl<T> [T] {
         RSplitMut::new(self, pred)
     }
 
-    /// Returns an iterator over subslices separated by elements that match
-    /// `pred`, limited to returning at most `n` items. The matched element is
-    /// not contained in the subslices.
+    /// 返回按满足 `pred` 的元素分隔出的子切片迭代器，最多返回 `n` 个条目。
     ///
-    /// The last element returned, if any, will contain the remainder of the
-    /// slice.
+    /// 匹配到的分隔元素本身不会包含在任何返回的子切片中。
     ///
-    /// # Examples
+    /// 如果存在最后一个返回项，它会包含切片中剩余未分隔的部分。
     ///
-    /// Print the slice split once by numbers divisible by 3 (i.e., `[10, 40]`,
-    /// `[20, 60, 50]`):
+    /// # 示例
+    ///
+    /// 按能被 3 整除的数字只分割一次并打印结果（即 `[10, 40]`、
+    /// `[20, 60, 50]`）：
     ///
     /// ```
     /// let v = [10, 40, 30, 20, 60, 50];
@@ -2420,14 +2342,13 @@ impl<T> [T] {
         SplitN::new(self.split(pred), n)
     }
 
-    /// Returns an iterator over mutable subslices separated by elements that match
-    /// `pred`, limited to returning at most `n` items. The matched element is
-    /// not contained in the subslices.
+    /// 返回按满足 `pred` 的元素分隔出的可变子切片迭代器，最多返回 `n` 个条目。
     ///
-    /// The last element returned, if any, will contain the remainder of the
-    /// slice.
+    /// 匹配到的分隔元素本身不会包含在任何返回的可变子切片中；各子切片互不重叠。
     ///
-    /// # Examples
+    /// 如果存在最后一个返回项，它会包含切片中剩余未分隔的部分。
+    ///
+    /// # 示例
     ///
     /// ```
     /// let mut v = [10, 40, 30, 20, 60, 50];
@@ -2446,18 +2367,17 @@ impl<T> [T] {
         SplitNMut::new(self.split_mut(pred), n)
     }
 
-    /// Returns an iterator over subslices separated by elements that match
-    /// `pred` limited to returning at most `n` items. This starts at the end of
-    /// the slice and works backwards. The matched element is not contained in
-    /// the subslices.
+    /// 返回按满足 `pred` 的元素分隔出的子切片迭代器，最多返回 `n` 个条目；
+    /// 它从切片末尾开始反向工作。
     ///
-    /// The last element returned, if any, will contain the remainder of the
-    /// slice.
+    /// 匹配到的分隔元素本身不会包含在任何返回的子切片中。
     ///
-    /// # Examples
+    /// 如果存在最后一个返回项，它会包含切片中剩余未分隔的部分。
     ///
-    /// Print the slice split once, starting from the end, by numbers divisible
-    /// by 3 (i.e., `[50]`, `[10, 40, 30, 20]`):
+    /// # 示例
+    ///
+    /// 从末尾开始，按能被 3 整除的数字只分割一次并打印结果
+    /// （即 `[50]`、`[10, 40, 30, 20]`）：
     ///
     /// ```
     /// let v = [10, 40, 30, 20, 60, 50];
@@ -2475,15 +2395,14 @@ impl<T> [T] {
         RSplitN::new(self.rsplit(pred), n)
     }
 
-    /// Returns an iterator over subslices separated by elements that match
-    /// `pred` limited to returning at most `n` items. This starts at the end of
-    /// the slice and works backwards. The matched element is not contained in
-    /// the subslices.
+    /// 返回按满足 `pred` 的元素分隔出的可变子切片迭代器，最多返回 `n` 个条目；
+    /// 它从切片末尾开始反向工作。
     ///
-    /// The last element returned, if any, will contain the remainder of the
-    /// slice.
+    /// 匹配到的分隔元素本身不会包含在任何返回的可变子切片中；各子切片互不重叠。
     ///
-    /// # Examples
+    /// 如果存在最后一个返回项，它会包含切片中剩余未分隔的部分。
+    ///
+    /// # 示例
     ///
     /// ```
     /// let mut s = [10, 40, 30, 20, 60, 50];
@@ -2502,14 +2421,12 @@ impl<T> [T] {
         RSplitNMut::new(self.rsplit_mut(pred), n)
     }
 
-    /// Splits the slice on the first element that matches the specified
-    /// predicate.
+    /// 在第一个满足指定谓词的元素处分割切片。
     ///
-    /// If any matching elements are present in the slice, returns the prefix
-    /// before the match and suffix after. The matching element itself is not
-    /// included. If no elements match, returns `None`.
+    /// 如果切片中存在匹配元素，则返回匹配元素之前的前缀和之后的后缀；
+    /// 匹配元素本身不包含在返回值中。如果没有元素匹配，则返回 `None`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(slice_split_once)]
@@ -2530,14 +2447,12 @@ impl<T> [T] {
         Some((&self[..index], &self[index + 1..]))
     }
 
-    /// Splits the slice on the last element that matches the specified
-    /// predicate.
+    /// 在最后一个满足指定谓词的元素处分割切片。
     ///
-    /// If any matching elements are present in the slice, returns the prefix
-    /// before the match and suffix after. The matching element itself is not
-    /// included. If no elements match, returns `None`.
+    /// 如果切片中存在匹配元素，则返回匹配元素之前的前缀和之后的后缀；
+    /// 匹配元素本身不包含在返回值中。如果没有元素匹配，则返回 `None`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(slice_split_once)]
@@ -2558,15 +2473,15 @@ impl<T> [T] {
         Some((&self[..index], &self[index + 1..]))
     }
 
-    /// Returns `true` if the slice contains an element with the given value.
+    /// 如果切片包含给定值的元素，返回 `true`。
     ///
-    /// This operation is *O*(*n*).
+    /// 该操作是 *O*(*n*)。
     ///
-    /// Note that if you have a sorted slice, [`binary_search`] may be faster.
+    /// 注意，如果切片已经排序，[`binary_search`] 可能更快。
     ///
     /// [`binary_search`]: slice::binary_search
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let v = [10, 40, 30];
@@ -2574,13 +2489,12 @@ impl<T> [T] {
     /// assert!(!v.contains(&50));
     /// ```
     ///
-    /// If you do not have a `&T`, but some other value that you can compare
-    /// with one (for example, `String` implements `PartialEq<str>`), you can
-    /// use `iter().any`:
+    /// 如果你没有 `&T`，而是有其它可与 `T` 比较的值（例如 `String` 实现了
+    /// `PartialEq<str>`），可以使用 `iter().any`：
     ///
     /// ```
-    /// let v = [String::from("hello"), String::from("world")]; // slice of `String`
-    /// assert!(v.iter().any(|e| e == "hello")); // search with `&str`
+    /// let v = [String::from("hello"), String::from("world")]; // `String` 切片
+    /// assert!(v.iter().any(|e| e == "hello")); // 用 `&str` 搜索
     /// assert!(!v.iter().any(|e| e == "hi"));
     /// ```
     #[stable(feature = "rust1", since = "1.0.0")]
@@ -2593,9 +2507,9 @@ impl<T> [T] {
         cmp::SliceContains::slice_contains(x, self)
     }
 
-    /// Returns `true` if `needle` is a prefix of the slice or equal to the slice.
+    /// 如果 `needle` 是切片的前缀，或与切片相等，返回 `true`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let v = [10, 40, 30];
@@ -2606,7 +2520,7 @@ impl<T> [T] {
     /// assert!(!v.starts_with(&[10, 50]));
     /// ```
     ///
-    /// Always returns `true` if `needle` is an empty slice:
+    /// 如果 `needle` 是空切片，总是返回 `true`：
     ///
     /// ```
     /// let v = &[10, 40, 30];
@@ -2624,9 +2538,9 @@ impl<T> [T] {
         self.len() >= n && needle == &self[..n]
     }
 
-    /// Returns `true` if `needle` is a suffix of the slice or equal to the slice.
+    /// 如果 `needle` 是切片的后缀，或与切片相等，返回 `true`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let v = [10, 40, 30];
@@ -2637,7 +2551,7 @@ impl<T> [T] {
     /// assert!(!v.ends_with(&[50, 30]));
     /// ```
     ///
-    /// Always returns `true` if `needle` is an empty slice:
+    /// 如果 `needle` 是空切片，总是返回 `true`：
     ///
     /// ```
     /// let v = &[10, 40, 30];
@@ -2655,15 +2569,14 @@ impl<T> [T] {
         m >= n && needle == &self[m - n..]
     }
 
-    /// Returns a subslice with the prefix removed.
+    /// 返回移除前缀后的子切片。
     ///
-    /// If the slice starts with `prefix`, returns the subslice after the prefix, wrapped in `Some`.
-    /// If `prefix` is empty, simply returns the original slice. If `prefix` is equal to the
-    /// original slice, returns an empty slice.
+    /// 如果切片以 `prefix` 开头，返回前缀之后的子切片并包在 `Some` 中。
+    /// 如果 `prefix` 为空，直接返回原切片。如果 `prefix` 等于整个原切片，则返回空切片。
     ///
-    /// If the slice does not start with `prefix`, returns `None`.
+    /// 如果切片并不以 `prefix` 开头，则返回 `None`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let v = &[10, 40, 30];
@@ -2683,7 +2596,7 @@ impl<T> [T] {
     where
         T: PartialEq,
     {
-        // This function will need rewriting if and when SlicePattern becomes more sophisticated.
+        // 如果 SlicePattern 之后变得更复杂，本函数就需要重写。
         let prefix = prefix.as_slice();
         let n = prefix.len();
         if n <= self.len() {
@@ -2695,15 +2608,14 @@ impl<T> [T] {
         None
     }
 
-    /// Returns a subslice with the suffix removed.
+    /// 返回移除后缀后的子切片。
     ///
-    /// If the slice ends with `suffix`, returns the subslice before the suffix, wrapped in `Some`.
-    /// If `suffix` is empty, simply returns the original slice. If `suffix` is equal to the
-    /// original slice, returns an empty slice.
+    /// 如果切片以 `suffix` 结尾，返回后缀之前的子切片并包在 `Some` 中。
+    /// 如果 `suffix` 为空，直接返回原切片。如果 `suffix` 等于整个原切片，则返回空切片。
     ///
-    /// If the slice does not end with `suffix`, returns `None`.
+    /// 如果切片并不以 `suffix` 结尾，则返回 `None`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let v = &[10, 40, 30];
@@ -2719,7 +2631,7 @@ impl<T> [T] {
     where
         T: PartialEq,
     {
-        // This function will need rewriting if and when SlicePattern becomes more sophisticated.
+        // 如果 SlicePattern 之后变得更复杂，本函数就需要重写。
         let suffix = suffix.as_slice();
         let (len, n) = (self.len(), suffix.len());
         if n <= len {
@@ -2731,14 +2643,14 @@ impl<T> [T] {
         None
     }
 
-    /// Returns a subslice with the prefix and suffix removed.
+    /// 返回同时移除前缀和后缀后的子切片。
     ///
-    /// If the slice starts with `prefix` and ends with `suffix`, returns the subslice after the
-    /// prefix and before the suffix, wrapped in `Some`.
+    /// 如果切片以 `prefix` 开头且以 `suffix` 结尾，返回前缀之后、后缀之前的子切片，
+    /// 并包在 `Some` 中。
     ///
-    /// If the slice does not start with `prefix` or does not end with `suffix`, returns `None`.
+    /// 如果切片不以 `prefix` 开头，或不以 `suffix` 结尾，则返回 `None`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(strip_circumfix)]
@@ -2763,25 +2675,25 @@ impl<T> [T] {
         self.strip_prefix(prefix)?.strip_suffix(suffix)
     }
 
-    /// Returns a subslice with the optional prefix removed.
+    /// 返回去掉可选前缀后的子切片。
     ///
-    /// If the slice starts with `prefix`, returns the subslice after the prefix.  If `prefix`
-    /// is empty or the slice does not start with `prefix`, simply returns the original slice.
-    /// If `prefix` is equal to the original slice, returns an empty slice.
+    /// 如果切片以 `prefix` 开头，返回前缀之后的子切片。如果 `prefix` 为空，
+    /// 或切片并不以 `prefix` 开头，则直接返回原切片。如果 `prefix` 等于整个原切片，
+    /// 则返回空切片。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(trim_prefix_suffix)]
     ///
     /// let v = &[10, 40, 30];
     ///
-    /// // Prefix present - removes it
+    /// // 前缀存在，移除它。
     /// assert_eq!(v.trim_prefix(&[10]), &[40, 30][..]);
     /// assert_eq!(v.trim_prefix(&[10, 40]), &[30][..]);
     /// assert_eq!(v.trim_prefix(&[10, 40, 30]), &[][..]);
     ///
-    /// // Prefix absent - returns original slice
+    /// // 前缀不存在，返回原切片。
     /// assert_eq!(v.trim_prefix(&[50]), &[10, 40, 30][..]);
     /// assert_eq!(v.trim_prefix(&[10, 50]), &[10, 40, 30][..]);
     ///
@@ -2794,7 +2706,7 @@ impl<T> [T] {
     where
         T: PartialEq,
     {
-        // This function will need rewriting if and when SlicePattern becomes more sophisticated.
+        // 如果将来 SlicePattern 变得更复杂，这个函数需要随之重写。
         let prefix = prefix.as_slice();
         let n = prefix.len();
         if n <= self.len() {
@@ -2806,25 +2718,24 @@ impl<T> [T] {
         self
     }
 
-    /// Returns a subslice with the optional suffix removed.
+    /// 返回去掉可选后缀后的子切片。
+///
+    /// 如果切片以 `suffix` 结尾，返回后缀之前的子切片。如果 `suffix` 为空，或切片并不以
+    /// `suffix` 结尾，则直接返回原切片。如果 `suffix` 等于整个原切片，则返回空切片。
     ///
-    /// If the slice ends with `suffix`, returns the subslice before the suffix.  If `suffix`
-    /// is empty or the slice does not end with `suffix`, simply returns the original slice.
-    /// If `suffix` is equal to the original slice, returns an empty slice.
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(trim_prefix_suffix)]
     ///
     /// let v = &[10, 40, 30];
     ///
-    /// // Suffix present - removes it
+    /// // 后缀存在，移除它。
     /// assert_eq!(v.trim_suffix(&[30]), &[10, 40][..]);
     /// assert_eq!(v.trim_suffix(&[40, 30]), &[10][..]);
     /// assert_eq!(v.trim_suffix(&[10, 40, 30]), &[][..]);
     ///
-    /// // Suffix absent - returns original slice
+    /// // 后缀不存在，返回原切片。
     /// assert_eq!(v.trim_suffix(&[50]), &[10, 40, 30][..]);
     /// assert_eq!(v.trim_suffix(&[50, 30]), &[10, 40, 30][..]);
     /// ```
@@ -2834,7 +2745,7 @@ impl<T> [T] {
     where
         T: PartialEq,
     {
-        // This function will need rewriting if and when SlicePattern becomes more sophisticated.
+        // 如果将来 SlicePattern 变得更复杂，这个函数需要随之重写。
         let suffix = suffix.as_slice();
         let (len, n) = (self.len(), suffix.len());
         if n <= len {
@@ -2846,29 +2757,25 @@ impl<T> [T] {
         self
     }
 
-    /// Binary searches this slice for a given element.
-    /// If the slice is not sorted, the returned result is unspecified and
-    /// meaningless.
+    /// 在已排序切片中用二分查找给定元素。
     ///
-    /// If the value is found then [`Result::Ok`] is returned, containing the
-    /// index of the matching element. If there are multiple matches, then any
-    /// one of the matches could be returned. The index is chosen
-    /// deterministically, but is subject to change in future versions of Rust.
-    /// If the value is not found then [`Result::Err`] is returned, containing
-    /// the index where a matching element could be inserted while maintaining
-    /// sorted order.
-    ///
-    /// See also [`binary_search_by`], [`binary_search_by_key`], and [`partition_point`].
+    /// 调用前提是切片已经按照 `T: Ord` 的顺序排序。若切片未排序，返回结果没有指定含义；
+    /// 它不会保证是正确位置，也不能作为插入位置使用。
+///
+    /// 如果找到该值，返回 [`Result::Ok`]，其中包含某个匹配元素的索引。若存在多个匹配项，
+    /// 可以返回其中任意一个；当前选择是确定性的，但未来 Rust 版本可能改变具体选择。
+    /// 如果未找到，返回 [`Result::Err`]，其中包含可插入匹配元素且仍保持排序顺序的位置。
+///
+    /// 另见 [`binary_search_by`]、[`binary_search_by_key`] 和 [`partition_point`]。
     ///
     /// [`binary_search_by`]: slice::binary_search_by
     /// [`binary_search_by_key`]: slice::binary_search_by_key
     /// [`partition_point`]: slice::partition_point
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Looks up a series of four elements. The first is found, with a
-    /// uniquely determined position; the second and third are not
-    /// found; the fourth could match any position in `[1, 4]`.
+    /// 查找四个元素：第一个存在且位置唯一；第二、第三个不存在；第四个有多个相等元素，
+    /// 可以匹配 `[1, 4]` 中的任意位置。
     ///
     /// ```
     /// let s = [0, 1, 1, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55];
@@ -2880,8 +2787,8 @@ impl<T> [T] {
     /// assert!(match r { Ok(1..=4) => true, _ => false, });
     /// ```
     ///
-    /// If you want to find that whole *range* of matching items, rather than
-    /// an arbitrary matching one, that can be done using [`partition_point`]:
+    /// 如果需要找到全部匹配项的完整 *范围*，而不是任意一个匹配位置，可以使用
+    /// [`partition_point`]：
     /// ```
     /// let s = [0, 1, 1, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55];
     ///
@@ -2896,22 +2803,21 @@ impl<T> [T] {
     /// assert!(s[low..high].iter().all(|&x| x == 1));
     /// assert!(s[high..].iter().all(|&x| x > 1));
     ///
-    /// // For something not found, the "range" of equal items is empty
+    /// // 对不存在的元素，相等项“范围”为空。
     /// assert_eq!(s.partition_point(|x| x < &11), 9);
     /// assert_eq!(s.partition_point(|x| x <= &11), 9);
     /// assert_eq!(s.binary_search(&11), Err(9));
     /// ```
     ///
-    /// If you want to insert an item to a sorted vector, while maintaining
-    /// sort order, consider using [`partition_point`]:
+    /// 如果需要向已排序 vector 插入元素并保持排序顺序，可以考虑使用 [`partition_point`]：
     ///
     /// ```
     /// let mut s = vec![0, 1, 1, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55];
     /// let num = 42;
     /// let idx = s.partition_point(|&x| x <= num);
-    /// // If `num` is unique, `s.partition_point(|&x| x < num)` (with `<`) is equivalent to
-    /// // `s.binary_search(&num).unwrap_or_else(|x| x)`, but using `<=` will allow `insert`
-    /// // to shift less elements.
+    /// // 如果 `num` 唯一，使用 `<` 的 `s.partition_point(|&x| x < num)` 等价于
+    /// // `s.binary_search(&num).unwrap_or_else(|x| x)`；但使用 `<=` 可让 `insert`
+    /// // 移动更少元素。
     /// s.insert(idx, num);
     /// assert_eq!(s, [0, 1, 1, 1, 1, 2, 3, 5, 8, 13, 21, 34, 42, 55]);
     /// ```
@@ -2923,34 +2829,26 @@ impl<T> [T] {
         self.binary_search_by(|p| p.cmp(x))
     }
 
-    /// Binary searches this slice with a comparator function.
-    ///
-    /// The comparator function should return an order code that indicates
-    /// whether its argument is `Less`, `Equal` or `Greater` the desired
-    /// target.
-    /// If the slice is not sorted or if the comparator function does not
-    /// implement an order consistent with the sort order of the underlying
-    /// slice, the returned result is unspecified and meaningless.
-    ///
-    /// If the value is found then [`Result::Ok`] is returned, containing the
-    /// index of the matching element. If there are multiple matches, then any
-    /// one of the matches could be returned. The index is chosen
-    /// deterministically, but is subject to change in future versions of Rust.
-    /// If the value is not found then [`Result::Err`] is returned, containing
-    /// the index where a matching element could be inserted while maintaining
-    /// sorted order.
-    ///
-    /// See also [`binary_search`], [`binary_search_by_key`], and [`partition_point`].
+    /// 使用比较函数在切片中执行二分查找。
+///
+    /// 比较函数应返回一个 `Ordering`，表示它的参数相对于目标值是 `Less`、`Equal`
+    /// 还是 `Greater`。调用前提是切片已经按同一个比较关系排序；如果切片未排序，
+    /// 或比较函数与底层排序顺序不一致，返回结果没有指定含义。
+///
+    /// 如果找到该值，返回 [`Result::Ok`]，其中包含某个匹配元素的索引。若存在多个匹配项，
+    /// 可以返回其中任意一个；当前选择是确定性的，但未来 Rust 版本可能改变具体选择。
+    /// 如果未找到，返回 [`Result::Err`]，其中包含可插入匹配元素且仍保持排序顺序的位置。
+///
+    /// 另见 [`binary_search`]、[`binary_search_by_key`] 和 [`partition_point`]。
     ///
     /// [`binary_search`]: slice::binary_search
     /// [`binary_search_by_key`]: slice::binary_search_by_key
     /// [`partition_point`]: slice::partition_point
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Looks up a series of four elements. The first is found, with a
-    /// uniquely determined position; the second and third are not
-    /// found; the fourth could match any position in `[1, 4]`.
+    /// 查找四个元素：第一个存在且位置唯一；第二、第三个不存在；第四个有多个相等元素，
+    /// 可以匹配 `[1, 4]` 中的任意位置。
     ///
     /// ```
     /// let s = [0, 1, 1, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55];
@@ -2977,78 +2875,63 @@ impl<T> [T] {
         }
         let mut base = 0usize;
 
-        // This loop intentionally doesn't have an early exit if the comparison
-        // returns Equal. We want the number of loop iterations to depend *only*
-        // on the size of the input slice so that the CPU can reliably predict
-        // the loop count.
+        // 即使比较结果为 Equal，这个循环也故意不提前退出。我们希望循环迭代次数
+        // *只* 取决于输入切片大小，这样 CPU 可以可靠预测循环次数。
         while size > 1 {
             let half = size / 2;
             let mid = base + half;
 
-            // SAFETY: the call is made safe by the following invariants:
-            // - `mid >= 0`: by definition
-            // - `mid < size`: `mid = size / 2 + size / 4 + size / 8 ...`
+            // SAFETY: 下列不变量保证调用安全：
+            // - `mid >= 0`：由类型定义保证；
+            // - `mid < self.len()`：`base` 始终位于剩余搜索区间起点，`half < size`，
+            //   因而 `base + half` 仍在原切片内。
             let cmp = f(unsafe { self.get_unchecked(mid) });
 
-            // Binary search interacts poorly with branch prediction, so force
-            // the compiler to use conditional moves if supported by the target
-            // architecture.
+            // 二分查找与分支预测配合较差，因此在目标架构支持时强制编译器使用条件移动。
             base = hint::select_unpredictable(cmp == Greater, base, mid);
 
-            // This is imprecise in the case where `size` is odd and the
-            // comparison returns Greater: the mid element still gets included
-            // by `size` even though it's known to be larger than the element
-            // being searched for.
+            // 当 `size` 为奇数且比较结果为 Greater 时，这里的范围更新并不精确：
+            // mid 元素虽已知大于目标，仍会被 `size` 计入下一轮。
             //
-            // This is fine though: we gain more performance by keeping the
-            // loop iteration count invariant (and thus predictable) than we
-            // lose from considering one additional element.
+            // 这是有意的权衡：保持循环次数不变且可预测带来的性能收益，高于多考虑一个元素的成本。
             size -= half;
         }
 
-        // SAFETY: base is always in [0, size) because base <= mid.
+        // SAFETY: `base` 始终位于原切片内；空切片已在函数开头返回。
         let cmp = f(unsafe { self.get_unchecked(base) });
         if cmp == Equal {
-            // SAFETY: same as the `get_unchecked` above.
+            // SAFETY: 与上面的 `get_unchecked` 相同，`base` 已知在边界内。
             unsafe { hint::assert_unchecked(base < self.len()) };
             Ok(base)
         } else {
             let result = base + (cmp == Less) as usize;
-            // SAFETY: same as the `get_unchecked` above.
-            // Note that this is `<=`, unlike the assume in the `Ok` path.
+            // SAFETY: 与上面的 `get_unchecked` 相同。注意这里是 `<=`，因为插入点可以等于
+            // `self.len()`，不同于 `Ok` 路径中的索引。
             unsafe { hint::assert_unchecked(result <= self.len()) };
             Err(result)
         }
     }
 
-    /// Binary searches this slice with a key extraction function.
+    /// 使用键提取函数在切片中执行二分查找。
     ///
-    /// Assumes that the slice is sorted by the key, for instance with
-    /// [`sort_by_key`] using the same key extraction function.
-    /// If the slice is not sorted by the key, the returned result is
-    /// unspecified and meaningless.
+    /// 调用前提是切片已经按该键排序，例如使用同一个键提取函数调用过 [`sort_by_key`]。
+    /// 如果切片未按该键排序，返回结果没有指定含义。
     ///
-    /// If the value is found then [`Result::Ok`] is returned, containing the
-    /// index of the matching element. If there are multiple matches, then any
-    /// one of the matches could be returned. The index is chosen
-    /// deterministically, but is subject to change in future versions of Rust.
-    /// If the value is not found then [`Result::Err`] is returned, containing
-    /// the index where a matching element could be inserted while maintaining
-    /// sorted order.
+    /// 如果找到该值，返回 [`Result::Ok`]，其中包含某个匹配元素的索引。若存在多个匹配项，
+    /// 可以返回其中任意一个；当前选择是确定性的，但未来 Rust 版本可能改变具体选择。
+    /// 如果未找到，返回 [`Result::Err`]，其中包含可插入匹配元素且仍保持排序顺序的位置。
     ///
-    /// See also [`binary_search`], [`binary_search_by`], and [`partition_point`].
+    /// 另见 [`binary_search`]、[`binary_search_by`] 和 [`partition_point`]。
     ///
     /// [`sort_by_key`]: slice::sort_by_key
     /// [`binary_search`]: slice::binary_search
     /// [`binary_search_by`]: slice::binary_search_by
     /// [`partition_point`]: slice::partition_point
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Looks up a series of four elements in a slice of pairs sorted by
-    /// their second elements. The first is found, with a uniquely
-    /// determined position; the second and third are not found; the
-    /// fourth could match any position in `[1, 4]`.
+    /// 在按第二个元素排序的 pair 切片中查找四个元素：第一个存在且位置唯一；
+    /// 第二、第三个不存在；第四个有多个相等键，可以匹配 `[1, 4]` 中的任意位置。
     ///
     /// ```
     /// let s = [(0, 0), (2, 1), (4, 1), (5, 1), (3, 1),
@@ -3061,10 +2944,9 @@ impl<T> [T] {
     /// let r = s.binary_search_by_key(&1, |&(a, b)| b);
     /// assert!(match r { Ok(1..=4) => true, _ => false, });
     /// ```
-    // Lint rustdoc::broken_intra_doc_links is allowed as `slice::sort_by_key` is
-    // in crate `alloc`, and as such doesn't exists yet when building `core`: #74481.
-    // This breaks links when slice is displayed in core, but changing it to use relative links
-    // would break when the item is re-exported. So allow the core links to be broken for now.
+    // 允许 rustdoc::broken_intra_doc_links，因为 `slice::sort_by_key` 位于 crate `alloc`，
+    // 构建 `core` 时它还不存在：#74481。切片文档在 core 中显示时链接会断，但改成相对链接
+    // 又会破坏该 item 被 re-export 后的链接，因此暂时允许 core 链接断开。
     #[allow(rustdoc::broken_intra_doc_links)]
     #[stable(feature = "slice_binary_search_by_key", since = "1.10.0")]
     #[inline]
@@ -3076,48 +2958,41 @@ impl<T> [T] {
         self.binary_search_by(|k| f(k).cmp(b))
     }
 
-    /// Sorts the slice in ascending order **without** preserving the initial order of equal elements.
-    ///
-    /// This sort is unstable (i.e., may reorder equal elements), in-place (i.e., does not
-    /// allocate), and *O*(*n* \* log(*n*)) worst-case.
-    ///
-    /// If the implementation of [`Ord`] for `T` does not implement a [total order], the function
-    /// may panic; even if the function exits normally, the resulting order of elements in the slice
-    /// is unspecified. See also the note on panicking below.
-    ///
-    /// For example `|a, b| (a - b).cmp(a)` is a comparison function that is neither transitive nor
-    /// reflexive nor total, `a < b < c < a` with `a = 1, b = 2, c = 3`. For more information and
-    /// examples see the [`Ord`] documentation.
-    ///
-    ///
-    /// All original elements will remain in the slice and any possible modifications via interior
-    /// mutability are observed in the input. Same is true if the implementation of [`Ord`] for `T` panics.
-    ///
-    /// Sorting types that only implement [`PartialOrd`] such as [`f32`] and [`f64`] require
-    /// additional precautions. For example, `f32::NAN != f32::NAN`, which doesn't fulfill the
-    /// reflexivity requirement of [`Ord`]. By using an alternative comparison function with
-    /// `slice::sort_unstable_by` such as [`f32::total_cmp`] or [`f64::total_cmp`] that defines a
-    /// [total order] users can sort slices containing floating-point values. Alternatively, if all
-    /// values in the slice are guaranteed to be in a subset for which [`PartialOrd::partial_cmp`]
-    /// forms a [total order], it's possible to sort the slice with `sort_unstable_by(|a, b|
-    /// a.partial_cmp(b).unwrap())`.
-    ///
-    /// # Current implementation
-    ///
-    /// The current implementation is based on [ipnsort] by Lukas Bergdoll and Orson Peters, which
-    /// combines the fast average case of quicksort with the fast worst case of heapsort, achieving
-    /// linear time on fully sorted and reversed inputs. On inputs with k distinct elements, the
-    /// expected time to sort the data is *O*(*n* \* log(*k*)).
-    ///
-    /// It is typically faster than stable sorting, except in a few special cases, e.g., when the
-    /// slice is partially sorted.
+    /// 按升序排序切片，**不** 保留相等元素的原始相对顺序。
+///
+    /// 这是不稳定排序（可能重排相等元素）、原地排序（不分配），最坏时间复杂度为
+    /// *O*(*n* \* log(*n*))。
+///
+    /// 如果 `T` 的 [`Ord`] 实现不是 [total order]，本函数可能 panic；即使正常返回，
+    /// 切片中元素的最终顺序也没有指定含义。另见下面关于 panic 的说明。
+///
+    /// 例如 `|a, b| (a - b).cmp(a)` 既不传递、也不自反、更不是全序；
+    /// 当 `a = 1, b = 2, c = 3` 时会出现 `a < b < c < a`。更多信息和示例见 [`Ord`] 文档。
+///
+///
+    /// 即使 [`Ord`] 实现 panic，所有原始元素仍会留在切片中；通过内部可变性发生的修改也会
+    /// 反映在输入切片里。
+///
+    /// 对只实现 [`PartialOrd`] 的类型（例如 [`f32`] 和 [`f64`]）排序需要额外谨慎。
+    /// 例如 `f32::NAN != f32::NAN`，不满足 [`Ord`] 的自反性要求。若要排序包含浮点值的
+    /// 切片，可用 `slice::sort_unstable_by` 搭配定义了 [total order] 的比较函数，
+    /// 例如 [`f32::total_cmp`] 或 [`f64::total_cmp`]。如果能保证切片中所有值都落在
+    /// [`PartialOrd::partial_cmp`] 构成 [total order] 的子集内，也可使用
+    /// `sort_unstable_by(|a, b| a.partial_cmp(b).unwrap())`。
+///
+    /// # 当前实现
+///
+    /// 当前实现基于 Lukas Bergdoll 和 Orson Peters 的 [ipnsort]。它结合了 quicksort 的
+    /// 快速平均情况和 heapsort 的快速最坏情况，在完全有序和完全逆序输入上可达到线性时间。
+    /// 对只有 k 个不同元素的输入，期望排序时间为 *O*(*n* \* log(*k*))。
+///
+    /// 除少数特殊情况（例如切片已经部分有序）外，它通常比稳定排序更快。
     ///
     /// # Panics
     ///
-    /// May panic if the implementation of [`Ord`] for `T` does not implement a [total order], or if
-    /// the [`Ord`] implementation panics.
+    /// 如果 `T` 的 [`Ord`] 实现不是 [total order]，或 [`Ord`] 实现自身 panic，本函数可能 panic。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let mut v = [4, -5, 1, -3, 2];
@@ -3137,46 +3012,40 @@ impl<T> [T] {
         sort::unstable::sort(self, &mut T::lt);
     }
 
-    /// Sorts the slice in ascending order with a comparison function, **without** preserving the
-    /// initial order of equal elements.
-    ///
-    /// This sort is unstable (i.e., may reorder equal elements), in-place (i.e., does not
-    /// allocate), and *O*(*n* \* log(*n*)) worst-case.
-    ///
-    /// If the comparison function `compare` does not implement a [total order], the function
-    /// may panic; even if the function exits normally, the resulting order of elements in the slice
-    /// is unspecified. See also the note on panicking below.
-    ///
-    /// For example `|a, b| (a - b).cmp(a)` is a comparison function that is neither transitive nor
-    /// reflexive nor total, `a < b < c < a` with `a = 1, b = 2, c = 3`. For more information and
-    /// examples see the [`Ord`] documentation.
-    ///
-    /// All original elements will remain in the slice and any possible modifications via interior
-    /// mutability are observed in the input. Same is true if `compare` panics.
-    ///
-    /// # Current implementation
-    ///
-    /// The current implementation is based on [ipnsort] by Lukas Bergdoll and Orson Peters, which
-    /// combines the fast average case of quicksort with the fast worst case of heapsort, achieving
-    /// linear time on fully sorted and reversed inputs. On inputs with k distinct elements, the
-    /// expected time to sort the data is *O*(*n* \* log(*k*)).
-    ///
-    /// It is typically faster than stable sorting, except in a few special cases, e.g., when the
-    /// slice is partially sorted.
+    /// 使用比较函数按升序排序切片，**不** 保留相等元素的原始相对顺序。
+///
+    /// 这是不稳定排序（可能重排相等元素）、原地排序（不分配），最坏时间复杂度为
+    /// *O*(*n* \* log(*n*))。
+///
+    /// 如果比较函数 `compare` 不构成 [total order]，本函数可能 panic；即使正常返回，
+    /// 切片中元素的最终顺序也没有指定含义。另见下面关于 panic 的说明。
+///
+    /// 例如 `|a, b| (a - b).cmp(a)` 既不传递、也不自反、更不是全序；
+    /// 当 `a = 1, b = 2, c = 3` 时会出现 `a < b < c < a`。更多信息和示例见 [`Ord`] 文档。
+///
+    /// 即使 `compare` panic，所有原始元素仍会留在切片中；通过内部可变性发生的修改也会
+    /// 反映在输入切片里。
+///
+    /// # 当前实现
+///
+    /// 当前实现基于 Lukas Bergdoll 和 Orson Peters 的 [ipnsort]。它结合了 quicksort 的
+    /// 快速平均情况和 heapsort 的快速最坏情况，在完全有序和完全逆序输入上可达到线性时间。
+    /// 对只有 k 个不同元素的输入，期望排序时间为 *O*(*n* \* log(*k*))。
+///
+    /// 除少数特殊情况（例如切片已经部分有序）外，它通常比稳定排序更快。
     ///
     /// # Panics
     ///
-    /// May panic if the `compare` does not implement a [total order], or if
-    /// the `compare` itself panics.
+    /// 如果 `compare` 不构成 [total order]，或 `compare` 自身 panic，本函数可能 panic。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let mut v = [4, -5, 1, -3, 2];
     /// v.sort_unstable_by(|a, b| a.cmp(b));
     /// assert_eq!(v, [-5, -3, 1, 2, 4]);
     ///
-    /// // reverse sorting
+    /// // 反向排序。
     /// v.sort_unstable_by(|a, b| b.cmp(a));
     /// assert_eq!(v, [4, 2, 1, -3, -5]);
     /// ```
@@ -3192,39 +3061,33 @@ impl<T> [T] {
         sort::unstable::sort(self, &mut |a, b| compare(a, b) == Ordering::Less);
     }
 
-    /// Sorts the slice in ascending order with a key extraction function, **without** preserving
-    /// the initial order of equal elements.
-    ///
-    /// This sort is unstable (i.e., may reorder equal elements), in-place (i.e., does not
-    /// allocate), and *O*(*n* \* log(*n*)) worst-case.
-    ///
-    /// If the implementation of [`Ord`] for `K` does not implement a [total order], the function
-    /// may panic; even if the function exits normally, the resulting order of elements in the slice
-    /// is unspecified. See also the note on panicking below.
-    ///
-    /// For example `|a, b| (a - b).cmp(a)` is a comparison function that is neither transitive nor
-    /// reflexive nor total, `a < b < c < a` with `a = 1, b = 2, c = 3`. For more information and
-    /// examples see the [`Ord`] documentation.
-    ///
-    /// All original elements will remain in the slice and any possible modifications via interior
-    /// mutability are observed in the input. Same is true if the implementation of [`Ord`] for `K` panics.
-    ///
-    /// # Current implementation
-    ///
-    /// The current implementation is based on [ipnsort] by Lukas Bergdoll and Orson Peters, which
-    /// combines the fast average case of quicksort with the fast worst case of heapsort, achieving
-    /// linear time on fully sorted and reversed inputs. On inputs with k distinct elements, the
-    /// expected time to sort the data is *O*(*n* \* log(*k*)).
-    ///
-    /// It is typically faster than stable sorting, except in a few special cases, e.g., when the
-    /// slice is partially sorted.
+    /// 使用键提取函数按升序排序切片，**不** 保留相等元素的原始相对顺序。
+///
+    /// 这是不稳定排序（可能重排相等键元素）、原地排序（不分配），最坏时间复杂度为
+    /// *O*(*n* \* log(*n*))。
+///
+    /// 如果 `K` 的 [`Ord`] 实现不是 [total order]，本函数可能 panic；即使正常返回，
+    /// 切片中元素的最终顺序也没有指定含义。另见下面关于 panic 的说明。
+///
+    /// 例如 `|a, b| (a - b).cmp(a)` 既不传递、也不自反、更不是全序；
+    /// 当 `a = 1, b = 2, c = 3` 时会出现 `a < b < c < a`。更多信息和示例见 [`Ord`] 文档。
+///
+    /// 即使 `K` 的 [`Ord`] 实现 panic，所有原始元素仍会留在切片中；通过内部可变性发生的
+    /// 修改也会反映在输入切片里。
+///
+    /// # 当前实现
+///
+    /// 当前实现基于 Lukas Bergdoll 和 Orson Peters 的 [ipnsort]。它结合了 quicksort 的
+    /// 快速平均情况和 heapsort 的快速最坏情况，在完全有序和完全逆序输入上可达到线性时间。
+    /// 对只有 k 个不同键的输入，期望排序时间为 *O*(*n* \* log(*k*))。
+///
+    /// 除少数特殊情况（例如切片已经部分有序）外，它通常比稳定排序更快。
     ///
     /// # Panics
     ///
-    /// May panic if the implementation of [`Ord`] for `K` does not implement a [total order], or if
-    /// the [`Ord`] implementation panics.
+    /// 如果 `K` 的 [`Ord`] 实现不是 [total order]，或 [`Ord`] 实现自身 panic，本函数可能 panic。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let mut v = [4i32, -5, 1, -3, 2];
@@ -3245,39 +3108,39 @@ impl<T> [T] {
         sort::unstable::sort(self, &mut |a, b| f(a).lt(&f(b)));
     }
 
-    /// Partially sorts the slice in ascending order **without** preserving the initial order of equal elements.
-    ///
-    /// Upon completion, for the specified range `start..end`, it's guaranteed that:
-    ///
-    /// 1. Every element in `self[..start]` is smaller than or equal to
-    /// 2. Every element in `self[start..end]`, which is sorted, and smaller than or equal to
-    /// 3. Every element in `self[end..]`.
-    ///
-    /// This partial sort is unstable, meaning it may reorder equal elements in the specified range.
-    /// It may reorder elements outside the specified range as well, but the guarantees above still hold.
-    ///
-    /// This partial sort is in-place (i.e., does not allocate), and *O*(*n* + *k* \* log(*k*)) worst-case,
-    /// where *n* is the length of the slice and *k* is the length of the specified range.
-    ///
-    /// See the documentation of [`sort_unstable`] for implementation notes.
+    /// 按升序对切片的一段做部分排序，**不** 保留相等元素的原始相对顺序。
+///
+    /// 完成后，对指定范围 `start..end` 保证：
+///
+    /// 1. `self[..start]` 中的每个元素都小于或等于
+    /// 2. 已排序的 `self[start..end]` 中的每个元素，并且这些元素又小于或等于
+    /// 3. `self[end..]` 中的每个元素。
+///
+    /// 该部分排序是不稳定的，可能重排指定范围内的相等元素；它也可能重排指定范围之外的元素，
+    /// 但上面的分区与范围内有序保证仍然成立。
+///
+    /// 该部分排序是原地的（不分配），最坏时间复杂度为 *O*(*n* + *k* \* log(*k*))，
+    /// 其中 *n* 是切片长度，*k* 是指定范围长度。
+///
+    /// 实现说明见 [`sort_unstable`] 的文档。
     ///
     /// # Panics
     ///
-    /// May panic if the implementation of [`Ord`] for `T` does not implement a total order, or if
-    /// the [`Ord`] implementation panics, or if the specified range is out of bounds.
+    /// 如果 `T` 的 [`Ord`] 实现不是 total order、[`Ord`] 实现自身 panic，或指定范围越界，
+    /// 本函数可能 panic。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(slice_partial_sort_unstable)]
     ///
     /// let mut v = [4, -5, 1, -3, 2];
     ///
-    /// // empty range at the beginning, nothing changed
+    /// // 开头处的空范围，不改变内容。
     /// v.partial_sort_unstable(0..0);
     /// assert_eq!(v, [4, -5, 1, -3, 2]);
     ///
-    /// // empty range in the middle, partitioning the slice
+    /// // 中间的空范围，只对切片进行分区。
     /// v.partial_sort_unstable(2..2);
     /// for i in 0..2 {
     ///    assert!(v[i] <= v[2]);
@@ -3286,7 +3149,7 @@ impl<T> [T] {
     ///   assert!(v[2] <= v[i]);
     /// }
     ///
-    /// // single element range, same as select_nth_unstable
+    /// // 单元素范围，效果类似 select_nth_unstable。
     /// v.partial_sort_unstable(2..3);
     /// for i in 0..2 {
     ///    assert!(v[i] <= v[2]);
@@ -3295,11 +3158,11 @@ impl<T> [T] {
     ///   assert!(v[2] <= v[i]);
     /// }
     ///
-    /// // partial sort a subrange
+    /// // 对子范围做部分排序。
     /// v.partial_sort_unstable(1..4);
     /// assert_eq!(&v[1..4], [-3, 1, 2]);
     ///
-    /// // partial sort the whole range, same as sort_unstable
+    /// // 对整个范围做部分排序，等同 sort_unstable。
     /// v.partial_sort_unstable(..);
     /// assert_eq!(v, [-5, -3, 1, 2, 4]);
     /// ```
@@ -3315,40 +3178,39 @@ impl<T> [T] {
         sort::unstable::partial_sort(self, range, T::lt);
     }
 
-    /// Partially sorts the slice in ascending order with a comparison function, **without**
-    /// preserving the initial order of equal elements.
-    ///
-    /// Upon completion, for the specified range `start..end`, it's guaranteed that:
-    ///
-    /// 1. Every element in `self[..start]` is smaller than or equal to
-    /// 2. Every element in `self[start..end]`, which is sorted, and smaller than or equal to
-    /// 3. Every element in `self[end..]`.
-    ///
-    /// This partial sort is unstable, meaning it may reorder equal elements in the specified range.
-    /// It may reorder elements outside the specified range as well, but the guarantees above still hold.
-    ///
-    /// This partial sort is in-place (i.e., does not allocate), and *O*(*n* + *k* \* log(*k*)) worst-case,
-    /// where *n* is the length of the slice and *k* is the length of the specified range.
-    ///
-    /// See the documentation of [`sort_unstable_by`] for implementation notes.
+    /// 使用比较函数按升序对切片的一段做部分排序，**不** 保留相等元素的原始相对顺序。
+///
+    /// 完成后，对指定范围 `start..end` 保证：
+///
+    /// 1. `self[..start]` 中的每个元素都小于或等于
+    /// 2. 已排序的 `self[start..end]` 中的每个元素，并且这些元素又小于或等于
+    /// 3. `self[end..]` 中的每个元素。
+///
+    /// 该部分排序是不稳定的，可能重排指定范围内的相等元素；它也可能重排指定范围之外的元素，
+    /// 但上面的保证仍然成立。
+///
+    /// 该部分排序是原地的（不分配），最坏时间复杂度为 *O*(*n* + *k* \* log(*k*))，
+    /// 其中 *n* 是切片长度，*k* 是指定范围长度。
+///
+    /// 实现说明见 [`sort_unstable_by`] 的文档。
     ///
     /// # Panics
     ///
-    /// May panic if the `compare` does not implement a total order, or if
-    /// the `compare` itself panics, or if the specified range is out of bounds.
+    /// 如果 `compare` 不构成 total order、`compare` 自身 panic，或指定范围越界，
+    /// 本函数可能 panic。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(slice_partial_sort_unstable)]
     ///
     /// let mut v = [4, -5, 1, -3, 2];
     ///
-    /// // empty range at the beginning, nothing changed
+    /// // 开头处的空范围，不改变内容。
     /// v.partial_sort_unstable_by(0..0, |a, b| b.cmp(a));
     /// assert_eq!(v, [4, -5, 1, -3, 2]);
     ///
-    /// // empty range in the middle, partitioning the slice
+    /// // 中间的空范围，只对切片进行分区。
     /// v.partial_sort_unstable_by(2..2, |a, b| b.cmp(a));
     /// for i in 0..2 {
     ///    assert!(v[i] >= v[2]);
@@ -3357,7 +3219,7 @@ impl<T> [T] {
     ///   assert!(v[2] >= v[i]);
     /// }
     ///
-    /// // single element range, same as select_nth_unstable
+    /// // 单元素范围，效果类似 select_nth_unstable。
     /// v.partial_sort_unstable_by(2..3, |a, b| b.cmp(a));
     /// for i in 0..2 {
     ///    assert!(v[i] >= v[2]);
@@ -3366,11 +3228,11 @@ impl<T> [T] {
     ///   assert!(v[2] >= v[i]);
     /// }
     ///
-    /// // partial sort a subrange
+    /// // 对子范围做部分排序。
     /// v.partial_sort_unstable_by(1..4, |a, b| b.cmp(a));
     /// assert_eq!(&v[1..4], [2, 1, -3]);
     ///
-    /// // partial sort the whole range, same as sort_unstable
+    /// // 对整个范围做部分排序，等同 sort_unstable。
     /// v.partial_sort_unstable_by(.., |a, b| b.cmp(a));
     /// assert_eq!(v, [4, 2, 1, -3, -5]);
     /// ```
@@ -3386,40 +3248,39 @@ impl<T> [T] {
         sort::unstable::partial_sort(self, range, |a, b| compare(a, b) == Less);
     }
 
-    /// Partially sorts the slice in ascending order with a key extraction function, **without**
-    /// preserving the initial order of equal elements.
-    ///
-    /// Upon completion, for the specified range `start..end`, it's guaranteed that:
-    ///
-    /// 1. Every element in `self[..start]` is smaller than or equal to
-    /// 2. Every element in `self[start..end]`, which is sorted, and smaller than or equal to
-    /// 3. Every element in `self[end..]`.
-    ///
-    /// This partial sort is unstable, meaning it may reorder equal elements in the specified range.
-    /// It may reorder elements outside the specified range as well, but the guarantees above still hold.
-    ///
-    /// This partial sort is in-place (i.e., does not allocate), and *O*(*n* + *k* \* log(*k*)) worst-case,
-    /// where *n* is the length of the slice and *k* is the length of the specified range.
-    ///
-    /// See the documentation of [`sort_unstable_by_key`] for implementation notes.
+    /// 使用键提取函数按升序对切片的一段做部分排序，**不** 保留相等元素的原始相对顺序。
+///
+    /// 完成后，对指定范围 `start..end` 保证：
+///
+    /// 1. `self[..start]` 中每个元素的键都小于或等于
+    /// 2. 已排序的 `self[start..end]` 中每个元素的键，并且这些键又小于或等于
+    /// 3. `self[end..]` 中每个元素的键。
+///
+    /// 该部分排序是不稳定的，可能重排指定范围内键相等的元素；它也可能重排指定范围之外的元素，
+    /// 但上面的保证仍然成立。
+///
+    /// 该部分排序是原地的（不分配），最坏时间复杂度为 *O*(*n* + *k* \* log(*k*))，
+    /// 其中 *n* 是切片长度，*k* 是指定范围长度。
+///
+    /// 实现说明见 [`sort_unstable_by_key`] 的文档。
     ///
     /// # Panics
     ///
-    /// May panic if the implementation of [`Ord`] for `K` does not implement a total order, or if
-    /// the [`Ord`] implementation panics, or if the specified range is out of bounds.
+    /// 如果 `K` 的 [`Ord`] 实现不是 total order、[`Ord`] 实现自身 panic，或指定范围越界，
+    /// 本函数可能 panic。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(slice_partial_sort_unstable)]
     ///
     /// let mut v = [4i32, -5, 1, -3, 2];
     ///
-    /// // empty range at the beginning, nothing changed
+    /// // 开头处的空范围，不改变内容。
     /// v.partial_sort_unstable_by_key(0..0, |k| k.abs());
     /// assert_eq!(v, [4, -5, 1, -3, 2]);
     ///
-    /// // empty range in the middle, partitioning the slice
+    /// // 中间的空范围，只对切片进行分区。
     /// v.partial_sort_unstable_by_key(2..2, |k| k.abs());
     /// for i in 0..2 {
     ///    assert!(v[i].abs() <= v[2].abs());
@@ -3428,7 +3289,7 @@ impl<T> [T] {
     ///   assert!(v[2].abs() <= v[i].abs());
     /// }
     ///
-    /// // single element range, same as select_nth_unstable
+    /// // 单元素范围，效果类似 select_nth_unstable。
     /// v.partial_sort_unstable_by_key(2..3, |k| k.abs());
     /// for i in 0..2 {
     ///    assert!(v[i].abs() <= v[2].abs());
@@ -3437,11 +3298,11 @@ impl<T> [T] {
     ///   assert!(v[2].abs() <= v[i].abs());
     /// }
     ///
-    /// // partial sort a subrange
+    /// // 对子范围做部分排序。
     /// v.partial_sort_unstable_by_key(1..4, |k| k.abs());
     /// assert_eq!(&v[1..4], [2, -3, 4]);
     ///
-    /// // partial sort the whole range, same as sort_unstable
+    /// // 对整个范围做部分排序，等同 sort_unstable。
     /// v.partial_sort_unstable_by_key(.., |k| k.abs());
     /// assert_eq!(v, [1, 2, -3, 4, -5]);
     /// ```
@@ -3458,51 +3319,48 @@ impl<T> [T] {
         sort::unstable::partial_sort(self, range, |a, b| f(a).lt(&f(b)));
     }
 
-    /// Reorders the slice such that the element at `index` is at a sort-order position. All
-    /// elements before `index` will be `<=` to this value, and all elements after will be `>=` to
-    /// it.
+    /// 重排切片，使 `index` 处元素处在其排序后应在的位置。
     ///
-    /// This reordering is unstable (i.e. any element that compares equal to the nth element may end
-    /// up at that position), in-place (i.e.  does not allocate), and runs in *O*(*n*) time. This
-    /// function is also known as "kth element" in other libraries.
-    ///
-    /// Returns a triple that partitions the reordered slice:
-    ///
-    /// * The unsorted subslice before `index`, whose elements all satisfy `x <= self[index]`.
-    ///
-    /// * The element at `index`.
-    ///
-    /// * The unsorted subslice after `index`, whose elements all satisfy `x >= self[index]`.
-    ///
-    /// # Current implementation
-    ///
-    /// The current algorithm is an introselect implementation based on [ipnsort] by Lukas Bergdoll
-    /// and Orson Peters, which is also the basis for [`sort_unstable`]. The fallback algorithm is
-    /// Median of Medians using Tukey's Ninther for pivot selection, which guarantees linear runtime
-    /// for all inputs.
+    /// `index` 之前的所有元素都小于或等于该值，`index` 之后的所有元素都大于或等于该值。
+///
+    /// 该重排是不稳定的（任何与第 n 个元素比较相等的元素都可能落在该位置）、原地的
+    /// （不分配），运行时间为 *O*(*n*)。其它库中常称为 “kth element”。
+///
+    /// 返回一个三元组，对重排后的切片进行分区：
+///
+    /// * `index` 之前的未排序子切片，其中所有元素都满足 `x <= self[index]`。
+///
+    /// * `index` 处的元素。
+///
+    /// * `index` 之后的未排序子切片，其中所有元素都满足 `x >= self[index]`。
+///
+    /// # 当前实现
+///
+    /// 当前算法是基于 Lukas Bergdoll 和 Orson Peters 的 [ipnsort] 的 introselect 实现，
+    /// [`sort_unstable`] 也以它为基础。fallback 算法是 Median of Medians，并用
+    /// Tukey's Ninther 选择枢轴，从而对所有输入保证线性运行时间。
     ///
     /// [`sort_unstable`]: slice::sort_unstable
     ///
     /// # Panics
     ///
-    /// Panics when `index >= len()`, and so always panics on empty slices.
+    /// 当 `index >= len()` 时 panic，因此空切片上总会 panic。
+///
+    /// 如果 `T` 的 [`Ord`] 实现不是 [total order]，本函数可能 panic。
     ///
-    /// May panic if the implementation of [`Ord`] for `T` does not implement a [total order].
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let mut v = [-5i32, 4, 2, -3, 1];
     ///
-    /// // Find the items `<=` to the median, the median itself, and the items `>=` to it.
+    /// // 找到小于等于中位数的元素、中位数本身，以及大于等于中位数的元素。
     /// let (lesser, median, greater) = v.select_nth_unstable(2);
     ///
     /// assert!(lesser == [-3, -5] || lesser == [-5, -3]);
     /// assert_eq!(median, &mut 1);
     /// assert!(greater == [4, 2] || greater == [2, 4]);
     ///
-    /// // We are only guaranteed the slice will be one of the following, based on the way we sort
-    /// // about the specified index.
+    /// // 根据围绕指定索引分区的方式，只保证切片会是下面几种形式之一。
     /// assert!(v == [-3, -5, 1, 2, 4] ||
     ///         v == [-5, -3, 1, 2, 4] ||
     ///         v == [-3, -5, 1, 4, 2] ||
@@ -3520,54 +3378,51 @@ impl<T> [T] {
         sort::select::partition_at_index(self, index, T::lt)
     }
 
-    /// Reorders the slice with a comparator function such that the element at `index` is at a
-    /// sort-order position. All elements before `index` will be `<=` to this value, and all
-    /// elements after will be `>=` to it, according to the comparator function.
+    /// 使用比较函数重排切片，使 `index` 处元素处在其排序后应在的位置。
     ///
-    /// This reordering is unstable (i.e. any element that compares equal to the nth element may end
-    /// up at that position), in-place (i.e.  does not allocate), and runs in *O*(*n*) time. This
-    /// function is also known as "kth element" in other libraries.
-    ///
-    /// Returns a triple partitioning the reordered slice:
-    ///
-    /// * The unsorted subslice before `index`, whose elements all satisfy
+    /// 按该比较函数，`index` 之前的所有元素都小于或等于该值，`index` 之后的所有元素都
+    /// 大于或等于该值。
+///
+    /// 该重排是不稳定的（任何与第 n 个元素比较相等的元素都可能落在该位置）、原地的
+    /// （不分配），运行时间为 *O*(*n*)。其它库中常称为 “kth element”。
+///
+    /// 返回一个三元组，对重排后的切片进行分区：
+///
+    /// * `index` 之前的未排序子切片，其中所有元素都满足
     ///   `compare(x, self[index]).is_le()`.
-    ///
-    /// * The element at `index`.
-    ///
-    /// * The unsorted subslice after `index`, whose elements all satisfy
+///
+    /// * `index` 处的元素。
+///
+    /// * `index` 之后的未排序子切片，其中所有元素都满足
     ///   `compare(x, self[index]).is_ge()`.
-    ///
-    /// # Current implementation
-    ///
-    /// The current algorithm is an introselect implementation based on [ipnsort] by Lukas Bergdoll
-    /// and Orson Peters, which is also the basis for [`sort_unstable`]. The fallback algorithm is
-    /// Median of Medians using Tukey's Ninther for pivot selection, which guarantees linear runtime
-    /// for all inputs.
+///
+    /// # 当前实现
+///
+    /// 当前算法是基于 Lukas Bergdoll 和 Orson Peters 的 [ipnsort] 的 introselect 实现，
+    /// [`sort_unstable`] 也以它为基础。fallback 算法是 Median of Medians，并用
+    /// Tukey's Ninther 选择枢轴，从而对所有输入保证线性运行时间。
     ///
     /// [`sort_unstable`]: slice::sort_unstable
     ///
     /// # Panics
     ///
-    /// Panics when `index >= len()`, and so always panics on empty slices.
+    /// 当 `index >= len()` 时 panic，因此空切片上总会 panic。
+///
+    /// 如果 `compare` 不构成 [total order]，本函数可能 panic。
     ///
-    /// May panic if `compare` does not implement a [total order].
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let mut v = [-5i32, 4, 2, -3, 1];
     ///
-    /// // Find the items `>=` to the median, the median itself, and the items `<=` to it, by using
-    /// // a reversed comparator.
+    /// // 通过反向比较器，找到大于等于中位数的元素、中位数本身，以及小于等于中位数的元素。
     /// let (before, median, after) = v.select_nth_unstable_by(2, |a, b| b.cmp(a));
     ///
     /// assert!(before == [4, 2] || before == [2, 4]);
     /// assert_eq!(median, &mut 1);
     /// assert!(after == [-3, -5] || after == [-5, -3]);
     ///
-    /// // We are only guaranteed the slice will be one of the following, based on the way we sort
-    /// // about the specified index.
+    /// // 根据围绕指定索引分区的方式，只保证切片会是下面几种形式之一。
     /// assert!(v == [2, 4, 1, -5, -3] ||
     ///         v == [2, 4, 1, -3, -5] ||
     ///         v == [4, 2, 1, -5, -3] ||
@@ -3589,52 +3444,49 @@ impl<T> [T] {
         sort::select::partition_at_index(self, index, |a: &T, b: &T| compare(a, b) == Less)
     }
 
-    /// Reorders the slice with a key extraction function such that the element at `index` is at a
-    /// sort-order position. All elements before `index` will have keys `<=` to the key at `index`,
-    /// and all elements after will have keys `>=` to it.
+    /// 使用键提取函数重排切片，使 `index` 处元素处在按键排序后应在的位置。
     ///
-    /// This reordering is unstable (i.e. any element that compares equal to the nth element may end
-    /// up at that position), in-place (i.e.  does not allocate), and runs in *O*(*n*) time. This
-    /// function is also known as "kth element" in other libraries.
-    ///
-    /// Returns a triple partitioning the reordered slice:
-    ///
-    /// * The unsorted subslice before `index`, whose elements all satisfy `f(x) <= f(self[index])`.
-    ///
-    /// * The element at `index`.
-    ///
-    /// * The unsorted subslice after `index`, whose elements all satisfy `f(x) >= f(self[index])`.
-    ///
-    /// # Current implementation
-    ///
-    /// The current algorithm is an introselect implementation based on [ipnsort] by Lukas Bergdoll
-    /// and Orson Peters, which is also the basis for [`sort_unstable`]. The fallback algorithm is
-    /// Median of Medians using Tukey's Ninther for pivot selection, which guarantees linear runtime
-    /// for all inputs.
+    /// `index` 之前所有元素的键都小于或等于 `index` 处元素的键，之后所有元素的键都
+    /// 大于或等于它。
+///
+    /// 该重排是不稳定的（任何与第 n 个元素键相等的元素都可能落在该位置）、原地的
+    /// （不分配），运行时间为 *O*(*n*)。其它库中常称为 “kth element”。
+///
+    /// 返回一个三元组，对重排后的切片进行分区：
+///
+    /// * `index` 之前的未排序子切片，其中所有元素都满足 `f(x) <= f(self[index])`。
+///
+    /// * `index` 处的元素。
+///
+    /// * `index` 之后的未排序子切片，其中所有元素都满足 `f(x) >= f(self[index])`。
+///
+    /// # 当前实现
+///
+    /// 当前算法是基于 Lukas Bergdoll 和 Orson Peters 的 [ipnsort] 的 introselect 实现，
+    /// [`sort_unstable`] 也以它为基础。fallback 算法是 Median of Medians，并用
+    /// Tukey's Ninther 选择枢轴，从而对所有输入保证线性运行时间。
     ///
     /// [`sort_unstable`]: slice::sort_unstable
     ///
     /// # Panics
     ///
-    /// Panics when `index >= len()`, meaning it always panics on empty slices.
+    /// 当 `index >= len()` 时 panic，因此空切片上总会 panic。
+///
+    /// 如果 `K: Ord` 不构成 total order，本函数可能 panic。
     ///
-    /// May panic if `K: Ord` does not implement a total order.
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let mut v = [-5i32, 4, 1, -3, 2];
     ///
-    /// // Find the items `<=` to the absolute median, the absolute median itself, and the items
-    /// // `>=` to it.
+    /// // 找到绝对值小于等于绝对中位数的元素、绝对中位数本身，以及绝对值大于等于它的元素。
     /// let (lesser, median, greater) = v.select_nth_unstable_by_key(2, |a| a.abs());
     ///
     /// assert!(lesser == [1, 2] || lesser == [2, 1]);
     /// assert_eq!(median, &mut -3);
     /// assert!(greater == [4, -5] || greater == [-5, 4]);
     ///
-    /// // We are only guaranteed the slice will be one of the following, based on the way we sort
-    /// // about the specified index.
+    /// // 根据围绕指定索引分区的方式，只保证切片会是下面几种形式之一。
     /// assert!(v == [1, 2, -3, 4, -5] ||
     ///         v == [1, 2, -3, -5, 4] ||
     ///         v == [2, 1, -3, 4, -5] ||
@@ -3657,15 +3509,14 @@ impl<T> [T] {
         sort::select::partition_at_index(self, index, |a: &T, b: &T| f(a).lt(&f(b)))
     }
 
-    /// Moves all consecutive repeated elements to the end of the slice according to the
-    /// [`PartialEq`] trait implementation.
+    /// 根据 [`PartialEq`] trait 实现，把所有连续重复元素移动到切片末尾。
     ///
-    /// Returns two slices. The first contains no consecutive repeated elements.
-    /// The second contains all the duplicates in no specified order.
+    /// 返回两个切片。第一个切片不包含连续重复元素；第二个切片包含所有重复元素，
+    /// 顺序不作规定。
     ///
-    /// If the slice is sorted, the first returned slice contains no duplicates.
+    /// 如果切片已经排序，第一个返回切片不包含任何重复元素。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(slice_partition_dedup)]
@@ -3686,20 +3537,18 @@ impl<T> [T] {
         self.partition_dedup_by(|a, b| a == b)
     }
 
-    /// Moves all but the first of consecutive elements to the end of the slice satisfying
-    /// a given equality relation.
+    /// 按给定相等关系，把连续相等元素中除第一个以外的元素移动到切片末尾。
     ///
-    /// Returns two slices. The first contains no consecutive repeated elements.
-    /// The second contains all the duplicates in no specified order.
+    /// 返回两个切片。第一个切片不包含连续重复元素；第二个切片包含所有重复元素，
+    /// 顺序不作规定。
     ///
-    /// The `same_bucket` function is passed references to two elements from the slice and
-    /// must determine if the elements compare equal. The elements are passed in opposite order
-    /// from their order in the slice, so if `same_bucket(a, b)` returns `true`, `a` is moved
-    /// at the end of the slice.
+    /// `same_bucket` 函数会收到来自切片的两个元素引用，并判断它们是否应视为相等。
+    /// 两个元素的传入顺序与它们在切片中的顺序相反，因此如果 `same_bucket(a, b)`
+    /// 返回 `true`，`a` 会被移动到切片末尾。
     ///
-    /// If the slice is sorted, the first returned slice contains no duplicates.
+    /// 如果切片已经排序，第一个返回切片不包含任何重复元素。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(slice_partition_dedup)]
@@ -3717,18 +3566,15 @@ impl<T> [T] {
     where
         F: FnMut(&mut T, &mut T) -> bool,
     {
-        // Although we have a mutable reference to `self`, we cannot make
-        // *arbitrary* changes. The `same_bucket` calls could panic, so we
-        // must ensure that the slice is in a valid state at all times.
+        // 虽然这里拥有 `self` 的可变引用，但不能做*任意*修改。
+        // `same_bucket` 调用可能 panic，因此必须始终确保切片处于有效状态。
         //
-        // The way that we handle this is by using swaps; we iterate
-        // over all the elements, swapping as we go so that at the end
-        // the elements we wish to keep are in the front, and those we
-        // wish to reject are at the back. We can then split the slice.
-        // This operation is still `O(n)`.
+        // 处理方式是使用交换：遍历所有元素，并在过程中交换，
+        // 使最终希望保留的元素位于前部，希望剔除的元素位于后部。
+        // 随后即可分割切片。该操作仍是 `O(n)`。
         //
-        // Example: We start in this state, where `r` represents "next
-        // read" and `w` represents "next_write".
+        // 示例：从如下状态开始，其中 `r` 表示“下一个读取位置”，
+        // `w` 表示“next_write”。
         //
         //           r
         //     +---+---+---+---+---+---+
@@ -3736,9 +3582,9 @@ impl<T> [T] {
         //     +---+---+---+---+---+---+
         //           w
         //
-        // Comparing self[r] against self[w-1], this is not a duplicate, so
-        // we swap self[r] and self[w] (no effect as r==w) and then increment both
-        // r and w, leaving us with:
+        // 比较 self[r] 与 self[w-1]，这不是重复元素，
+        // 因此交换 self[r] 和 self[w]（由于 r==w，没有实际效果），
+        // 然后同时递增 r 和 w，得到：
         //
         //               r
         //     +---+---+---+---+---+---+
@@ -3746,8 +3592,8 @@ impl<T> [T] {
         //     +---+---+---+---+---+---+
         //               w
         //
-        // Comparing self[r] against self[w-1], this value is a duplicate,
-        // so we increment `r` but leave everything else unchanged:
+        // 比较 self[r] 与 self[w-1]，该值是重复元素，
+        // 因此只递增 `r`，其余保持不变：
         //
         //                   r
         //     +---+---+---+---+---+---+
@@ -3755,8 +3601,8 @@ impl<T> [T] {
         //     +---+---+---+---+---+---+
         //               w
         //
-        // Comparing self[r] against self[w-1], this is not a duplicate,
-        // so swap self[r] and self[w] and advance r and w:
+        // 比较 self[r] 与 self[w-1]，这不是重复元素，
+        // 因此交换 self[r] 和 self[w]，并前进 r 和 w：
         //
         //                       r
         //     +---+---+---+---+---+---+
@@ -3764,7 +3610,7 @@ impl<T> [T] {
         //     +---+---+---+---+---+---+
         //                   w
         //
-        // Not a duplicate, repeat:
+        // 不是重复元素，重复上述步骤：
         //
         //                           r
         //     +---+---+---+---+---+---+
@@ -3772,7 +3618,7 @@ impl<T> [T] {
         //     +---+---+---+---+---+---+
         //                       w
         //
-        // Duplicate, advance r. End of slice. Split at w.
+        // 是重复元素，前进 r。到达切片末尾后，在 w 处分割。
 
         let len = self.len();
         if len <= 1 {
@@ -3783,23 +3629,21 @@ impl<T> [T] {
         let mut next_read: usize = 1;
         let mut next_write: usize = 1;
 
-        // SAFETY: the `while` condition guarantees `next_read` and `next_write`
-        // are less than `len`, thus are inside `self`. `prev_ptr_write` points to
-        // one element before `ptr_write`, but `next_write` starts at 1, so
-        // `prev_ptr_write` is never less than 0 and is inside the slice.
-        // This fulfils the requirements for dereferencing `ptr_read`, `prev_ptr_write`
-        // and `ptr_write`, and for using `ptr.add(next_read)`, `ptr.add(next_write - 1)`
-        // and `prev_ptr_write.offset(1)`.
+        // SAFETY: `while` 条件保证 `next_read` 和 `next_write` 都小于 `len`，
+        // 因而位于 `self` 内。`prev_ptr_write` 指向 `ptr_write` 前一个元素，
+        // 但 `next_write` 从 1 开始，因此 `prev_ptr_write` 永远不会小于 0，
+        // 并且位于切片内。这满足解引用 `ptr_read`、`prev_ptr_write` 和 `ptr_write`
+        // 以及使用 `ptr.add(next_read)`、`ptr.add(next_write - 1)` 和
+        // `prev_ptr_write.offset(1)` 的要求。
         //
-        // `next_write` is also incremented at most once per loop at most meaning
-        // no element is skipped when it may need to be swapped.
+        // `next_write` 每轮循环也至多递增一次，这意味着需要交换的元素不会被跳过。
         //
-        // `ptr_read` and `prev_ptr_write` never point to the same element. This
-        // is required for `&mut *ptr_read`, `&mut *prev_ptr_write` to be safe.
-        // The explanation is simply that `next_read >= next_write` is always true,
-        // thus `next_read > next_write - 1` is too.
+        // `ptr_read` 和 `prev_ptr_write` 永远不会指向同一元素。
+        // 这是 `&mut *ptr_read`、`&mut *prev_ptr_write` 安全所必需的。
+        // 理由很简单：`next_read >= next_write` 始终为真，
+        // 因此 `next_read > next_write - 1` 也为真。
         unsafe {
-            // Avoid bounds checks by using raw pointers.
+            // 使用裸指针避免边界检查。
             while next_read < len {
                 let ptr_read = ptr.add(next_read);
                 let prev_ptr_write = ptr.add(next_write - 1);
@@ -3817,15 +3661,14 @@ impl<T> [T] {
         self.split_at_mut(next_write)
     }
 
-    /// Moves all but the first of consecutive elements to the end of the slice that resolve
-    /// to the same key.
+    /// 按键提取结果，把连续相同 key 的元素中除第一个以外的元素移动到切片末尾。
     ///
-    /// Returns two slices. The first contains no consecutive repeated elements.
-    /// The second contains all the duplicates in no specified order.
+    /// 返回两个切片。第一个切片不包含连续重复元素；第二个切片包含所有重复元素，
+    /// 顺序不作规定。
     ///
-    /// If the slice is sorted, the first returned slice contains no duplicates.
+    /// 如果切片已经排序，第一个返回切片不包含任何重复元素。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(slice_partition_dedup)]
@@ -3847,24 +3690,21 @@ impl<T> [T] {
         self.partition_dedup_by(|a, b| key(a) == key(b))
     }
 
-    /// Rotates the slice in-place such that the first `mid` elements of the
-    /// slice move to the end while the last `self.len() - mid` elements move to
-    /// the front.
+    /// 原地旋转切片，使前 `mid` 个元素移动到末尾，而后 `self.len() - mid`
+    /// 个元素移动到开头。
     ///
-    /// After calling `rotate_left`, the element previously at index `mid` will
-    /// become the first element in the slice.
+    /// 调用 `rotate_left` 后，原先位于索引 `mid` 的元素会成为切片中的第一个元素。
     ///
     /// # Panics
     ///
-    /// This function will panic if `mid` is greater than the length of the
-    /// slice. Note that `mid == self.len()` does _not_ panic and is a no-op
-    /// rotation.
+    /// 如果 `mid` 大于切片长度，本函数会 panic。注意 `mid == self.len()` 不会 panic，
+    /// 并且是不做任何事的旋转。
     ///
-    /// # Complexity
+    /// # 复杂度
     ///
-    /// Takes linear (in `self.len()`) time.
+    /// 耗时与 `self.len()` 线性相关。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let mut a = ['a', 'b', 'c', 'd', 'e', 'f'];
@@ -3872,7 +3712,7 @@ impl<T> [T] {
     /// assert_eq!(a, ['c', 'd', 'e', 'f', 'a', 'b']);
     /// ```
     ///
-    /// Rotating a subslice:
+    /// 旋转子切片：
     ///
     /// ```
     /// let mut a = ['a', 'b', 'c', 'd', 'e', 'f'];
@@ -3886,31 +3726,29 @@ impl<T> [T] {
         let k = self.len() - mid;
         let p = self.as_mut_ptr();
 
-        // SAFETY: The range `[p.add(mid) - mid, p.add(mid) + k)` is trivially
-        // valid for reading and writing, as required by `ptr_rotate`.
+        // SAFETY: 范围 `[p.add(mid) - mid, p.add(mid) + k)` 显然对读写有效，
+        // 满足 `ptr_rotate` 的要求。
         unsafe {
             rotate::ptr_rotate(mid, p.add(mid), k);
         }
     }
 
-    /// Rotates the slice in-place such that the first `self.len() - k`
-    /// elements of the slice move to the end while the last `k` elements move
-    /// to the front.
+    /// 原地旋转切片，使前 `self.len() - k` 个元素移动到末尾，而后 `k` 个元素
+    /// 移动到开头。
     ///
-    /// After calling `rotate_right`, the element previously at index
-    /// `self.len() - k` will become the first element in the slice.
+    /// 调用 `rotate_right` 后，原先位于索引 `self.len() - k` 的元素会成为
+    /// 切片中的第一个元素。
     ///
     /// # Panics
     ///
-    /// This function will panic if `k` is greater than the length of the
-    /// slice. Note that `k == self.len()` does _not_ panic and is a no-op
-    /// rotation.
+    /// 如果 `k` 大于切片长度，本函数会 panic。注意 `k == self.len()` 不会 panic，
+    /// 并且是不做任何事的旋转。
     ///
-    /// # Complexity
+    /// # 复杂度
     ///
-    /// Takes linear (in `self.len()`) time.
+    /// 耗时与 `self.len()` 线性相关。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let mut a = ['a', 'b', 'c', 'd', 'e', 'f'];
@@ -3918,7 +3756,7 @@ impl<T> [T] {
     /// assert_eq!(a, ['e', 'f', 'a', 'b', 'c', 'd']);
     /// ```
     ///
-    /// Rotating a subslice:
+    /// 旋转子切片：
     ///
     /// ```
     /// let mut a = ['a', 'b', 'c', 'd', 'e', 'f'];
@@ -3932,16 +3770,16 @@ impl<T> [T] {
         let mid = self.len() - k;
         let p = self.as_mut_ptr();
 
-        // SAFETY: The range `[p.add(mid) - mid, p.add(mid) + k)` is trivially
-        // valid for reading and writing, as required by `ptr_rotate`.
+        // SAFETY: 范围 `[p.add(mid) - mid, p.add(mid) + k)` 显然对读写有效，
+        // 满足 `ptr_rotate` 的要求。
         unsafe {
             rotate::ptr_rotate(mid, p.add(mid), k);
         }
     }
 
-    /// Fills `self` with elements by cloning `value`.
+    /// 通过克隆 `value` 填充 `self` 的所有元素。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let mut buf = vec![0; 10];
@@ -3957,16 +3795,14 @@ impl<T> [T] {
         specialize::SpecFill::spec_fill(self, value);
     }
 
-    /// Fills `self` with elements returned by calling a closure repeatedly.
+    /// 通过反复调用闭包返回的元素填充 `self`。
     ///
-    /// This method uses a closure to create new values. If you'd rather
-    /// [`Clone`] a given value, use [`fill`]. If you want to use the [`Default`]
-    /// trait to generate values, you can pass [`Default::default`] as the
-    /// argument.
+    /// 本方法使用闭包创建新值。如果更想 [`Clone`] 某个给定值，请使用 [`fill`]。
+    /// 如果想用 [`Default`] trait 生成值，可以把 [`Default::default`] 作为参数传入。
     ///
     /// [`fill`]: slice::fill
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let mut buf = vec![1; 10];
@@ -3983,44 +3819,40 @@ impl<T> [T] {
         }
     }
 
-    /// Copies the elements from `src` into `self`.
+    /// 把 `src` 中的元素复制到 `self`。
     ///
-    /// The length of `src` must be the same as `self`.
+    /// `src` 的长度必须与 `self` 相同。
     ///
     /// # Panics
     ///
-    /// This function will panic if the two slices have different lengths.
+    /// 如果两个切片长度不同，本函数会 panic。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Cloning two elements from a slice into another:
+    /// 从一个切片向另一个切片 clone 两个元素：
     ///
     /// ```
     /// let src = [1, 2, 3, 4];
     /// let mut dst = [0, 0];
     ///
-    /// // Because the slices have to be the same length,
-    /// // we slice the source slice from four elements
-    /// // to two. It will panic if we don't do this.
+    /// // 两个切片长度必须相同，因此把源切片从四个元素裁成两个。
+    /// // 如果不这样做，会 panic。
     /// dst.clone_from_slice(&src[2..]);
     ///
     /// assert_eq!(src, [1, 2, 3, 4]);
     /// assert_eq!(dst, [3, 4]);
     /// ```
     ///
-    /// Rust enforces that there can only be one mutable reference with no
-    /// immutable references to a particular piece of data in a particular
-    /// scope. Because of this, attempting to use `clone_from_slice` on a
-    /// single slice will result in a compile failure:
+    /// Rust 要求某一作用域内同一块数据只能存在一个可变引用，且不能同时存在不可变引用。
+    /// 因此，尝试在同一个切片上使用 `clone_from_slice` 会导致编译失败：
     ///
     /// ```compile_fail
     /// let mut slice = [1, 2, 3, 4, 5];
     ///
-    /// slice[..2].clone_from_slice(&slice[3..]); // compile fail!
+    /// slice[..2].clone_from_slice(&slice[3..]); // 编译失败！
     /// ```
     ///
-    /// To work around this, we can use [`split_at_mut`] to create two distinct
-    /// sub-slices from a slice:
+    /// 为绕过这一点，可以使用 [`split_at_mut`] 从一个切片创建两个互不重叠的子切片：
     ///
     /// ```
     /// let mut slice = [1, 2, 3, 4, 5];
@@ -4045,46 +3877,42 @@ impl<T> [T] {
         self.spec_clone_from(src);
     }
 
-    /// Copies all elements from `src` into `self`, using a memcpy.
+    /// 使用 memcpy，把 `src` 中的所有元素复制到 `self`。
     ///
-    /// The length of `src` must be the same as `self`.
+    /// `src` 的长度必须与 `self` 相同。
     ///
-    /// If `T` does not implement `Copy`, use [`clone_from_slice`].
+    /// 如果 `T` 未实现 `Copy`，请使用 [`clone_from_slice`]。
     ///
     /// # Panics
     ///
-    /// This function will panic if the two slices have different lengths.
+    /// 如果两个切片长度不同，本函数会 panic。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Copying two elements from a slice into another:
+    /// 从一个切片向另一个切片复制两个元素：
     ///
     /// ```
     /// let src = [1, 2, 3, 4];
     /// let mut dst = [0, 0];
     ///
-    /// // Because the slices have to be the same length,
-    /// // we slice the source slice from four elements
-    /// // to two. It will panic if we don't do this.
+    /// // 两个切片长度必须相同，因此把源切片从四个元素裁成两个。
+    /// // 如果不这样做，会 panic。
     /// dst.copy_from_slice(&src[2..]);
     ///
     /// assert_eq!(src, [1, 2, 3, 4]);
     /// assert_eq!(dst, [3, 4]);
     /// ```
     ///
-    /// Rust enforces that there can only be one mutable reference with no
-    /// immutable references to a particular piece of data in a particular
-    /// scope. Because of this, attempting to use `copy_from_slice` on a
-    /// single slice will result in a compile failure:
+    /// Rust 要求某一作用域内同一块数据只能存在一个可变引用，且不能同时存在不可变引用。
+    /// 因此，尝试在同一个切片上使用 `copy_from_slice` 会导致编译失败：
     ///
     /// ```compile_fail
     /// let mut slice = [1, 2, 3, 4, 5];
     ///
-    /// slice[..2].copy_from_slice(&slice[3..]); // compile fail!
+    /// slice[..2].copy_from_slice(&slice[3..]); // 编译失败！
     /// ```
     ///
-    /// To work around this, we can use [`split_at_mut`] to create two distinct
-    /// sub-slices from a slice:
+    /// 为绕过这一点，可以使用 [`split_at_mut`] 从一个切片创建两个互不重叠的子切片：
     ///
     /// ```
     /// let mut slice = [1, 2, 3, 4, 5];
@@ -4108,26 +3936,23 @@ impl<T> [T] {
     where
         T: Copy,
     {
-        // SAFETY: `T` implements `Copy`.
+        // SAFETY: `T` 实现 `Copy`。
         unsafe { copy_from_slice_impl(self, src) }
     }
 
-    /// Copies elements from one part of the slice to another part of itself,
-    /// using a memmove.
+    /// 使用 memmove，把切片中某一部分的元素复制到它自身的另一部分。
     ///
-    /// `src` is the range within `self` to copy from. `dest` is the starting
-    /// index of the range within `self` to copy to, which will have the same
-    /// length as `src`. The two ranges may overlap. The ends of the two ranges
-    /// must be less than or equal to `self.len()`.
+    /// `src` 是 `self` 内要复制的源范围。`dest` 是 `self` 内目标范围的起始索引；
+    /// 目标范围长度与 `src` 相同。两个范围可以重叠。两个范围的末端都必须小于或等于
+    /// `self.len()`。
     ///
     /// # Panics
     ///
-    /// This function will panic if either range exceeds the end of the slice,
-    /// or if the end of `src` is before the start.
+    /// 如果任一范围超出切片末尾，或 `src` 的结束位置位于起始位置之前，本函数会 panic。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Copying four bytes within a slice:
+    /// 在一个切片内部复制四个字节：
     ///
     /// ```
     /// let mut bytes = *b"Hello, World!";
@@ -4145,10 +3970,10 @@ impl<T> [T] {
         let Range { start: src_start, end: src_end } = slice::range(src, ..self.len());
         let count = src_end - src_start;
         assert!(dest <= self.len() - count, "dest is out of bounds");
-        // SAFETY: the conditions for `ptr::copy` have all been checked above,
-        // as have those for `ptr::add`.
+        // SAFETY: 上面已经检查过 `ptr::copy` 的条件，
+        // 也检查过 `ptr::add` 的条件。
         unsafe {
-            // Derive both `src_ptr` and `dest_ptr` from the same loan
+            // 从同一个 loan 派生 `src_ptr` 和 `dest_ptr`。
             let ptr = self.as_mut_ptr();
             let src_ptr = ptr.add(src_start);
             let dest_ptr = ptr.add(dest);
@@ -4156,17 +3981,17 @@ impl<T> [T] {
         }
     }
 
-    /// Swaps all elements in `self` with those in `other`.
+    /// 将 `self` 中的所有元素与 `other` 中的元素交换。
     ///
-    /// The length of `other` must be the same as `self`.
+    /// `other` 的长度必须与 `self` 相同。
     ///
     /// # Panics
     ///
-    /// This function will panic if the two slices have different lengths.
+    /// 如果两个切片长度不同，本函数会 panic。
     ///
-    /// # Example
+    /// # 示例
     ///
-    /// Swapping two elements across slices:
+    /// 在两个切片之间交换两个元素：
     ///
     /// ```
     /// let mut slice1 = [0, 0];
@@ -4178,18 +4003,15 @@ impl<T> [T] {
     /// assert_eq!(slice2, [1, 2, 0, 0]);
     /// ```
     ///
-    /// Rust enforces that there can only be one mutable reference to a
-    /// particular piece of data in a particular scope. Because of this,
-    /// attempting to use `swap_with_slice` on a single slice will result in
-    /// a compile failure:
+    /// Rust 要求某一作用域内同一块数据只能存在一个可变引用。因此，尝试在同一个切片上
+    /// 使用 `swap_with_slice` 会导致编译失败：
     ///
     /// ```compile_fail
     /// let mut slice = [1, 2, 3, 4, 5];
-    /// slice[..2].swap_with_slice(&mut slice[3..]); // compile fail!
+    /// slice[..2].swap_with_slice(&mut slice[3..]); // 编译失败！
     /// ```
     ///
-    /// To work around this, we can use [`split_at_mut`] to create two distinct
-    /// mutable sub-slices from a slice:
+    /// 为绕过这一点，可以使用 [`split_at_mut`] 从一个切片创建两个互不重叠的可变子切片：
     ///
     /// ```
     /// let mut slice = [1, 2, 3, 4, 5];
@@ -4208,69 +4030,67 @@ impl<T> [T] {
     #[track_caller]
     pub const fn swap_with_slice(&mut self, other: &mut [T]) {
         assert!(self.len() == other.len(), "destination and source slices have different lengths");
-        // SAFETY: `self` is valid for `self.len()` elements by definition, and `src` was
-        // checked to have the same length. The slices cannot overlap because
-        // mutable references are exclusive.
+        // SAFETY: 根据定义，`self` 对 `self.len()` 个元素有效；另一个切片也已检查
+        // 为相同长度。两个切片不能重叠，因为可变引用具有排他性。
         unsafe {
             ptr::swap_nonoverlapping(self.as_mut_ptr(), other.as_mut_ptr(), self.len());
         }
     }
 
-    /// Function to calculate lengths of the middle and trailing slice for `align_to{,_mut}`.
+    /// 计算 `align_to{,_mut}` 中间切片和尾部切片长度的函数。
     fn align_to_offsets<U>(&self) -> (usize, usize) {
-        // What we gonna do about `rest` is figure out what multiple of `U`s we can put in a
-        // lowest number of `T`s. And how many `T`s we need for each such "multiple".
+        // 对 `rest` 要做的是：找出最少多少个 `T` 可容纳若干个完整 `U`，
+        // 以及每个这样的“倍数”需要多少个 `T`。
         //
-        // Consider for example T=u8 U=u16. Then we can put 1 U in 2 Ts. Simple. Now, consider
-        // for example a case where size_of::<T> = 16, size_of::<U> = 24. We can put 2 Us in
-        // place of every 3 Ts in the `rest` slice. A bit more complicated.
+        // 例如 T=u8、U=u16，则 2 个 T 可容纳 1 个 U，很简单。
+        // 再考虑 size_of::<T> = 16、size_of::<U> = 24 的情况：
+        // 在 `rest` 切片中，每 3 个 T 的位置可放入 2 个 U，稍微复杂一些。
         //
-        // Formula to calculate this is:
+        // 计算公式是：
         //
         // Us = lcm(size_of::<T>, size_of::<U>) / size_of::<U>
         // Ts = lcm(size_of::<T>, size_of::<U>) / size_of::<T>
         //
-        // Expanded and simplified:
+        // 展开并简化后：
         //
         // Us = size_of::<T> / gcd(size_of::<T>, size_of::<U>)
         // Ts = size_of::<U> / gcd(size_of::<T>, size_of::<U>)
         //
-        // Luckily since all this is constant-evaluated... performance here matters not!
+        // 由于这些都会被常量求值，性能在这里并不重要。
         const fn gcd(a: usize, b: usize) -> usize {
             if b == 0 { a } else { gcd(b, a % b) }
         }
 
-        // Explicitly wrap the function call in a const block so it gets
-        // constant-evaluated even in debug mode.
+        // 显式把函数调用包进 const block，使其即使在 debug 模式下也会被常量求值。
         let gcd: usize = const { gcd(size_of::<T>(), size_of::<U>()) };
         let ts: usize = size_of::<U>() / gcd;
         let us: usize = size_of::<T>() / gcd;
 
-        // Armed with this knowledge, we can find how many `U`s we can fit!
+        // 有了上述比例，就能算出中间段能容纳多少个 `U`。
         let us_len = self.len() / ts * us;
-        // And how many `T`s will be in the trailing slice!
+        // 同时算出尾部切片还会留下多少个 `T`。
         let ts_len = self.len() % ts;
         (us_len, ts_len)
     }
 
-    /// Transmutes the slice to a slice of another type, ensuring alignment of the types is
-    /// maintained.
+    /// 把切片中对齐合适的一段重新解释成另一种元素类型的切片。
+///
+    /// 本方法把原切片分成三个互不重叠的切片：前缀、正确对齐且元素类型为 `U` 的中间切片、
+    /// 以及后缀。在给定对齐和元素大小约束下，中间部分会尽可能大。
+///
+    /// 当输入元素 `T` 或输出元素 `U` 是 zero-sized 时，本方法没有实际意义，并会原样返回
+    /// 原切片，不做任何拆分。
     ///
-    /// This method splits the slice into three distinct slices: prefix, correctly aligned middle
-    /// slice of a new type, and the suffix slice. The middle part will be as big as possible under
-    /// the given alignment constraint and element size.
+    /// # 安全性(Safety）
     ///
-    /// This method has no purpose when either input element `T` or output element `U` are
-    /// zero-sized and will return the original slice without splitting anything.
+    /// 对返回的中间切片而言，本方法本质上是 `transmute::<T, U>`。调用方必须保证中间段的
+    /// 每个 `U` 位模式都是有效的 `U`，并且把同一字节范围视为 `U` 不会违反 `U` 的布局、
+    /// 对齐、初始化和 aliasing 规则。`align_to` 只负责寻找满足 `U` 对齐的位置，不会证明
+    /// `T` 的字节序列能合法表示 `U`。
     ///
-    /// # Safety
+    /// # 示例
     ///
-    /// This method is essentially a `transmute` with respect to the elements in the returned
-    /// middle slice, so all the usual caveats pertaining to `transmute::<T, U>` also apply here.
-    ///
-    /// # Examples
-    ///
-    /// Basic usage:
+    /// 基本用法：
     ///
     /// ```
     /// unsafe {
@@ -4284,30 +4104,30 @@ impl<T> [T] {
     #[stable(feature = "slice_align_to", since = "1.30.0")]
     #[must_use]
     pub unsafe fn align_to<U>(&self) -> (&[T], &[U], &[T]) {
-        // Note that most of this function will be constant-evaluated,
+        // 注意，本函数的大部分计算都会被常量求值。
         if U::IS_ZST || T::IS_ZST {
-            // handle ZSTs specially, which is – don't handle them at all.
+            // 对 ZST 做特殊处理：不尝试重新解释它们。
             return (self, &[], &[]);
         }
 
-        // First, find at what point do we split between the first and 2nd slice. Easy with
-        // ptr.align_offset.
+        // 首先找到前缀和中间切片之间的分割点；这正是 ptr.align_offset 的用途。
         let ptr = self.as_ptr();
-        // SAFETY: See the `align_to_mut` method for the detailed safety comment.
+        // SAFETY: 详细安全理由见 `align_to_mut` 中对 `align_offset` 的说明。
         let offset = unsafe { crate::ptr::align_offset(ptr, align_of::<U>()) };
         if offset > self.len() {
             (self, &[], &[])
         } else {
             let (left, rest) = self.split_at(offset);
             let (us_len, ts_len) = rest.align_to_offsets::<U>();
-            // Inform Miri that we want to consider the "middle" pointer to be suitably aligned.
+            // 告知 Miri：我们希望把“中间”指针视为已经满足所需对齐。
             #[cfg(miri)]
             crate::intrinsics::miri_promise_symbolic_alignment(
                 rest.as_ptr().cast(),
                 align_of::<U>(),
             );
-            // SAFETY: now `rest` is definitely aligned, so `from_raw_parts` below is okay,
-            // since the caller guarantees that we can transmute `T` to `U` safely.
+            // SAFETY: 此时 `rest` 起始地址已满足 `U` 的对齐，`align_to_offsets` 计算出的
+            // `us_len` 与 `ts_len` 保证中间 `U` 切片和尾部 `T` 切片都落在原切片范围内。
+            // 调用方还必须保证把中间字节重新解释为 `U` 是合法的。
             unsafe {
                 (
                     left,
@@ -4318,24 +4138,24 @@ impl<T> [T] {
         }
     }
 
-    /// Transmutes the mutable slice to a mutable slice of another type, ensuring alignment of the
-    /// types is maintained.
+    /// 把可变切片中对齐合适的一段重新解释成另一种元素类型的可变切片。
+///
+    /// 本方法把原切片分成三个互不重叠的可变切片：前缀、正确对齐且元素类型为 `U` 的中间切片、
+    /// 以及后缀。在给定对齐和元素大小约束下，中间部分会尽可能大。
+///
+    /// 当输入元素 `T` 或输出元素 `U` 是 zero-sized 时，本方法没有实际意义，并会原样返回
+    /// 原切片，不做任何拆分。
     ///
-    /// This method splits the slice into three distinct slices: prefix, correctly aligned middle
-    /// slice of a new type, and the suffix slice. The middle part will be as big as possible under
-    /// the given alignment constraint and element size.
+    /// # 安全性(Safety）
     ///
-    /// This method has no purpose when either input element `T` or output element `U` are
-    /// zero-sized and will return the original slice without splitting anything.
+    /// 对返回的中间可变切片而言，本方法本质上是 `transmute::<T, U>`。调用方必须保证中间段
+    /// 的每个 `U` 位模式有效，并且后续通过 `&mut [U]` 读写不会破坏 `T` 或 `U` 的有效性、
+    /// drop 语义、对齐要求或 aliasing 规则。可变版本还要求中间 `&mut [U]` 与前缀/后缀
+    /// `&mut [T]` 互不重叠，且没有其它活跃引用访问同一字节范围。
     ///
-    /// # Safety
+    /// # 示例
     ///
-    /// This method is essentially a `transmute` with respect to the elements in the returned
-    /// middle slice, so all the usual caveats pertaining to `transmute::<T, U>` also apply here.
-    ///
-    /// # Examples
-    ///
-    /// Basic usage:
+    /// 基本用法：
     ///
     /// ```
     /// unsafe {
@@ -4349,22 +4169,17 @@ impl<T> [T] {
     #[stable(feature = "slice_align_to", since = "1.30.0")]
     #[must_use]
     pub unsafe fn align_to_mut<U>(&mut self) -> (&mut [T], &mut [U], &mut [T]) {
-        // Note that most of this function will be constant-evaluated,
+        // 注意，本函数的大部分计算都会被常量求值。
         if U::IS_ZST || T::IS_ZST {
-            // handle ZSTs specially, which is – don't handle them at all.
+            // 对 ZST 做特殊处理：不尝试重新解释它们。
             return (self, &mut [], &mut []);
         }
 
-        // First, find at what point do we split between the first and 2nd slice. Easy with
-        // ptr.align_offset.
+        // 首先找到前缀和中间切片之间的分割点；这正是 ptr.align_offset 的用途。
         let ptr = self.as_ptr();
-        // SAFETY: Here we are ensuring we will use aligned pointers for U for the
-        // rest of the method. This is done by passing a pointer to &[T] with an
-        // alignment targeted for U.
-        // `crate::ptr::align_offset` is called with a correctly aligned and
-        // valid pointer `ptr` (it comes from a reference to `self`) and with
-        // a size that is a power of two (since it comes from the alignment for U),
-        // satisfying its safety constraints.
+        // SAFETY: 这里通过以 `U` 的对齐为目标调用 `align_offset`，确保后续中间段使用的
+        // `U` 指针满足对齐要求。`ptr` 来自 `self` 引用，因此是有效且按 `T` 对齐的指针；
+        // `align_of::<U>()` 是 2 的幂，满足 `align_offset` 的安全约束。
         let offset = unsafe { crate::ptr::align_offset(ptr, align_of::<U>()) };
         if offset > self.len() {
             (self, &mut [], &mut [])
@@ -4373,14 +4188,14 @@ impl<T> [T] {
             let (us_len, ts_len) = rest.align_to_offsets::<U>();
             let rest_len = rest.len();
             let mut_ptr = rest.as_mut_ptr();
-            // Inform Miri that we want to consider the "middle" pointer to be suitably aligned.
+            // 告知 Miri：我们希望把“中间”指针视为已经满足所需对齐。
             #[cfg(miri)]
             crate::intrinsics::miri_promise_symbolic_alignment(
                 mut_ptr.cast() as *const (),
                 align_of::<U>(),
             );
-            // We can't use `rest` again after this, that would invalidate its alias `mut_ptr`!
-            // SAFETY: see comments for `align_to`.
+            // 之后不能再使用 `rest`，否则会使它与 `mut_ptr` 形成冲突 alias。
+            // SAFETY: 见 `align_to` 的说明；这里还依赖 `split_at_mut` 保证三个返回区域互不重叠。
             unsafe {
                 (
                     left,
@@ -4391,23 +4206,20 @@ impl<T> [T] {
         }
     }
 
-    /// Splits a slice into a prefix, a middle of aligned SIMD types, and a suffix.
-    ///
-    /// This is a safe wrapper around [`slice::align_to`], so inherits the same
-    /// guarantees as that method.
+    /// 把切片拆成前缀、对齐的 SIMD 类型中间段和后缀。
+///
+    /// 这是 [`slice::align_to`] 的安全包装，因此继承该方法的布局和对齐保证。
+    /// SIMD 类型与 `[T; LANES]` 布局一致，只是可能有更高对齐要求。
     ///
     /// # Panics
     ///
-    /// This will panic if the size of the SIMD type is different from
-    /// `LANES` times that of the scalar.
+    /// 如果 SIMD 类型大小不同于标量大小乘以 `LANES`，本函数会 panic。
+///
+    /// 撰写本文档时，`Simd<T, LANES>` 的 trait 限制会防止这种情况发生，因为只支持
+    /// 2 的幂数量的 lanes。未来如果放宽这些限制，像 `LANES == 3` 这样的情况可能让
+    /// 本方法出现 panic。
     ///
-    /// At the time of writing, the trait restrictions on `Simd<T, LANES>` keeps
-    /// that from ever happening, as only power-of-two numbers of lanes are
-    /// supported.  It's possible that, in the future, those restrictions might
-    /// be lifted in a way that would make it possible to see panics from this
-    /// method for something like `LANES == 3`.
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(portable_simd)]
@@ -4415,9 +4227,9 @@ impl<T> [T] {
     ///
     /// let short = &[1, 2, 3];
     /// let (prefix, middle, suffix) = short.as_simd::<4>();
-    /// assert_eq!(middle, []); // Not enough elements for anything in the middle
+    /// assert_eq!(middle, []); // 元素不够，无法形成任何中间 SIMD 段。
     ///
-    /// // They might be split in any possible way between prefix and suffix
+    /// // 这些元素可能以任意方式分布在 prefix 和 suffix 之间。
     /// let it = prefix.iter().chain(suffix).copied();
     /// assert_eq!(it.collect::<Vec<_>>(), vec![1, 2, 3]);
     ///
@@ -4445,34 +4257,28 @@ impl<T> [T] {
         T: simd::SimdElement,
         simd::LaneCount<LANES>: simd::SupportedLaneCount,
     {
-        // These are expected to always match, as vector types are laid out like
-        // arrays per <https://llvm.org/docs/LangRef.html#vector-type>, but we
-        // might as well double-check since it'll optimize away anyhow.
+        // 根据 <https://llvm.org/docs/LangRef.html#vector-type>，vector 类型按数组形式布局，
+        // 因而这些大小预期总是匹配；这里再检查一次，优化后也会被消除。
         assert_eq!(size_of::<Simd<T, LANES>>(), size_of::<[T; LANES]>());
 
-        // SAFETY: The simd types have the same layout as arrays, just with
-        // potentially-higher alignment, so the de-facto transmutes are sound.
+        // SAFETY: simd 类型与数组布局相同，只是可能有更高对齐；`align_to` 会处理对齐，
+        // 因而这里事实上的 transmute 是健全的。
         unsafe { self.align_to() }
     }
 
-    /// Splits a mutable slice into a mutable prefix, a middle of aligned SIMD types,
-    /// and a mutable suffix.
-    ///
-    /// This is a safe wrapper around [`slice::align_to_mut`], so inherits the same
-    /// guarantees as that method.
-    ///
-    /// This is the mutable version of [`slice::as_simd`]; see that for examples.
+    /// 把可变切片拆成可变前缀、对齐的 SIMD 类型中间段和可变后缀。
+///
+    /// 这是 [`slice::align_to_mut`] 的安全包装，因此继承该方法的布局、对齐和不重叠保证。
+///
+    /// 这是 [`slice::as_simd`] 的可变版本；示例见该方法。
     ///
     /// # Panics
     ///
-    /// This will panic if the size of the SIMD type is different from
-    /// `LANES` times that of the scalar.
-    ///
-    /// At the time of writing, the trait restrictions on `Simd<T, LANES>` keeps
-    /// that from ever happening, as only power-of-two numbers of lanes are
-    /// supported.  It's possible that, in the future, those restrictions might
-    /// be lifted in a way that would make it possible to see panics from this
-    /// method for something like `LANES == 3`.
+    /// 如果 SIMD 类型大小不同于标量大小乘以 `LANES`，本函数会 panic。
+///
+    /// 撰写本文档时，`Simd<T, LANES>` 的 trait 限制会防止这种情况发生，因为只支持
+    /// 2 的幂数量的 lanes。未来如果放宽这些限制，像 `LANES == 3` 这样的情况可能让
+    /// 本方法出现 panic。
     #[unstable(feature = "portable_simd", issue = "86656")]
     #[must_use]
     pub fn as_simd_mut<const LANES: usize>(&mut self) -> (&mut [T], &mut [Simd<T, LANES>], &mut [T])
@@ -4481,26 +4287,24 @@ impl<T> [T] {
         T: simd::SimdElement,
         simd::LaneCount<LANES>: simd::SupportedLaneCount,
     {
-        // These are expected to always match, as vector types are laid out like
-        // arrays per <https://llvm.org/docs/LangRef.html#vector-type>, but we
-        // might as well double-check since it'll optimize away anyhow.
+        // 根据 <https://llvm.org/docs/LangRef.html#vector-type>，vector 类型按数组形式布局，
+        // 因而这些大小预期总是匹配；这里再检查一次，优化后也会被消除。
         assert_eq!(size_of::<Simd<T, LANES>>(), size_of::<[T; LANES]>());
 
-        // SAFETY: The simd types have the same layout as arrays, just with
-        // potentially-higher alignment, so the de-facto transmutes are sound.
+        // SAFETY: simd 类型与数组布局相同，只是可能有更高对齐；`align_to_mut` 会处理对齐
+        // 并返回不重叠区域，因而这里事实上的 transmute 是健全的。
         unsafe { self.align_to_mut() }
     }
 
-    /// Checks if the elements of this slice are sorted.
+    /// 检查切片元素是否已经排序。
+///
+    /// 也就是说，对于每个元素 `a` 及其后继元素 `b`，都必须满足 `a <= b`。
+    /// 如果切片长度为 0 或 1，返回 `true`。
+///
+    /// 注意，如果元素只实现 [`PartialOrd`] 而不是 [`Ord`]，上述定义意味着只要任意两个
+    /// 相邻元素不可比较，本函数就会返回 `false`。
     ///
-    /// That is, for each element `a` and its following element `b`, `a <= b` must hold. If the
-    /// slice yields exactly zero or one element, `true` is returned.
-    ///
-    /// Note that if `Self::Item` is only `PartialOrd`, but not `Ord`, the above definition
-    /// implies that this function returns `false` if any two consecutive items are not
-    /// comparable.
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let empty: [i32; 0] = [];
@@ -4518,31 +4322,30 @@ impl<T> [T] {
     where
         T: PartialOrd,
     {
-        // This odd number works the best. 32 + 1 extra due to overlapping chunk boundaries.
+        // 这个奇数效果最好：32 个元素，加 1 个用于重叠 chunk 边界。
         const CHUNK_SIZE: usize = 33;
         if self.len() < CHUNK_SIZE {
             return self.windows(2).all(|w| w[0] <= w[1]);
         }
         let mut i = 0;
-        // Check in chunks for autovectorization.
+        // 分块检查以利于自动向量化。
         while i < self.len() - CHUNK_SIZE {
             let chunk = &self[i..i + CHUNK_SIZE];
             if !chunk.windows(2).fold(true, |acc, w| acc & (w[0] <= w[1])) {
                 return false;
             }
-            // We need to ensure that chunk boundaries are also sorted.
-            // Overlap the next chunk with the last element of our last chunk.
+            // 还需要确保 chunk 边界也是有序的，因此让下一个 chunk 与上一个 chunk 的最后元素重叠。
             i += CHUNK_SIZE - 1;
         }
         self[i..].windows(2).all(|w| w[0] <= w[1])
     }
 
-    /// Checks if the elements of this slice are sorted using the given comparator function.
+    /// 使用给定比较函数检查切片元素是否已经排序。
+///
+    /// 本函数不使用 `PartialOrd::partial_cmp`，而是用给定 `compare` 函数判断相邻元素是否
+    /// 应被视为有序。
     ///
-    /// Instead of using `PartialOrd::partial_cmp`, this function uses the given `compare`
-    /// function to determine whether two elements are to be considered in sorted order.
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// assert!([1, 2, 2, 9].is_sorted_by(|a, b| a <= b));
@@ -4564,15 +4367,14 @@ impl<T> [T] {
         self.array_windows().all(|[a, b]| compare(a, b))
     }
 
-    /// Checks if the elements of this slice are sorted using the given key extraction function.
-    ///
-    /// Instead of comparing the slice's elements directly, this function compares the keys of the
-    /// elements, as determined by `f`. Apart from that, it's equivalent to [`is_sorted`]; see its
-    /// documentation for more information.
+    /// 使用给定键提取函数检查切片元素是否已经按键排序。
+///
+    /// 本函数不直接比较切片元素，而是比较由 `f` 提取出的键。除此之外，它等价于
+    /// [`is_sorted`]；更多信息见该方法文档。
     ///
     /// [`is_sorted`]: slice::is_sorted
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// assert!(["c", "bb", "aaa"].is_sorted_by_key(|s| s.len()));
@@ -4589,25 +4391,22 @@ impl<T> [T] {
         self.iter().is_sorted_by_key(f)
     }
 
-    /// Returns the index of the partition point according to the given predicate
-    /// (the index of the first element of the second partition).
-    ///
-    /// The slice is assumed to be partitioned according to the given predicate.
-    /// This means that all elements for which the predicate returns true are at the start of the slice
-    /// and all elements for which the predicate returns false are at the end.
-    /// For example, `[7, 15, 3, 5, 4, 12, 6]` is partitioned under the predicate `x % 2 != 0`
-    /// (all odd numbers are at the start, all even at the end).
-    ///
-    /// If this slice is not partitioned, the returned result is unspecified and meaningless,
-    /// as this method performs a kind of binary search.
-    ///
-    /// See also [`binary_search`], [`binary_search_by`], and [`binary_search_by_key`].
+    /// 按给定谓词返回分区点索引，也就是第二个分区第一个元素的索引。
+///
+    /// 调用前提是切片已经按该谓词分区：所有让谓词返回 true 的元素位于切片开头，
+    /// 所有让谓词返回 false 的元素位于切片末尾。例如 `[7, 15, 3, 5, 4, 12, 6]`
+    /// 按谓词 `x % 2 != 0` 分区（所有奇数在前，所有偶数在后）。
+///
+    /// 如果切片没有按该谓词分区，返回结果没有指定含义；本方法本质上执行一种二分查找，
+    /// 因而依赖“先 true 后 false”的前置条件。
+///
+    /// 另见 [`binary_search`]、[`binary_search_by`] 和 [`binary_search_by_key`]。
     ///
     /// [`binary_search`]: slice::binary_search
     /// [`binary_search_by`]: slice::binary_search_by
     /// [`binary_search_by_key`]: slice::binary_search_by_key
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let v = [1, 2, 3, 3, 5, 6, 7];
@@ -4618,8 +4417,7 @@ impl<T> [T] {
     /// assert!(v[i..].iter().all(|&x| !(x < 5)));
     /// ```
     ///
-    /// If all elements of the slice match the predicate, including if the slice
-    /// is empty, then the length of the slice will be returned:
+    /// 如果切片中所有元素都满足谓词，包括切片为空的情况，则返回切片长度：
     ///
     /// ```
     /// let a = [2, 4, 8];
@@ -4628,8 +4426,7 @@ impl<T> [T] {
     /// assert_eq!(a.partition_point(|x| x < &100), 0);
     /// ```
     ///
-    /// If you want to insert an item to a sorted vector, while maintaining
-    /// sort order:
+    /// 如果需要向已排序 vector 插入元素并保持排序顺序：
     ///
     /// ```
     /// let mut s = vec![0, 1, 1, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55];
@@ -4647,18 +4444,15 @@ impl<T> [T] {
         self.binary_search_by(|x| if pred(x) { Less } else { Greater }).unwrap_or_else(|i| i)
     }
 
-    /// Removes the subslice corresponding to the given range
-    /// and returns a reference to it.
+    /// 移除给定范围对应的子切片，并返回它的引用。
     ///
-    /// Returns `None` and does not modify the slice if the given
-    /// range is out of bounds.
+    /// 如果给定范围越界，返回 `None`，且不修改切片。
     ///
-    /// Note that this method only accepts one-sided ranges such as
-    /// `2..` or `..6`, but not `2..6`.
+    /// 注意，本方法只接受 `2..` 或 `..6` 这样的单侧范围，而不接受 `2..6`。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Splitting off the first three elements of a slice:
+    /// 分离切片中的前三个元素：
     ///
     /// ```
     /// let mut slice: &[_] = &['a', 'b', 'c', 'd'];
@@ -4668,7 +4462,7 @@ impl<T> [T] {
     /// assert_eq!(first_three, &['a', 'b', 'c']);
     /// ```
     ///
-    /// Splitting off a slice starting with the third element:
+    /// 分离从第三个元素开始的切片：
     ///
     /// ```
     /// let mut slice: &[_] = &['a', 'b', 'c', 'd'];
@@ -4678,7 +4472,7 @@ impl<T> [T] {
     /// assert_eq!(tail, &['c', 'd']);
     /// ```
     ///
-    /// Getting `None` when `range` is out of bounds:
+    /// 当 `range` 越界时得到 `None`：
     ///
     /// ```
     /// let mut slice: &[_] = &['a', 'b', 'c', 'd'];
@@ -4713,18 +4507,15 @@ impl<T> [T] {
         }
     }
 
-    /// Removes the subslice corresponding to the given range
-    /// and returns a mutable reference to it.
+    /// 移除给定范围对应的子切片，并返回它的可变引用。
     ///
-    /// Returns `None` and does not modify the slice if the given
-    /// range is out of bounds.
+    /// 如果给定范围越界，返回 `None`，且不修改切片。
     ///
-    /// Note that this method only accepts one-sided ranges such as
-    /// `2..` or `..6`, but not `2..6`.
+    /// 注意，本方法只接受 `2..` 或 `..6` 这样的单侧范围，而不接受 `2..6`。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Splitting off the first three elements of a slice:
+    /// 分离切片中的前三个元素：
     ///
     /// ```
     /// let mut slice: &mut [_] = &mut ['a', 'b', 'c', 'd'];
@@ -4734,7 +4525,7 @@ impl<T> [T] {
     /// assert_eq!(first_three, &mut ['a', 'b', 'c']);
     /// ```
     ///
-    /// Splitting off a slice starting with the third element:
+    /// 分离从第三个元素开始的切片：
     ///
     /// ```
     /// let mut slice: &mut [_] = &mut ['a', 'b', 'c', 'd'];
@@ -4744,7 +4535,7 @@ impl<T> [T] {
     /// assert_eq!(tail, &mut ['c', 'd']);
     /// ```
     ///
-    /// Getting `None` when `range` is out of bounds:
+    /// 当 `range` 越界时得到 `None`：
     ///
     /// ```
     /// let mut slice: &mut [_] = &mut ['a', 'b', 'c', 'd'];
@@ -4779,12 +4570,11 @@ impl<T> [T] {
         }
     }
 
-    /// Removes the first element of the slice and returns a reference
-    /// to it.
+    /// 移除切片的第一个元素，并返回它的引用。
     ///
-    /// Returns `None` if the slice is empty.
+    /// 如果切片为空，返回 `None`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let mut slice: &[_] = &['a', 'b', 'c'];
@@ -4797,18 +4587,17 @@ impl<T> [T] {
     #[stable(feature = "slice_take", since = "1.87.0")]
     #[rustc_const_unstable(feature = "const_split_off_first_last", issue = "138539")]
     pub const fn split_off_first<'a>(self: &mut &'a Self) -> Option<&'a T> {
-        // FIXME(const-hack): Use `?` when available in const instead of `let-else`.
+        // FIXME(const-hack): const 中可用 `?` 后，用它替代 `let-else`。
         let Some((first, rem)) = self.split_first() else { return None };
         *self = rem;
         Some(first)
     }
 
-    /// Removes the first element of the slice and returns a mutable
-    /// reference to it.
+    /// 移除切片的第一个元素，并返回它的可变引用。
     ///
-    /// Returns `None` if the slice is empty.
+    /// 如果切片为空，返回 `None`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let mut slice: &mut [_] = &mut ['a', 'b', 'c'];
@@ -4822,19 +4611,18 @@ impl<T> [T] {
     #[stable(feature = "slice_take", since = "1.87.0")]
     #[rustc_const_unstable(feature = "const_split_off_first_last", issue = "138539")]
     pub const fn split_off_first_mut<'a>(self: &mut &'a mut Self) -> Option<&'a mut T> {
-        // FIXME(const-hack): Use `mem::take` and `?` when available in const.
-        // Original: `mem::take(self).split_first_mut()?`
+        // FIXME(const-hack): const 中可用 `mem::take` 和 `?` 后改用它们。
+        // 原始写法：`mem::take(self).split_first_mut()?`
         let Some((first, rem)) = mem::replace(self, &mut []).split_first_mut() else { return None };
         *self = rem;
         Some(first)
     }
 
-    /// Removes the last element of the slice and returns a reference
-    /// to it.
+    /// 移除切片的最后一个元素，并返回它的引用。
     ///
-    /// Returns `None` if the slice is empty.
+    /// 如果切片为空，返回 `None`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let mut slice: &[_] = &['a', 'b', 'c'];
@@ -4847,18 +4635,17 @@ impl<T> [T] {
     #[stable(feature = "slice_take", since = "1.87.0")]
     #[rustc_const_unstable(feature = "const_split_off_first_last", issue = "138539")]
     pub const fn split_off_last<'a>(self: &mut &'a Self) -> Option<&'a T> {
-        // FIXME(const-hack): Use `?` when available in const instead of `let-else`.
+        // FIXME(const-hack): const 中可用 `?` 后，用它替代 `let-else`。
         let Some((last, rem)) = self.split_last() else { return None };
         *self = rem;
         Some(last)
     }
 
-    /// Removes the last element of the slice and returns a mutable
-    /// reference to it.
+    /// 移除切片的最后一个元素，并返回它的可变引用。
     ///
-    /// Returns `None` if the slice is empty.
+    /// 如果切片为空，返回 `None`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let mut slice: &mut [_] = &mut ['a', 'b', 'c'];
@@ -4872,29 +4659,28 @@ impl<T> [T] {
     #[stable(feature = "slice_take", since = "1.87.0")]
     #[rustc_const_unstable(feature = "const_split_off_first_last", issue = "138539")]
     pub const fn split_off_last_mut<'a>(self: &mut &'a mut Self) -> Option<&'a mut T> {
-        // FIXME(const-hack): Use `mem::take` and `?` when available in const.
-        // Original: `mem::take(self).split_last_mut()?`
+        // FIXME(const-hack): const 中可用 `mem::take` 和 `?` 后改用它们。
+        // 原始写法：`mem::take(self).split_last_mut()?`
         let Some((last, rem)) = mem::replace(self, &mut []).split_last_mut() else { return None };
         *self = rem;
         Some(last)
     }
 
-    /// Returns mutable references to many indices at once, without doing any checks.
+    /// 不做任何检查，一次性返回多个索引对应的可变引用。
     ///
-    /// An index can be either a `usize`, a [`Range`] or a [`RangeInclusive`]. Note
-    /// that this method takes an array, so all indices must be of the same type.
-    /// If passed an array of `usize`s this method gives back an array of mutable references
-    /// to single elements, while if passed an array of ranges it gives back an array of
-    /// mutable references to slices.
+    /// 索引可以是 `usize`、[`Range`] 或 [`RangeInclusive`]。注意，本方法接收数组，
+    /// 因而所有索引必须具有相同类型。
+    /// 如果传入 `usize` 数组，本方法返回单个元素的可变引用数组；如果传入范围数组，
+    /// 则返回可变子切片引用数组。
+///
+    /// 安全替代方案见 [`get_disjoint_mut`]。
     ///
-    /// For a safe alternative see [`get_disjoint_mut`].
+    /// # 安全性(Safety）
     ///
-    /// # Safety
+    /// 使用重叠或越界索引调用本方法是 *[undefined behavior]*，即使得到的引用之后没有被使用。
+    /// 调用方必须保证所有索引都在边界内，且任意两个返回的可变引用覆盖的内存不重叠。
     ///
-    /// Calling this method with overlapping or out-of-bounds indices is *[undefined behavior]*
-    /// even if the resulting references are not used.
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let x = &mut [1, 2, 4];
@@ -4935,16 +4721,13 @@ impl<T> [T] {
     where
         I: GetDisjointMutIndex + SliceIndex<Self>,
     {
-        // NB: This implementation is written as it is because any variation of
-        // `indices.map(|i| self.get_unchecked_mut(i))` would make miri unhappy,
-        // or generate worse code otherwise. This is also why we need to go
-        // through a raw pointer here.
+        // NB: 这个实现保持当前写法，是因为任何 `indices.map(|i| self.get_unchecked_mut(i))`
+        // 的变体都会让 Miri 不满意，或者生成更差的代码。这也是这里需要经过裸指针的原因。
         let slice: *mut [T] = self;
         let mut arr: MaybeUninit<[&mut I::Output; N]> = MaybeUninit::uninit();
         let arr_ptr = arr.as_mut_ptr();
 
-        // SAFETY: We expect `indices` to contain disjunct values that are
-        // in bounds of `self`.
+        // SAFETY: 调用方必须保证 `indices` 中的每个索引都在 `self` 边界内，并且彼此不重叠。
         unsafe {
             for i in 0..N {
                 let idx = indices.get_unchecked(i).clone();
@@ -4954,22 +4737,18 @@ impl<T> [T] {
         }
     }
 
-    /// Returns mutable references to many indices at once.
+    /// 一次性返回多个索引对应位置的可变引用。
+///
+    /// 索引可以是 `usize`、[`Range`] 或 [`RangeInclusive`]。注意本方法接收数组，
+    /// 因而所有索引必须具有同一种类型。传入 `usize` 数组时返回多个元素的可变引用；
+    /// 传入范围数组时返回多个可变子切片引用。
+///
+    /// 如果任一索引越界，或任意两个索引范围重叠，返回错误。空范围位于另一个范围开头或末尾时
+    /// 不视为重叠，但位于另一个范围中间时视为重叠。
+///
+    /// 本方法使用 O(n^2) 检查确认索引之间没有重叠；传入大量索引时需要注意成本。
     ///
-    /// An index can be either a `usize`, a [`Range`] or a [`RangeInclusive`]. Note
-    /// that this method takes an array, so all indices must be of the same type.
-    /// If passed an array of `usize`s this method gives back an array of mutable references
-    /// to single elements, while if passed an array of ranges it gives back an array of
-    /// mutable references to slices.
-    ///
-    /// Returns an error if any index is out-of-bounds, or if there are overlapping indices.
-    /// An empty range is not considered to overlap if it is located at the beginning or at
-    /// the end of another range, but is considered to overlap if it is located in the middle.
-    ///
-    /// This method does a O(n^2) check to check that there are no overlapping indices, so be careful
-    /// when passing many indices.
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let v = &mut [1, 2, 3];
@@ -5003,26 +4782,24 @@ impl<T> [T] {
         I: GetDisjointMutIndex + SliceIndex<Self>,
     {
         get_disjoint_check_valid(&indices, self.len())?;
-        // SAFETY: The `get_disjoint_check_valid()` call checked that all indices
-        // are disjunct and in bounds.
+        // SAFETY: `get_disjoint_check_valid()` 已检查所有索引都互不重叠且在边界内。
         unsafe { Ok(self.get_disjoint_unchecked_mut(indices)) }
     }
 
-    /// Returns the index that an element reference points to.
-    ///
-    /// Returns `None` if `element` does not point to the start of an element within the slice.
-    ///
-    /// This method is useful for extending slice iterators like [`slice::split`].
-    ///
-    /// Note that this uses pointer arithmetic and **does not compare elements**.
-    /// To find the index of an element via comparison, use
-    /// [`.iter().position()`](crate::iter::Iterator::position) instead.
+    /// 返回某个元素引用在本切片中指向的索引。
+///
+    /// 如果 `element` 并未指向本切片内某个元素的起始位置，返回 `None`。
+///
+    /// 该方法适合用于扩展 [`slice::split`] 这类切片迭代器。
+///
+    /// 注意，本方法使用指针算术，**不会比较元素值**。如果想通过值比较查找元素索引，
+    /// 应改用 [`.iter().position()`](crate::iter::Iterator::position)。
     ///
     /// # Panics
-    /// Panics if `T` is zero-sized.
+    /// 如果 `T` 是 zero-sized，本函数会 panic。
     ///
-    /// # Examples
-    /// Basic usage:
+    /// # 示例
+    /// 基本用法：
     /// ```
     /// let nums: &[u32] = &[1, 7, 1, 1];
     /// let num = &nums[2];
@@ -5030,7 +4807,7 @@ impl<T> [T] {
     /// assert_eq!(num, &1);
     /// assert_eq!(nums.element_offset(num), Some(2));
     /// ```
-    /// Returning `None` with an unaligned element:
+    /// 对未与原切片元素边界对齐的引用返回 `None`：
     /// ```
     /// let arr: &[[u32; 2]] = &[[0, 1], [2, 3]];
     /// let flat_arr: &[u32] = arr.as_flattened();
@@ -5041,8 +4818,8 @@ impl<T> [T] {
     /// assert_eq!(ok_elm, &[0, 1]);
     /// assert_eq!(weird_elm, &[1, 2]);
     ///
-    /// assert_eq!(arr.element_offset(ok_elm), Some(0)); // Points to element 0
-    /// assert_eq!(arr.element_offset(weird_elm), None); // Points between element 0 and 1
+    /// assert_eq!(arr.element_offset(ok_elm), Some(0)); // 指向元素 0
+    /// assert_eq!(arr.element_offset(weird_elm), None); // 指向元素 0 和 1 之间
     /// ```
     #[must_use]
     #[stable(feature = "element_offset", since = "1.94.0")]
@@ -5065,25 +4842,24 @@ impl<T> [T] {
         if offset < self.len() { Some(offset) } else { None }
     }
 
-    /// Returns the range of indices that a subslice points to.
-    ///
-    /// Returns `None` if `subslice` does not point within the slice or if it is not aligned with the
-    /// elements in the slice.
-    ///
-    /// This method **does not compare elements**. Instead, this method finds the location in the slice that
-    /// `subslice` was obtained from. To find the index of a subslice via comparison, instead use
-    /// [`.windows()`](slice::windows)[`.position()`](crate::iter::Iterator::position).
-    ///
-    /// This method is useful for extending slice iterators like [`slice::split`].
-    ///
-    /// Note that this may return a false positive (either `Some(0..0)` or `Some(self.len()..self.len())`)
-    /// if `subslice` has a length of zero and points to the beginning or end of another, separate, slice.
+    /// 返回某个子切片在本切片中指向的索引范围。
+///
+    /// 如果 `subslice` 不指向本切片内部，或未与本切片的元素边界对齐，返回 `None`。
+///
+    /// 本方法 **不会比较元素值**。它只通过指针算术找出 `subslice` 来源于本切片的哪个位置。
+    /// 如果想通过值比较查找子切片索引，应改用
+    /// [`.windows()`](slice::windows)[`.position()`](crate::iter::Iterator::position)。
+///
+    /// 该方法适合用于扩展 [`slice::split`] 这类切片迭代器。
+///
+    /// 注意，如果 `subslice` 长度为 0，且指向另一个独立切片的开头或末尾，本方法可能返回
+    /// 假阳性（`Some(0..0)` 或 `Some(self.len()..self.len())`）。
     ///
     /// # Panics
-    /// Panics if `T` is zero-sized.
+    /// 如果 `T` 是 zero-sized，本函数会 panic。
     ///
-    /// # Examples
-    /// Basic usage:
+    /// # 示例
+    /// 基本用法：
     /// ```
     /// #![feature(substr_range)]
     ///
@@ -5120,22 +4896,20 @@ impl<T> [T] {
         if start <= self.len() && end <= self.len() { Some(start..end) } else { None }
     }
 
-    /// Returns the same slice `&[T]`.
-    ///
-    /// This method is redundant when used directly on `&[T]`, but
-    /// it helps dereferencing other "container" types to slices,
-    /// for example `Box<[T]>` or `Arc<[T]>`.
+    /// 返回同一个切片 `&[T]`。
+///
+    /// 直接在 `&[T]` 上调用时该方法是冗余的，但它有助于把其它“容器”类型解引用为切片，
+    /// 例如 `Box<[T]>` 或 `Arc<[T]>`。
     #[inline]
     #[unstable(feature = "str_as_str", issue = "130366")]
     pub const fn as_slice(&self) -> &[T] {
         self
     }
 
-    /// Returns the same slice `&mut [T]`.
-    ///
-    /// This method is redundant when used directly on `&mut [T]`, but
-    /// it helps dereferencing other "container" types to slices,
-    /// for example `Box<[T]>` or `MutexGuard<[T]>`.
+    /// 返回同一个可变切片 `&mut [T]`。
+///
+    /// 直接在 `&mut [T]` 上调用时该方法是冗余的，但它有助于把其它“容器”类型解引用为
+    /// 可变切片，例如 `Box<[T]>` 或 `MutexGuard<[T]>`。
     #[inline]
     #[unstable(feature = "str_as_str", issue = "130366")]
     pub const fn as_mut_slice(&mut self) -> &mut [T] {
@@ -5144,13 +4918,13 @@ impl<T> [T] {
 }
 
 impl<T> [MaybeUninit<T>] {
-    /// Transmutes the mutable uninitialized slice to a mutable uninitialized slice of
-    /// another type, ensuring alignment of the types is maintained.
+    /// 把可变未初始化切片中对齐合适的一段重新解释成另一种类型的可变未初始化切片。
+///
+    /// 这是 [`slice::align_to_mut`] 的安全包装，因此继承该方法的对齐和不重叠保证。
+    /// 安全性的额外来源是 `MaybeUninit` 对任意位模式都有效，所以中间段不需要证明已经
+    /// 初始化为 `U`。
     ///
-    /// This is a safe wrapper around [`slice::align_to_mut`], so inherits the same
-    /// guarantees as that method.
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(align_to_uninit_mut)]
@@ -5184,31 +4958,29 @@ impl<T> [MaybeUninit<T>] {
     #[inline]
     #[must_use]
     pub fn align_to_uninit_mut<U>(&mut self) -> (&mut Self, &mut [MaybeUninit<U>], &mut Self) {
-        // SAFETY: `MaybeUninit` is transparent. Correct size and alignment are guaranteed by
-        // `align_to_mut` itself. Therefore the only thing that we have to ensure for a safe
-        // `transmute` is that the values are valid for the types involved. But for `MaybeUninit`
-        // any values are valid, so this operation is safe.
+        // SAFETY: `MaybeUninit` 是透明包装。正确大小和对齐由 `align_to_mut` 自身保证。
+        // 因此安全 transmute 还需证明的只剩“值对目标类型有效”；而对 `MaybeUninit` 来说，
+        // 任意位模式都是有效值，所以该操作安全。
         unsafe { self.align_to_mut() }
     }
 }
 
 impl<T, const N: usize> [[T; N]] {
-    /// Takes a `&[[T; N]]`, and flattens it to a `&[T]`.
-    ///
-    /// For the opposite operation, see [`as_chunks`] and [`as_rchunks`].
+    /// 接收 `&[[T; N]]`，并将其展平成 `&[T]`。
+///
+    /// 反向操作见 [`as_chunks`] 和 [`as_rchunks`]。
     ///
     /// [`as_chunks`]: slice::as_chunks
     /// [`as_rchunks`]: slice::as_rchunks
     ///
     /// # Panics
     ///
-    /// This panics if the length of the resulting slice would overflow a `usize`.
+    /// 如果结果切片长度会溢出 `usize`，本函数会 panic。
+///
+    /// 这只可能发生在展平 zero-sized 类型数组切片时，因此实践中通常无关紧要。
+    /// 如果 `size_of::<T>() > 0`，本函数永远不会 panic。
     ///
-    /// This is only possible when flattening a slice of arrays of zero-sized
-    /// types, and thus tends to be irrelevant in practice. If
-    /// `size_of::<T>() > 0`, this will never panic.
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// assert_eq!([[1, 2, 3], [4, 5, 6]].as_flattened(), &[1, 2, 3, 4, 5, 6]);
@@ -5230,30 +5002,28 @@ impl<T, const N: usize> [[T; N]] {
         let len = if T::IS_ZST {
             self.len().checked_mul(N).expect("slice len overflow")
         } else {
-            // SAFETY: `self.len() * N` cannot overflow because `self` is
-            // already in the address space.
+            // SAFETY: `self.len() * N` 不会溢出，因为 `self` 已经位于地址空间内。
             unsafe { self.len().unchecked_mul(N) }
         };
-        // SAFETY: `[T]` is layout-identical to `[T; N]`
+        // SAFETY: `[T; N]` 的连续元素布局与 `[T]` 对应前缀布局一致。
         unsafe { from_raw_parts(self.as_ptr().cast(), len) }
     }
 
-    /// Takes a `&mut [[T; N]]`, and flattens it to a `&mut [T]`.
-    ///
-    /// For the opposite operation, see [`as_chunks_mut`] and [`as_rchunks_mut`].
+    /// 接收 `&mut [[T; N]]`，并将其展平成 `&mut [T]`。
+///
+    /// 反向操作见 [`as_chunks_mut`] 和 [`as_rchunks_mut`]。
     ///
     /// [`as_chunks_mut`]: slice::as_chunks_mut
     /// [`as_rchunks_mut`]: slice::as_rchunks_mut
     ///
     /// # Panics
     ///
-    /// This panics if the length of the resulting slice would overflow a `usize`.
+    /// 如果结果切片长度会溢出 `usize`，本函数会 panic。
+///
+    /// 这只可能发生在展平 zero-sized 类型数组切片时，因此实践中通常无关紧要。
+    /// 如果 `size_of::<T>() > 0`，本函数永远不会 panic。
     ///
-    /// This is only possible when flattening a slice of arrays of zero-sized
-    /// types, and thus tends to be irrelevant in practice. If
-    /// `size_of::<T>() > 0`, this will never panic.
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// fn add_5_to_all(slice: &mut [i32]) {
@@ -5272,26 +5042,25 @@ impl<T, const N: usize> [[T; N]] {
         let len = if T::IS_ZST {
             self.len().checked_mul(N).expect("slice len overflow")
         } else {
-            // SAFETY: `self.len() * N` cannot overflow because `self` is
-            // already in the address space.
+            // SAFETY: `self.len() * N` 不会溢出，因为 `self` 已经位于地址空间内。
             unsafe { self.len().unchecked_mul(N) }
         };
-        // SAFETY: `[T]` is layout-identical to `[T; N]`
+        // SAFETY: `[T; N]` 的连续元素布局与 `[T]` 对应前缀布局一致，且 `&mut self` 保证独占访问。
         unsafe { from_raw_parts_mut(self.as_mut_ptr().cast(), len) }
     }
 }
 
 impl [f32] {
-    /// Sorts the slice of floats.
+    /// 对浮点切片排序。
+///
+    /// 这是原地排序（不分配），最坏时间复杂度为 *O*(*n* \* log(*n*))，使用
+    /// [`f32::total_cmp`] 定义的全序。该顺序能处理 NaN、正负零和无穷大。
+///
+    /// # 当前实现
+///
+    /// 本方法使用与 [`sort_unstable_by`](slice::sort_unstable_by) 相同的排序算法。
     ///
-    /// This sort is in-place (i.e. does not allocate), *O*(*n* \* log(*n*)) worst-case, and uses
-    /// the ordering defined by [`f32::total_cmp`].
-    ///
-    /// # Current implementation
-    ///
-    /// This uses the same sorting algorithm as [`sort_unstable_by`](slice::sort_unstable_by).
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(sort_floats)]
@@ -5310,16 +5079,16 @@ impl [f32] {
 }
 
 impl [f64] {
-    /// Sorts the slice of floats.
+    /// 对浮点切片排序。
+///
+    /// 这是原地排序（不分配），最坏时间复杂度为 *O*(*n* \* log(*n*))，使用
+    /// [`f64::total_cmp`] 定义的全序。该顺序能处理 NaN、正负零和无穷大。
+///
+    /// # 当前实现
+///
+    /// 本方法使用与 [`sort_unstable_by`](slice::sort_unstable_by) 相同的排序算法。
     ///
-    /// This sort is in-place (i.e. does not allocate), *O*(*n* \* log(*n*)) worst-case, and uses
-    /// the ordering defined by [`f64::total_cmp`].
-    ///
-    /// # Current implementation
-    ///
-    /// This uses the same sorting algorithm as [`sort_unstable_by`](slice::sort_unstable_by).
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(sort_floats)]
@@ -5337,14 +5106,13 @@ impl [f64] {
     }
 }
 
-/// Copies `src` to `dest`.
+/// 将 `src` 复制到 `dest`。
 ///
-/// # Safety
-/// `T` must implement one of `Copy` or `TrivialClone`.
+/// # 安全性(Safety）
+/// `T` 必须实现 `Copy` 或 `TrivialClone` 之一；否则按位复制会绕过 `Clone` 语义。
 #[track_caller]
 const unsafe fn copy_from_slice_impl<T: Clone>(dest: &mut [T], src: &[T]) {
-    // The panic code path was put into a cold function to not bloat the
-    // call site.
+    // 将 panic 路径放入 cold 函数，避免膨胀正常调用点。
     #[cfg_attr(not(panic = "immediate-abort"), inline(never), cold)]
     #[cfg_attr(panic = "immediate-abort", inline)]
     #[track_caller]
@@ -5361,9 +5129,8 @@ const unsafe fn copy_from_slice_impl<T: Clone>(dest: &mut [T], src: &[T]) {
         len_mismatch_fail(dest.len(), src.len());
     }
 
-    // SAFETY: `self` is valid for `self.len()` elements by definition, and `src` was
-    // checked to have the same length. The slices cannot overlap because
-    // mutable references are exclusive.
+    // SAFETY: 根据定义，`dest` 对 `dest.len()` 个元素有效，且已检查 `src` 长度相同。
+    // 两个切片不能重叠，因为可变引用具有独占性。
     unsafe {
         ptr::copy_nonoverlapping(src.as_ptr(), dest.as_mut_ptr(), dest.len());
     }
@@ -5384,12 +5151,11 @@ where
     #[track_caller]
     default fn spec_clone_from(&mut self, src: &[T]) {
         assert!(self.len() == src.len(), "destination and source slices have different lengths");
-        // NOTE: We need to explicitly slice them to the same length
-        // to make it easier for the optimizer to elide bounds checking.
-        // But since it can't be relied on we also have an explicit specialization for T: Copy.
+        // NOTE: 需要显式把两者切到相同长度，便于优化器消除边界检查。
+        // 但不能完全依赖这一点，因此对 T: Copy 仍有显式 specialization。
         let len = self.len();
         let src = &src[..len];
-        // FIXME(const_hack): make this a `for idx in 0..self.len()` loop.
+        // FIXME(const_hack): 改成 `for idx in 0..self.len()` 循环。
         let mut idx = 0;
         while idx < self.len() {
             self[idx].clone_from(&src[idx]);
@@ -5405,7 +5171,7 @@ where
 {
     #[track_caller]
     fn spec_clone_from(&mut self, src: &[T]) {
-        // SAFETY: `T` implements `TrivialClone`.
+        // SAFETY: `T` 实现了 `TrivialClone`，按位复制等价于 clone。
         unsafe {
             copy_from_slice_impl(self, src);
         }
@@ -5415,7 +5181,7 @@ where
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_const_unstable(feature = "const_default", issue = "143894")]
 impl<T> const Default for &[T] {
-    /// Creates an empty slice.
+    /// 创建空切片。
     fn default() -> Self {
         &[]
     }
@@ -5424,21 +5190,22 @@ impl<T> const Default for &[T] {
 #[stable(feature = "mut_slice_default", since = "1.5.0")]
 #[rustc_const_unstable(feature = "const_default", issue = "143894")]
 impl<T> const Default for &mut [T] {
-    /// Creates a mutable empty slice.
+    /// 创建可变空切片。
     fn default() -> Self {
         &mut []
     }
 }
 
 #[unstable(feature = "slice_pattern", reason = "stopgap trait for slice patterns", issue = "56345")]
-/// Patterns in slices - currently, only used by `strip_prefix` and `strip_suffix`.  At a future
-/// point, we hope to generalise `core::str::Pattern` (which at the time of writing is limited to
-/// `str`) to slices, and then this trait will be replaced or abolished.
+/// 切片中的模式。目前只供 `strip_prefix` 与 `strip_suffix` 使用。
+///
+/// 未来如果能把 `core::str::Pattern`（撰写时仅限 `str`）泛化到切片，本 trait 将被替换
+/// 或移除。
 pub trait SlicePattern {
-    /// The element type of the slice being matched on.
+    /// 被匹配切片的元素类型。
     type Item;
 
-    /// Currently, the consumers of `SlicePattern` need a slice.
+    /// 当前 `SlicePattern` 的使用方需要拿到一个切片视图。
     fn as_slice(&self) -> &[Self::Item];
 }
 
@@ -5462,17 +5229,16 @@ impl<T, const N: usize> SlicePattern for [T; N] {
     }
 }
 
-/// This checks every index against each other, and against `len`.
+/// 检查每个索引是否在 `len` 内，并与其它索引两两检查是否重叠。
 ///
-/// This will do `binomial(N + 1, 2) = N * (N + 1) / 2 = 0, 1, 3, 6, 10, ..`
-/// comparison operations.
+/// 这会执行 `binomial(N + 1, 2) = N * (N + 1) / 2 = 0, 1, 3, 6, 10, ..`
+/// 次比较操作。
 #[inline]
 fn get_disjoint_check_valid<I: GetDisjointMutIndex, const N: usize>(
     indices: &[I; N],
     len: usize,
 ) -> Result<(), GetDisjointMutError> {
-    // NB: The optimizer should inline the loops into a sequence
-    // of instructions without additional branching.
+    // NB: 优化器应当把这些循环内联成一串没有额外分支的指令。
     for (i, idx) in indices.iter().enumerate() {
         if !idx.is_in_bounds(len) {
             return Err(GetDisjointMutError::IndexOutOfBounds);
@@ -5486,14 +5252,13 @@ fn get_disjoint_check_valid<I: GetDisjointMutIndex, const N: usize>(
     Ok(())
 }
 
-/// The error type returned by [`get_disjoint_mut`][`slice::get_disjoint_mut`].
+/// [`get_disjoint_mut`][`slice::get_disjoint_mut`] 返回的错误类型。
 ///
-/// It indicates one of two possible errors:
-/// - An index is out-of-bounds.
-/// - The same index appeared multiple times in the array
-///   (or different but overlapping indices when ranges are provided).
+/// 它表示两类可能错误之一：
+/// - 某个索引越过切片边界。
+/// - 同一个索引在数组中出现多次；传入范围时，也可能是不同范围发生重叠。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use std::slice::GetDisjointMutError;
@@ -5505,9 +5270,9 @@ fn get_disjoint_check_valid<I: GetDisjointMutIndex, const N: usize>(
 #[stable(feature = "get_many_mut", since = "1.86.0")]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GetDisjointMutError {
-    /// An index provided was out-of-bounds for the slice.
+    /// 提供的某个索引越过切片边界。
     IndexOutOfBounds,
-    /// Two indices provided were overlapping.
+    /// 提供的两个索引范围发生重叠。
     OverlappingIndices,
 }
 
@@ -5540,30 +5305,29 @@ mod private_get_disjoint_mut_index {
     impl Sealed for range::RangeInclusive<usize> {}
 }
 
-/// A helper trait for `<[T]>::get_disjoint_mut()`.
+/// `<[T]>::get_disjoint_mut()` 使用的辅助 trait。
 ///
-/// # Safety
+/// # 安全性(Safety）
 ///
-/// If `is_in_bounds()` returns `true` and `is_overlapping()` returns `false`,
-/// it must be safe to index the slice with the indices.
+/// 如果 `is_in_bounds()` 返回 `true` 且 `is_overlapping()` 返回 `false`，
+/// 则必须可以用这些索引安全地索引切片，并同时返回互不重叠的 `&mut`。
 #[unstable(feature = "get_disjoint_mut_helpers", issue = "none")]
 pub unsafe trait GetDisjointMutIndex:
     Clone + private_get_disjoint_mut_index::Sealed
 {
-    /// Returns `true` if `self` is in bounds for `len` slice elements.
+    /// 如果 `self` 对长度为 `len` 的切片来说位于边界内，返回 `true`。
     #[unstable(feature = "get_disjoint_mut_helpers", issue = "none")]
     fn is_in_bounds(&self, len: usize) -> bool;
 
-    /// Returns `true` if `self` overlaps with `other`.
-    ///
-    /// Note that we don't consider zero-length ranges to overlap at the beginning or the end,
-    /// but do consider them to overlap in the middle.
+    /// 如果 `self` 与 `other` 覆盖范围重叠，返回 `true`。
+///
+    /// 注意：位于另一个范围开头或末尾的零长度范围不视为重叠；位于中间的零长度范围视为重叠。
     #[unstable(feature = "get_disjoint_mut_helpers", issue = "none")]
     fn is_overlapping(&self, other: &Self) -> bool;
 }
 
 #[unstable(feature = "get_disjoint_mut_helpers", issue = "none")]
-// SAFETY: We implement `is_in_bounds()` and `is_overlapping()` correctly.
+// SAFETY: `is_in_bounds()` 与 `is_overlapping()` 按 `usize` 单点索引语义正确实现。
 unsafe impl GetDisjointMutIndex for usize {
     #[inline]
     fn is_in_bounds(&self, len: usize) -> bool {
@@ -5577,7 +5341,7 @@ unsafe impl GetDisjointMutIndex for usize {
 }
 
 #[unstable(feature = "get_disjoint_mut_helpers", issue = "none")]
-// SAFETY: We implement `is_in_bounds()` and `is_overlapping()` correctly.
+// SAFETY: `is_in_bounds()` 与 `is_overlapping()` 按 `Range<usize>` 半开范围语义正确实现。
 unsafe impl GetDisjointMutIndex for Range<usize> {
     #[inline]
     fn is_in_bounds(&self, len: usize) -> bool {
@@ -5591,7 +5355,7 @@ unsafe impl GetDisjointMutIndex for Range<usize> {
 }
 
 #[unstable(feature = "get_disjoint_mut_helpers", issue = "none")]
-// SAFETY: We implement `is_in_bounds()` and `is_overlapping()` correctly.
+// SAFETY: `is_in_bounds()` 与 `is_overlapping()` 按 `RangeInclusive<usize>` 闭区间语义正确实现。
 unsafe impl GetDisjointMutIndex for RangeInclusive<usize> {
     #[inline]
     fn is_in_bounds(&self, len: usize) -> bool {
@@ -5605,7 +5369,7 @@ unsafe impl GetDisjointMutIndex for RangeInclusive<usize> {
 }
 
 #[unstable(feature = "get_disjoint_mut_helpers", issue = "none")]
-// SAFETY: We implement `is_in_bounds()` and `is_overlapping()` correctly.
+// SAFETY: `is_in_bounds()` 与 `is_overlapping()` 按 `range::Range<usize>` 半开范围语义正确实现。
 unsafe impl GetDisjointMutIndex for range::Range<usize> {
     #[inline]
     fn is_in_bounds(&self, len: usize) -> bool {
@@ -5619,7 +5383,7 @@ unsafe impl GetDisjointMutIndex for range::Range<usize> {
 }
 
 #[unstable(feature = "get_disjoint_mut_helpers", issue = "none")]
-// SAFETY: We implement `is_in_bounds()` and `is_overlapping()` correctly.
+// SAFETY: `is_in_bounds()` 与 `is_overlapping()` 按 `range::RangeInclusive<usize>` 闭区间语义正确实现。
 unsafe impl GetDisjointMutIndex for range::RangeInclusive<usize> {
     #[inline]
     fn is_in_bounds(&self, len: usize) -> bool {

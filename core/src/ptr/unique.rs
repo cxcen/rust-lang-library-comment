@@ -71,7 +71,7 @@ impl<T: Sized> Unique<T> {
     #[must_use]
     #[inline]
     pub const fn dangling() -> Self {
-        // FIXME(const-hack) replace with `From`
+        // FIXME(const-hack): 替换为 `From`。
         Unique { pointer: NonNull::dangling(), _marker: PhantomData }
     }
 }
@@ -80,7 +80,7 @@ impl<T: Sized> Unique<T> {
 impl<T: PointeeSized> Unique<T> {
     /// 创建一个新的 `Unique`。
     ///
-    /// # 安全性(Safety)
+    /// # 安全性(Safety）
     ///
     /// 调用方必须保证:`ptr` 非空。其余的别名/有效性不变量虽然不在此处强制,
     /// 但使用 `Unique` 的抽象有义务维护(见类型级文档中的独占别名语义)。
@@ -126,7 +126,7 @@ impl<T: PointeeSized> Unique<T> {
     /// 一个 `T` 的实例。如果需要一个更长(未绑定)的生命周期,请改用
     /// `&*my_ptr.as_ptr()`。
     ///
-    /// # 安全性(Safety)
+    /// # 安全性(Safety）
     ///
     /// 调用方必须保证 `self` 满足构造一个引用所需的全部要求:指针非空、已对齐、
     /// 指向一个已初始化且类型为 `T` 的有效值、在返回引用的整个生命周期内该内存
@@ -144,7 +144,7 @@ impl<T: PointeeSized> Unique<T> {
     /// 借用一个 `T` 的实例。如果需要一个更长(未绑定)的生命周期,请改用
     /// `&mut *my_ptr.as_ptr()`。
     ///
-    /// # 安全性(Safety)
+    /// # 安全性(Safety）
     ///
     /// 调用方必须保证 `self` 满足构造一个可变引用所需的全部要求:指针非空、已对齐、
     /// 指向一个已初始化且类型为 `T` 的有效值,并且在返回引用的整个生命周期内,

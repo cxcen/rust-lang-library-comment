@@ -1,32 +1,30 @@
 use crate::iter::{FusedIterator, TrustedLen};
 
-/// Creates an iterator that yields an element exactly once.
+/// 创建一个恰好产出一个元素的迭代器。
 ///
-/// This is commonly used to adapt a single value into a [`chain()`] of other
-/// kinds of iteration. Maybe you have an iterator that covers almost
-/// everything, but you need an extra special case. Maybe you have a function
-/// which works on iterators, but you only need to process one value.
+/// 这常用于把单个值接入其他迭代形式的 [`chain()`] 中。也许已有一个迭代器覆盖了
+/// 几乎所有元素，但还需要额外处理一个特殊值；或者某个函数接收迭代器，而你只需要
+/// 处理一个值。
 ///
 /// [`chain()`]: Iterator::chain
 ///
-/// # Examples
+/// # 示例
 ///
-/// Basic usage:
+/// 基本用法:
 ///
 /// ```
 /// use std::iter;
 ///
-/// // one is the loneliest number
+/// // one 是最孤独的数字
 /// let mut one = iter::once(1);
 ///
 /// assert_eq!(Some(1), one.next());
 ///
-/// // just one, that's all we get
+/// // 只有一个值，仅此而已。
 /// assert_eq!(None, one.next());
 /// ```
 ///
-/// Chaining together with another iterator. Let's say that we want to iterate
-/// over each file of the `.foo` directory, but also a configuration file,
+/// 与另一个迭代器链接。假设要遍历 `.foo` 目录中的每个文件，同时还要包含配置文件
 /// `.foorc`:
 ///
 /// ```no_run
@@ -36,17 +34,16 @@ use crate::iter::{FusedIterator, TrustedLen};
 ///
 /// let dirs = fs::read_dir(".foo")?;
 ///
-/// // we need to convert from an iterator of DirEntry-s to an iterator of
-/// // PathBufs, so we use map
+/// // 需要把 DirEntry 迭代器转换为 PathBuf 迭代器，因此使用 map。
 /// let dirs = dirs.map(|file| file.unwrap().path());
 ///
-/// // now, our iterator just for our config file
+/// // 现在为配置文件创建一个单项迭代器。
 /// let config = iter::once(PathBuf::from(".foorc"));
 ///
-/// // chain the two iterators together into one big iterator
+/// // 把两个迭代器链接成一个大迭代器。
 /// let files = dirs.chain(config);
 ///
-/// // this will give us all of the files in .foo as well as .foorc
+/// // 这会产出 .foo 中的所有文件以及 .foorc。
 /// for f in files {
 ///     println!("{f:?}");
 /// }
@@ -57,9 +54,9 @@ pub fn once<T>(value: T) -> Once<T> {
     Once { inner: Some(value).into_iter() }
 }
 
-/// An iterator that yields an element exactly once.
+/// 恰好产出一个元素的迭代器。
 ///
-/// This `struct` is created by the [`once()`] function. See its documentation for more.
+/// 该 `struct` 由 [`once()`] 函数创建。更多信息见该函数文档。
 #[derive(Clone, Debug)]
 #[stable(feature = "iter_once", since = "1.2.0")]
 #[rustc_diagnostic_item = "IterOnce"]

@@ -17,7 +17,7 @@
 //! 针对 const 求值（编译期求值）的实现见
 //! <https://github.com/rust-lang/rust/blob/HEAD/compiler/rustc_const_eval/src/interpret/intrinsics.rs>。
 //!
-//! # Const intrinsic（可在编译期使用的 intrinsic）
+//! # 编译期 intrinsic（const intrinsic）
 //!
 //! 想让一个不稳定的 intrinsic 可在编译期使用，需要把实现从
 //! <https://github.com/rust-lang/miri/blob/master/src/intrinsics> 拷贝到
@@ -28,18 +28,29 @@
 //! 则需要给该 intrinsic 加上 `#[rustc_intrinsic_const_stable_indirect]`。这类改动需要 T-lang 团队批准，
 //! 因为它可能把一项特性固化进语言中，而用户代码在没有编译器支持的情况下无法复刻该特性。
 //!
-//! # Volatile（易变访问）
+//! # 易变访问（volatile）
 //!
-//! volatile 系列 intrinsic 提供的操作意在作用于 I/O 内存（MMIO），它们保证不会被编译器跨其他
-//! volatile intrinsic 重新排序。参见 [`read_volatile`][ptr::read_volatile] 与
-//! [`write_volatile`][ptr::write_volatile]。注意：volatile 不保证原子性，也不提供多线程同步语义。
+//! volatile 系列 intrinsic 提供的操作意在作用于 I/O 内存（MMIO）或其他需要“每次访问都真实发生”的位置。
+//! 它们把一次读写标记为可被外部观察的副作用，因而编译器不能把它删除，也不能把它随意跨过其他外部可观察事件重排。
+//! 参见 [`read_volatile`][ptr::read_volatile] 与 [`write_volatile`][ptr::write_volatile]。
 //!
-//! # Atomics（原子操作）
+//! volatile 只约束编译器优化，不改变 Rust 的指针有效性规则：指针仍必须有正确 provenance、指向足够大的内存，
+//! 对齐要求也仍由具体 intrinsic 决定。它也不保证原子性，不建立 happens-before 关系，不能用来修复数据竞争；
+//! 需要跨线程同步时应使用原子类型或锁。
+//!
+//! # 原子操作（atomics）
 //!
 //! 原子系列 intrinsic 提供针对机器字的常见原子操作，并支持多种可能的内存序（memory ordering）。
-//! 详见[原子类型][atomic]的文档。
+//! 这些 intrinsic 是稳定原子类型方法的底层入口，编译器会把内存序常量直接降级到目标后端的原子指令或栅栏。
+//! 调用方必须传入适合该操作的内存序：例如 load 不能使用 `Release`/`AcqRel`，store 不能使用 `Acquire`/`AcqRel`，
+//! `compare_exchange` 的失败内存序不能是 `Release`/`AcqRel`，而栅栏也只能使用有意义的同步内存序。
 //!
-//! # Unwinding（栈展开）
+//! 与稳定的原子类型不同，这里的函数直接接收裸指针。调用方必须保证该指针非空、正确对齐、指向已初始化且对
+//! `T` 大小有效的内存，并且目标平台支持该宽度的原子操作。对同一内存位置混用非原子访问和原子访问时，
+//! 仍必须遵守 Rust/C++20 风格内存模型的数据竞争边界；`Relaxed` 只保证单个原子位置上的原子性，
+//! 不提供跨线程的发布/获取同步。详见[原子类型][atomic]的文档。
+//!
+//! # 栈展开（unwinding）
 //!
 //! Rust 的 intrinsic 一般而言是可以栈展开（unwind）的。如果某个 intrinsic 永远不会展开，
 //! 就给它加上 `#[rustc_nounwind]` 属性，以便编译器利用这一事实。
@@ -66,7 +77,7 @@ pub mod gpu;
 pub mod mir;
 pub mod simd;
 
-// 这些 import 用于简化文档内的链接（intra-doc links）
+// 这些导入用于简化文档内的链接（intra-doc links）
 #[allow(unused_imports)]
 #[cfg(all(target_has_atomic = "8", target_has_atomic = "32", target_has_atomic = "ptr"))]
 use crate::sync::atomic::{self, AtomicBool, AtomicI32, AtomicIsize, AtomicU32, Ordering};
@@ -76,21 +87,34 @@ use crate::sync::atomic::{self, AtomicBool, AtomicI32, AtomicIsize, AtomicU32, O
 #[derive(Debug, ConstParamTy, PartialEq, Eq)]
 pub enum AtomicOrdering {
     // 这些取值必须与编译器中 `rustc_middle/src/ty/consts/int.rs` 里定义的 `AtomicOrdering` 保持一致！
+    /// `Relaxed` 只保证本次操作本身是原子的，不建立跨线程的同步关系。
     Relaxed = 0,
+    /// `Release` 用于发布当前线程此前的写入，通常只对 store、读改写操作或 fence 有意义。
     Release = 1,
+    /// `Acquire` 用于获取另一线程发布的写入，通常只对 load、读改写操作或 fence 有意义。
     Acquire = 2,
+    /// `AcqRel` 同时具备 acquire 与 release 语义，适用于成功的读改写操作或 fence。
     AcqRel = 3,
+    /// `SeqCst` 在 acquire/release 之外还参与全局顺序，是最强也通常最昂贵的内存序。
     SeqCst = 4,
 }
 
 // 注意：这些 intrinsic 之所以接收裸指针，是因为它们会改写可能存在别名（aliased）的内存，
-// 而这对 `&` 或 `&mut` 来说都是不合法的。
+// 而这对 `&` 或 `&mut` 来说都是不合法的。调用方必须自行维护裸指针的有效性、对齐、初始化状态
+// 以及内存序约束；这些要求与稳定原子类型方法相同，只是这里没有类型系统替你检查。
 
 /// 当“当前值”与给定的 `old` 值相同时，才存入新值（比较并交换，compare-and-exchange）。
 /// `T` 必须是整数或指针类型。
 ///
 /// 本 intrinsic 的稳定版本可通过[原子类型][`atomic`]上的 `compare_exchange` 方法使用，
 /// 例如 [`AtomicBool::compare_exchange`]。
+///
+/// # 安全性（Safety）
+///
+/// `dst` 必须非空、按 `T` 的原子访问要求正确对齐，并指向一块对 `T` 大小有效且已初始化的内存。
+/// 该内存位置必须能用目标平台支持的原子宽度访问。`ORD_SUCC` 与 `ORD_FAIL` 必须满足稳定
+/// `compare_exchange` 的内存序规则：成功内存序描述实际读改写操作，失败内存序只描述加载，
+/// 因而失败内存序只能是 `SeqCst`、`Acquire` 或 `Relaxed`，不能是 `Release` 或 `AcqRel`。
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn atomic_cxchg<
@@ -108,6 +132,12 @@ pub unsafe fn atomic_cxchg<
 ///
 /// 本 intrinsic 的稳定版本可通过[原子类型][`atomic`]上的 `compare_exchange_weak` 方法使用，
 /// 例如 [`AtomicBool::compare_exchange_weak`]。
+///
+/// # 安全性（Safety）
+///
+/// `dst` 必须满足与 [`atomic_cxchg`] 相同的裸指针、初始化、对齐和内存序要求。
+/// 额外需要注意：weak 版本允许伪失败，因此调用方不得把“失败”解释为值一定不同；
+/// 需要循环重试的算法必须把这种伪失败纳入内存序设计。
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn atomic_cxchgweak<
@@ -124,6 +154,11 @@ pub unsafe fn atomic_cxchgweak<
 /// `T` 必须是整数或指针类型。
 ///
 /// 本 intrinsic 的稳定版本可通过[原子类型][`atomic`]上的 `load` 方法使用，例如 [`AtomicBool::load`]。
+///
+/// # 安全性（Safety）
+///
+/// `src` 必须非空、正确对齐，并指向一块对 `T` 大小有效且已初始化的内存；
+/// 该内存位置必须能被目标平台以原子方式加载。`ORD` 是加载内存序，不能是 `Release` 或 `AcqRel`。
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn atomic_load<T: Copy, const ORD: AtomicOrdering>(src: *const T) -> T;
@@ -132,6 +167,11 @@ pub unsafe fn atomic_load<T: Copy, const ORD: AtomicOrdering>(src: *const T) -> 
 /// `T` 必须是整数或指针类型。
 ///
 /// 本 intrinsic 的稳定版本可通过[原子类型][`atomic`]上的 `store` 方法使用，例如 [`AtomicBool::store`]。
+///
+/// # 安全性（Safety）
+///
+/// `dst` 必须非空、正确对齐，并指向一块对 `T` 大小有效且可写的内存；
+/// 该内存位置必须能被目标平台以原子方式存储。`ORD` 是存储内存序，不能是 `Acquire` 或 `AcqRel`。
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn atomic_store<T: Copy, const ORD: AtomicOrdering>(dst: *mut T, val: T);
@@ -140,6 +180,12 @@ pub unsafe fn atomic_store<T: Copy, const ORD: AtomicOrdering>(dst: *mut T, val:
 /// `T` 必须是整数或指针类型。
 ///
 /// 本 intrinsic 的稳定版本可通过[原子类型][`atomic`]上的 `swap` 方法使用，例如 [`AtomicBool::swap`]。
+///
+/// # 安全性（Safety）
+///
+/// `dst` 必须满足原子读改写操作的要求：非空、正确对齐、指向对 `T` 大小有效且已初始化的可写内存，
+/// 并且不能与非原子访问形成数据竞争。`ORD` 的含义与稳定 `swap` 相同；例如 `Acquire` 只获取加载部分，
+/// `Release` 只发布存储部分。
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn atomic_xchg<T: Copy, const ORD: AtomicOrdering>(dst: *mut T, src: T) -> T;
@@ -149,6 +195,11 @@ pub unsafe fn atomic_xchg<T: Copy, const ORD: AtomicOrdering>(dst: *mut T, src: 
 /// 若 `T` 是整数类型，则 `U` 必须与 `T` 相同；若 `T` 是指针类型，则 `U` 必须是 `usize`。
 ///
 /// 本 intrinsic 的稳定版本可通过[原子类型][`atomic`]上的 `fetch_add` 方法使用，例如 [`AtomicIsize::fetch_add`]。
+///
+/// # 安全性（Safety）
+///
+/// `dst` 必须满足原子读改写操作的裸指针要求：非空、正确对齐、指向有效且已初始化的可写内存。
+/// `ORD` 的发布/获取语义只约束这次 fetch-add 与其他原子操作之间的同步；它不会放宽整数或指针类型约束。
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn atomic_xadd<T: Copy, U: Copy, const ORD: AtomicOrdering>(dst: *mut T, src: U) -> T;
@@ -158,6 +209,11 @@ pub unsafe fn atomic_xadd<T: Copy, U: Copy, const ORD: AtomicOrdering>(dst: *mut
 /// 若 `T` 是整数类型，则 `U` 必须与 `T` 相同；若 `T` 是指针类型，则 `U` 必须是 `usize`。
 ///
 /// 本 intrinsic 的稳定版本可通过[原子类型][`atomic`]上的 `fetch_sub` 方法使用，例如 [`AtomicIsize::fetch_sub`]。
+///
+/// # 安全性（Safety）
+///
+/// `dst` 必须满足原子读改写操作的裸指针要求：非空、正确对齐、指向有效且已初始化的可写内存。
+/// `ORD` 的语义与稳定 `fetch_sub` 相同，不能被用来掩盖同一位置上的非原子数据竞争。
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn atomic_xsub<T: Copy, U: Copy, const ORD: AtomicOrdering>(dst: *mut T, src: U) -> T;
@@ -167,6 +223,11 @@ pub unsafe fn atomic_xsub<T: Copy, U: Copy, const ORD: AtomicOrdering>(dst: *mut
 /// 若 `T` 是整数类型，则 `U` 必须与 `T` 相同；若 `T` 是指针类型，则 `U` 必须是 `usize`。
 ///
 /// 本 intrinsic 的稳定版本可通过[原子类型][`atomic`]上的 `fetch_and` 方法使用，例如 [`AtomicBool::fetch_and`]。
+///
+/// # 安全性（Safety）
+///
+/// `dst` 必须满足原子读改写操作的裸指针要求：非空、正确对齐、指向有效且已初始化的可写内存。
+/// `ORD` 只描述本次按位与操作参与同步的方式，不改变 `T` 与 `U` 的类型匹配要求。
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn atomic_and<T: Copy, U: Copy, const ORD: AtomicOrdering>(dst: *mut T, src: U) -> T;
@@ -176,6 +237,11 @@ pub unsafe fn atomic_and<T: Copy, U: Copy, const ORD: AtomicOrdering>(dst: *mut 
 /// 若 `T` 是整数类型，则 `U` 必须与 `T` 相同；若 `T` 是指针类型，则 `U` 必须是 `usize`。
 ///
 /// 本 intrinsic 的稳定版本可通过 [`AtomicBool`] 类型上的 `fetch_nand` 方法使用，例如 [`AtomicBool::fetch_nand`]。
+///
+/// # 安全性（Safety）
+///
+/// `dst` 必须满足原子读改写操作的裸指针要求：非空、正确对齐、指向有效且已初始化的可写内存。
+/// `ORD` 的含义与稳定 `fetch_nand` 相同，发布/获取语义只发生在这一个原子位置上。
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn atomic_nand<T: Copy, U: Copy, const ORD: AtomicOrdering>(dst: *mut T, src: U) -> T;
@@ -185,6 +251,11 @@ pub unsafe fn atomic_nand<T: Copy, U: Copy, const ORD: AtomicOrdering>(dst: *mut
 /// 若 `T` 是整数类型，则 `U` 必须与 `T` 相同；若 `T` 是指针类型，则 `U` 必须是 `usize`。
 ///
 /// 本 intrinsic 的稳定版本可通过[原子类型][`atomic`]上的 `fetch_or` 方法使用，例如 [`AtomicBool::fetch_or`]。
+///
+/// # 安全性（Safety）
+///
+/// `dst` 必须满足原子读改写操作的裸指针要求：非空、正确对齐、指向有效且已初始化的可写内存。
+/// 若需要跨线程传递数据，调用方必须选择能建立对应 happens-before 关系的 `ORD`。
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn atomic_or<T: Copy, U: Copy, const ORD: AtomicOrdering>(dst: *mut T, src: U) -> T;
@@ -194,6 +265,11 @@ pub unsafe fn atomic_or<T: Copy, U: Copy, const ORD: AtomicOrdering>(dst: *mut T
 /// 若 `T` 是整数类型，则 `U` 必须与 `T` 相同；若 `T` 是指针类型，则 `U` 必须是 `usize`。
 ///
 /// 本 intrinsic 的稳定版本可通过[原子类型][`atomic`]上的 `fetch_xor` 方法使用，例如 [`AtomicBool::fetch_xor`]。
+///
+/// # 安全性（Safety）
+///
+/// `dst` 必须满足原子读改写操作的裸指针要求：非空、正确对齐、指向有效且已初始化的可写内存。
+/// `ORD` 只影响同步语义，不影响按位异或本身的数值规则。
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn atomic_xor<T: Copy, U: Copy, const ORD: AtomicOrdering>(dst: *mut T, src: U) -> T;
@@ -202,6 +278,11 @@ pub unsafe fn atomic_xor<T: Copy, U: Copy, const ORD: AtomicOrdering>(dst: *mut 
 /// `T` 必须是有符号整数类型。
 ///
 /// 本 intrinsic 的稳定版本可通过有符号[原子整数类型][`atomic`]上的 `fetch_max` 方法使用，例如 [`AtomicI32::fetch_max`]。
+///
+/// # 安全性（Safety）
+///
+/// `dst` 必须满足原子读改写操作的裸指针要求：非空、正确对齐、指向有效且已初始化的可写内存。
+/// `T` 必须是目标平台支持原子访问的有符号整数类型，`ORD` 与稳定 `fetch_max` 的语义一致。
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn atomic_max<T: Copy, const ORD: AtomicOrdering>(dst: *mut T, src: T) -> T;
@@ -210,6 +291,11 @@ pub unsafe fn atomic_max<T: Copy, const ORD: AtomicOrdering>(dst: *mut T, src: T
 /// `T` 必须是有符号整数类型。
 ///
 /// 本 intrinsic 的稳定版本可通过有符号[原子整数类型][`atomic`]上的 `fetch_min` 方法使用，例如 [`AtomicI32::fetch_min`]。
+///
+/// # 安全性（Safety）
+///
+/// `dst` 必须满足原子读改写操作的裸指针要求：非空、正确对齐、指向有效且已初始化的可写内存。
+/// `T` 必须是目标平台支持原子访问的有符号整数类型，`ORD` 与稳定 `fetch_min` 的语义一致。
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn atomic_min<T: Copy, const ORD: AtomicOrdering>(dst: *mut T, src: T) -> T;
@@ -218,6 +304,11 @@ pub unsafe fn atomic_min<T: Copy, const ORD: AtomicOrdering>(dst: *mut T, src: T
 /// `T` 必须是无符号整数类型。
 ///
 /// 本 intrinsic 的稳定版本可通过无符号[原子整数类型][`atomic`]上的 `fetch_min` 方法使用，例如 [`AtomicU32::fetch_min`]。
+///
+/// # 安全性（Safety）
+///
+/// `dst` 必须满足原子读改写操作的裸指针要求：非空、正确对齐、指向有效且已初始化的可写内存。
+/// `T` 必须是目标平台支持原子访问的无符号整数类型，`ORD` 与稳定 `fetch_min` 的语义一致。
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn atomic_umin<T: Copy, const ORD: AtomicOrdering>(dst: *mut T, src: T) -> T;
@@ -226,6 +317,11 @@ pub unsafe fn atomic_umin<T: Copy, const ORD: AtomicOrdering>(dst: *mut T, src: 
 /// `T` 必须是无符号整数类型。
 ///
 /// 本 intrinsic 的稳定版本可通过无符号[原子整数类型][`atomic`]上的 `fetch_max` 方法使用，例如 [`AtomicU32::fetch_max`]。
+///
+/// # 安全性（Safety）
+///
+/// `dst` 必须满足原子读改写操作的裸指针要求：非空、正确对齐、指向有效且已初始化的可写内存。
+/// `T` 必须是目标平台支持原子访问的无符号整数类型，`ORD` 与稳定 `fetch_max` 的语义一致。
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn atomic_umax<T: Copy, const ORD: AtomicOrdering>(dst: *mut T, src: T) -> T;
@@ -233,6 +329,11 @@ pub unsafe fn atomic_umax<T: Copy, const ORD: AtomicOrdering>(dst: *mut T, src: 
 /// 一道原子栅栏（fence）。
 ///
 /// 本 intrinsic 的稳定版本是 [`atomic::fence`]。
+///
+/// # 安全性（Safety）
+///
+/// `ORD` 必须是对栅栏有意义的同步内存序。栅栏不访问某个具体指针，但它会约束本线程前后原子操作
+/// 与其他线程之间的可见性；如果周围操作没有使用匹配的 release/acquire 关系，栅栏本身不能创造同步。
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn atomic_fence<const ORD: AtomicOrdering>();
@@ -240,6 +341,11 @@ pub unsafe fn atomic_fence<const ORD: AtomicOrdering>();
 /// 一道仅用于单线程内部同步的原子栅栏（编译器栅栏）。
 ///
 /// 本 intrinsic 的稳定版本是 [`atomic::compiler_fence`]。
+///
+/// # 安全性（Safety）
+///
+/// `ORD` 必须是对编译器栅栏有意义的同步内存序。它只限制编译器重排，不要求硬件发出 CPU 栅栏；
+/// 因此它适合与信号处理器、内联汇编或设备协议配合使用，不能单独替代跨线程原子同步。
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn atomic_singlethreadfence<const ORD: AtomicOrdering>();
@@ -358,6 +464,13 @@ pub const unsafe fn unreachable() -> !;
 /// 这可能干扰周围代码的优化、降低性能。如果该不变量本就能被优化器自行发现，
 /// 或者它并不能启用任何显著的优化，就不应使用它。
 ///
+/// # 安全性（Safety）
+///
+/// 调用方必须保证 `b` 在所有实际执行到本调用的路径上都为 `true`。`assume(false)` 不是一次失败的断言，
+/// 而是向编译器承诺“这条路径不可能发生”；优化器可以据此删除后续分支、边界检查或别名检查，
+/// 也可以把依赖该条件的代码改写成只在条件为真的世界里才正确的形式。若该承诺为假，程序已经进入 UB，
+/// 后续表现不受源代码中显式控制流的约束。
+///
 /// 本 intrinsic 的稳定版本是 [`core::hint::assert_unchecked`]。
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_nounwind]
@@ -386,6 +499,7 @@ pub const fn cold_path() {}
 /// 向编译器提示：分支条件很可能为真。返回传入的那个值。
 ///
 /// 在 `if` 语句以外的任何用法都很可能不起作用。
+/// 这只是性能提示，不是 `assume`：即使预测错误也不会产生 UB，最多影响生成代码和性能。
 ///
 /// 注意，与大多数 intrinsic 不同，调用它是安全的；它不需要 `unsafe` 块。
 /// 因此，实现绝不能要求用户去维护任何安全不变量。
@@ -406,6 +520,7 @@ pub const fn likely(b: bool) -> bool {
 /// 向编译器提示：分支条件很可能为假。返回传入的那个值。
 ///
 /// 在 `if` 语句以外的任何用法都很可能不起作用。
+/// 这只是性能提示，不是 `assume`：即使预测错误也不会产生 UB，最多影响生成代码和性能。
 ///
 /// 注意，与大多数 intrinsic 不同，调用它是安全的；它不需要 `unsafe` 块。
 /// 因此，实现绝不能要求用户去维护任何安全不变量。
@@ -857,6 +972,7 @@ pub fn ptr_mask<T>(ptr: *const T, mask: usize) -> *const T;
 ///
 /// 其安全要求与 [`copy_nonoverlapping`] 一致，但读写行为是 volatile（易变）的，
 /// 这意味着除非 `_count` 或 `size_of::<T>()` 等于零，否则它不会被优化掉。
+/// 源区间与目标区间仍不得重叠；volatile 只改变访问的可观察性，不改变 `copy_nonoverlapping` 的别名规则。
 ///
 /// [`copy_nonoverlapping`]: ptr::copy_nonoverlapping
 #[rustc_intrinsic]
@@ -868,6 +984,13 @@ pub unsafe fn volatile_copy_nonoverlapping_memory<T>(dst: *mut T, src: *const T,
 /// volatile 参数被设为 `true`，所以除非大小等于零，否则它不会被优化掉。
 ///
 /// 本 intrinsic 没有稳定的对应物。
+/// # 安全性（Safety）
+///
+/// 其安全要求与 [`copy`] 一致：`src` 与 `dst` 都必须对 `count * size_of::<T>()` 字节有效，
+/// `src` 可读、`dst` 可写，且二者必须满足 `T` 的对齐要求。源区间和目标区间可以重叠，
+/// 因为这是 memmove 语义；但 volatile 并不提供原子性或线程同步。
+///
+/// [`copy`]: ptr::copy
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn volatile_copy_memory<T>(dst: *mut T, src: *const T, count: usize);
@@ -879,6 +1002,7 @@ pub unsafe fn volatile_copy_memory<T>(dst: *mut T, src: *const T, count: usize);
 ///
 /// 其安全要求与 [`write_bytes`] 一致，但写行为是 volatile（易变）的，
 /// 这意味着除非 `_count` 或 `size_of::<T>()` 等于零，否则它不会被优化掉。
+/// 调用方仍要保证目标区间可写、有效并满足 `T` 的对齐要求。
 ///
 /// [`write_bytes`]: ptr::write_bytes
 #[rustc_intrinsic]
@@ -888,12 +1012,23 @@ pub unsafe fn volatile_set_memory<T>(dst: *mut T, val: u8, count: usize);
 /// 从 `src` 指针处执行一次 volatile（易变）加载。
 ///
 /// 本 intrinsic 的稳定版本是 [`core::ptr::read_volatile`]。
+///
+/// # 安全性（Safety）
+///
+/// `src` 必须非空、按 `T` 对齐、指向已初始化且对 `T` 大小有效的内存。volatile 加载不会取得所有权，
+/// 但会按位读出一个 `T` 值；因此被读出的 bit 模式也必须是 `T` 的有效值。volatile 不提供原子性，
+/// 若该位置可能被其他线程同时访问，仍需额外同步。
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn volatile_load<T>(src: *const T) -> T;
 /// 向 `dst` 指针处执行一次 volatile（易变）存储。
 ///
 /// 本 intrinsic 的稳定版本是 [`core::ptr::write_volatile`]。
+///
+/// # 安全性（Safety）
+///
+/// `dst` 必须非空、按 `T` 对齐、指向对 `T` 大小有效且可写的内存。volatile 存储会把 `val` 写入目标位置，
+/// 但不负责运行旧值的析构，也不建立线程间同步关系；调用方必须保证别名和并发访问不会违反 Rust 的内存模型。
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn volatile_store<T>(dst: *mut T, val: T);
@@ -902,6 +1037,11 @@ pub unsafe fn volatile_store<T>(dst: *mut T, val: T);
 /// 该指针不要求对齐。
 ///
 /// 本 intrinsic 没有稳定的对应物。
+///
+/// # 安全性（Safety）
+///
+/// `src` 可以未对齐，但仍必须非空、指向已初始化且对 `T` 大小有效的内存，并且读出的 bit 模式必须是 `T` 的有效值。
+/// “未对齐”只放宽 alignment 要求，不放宽 provenance、生命周期或并发访问要求。
 #[rustc_intrinsic]
 #[rustc_nounwind]
 #[rustc_diagnostic_item = "intrinsics_unaligned_volatile_load"]
@@ -910,6 +1050,11 @@ pub unsafe fn unaligned_volatile_load<T>(src: *const T) -> T;
 /// 该指针不要求对齐。
 ///
 /// 本 intrinsic 没有稳定的对应物。
+///
+/// # 安全性（Safety）
+///
+/// `dst` 可以未对齐，但仍必须非空、指向对 `T` 大小有效且可写的内存。
+/// “未对齐”只放宽 alignment 要求，不放宽 provenance、生命周期、可写性或并发访问要求。
 #[rustc_intrinsic]
 #[rustc_nounwind]
 #[rustc_diagnostic_item = "intrinsics_unaligned_volatile_store"]
@@ -1772,6 +1917,12 @@ pub const fn carrying_mul_add<T: [const] fallback::CarryingMulAdd<Unsigned = U>,
 /// 执行精确除法（exact division）；当 `x % y != 0`、或 `y == 0`、或 `x == T::MIN && y == -1` 时，
 /// 即为未定义行为（UB）。
 ///
+/// # 安全性（Safety）
+///
+/// 调用方必须保证除法是数学上精确且可表示的：除数非零、没有有符号最小值除以 `-1` 的溢出情形，
+/// 并且余数为零。编译器可以把这些条件当成已知事实来优化，违反任一条件都不是“得到一个任意结果”，
+/// 而是直接进入 UB。
+///
 /// 本 intrinsic 没有稳定的对应物。
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_nounwind]
@@ -1781,6 +1932,11 @@ pub const unsafe fn exact_div<T: Copy>(x: T, y: T) -> T;
 /// 执行不做检查的除法（unchecked division）；当 `y == 0` 或 `x == T::MIN && y == -1` 时，
 /// 即为未定义行为（UB）。
 ///
+/// # 安全性（Safety）
+///
+/// 调用方必须保证除数 `y` 非零，并且有符号整数不会出现 `T::MIN / -1` 这种溢出。
+/// 这里的 unchecked 表示编译器不会插入运行时检查，并会假定这些前置条件恒成立。
+///
 /// 本 intrinsic 的安全封装可通过整数原始类型上的 `checked_div` 方法使用，例如
 /// [`u32::checked_div`]
 #[rustc_intrinsic_const_stable_indirect]
@@ -1789,6 +1945,11 @@ pub const unsafe fn exact_div<T: Copy>(x: T, y: T) -> T;
 pub const unsafe fn unchecked_div<T: Copy>(x: T, y: T) -> T;
 /// 返回不做检查的除法（unchecked division）的余数；当 `y == 0` 或 `x == T::MIN && y == -1` 时，
 /// 即为未定义行为（UB）。
+///
+/// # 安全性（Safety）
+///
+/// 调用方必须保证除数 `y` 非零，并且有符号整数不会出现 `T::MIN % -1` 对应的溢出情形。
+/// 优化器会把这些条件当成事实；违反时程序行为未定义。
 ///
 /// 本 intrinsic 的安全封装可通过整数原始类型上的 `checked_rem` 方法使用，例如
 /// [`u32::checked_rem`]
@@ -1800,6 +1961,11 @@ pub const unsafe fn unchecked_rem<T: Copy>(x: T, y: T) -> T;
 /// 执行不做检查的左移（unchecked left shift）；当 `y < 0` 或 `y >= N`（N 为 T 的位宽）时，
 /// 即为未定义行为（UB）。
 ///
+/// # 安全性（Safety）
+///
+/// 调用方必须保证移位量 `y` 是非负且严格小于 `T` 的位宽。编译器可以据此省略移位范围检查；
+/// 若移位量越界，即使某些硬件会对移位量取模，Rust 层面的行为仍是 UB。
+///
 /// 本 intrinsic 的安全封装可通过整数原始类型上的 `checked_shl` 方法使用，例如
 /// [`u32::checked_shl`]
 #[rustc_intrinsic_const_stable_indirect]
@@ -1808,6 +1974,11 @@ pub const unsafe fn unchecked_rem<T: Copy>(x: T, y: T) -> T;
 pub const unsafe fn unchecked_shl<T: Copy, U: Copy>(x: T, y: U) -> T;
 /// 执行不做检查的右移（unchecked right shift）；当 `y < 0` 或 `y >= N`（N 为 T 的位宽）时，
 /// 即为未定义行为（UB）。
+///
+/// # 安全性（Safety）
+///
+/// 调用方必须保证移位量 `y` 是非负且严格小于 `T` 的位宽。编译器会把“移位量已在范围内”作为优化前提；
+/// 违反时不是得到目标硬件的自然结果，而是 UB。
 ///
 /// 本 intrinsic 的安全封装可通过整数原始类型上的 `checked_shr` 方法使用，例如
 /// [`u32::checked_shr`]
@@ -1819,6 +1990,11 @@ pub const unsafe fn unchecked_shr<T: Copy, U: Copy>(x: T, y: U) -> T;
 /// 返回不做检查的加法（unchecked）的结果；当 `x + y > T::MAX` 或 `x + y < T::MIN` 时，
 /// 即为未定义行为（UB）。
 ///
+/// # 安全性（Safety）
+///
+/// 调用方必须保证 `x + y` 在 `T` 的取值范围内，既不发生无符号回绕，也不发生有符号溢出。
+/// 编译器可以把“这次加法不会溢出”作为事实，用来消除分支或重写后续计算。
+///
 /// 本 intrinsic 的稳定对应物是各整数类型上的 `unchecked_add`，例如 [`u16::unchecked_add`] 与 [`i64::unchecked_add`]。
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_nounwind]
@@ -1828,6 +2004,11 @@ pub const unsafe fn unchecked_add<T: Copy>(x: T, y: T) -> T;
 /// 返回不做检查的减法（unchecked）的结果；当 `x - y > T::MAX` 或 `x - y < T::MIN` 时，
 /// 即为未定义行为（UB）。
 ///
+/// # 安全性（Safety）
+///
+/// 调用方必须保证 `x - y` 在 `T` 的取值范围内。若实际发生回绕或有符号溢出，
+/// 违反的是 intrinsic 的前置条件，编译器此前基于“不会溢出”做出的优化仍然有效，程序因此进入 UB。
+///
 /// 本 intrinsic 的稳定对应物是各整数类型上的 `unchecked_sub`，例如 [`u16::unchecked_sub`] 与 [`i64::unchecked_sub`]。
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_nounwind]
@@ -1836,6 +2017,11 @@ pub const unsafe fn unchecked_sub<T: Copy>(x: T, y: T) -> T;
 
 /// 返回不做检查的乘法（unchecked）的结果；当 `x * y > T::MAX` 或 `x * y < T::MIN` 时，
 /// 即为未定义行为（UB）。
+///
+/// # 安全性（Safety）
+///
+/// 调用方必须保证 `x * y` 在 `T` 的取值范围内。这个承诺会传递给优化器；
+/// 违反时不能依赖目标机器的回绕乘法结果，也不能把它当作 `wrapping_mul` 使用。
 ///
 /// 本 intrinsic 的稳定对应物是各整数类型上的 `unchecked_mul`，例如 [`u16::unchecked_mul`] 与 [`i64::unchecked_mul`]。
 #[rustc_intrinsic_const_stable_indirect]
@@ -1943,6 +2129,11 @@ pub const fn saturating_sub<T: Copy>(a: T, b: T) -> T;
 ///
 /// 如果 `shift` 大于或等于 `T` 的位宽，即为未定义行为（UB）。
 ///
+/// # 安全性（Safety）
+///
+/// 调用方必须保证 `shift < T::BITS`。该前置条件用于让后端生成无额外检查的 funnel shift；
+/// 越界移位会破坏编译器关于位拼接与移位结果的优化假设。
+///
 /// 本 intrinsic 的安全版本可通过整数原始类型上的 `funnel_shl` 方法使用，例如 [`u32::funnel_shl`]。
 #[rustc_intrinsic]
 #[rustc_nounwind]
@@ -1965,6 +2156,11 @@ pub const unsafe fn unchecked_funnel_shl<T: [const] fallback::FunnelShift>(
 /// （对 `T` 的位宽取模），再取出低位那一半。如果 `a` 与 `b` 相同，这就等价于一次循环右移（rotate right）。
 ///
 /// 如果 `shift` 大于或等于 `T` 的位宽，即为未定义行为（UB）。
+///
+/// # 安全性（Safety）
+///
+/// 调用方必须保证 `shift < T::BITS`。该前置条件用于让后端生成无额外检查的 funnel shift；
+/// 越界移位会破坏编译器关于位拼接与移位结果的优化假设。
 ///
 /// 本 intrinsic 更安全的版本可通过整数原始类型上的 `funnel_shr` 方法使用，例如 [`u32::funnel_shr`]
 #[rustc_intrinsic]
@@ -2121,14 +2317,14 @@ pub const fn black_box<T>(dummy: T) -> T;
 ///
 /// 调用本函数是安全的，但请注意下面关于稳定性的考量。
 ///
-/// # 类型要求（Type Requirements）
+/// # 类型要求
 ///
 /// 这两个函数都必须是函数项（function item），不能是函数指针或闭包。第一个函数必须是 `const fn`。
 ///
 /// `arg` 是将被传给两个函数之一的、打包成元组的实参；因此两个函数必须接受相同类型的参数，
 /// 且都必须返回 RET。
 ///
-/// # 稳定性考量（Stability concerns）
+/// # 稳定性考量
 ///
 /// Rust 尚未决定允许 `const fn` 去判断自己是在编译期还是运行期执行。因此，在任何能从 stable 触达的地方
 /// 使用本 intrinsic 时，至关重要的一点是：那个稳定的 `const fn` 的端到端行为，在两种执行模式下必须相同。
@@ -2170,7 +2366,7 @@ where
     F: const FnOnce<ARG, Output = RET>;
 
 /// 一个让调用 const_eval_select 更方便的宏。用法如下：
-/// ```rust,ignore (just a macro example)
+/// ```rust,ignore (仅作为宏示例)
 /// const_eval_select!(
 ///     @capture { arg1: i32 = some_expr, arg2: T = other_expr } -> U:
 ///     if const #[attributes_for_const_arm] {
@@ -2260,13 +2456,13 @@ pub(crate) macro const_eval_select {
 /// unsafe 代码永远不可依赖 `is_val_statically_known` 返回任何特定的值。不过，通常只有当参数的值
 /// 确实已知时，编译器才会让它返回 `true`。
 ///
-/// # 稳定性考量（Stability concerns）
+/// # 稳定性考量
 ///
 /// 虽然调用它是安全的，但本 intrinsic 在 `const` 上下文中的行为可能与其他情形不同。
 /// 关于这会引发的问题的解释，见 [`const_eval_select()`] 的文档。与 `const_eval_select` 不同，
 /// 本 intrinsic 即便在 `const` 上下文中也不保证表现得具有确定性。
 ///
-/// # 类型要求（Type Requirements）
+/// # 类型要求
 ///
 /// `T` 必须是 `bool`、`char`、某个原始数值类型（例如 `f32`，但不能是 `NonZeroISize`），
 /// 或任意瘦指针（thin pointer，例如 `*mut String`）。任何其他参数类型*都可能*导致编译错误。
@@ -2494,7 +2690,7 @@ pub unsafe fn vtable_align(ptr: *const ()) -> usize;
 
 /// 如果 `T` 能被强制转换（coerce）为 trait 对象类型 `U`，本 intrinsic 返回 `T` 对应于 `U` 的 vtable。
 ///
-/// # 编译期失败（Compile-time failures）
+/// # 编译期失败
 /// 判断 `T` 能否被强制转换为 trait 对象类型 `U`，需要编译器进行 trait 求解（resolution）。
 /// 在某些情况下，该求解可能超出递归上限，于是编译会失败，而不是本函数返回 `None`。
 #[rustc_nounwind]
@@ -2659,6 +2855,15 @@ where
 pub const fn ptr_metadata<P: ptr::Pointee<Metadata = M> + PointeeSized, M>(ptr: *const P) -> M;
 
 /// 这是 [`ptr::copy_nonoverlapping`] 一个意外稳定下来的别名；请改用那个。
+///
+/// # 安全性（Safety）
+///
+/// `src` 必须对 `count` 个 `T` 可读，`dst` 必须对 `count` 个 `T` 可写，二者都必须按 `T` 正确对齐。
+/// 即使 `count == 0`，指针也必须满足非空和对齐等基本要求。源区间与目标区间**不得重叠**；
+/// 如果可能重叠，应使用 [`copy`] 或稳定的 [`ptr::copy`]。本 intrinsic 是编译器底层入口，
+/// 不会像稳定封装那样额外插入 debug 断言。
+///
+/// [`ptr::copy`]: ptr::copy
 // 注意（特意不放进文档注释里）：`ptr::copy_nonoverlapping` 会额外加入一些 debug 断言；如果你在写编译器测试、
 // 或标准库内部那种想要避开这些 debug 断言的代码，请直接调用本 intrinsic。
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -2669,6 +2874,12 @@ pub const fn ptr_metadata<P: ptr::Pointee<Metadata = M> + PointeeSized, M>(ptr: 
 pub const unsafe fn copy_nonoverlapping<T>(src: *const T, dst: *mut T, count: usize);
 
 /// 这是 [`ptr::copy`] 一个意外稳定下来的别名；请改用那个。
+///
+/// # 安全性（Safety）
+///
+/// `src` 必须对 `count` 个 `T` 可读，`dst` 必须对 `count` 个 `T` 可写，二者都必须按 `T` 正确对齐。
+/// 源区间与目标区间可以重叠，因为本 intrinsic 是 memmove 语义；但指针有效性、初始化状态、
+/// provenance 和别名规则仍由调用方维护。
 // 注意（特意不放进文档注释里）：`ptr::copy` 会额外加入一些 debug 断言；如果你在写编译器测试、
 // 或标准库内部那种想要避开这些 debug 断言的代码，请直接调用本 intrinsic。
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -2679,6 +2890,12 @@ pub const unsafe fn copy_nonoverlapping<T>(src: *const T, dst: *mut T, count: us
 pub const unsafe fn copy<T>(src: *const T, dst: *mut T, count: usize);
 
 /// 这是 [`ptr::write_bytes`] 一个意外稳定下来的别名；请改用那个。
+///
+/// # 安全性（Safety）
+///
+/// `dst` 必须对 `count` 个 `T` 可写，并按 `T` 正确对齐。写入的是重复字节 `val`，调用方必须保证
+/// 随后按目标类型读取这些字节时得到的是该类型的有效值，或保证只把它们当作原始字节处理。
+/// 本 intrinsic 不会析构原位置上的值，也不会维护任何类型不变量。
 // 注意（特意不放进文档注释里）：`ptr::write_bytes` 会额外加入一些 debug 断言；如果你在写编译器测试、
 // 或标准库内部那种想要避开这些 debug 断言的代码，请直接调用本 intrinsic。
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -3056,7 +3273,7 @@ pub const fn copysignf128(x: f128, y: f128) -> f128;
 ///
 /// 下面展示了宏展开期间 `autodiff` intrinsic 用在何处：
 ///
-/// ```rust,ignore (macro example)
+/// ```rust,ignore (宏示例)
 /// #[autodiff_forward(df1, Dual, Const, Dual)]
 /// pub fn f1(x: &[f64], y: f64) -> f64 {
 ///     unimplemented!()
@@ -3065,7 +3282,7 @@ pub const fn copysignf128(x: f128, y: f128) -> f128;
 ///
 /// 展开为：
 ///
-/// ```rust,ignore (macro example)
+/// ```rust,ignore (宏示例)
 /// #[rustc_autodiff]
 /// #[inline(never)]
 /// pub fn f1(x: &[f64], y: f64) -> f64 {
@@ -3095,7 +3312,7 @@ pub const fn autodiff<F, G, T: crate::marker::Tuple, R>(f: F, df: G, args: T) ->
 ///
 /// 用法示例（伪代码）：
 ///
-/// ```rust,ignore (pseudocode)
+/// ```rust,ignore (伪代码)
 /// fn kernel(x: *mut [f64; 128]) {
 ///     core::intrinsics::offload(kernel_1, [256, 1, 1], [32, 1, 1], (x,))
 /// }

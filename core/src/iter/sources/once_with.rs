@@ -1,37 +1,34 @@
 use crate::fmt;
 use crate::iter::{FusedIterator, TrustedLen};
 
-/// Creates an iterator that lazily generates a value exactly once by invoking
-/// the provided closure.
+/// 创建一个迭代器，通过调用给定闭包惰性地生成恰好一个值。
 ///
-/// This is commonly used to adapt a single value coroutine into a [`chain()`] of
-/// other kinds of iteration. Maybe you have an iterator that covers almost
-/// everything, but you need an extra special case. Maybe you have a function
-/// which works on iterators, but you only need to process one value.
+/// 这常用于把一个单值生成过程接入其他迭代形式的 [`chain()`] 中。也许已有一个迭代器
+/// 覆盖了几乎所有元素，但还需要额外处理一个特殊值；或者某个函数接收迭代器，而你
+/// 只需要处理一个值。
 ///
-/// Unlike [`once()`], this function will lazily generate the value on request.
+/// 与 [`once()`] 不同，本函数会在被请求时才惰性生成该值。
 ///
 /// [`chain()`]: Iterator::chain
 /// [`once()`]: crate::iter::once
 ///
-/// # Examples
+/// # 示例
 ///
-/// Basic usage:
+/// 基本用法:
 ///
 /// ```
 /// use std::iter;
 ///
-/// // one is the loneliest number
+/// // one 是最孤独的数字
 /// let mut one = iter::once_with(|| 1);
 ///
 /// assert_eq!(Some(1), one.next());
 ///
-/// // just one, that's all we get
+/// // 只有一个值，仅此而已。
 /// assert_eq!(None, one.next());
 /// ```
 ///
-/// Chaining together with another iterator. Let's say that we want to iterate
-/// over each file of the `.foo` directory, but also a configuration file,
+/// 与另一个迭代器链接。假设要遍历 `.foo` 目录中的每个文件，同时还要包含配置文件
 /// `.foorc`:
 ///
 /// ```no_run
@@ -41,17 +38,16 @@ use crate::iter::{FusedIterator, TrustedLen};
 ///
 /// let dirs = fs::read_dir(".foo").unwrap();
 ///
-/// // we need to convert from an iterator of DirEntry-s to an iterator of
-/// // PathBufs, so we use map
+/// // 需要把 DirEntry 迭代器转换为 PathBuf 迭代器，因此使用 map。
 /// let dirs = dirs.map(|file| file.unwrap().path());
 ///
-/// // now, our iterator just for our config file
+/// // 现在为配置文件创建一个单项迭代器。
 /// let config = iter::once_with(|| PathBuf::from(".foorc"));
 ///
-/// // chain the two iterators together into one big iterator
+/// // 把两个迭代器链接成一个大迭代器。
 /// let files = dirs.chain(config);
 ///
-/// // this will give us all of the files in .foo as well as .foorc
+/// // 这会产出 .foo 中的所有文件以及 .foorc。
 /// for f in files {
 ///     println!("{f:?}");
 /// }
@@ -62,11 +58,9 @@ pub fn once_with<A, F: FnOnce() -> A>(make: F) -> OnceWith<F> {
     OnceWith { make: Some(make) }
 }
 
-/// An iterator that yields a single element of type `A` by
-/// applying the provided closure `F: FnOnce() -> A`.
+/// 通过调用给定闭包 `F: FnOnce() -> A` 产出单个 `A` 类型元素的迭代器。
 ///
-/// This `struct` is created by the [`once_with()`] function.
-/// See its documentation for more.
+/// 该 `struct` 由 [`once_with()`] 函数创建。更多信息见该函数文档。
 #[derive(Clone)]
 #[stable(feature = "iter_once_with", since = "1.43.0")]
 pub struct OnceWith<F> {

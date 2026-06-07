@@ -1,47 +1,50 @@
-//! Decodes a floating-point value into individual parts and error ranges.
+//! 把浮点值解码为独立字段和舍入误差区间。
+//!
+//! flt2dec 需要知道哪些实数会在回读时舍入到原始浮点值。这里把 IEEE 754 位模式拆成
+//! 无符号 mantissa、共享二进制 exponent，以及上下误差边界，供 shortest/exact/fixed
+//! 数字生成算法判断十进制输出是否仍会回到同一个浮点值。
 
 use crate::num::FpCategory;
 use crate::num::dec2flt::float::RawFloat;
 
-/// Decoded unsigned finite value, such that:
+/// 解码后的无符号有限值，并满足：
 ///
-/// - The original value equals to `mant * 2^exp`.
+/// - 原始值等于 `mant * 2^exp`。
 ///
-/// - Any number from `(mant - minus) * 2^exp` to `(mant + plus) * 2^exp` will
-///   round to the original value. The range is inclusive only when
-///   `inclusive` is `true`.
+/// - 从 `(mant - minus) * 2^exp` 到 `(mant + plus) * 2^exp` 的任意数都会舍入到原始值。
+///   仅当 `inclusive` 为 `true` 时，该区间边界才是闭合的。
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Decoded {
-    /// The scaled mantissa.
+    /// 缩放后的 mantissa。
     pub mant: u64,
-    /// The lower error range.
+    /// 下侧误差范围。
     pub minus: u64,
-    /// The upper error range.
+    /// 上侧误差范围。
     pub plus: u64,
-    /// The shared exponent in base 2.
+    /// 以 2 为底的共享 exponent。
     pub exp: i16,
-    /// True when the error range is inclusive.
+    /// 误差区间是否包含边界。
     ///
-    /// In IEEE 754, this is true when the original mantissa was even.
+    /// 在 IEEE 754 的 ties-to-even 规则下，原始 mantissa 为偶数时该值为 true。
     pub inclusive: bool,
 }
 
-/// Decoded unsigned value.
+/// 解码后的无符号值。
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum FullDecoded {
-    /// Not-a-number.
+    /// NaN。
     Nan,
-    /// Infinities, either positive or negative.
+    /// 正或负 Inf。
     Infinite,
-    /// Zero, either positive or negative.
+    /// 正或负零。
     Zero,
-    /// Finite numbers with further decoded fields.
+    /// 带有进一步解码字段的有限数。
     Finite(Decoded),
 }
 
-/// A floating point type which can be `decode`d.
+/// 可由 `decode` 拆解的浮点类型。
 pub trait DecodableFloat: RawFloat + Copy {
-    /// The minimum positive normalized value.
+    /// 最小正 normal 值。
     fn min_pos_norm_value() -> Self;
 }
 
@@ -64,8 +67,7 @@ impl DecodableFloat for f64 {
     }
 }
 
-/// Returns a sign (true when negative) and `FullDecoded` value
-/// from given floating point number.
+/// 从给定浮点数返回符号（负数时为 true）和 `FullDecoded` 值。
 pub fn decode<T: DecodableFloat>(v: T) -> (/*negative?*/ bool, FullDecoded) {
     let (mant, exp, sign) = v.integer_decode();
     let even = (mant & 1) == 0;
@@ -74,16 +76,15 @@ pub fn decode<T: DecodableFloat>(v: T) -> (/*negative?*/ bool, FullDecoded) {
         FpCategory::Infinite => FullDecoded::Infinite,
         FpCategory::Zero => FullDecoded::Zero,
         FpCategory::Subnormal => {
-            // neighbors: (mant - 2, exp) -- (mant, exp) -- (mant + 2, exp)
-            // Float::integer_decode always preserves the exponent,
-            // so the mantissa is scaled for subnormals.
+            // 相邻值：(mant - 2, exp) -- (mant, exp) -- (mant + 2, exp)。
+            // `Float::integer_decode` 始终保留 exponent，因此 subnormal 的 mantissa 已经缩放。
             FullDecoded::Finite(Decoded { mant, minus: 1, plus: 1, exp, inclusive: even })
         }
         FpCategory::Normal => {
             let minnorm = <T as DecodableFloat>::min_pos_norm_value().integer_decode();
             if mant == minnorm.0 {
-                // neighbors: (maxmant, exp - 1) -- (minnormmant, exp) -- (minnormmant + 1, exp)
-                // where maxmant = minnormmant * 2 - 1
+                // 相邻值：(maxmant, exp - 1) -- (minnormmant, exp) --
+                // (minnormmant + 1, exp)，其中 maxmant = minnormmant * 2 - 1。
                 FullDecoded::Finite(Decoded {
                     mant: mant << 2,
                     minus: 1,
@@ -92,7 +93,7 @@ pub fn decode<T: DecodableFloat>(v: T) -> (/*negative?*/ bool, FullDecoded) {
                     inclusive: even,
                 })
             } else {
-                // neighbors: (mant - 1, exp) -- (mant, exp) -- (mant + 1, exp)
+                // 相邻值：(mant - 1, exp) -- (mant, exp) -- (mant + 1, exp)。
                 FullDecoded::Finite(Decoded {
                     mant: mant << 1,
                     minus: 1,

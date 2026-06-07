@@ -1,4 +1,8 @@
-//! Definitions of `Wrapping<T>`.
+//! `Wrapping<T>` 的定义。
+//!
+//! `Wrapping` 把整数运算显式解释为模 `2^N` 算术。普通整数的 `+`、`-`、`*` 等操作在
+//! debug 配置下可能检查溢出并 panic，而 `Wrapping<T>` 用类型告诉读者和编译器：这里的
+//! 溢出是预期语义，截断后的低 N 位就是结果。
 
 use crate::fmt;
 use crate::ops::{
@@ -6,23 +10,18 @@ use crate::ops::{
     Mul, MulAssign, Neg, Not, Rem, RemAssign, Shl, ShlAssign, Shr, ShrAssign, Sub, SubAssign,
 };
 
-/// Provides intentionally-wrapped arithmetic on `T`.
+/// 为 `T` 提供有意的 wrapping 算术。
 ///
-/// Operations like `+` on `u32` values are intended to never overflow,
-/// and in some debug configurations overflow is detected and results
-/// in a panic. While most arithmetic falls into this category, some
-/// code explicitly expects and relies upon modular arithmetic (e.g.,
-/// hashing).
+/// 对 `u32` 这样的普通整数执行 `+` 时，通常认为溢出不是业务语义；某些 debug 配置会检测
+/// 溢出并 panic。但有些代码明确需要并依赖模算术，例如哈希、随机数、密码学前置处理或
+/// 位混合算法。
 ///
-/// Wrapping arithmetic can be achieved either through methods like
-/// `wrapping_add`, or through the `Wrapping<T>` type, which says that
-/// all standard arithmetic operations on the underlying value are
-/// intended to have wrapping semantics.
+/// wrapping 算术既可以通过 `wrapping_add` 这类方法逐次表达，也可以通过 `Wrapping<T>`
+/// 类型表达。后者表示底层值上的标准算术操作整体都采用 wrapping 语义。
 ///
-/// The underlying value can be retrieved through the `.0` index of the
-/// `Wrapping` tuple.
+/// 可以通过 `Wrapping` 元组的 `.0` 字段取回底层值。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use std::num::Wrapping;
@@ -33,9 +32,9 @@ use crate::ops::{
 /// assert_eq!(u32::MAX, (zero - one).0);
 /// ```
 ///
-/// # Layout
+/// # 布局(Layout)
 ///
-/// `Wrapping<T>` is guaranteed to have the same layout and ABI as `T`.
+/// `Wrapping<T>` 保证与 `T` 具有相同布局和 ABI。
 #[stable(feature = "rust1", since = "1.0.0")]
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Default, Hash)]
 #[repr(transparent)]
@@ -205,7 +204,7 @@ macro_rules! sh_impl_unsigned {
     };
 }
 
-// FIXME (#23545): uncomment the remaining impls
+// FIXME (#23545): 取消注释剩余 impl。
 macro_rules! sh_impl_all {
     ($($t:ident)*) => ($(
         //sh_impl_unsigned! { $t, u8 }
@@ -226,7 +225,7 @@ macro_rules! sh_impl_all {
 
 sh_impl_all! { u8 u16 u32 u64 u128 usize i8 i16 i32 i64 i128 isize }
 
-// FIXME(30524): impl Op<T> for Wrapping<T>, impl OpAssign<T> for Wrapping<T>
+// FIXME(30524): 为 Wrapping<T> 实现 Op<T> 和 OpAssign<T>。
 macro_rules! wrapping_impl {
     ($($t:ty)*) => ($(
         #[stable(feature = "rust1", since = "1.0.0")]
@@ -568,11 +567,11 @@ wrapping_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 }
 macro_rules! wrapping_int_impl {
     ($($t:ty)*) => ($(
         impl Wrapping<$t> {
-            /// Returns the smallest value that can be represented by this integer type.
+            /// 返回该整数类型能够表示的最小值。
             ///
-            /// # Examples
+            /// # 示例
             ///
-            /// Basic usage:
+            /// 基本用法：
             ///
             /// ```
             /// #![feature(wrapping_int_impl)]
@@ -583,11 +582,11 @@ macro_rules! wrapping_int_impl {
             #[unstable(feature = "wrapping_int_impl", issue = "32463")]
             pub const MIN: Self = Self(<$t>::MIN);
 
-            /// Returns the largest value that can be represented by this integer type.
+            /// 返回该整数类型能够表示的最大值。
             ///
-            /// # Examples
+            /// # 示例
             ///
-            /// Basic usage:
+            /// 基本用法：
             ///
             /// ```
             /// #![feature(wrapping_int_impl)]
@@ -598,11 +597,11 @@ macro_rules! wrapping_int_impl {
             #[unstable(feature = "wrapping_int_impl", issue = "32463")]
             pub const MAX: Self = Self(<$t>::MAX);
 
-            /// Returns the size of this integer type in bits.
+            /// 返回该整数类型的位宽。
             ///
-            /// # Examples
+            /// # 示例
             ///
-            /// Basic usage:
+            /// 基本用法：
             ///
             /// ```
             /// #![feature(wrapping_int_impl)]
@@ -613,11 +612,11 @@ macro_rules! wrapping_int_impl {
             #[unstable(feature = "wrapping_int_impl", issue = "32463")]
             pub const BITS: u32 = <$t>::BITS;
 
-            /// Returns the number of ones in the binary representation of `self`.
+            /// 返回 `self` 的二进制表示中 1 的数量。
             ///
-            /// # Examples
+            /// # 示例
             ///
-            /// Basic usage:
+            /// 基本用法：
             ///
             /// ```
             /// #![feature(wrapping_int_impl)]
@@ -637,11 +636,11 @@ macro_rules! wrapping_int_impl {
                 self.0.count_ones()
             }
 
-            /// Returns the number of zeros in the binary representation of `self`.
+            /// 返回 `self` 的二进制表示中 0 的数量。
             ///
-            /// # Examples
+            /// # 示例
             ///
-            /// Basic usage:
+            /// 基本用法：
             ///
             /// ```
             /// #![feature(wrapping_int_impl)]
@@ -657,11 +656,11 @@ macro_rules! wrapping_int_impl {
                 self.0.count_zeros()
             }
 
-            /// Returns the number of trailing zeros in the binary representation of `self`.
+            /// 返回 `self` 的二进制表示中尾随 0 的数量。
             ///
-            /// # Examples
+            /// # 示例
             ///
-            /// Basic usage:
+            /// 基本用法：
             ///
             /// ```
             /// #![feature(wrapping_int_impl)]
@@ -679,16 +678,13 @@ macro_rules! wrapping_int_impl {
                 self.0.trailing_zeros()
             }
 
-            /// Shifts the bits to the left by a specified amount, `n`,
-            /// wrapping the truncated bits to the end of the resulting
-            /// integer.
+            /// 将位模式向左旋转指定数量 `n`，并把被截掉的高位绕回结果的低位。
             ///
-            /// Please note this isn't the same operation as the `<<` shifting
-            /// operator!
+            /// 注意这不是 `<<` 移位运算符；旋转不会丢弃位，只会改变位的位置。
             ///
-            /// # Examples
+            /// # 示例
             ///
-            /// Basic usage:
+            /// 基本用法：
             ///
             /// ```
             /// #![feature(wrapping_int_impl)]
@@ -707,16 +703,13 @@ macro_rules! wrapping_int_impl {
                 Wrapping(self.0.rotate_left(n))
             }
 
-            /// Shifts the bits to the right by a specified amount, `n`,
-            /// wrapping the truncated bits to the beginning of the resulting
-            /// integer.
+            /// 将位模式向右旋转指定数量 `n`，并把被截掉的低位绕回结果的高位。
             ///
-            /// Please note this isn't the same operation as the `>>` shifting
-            /// operator!
+            /// 注意这不是 `>>` 移位运算符；旋转不会丢弃位，只会改变位的位置。
             ///
-            /// # Examples
+            /// # 示例
             ///
-            /// Basic usage:
+            /// 基本用法：
             ///
             /// ```
             /// #![feature(wrapping_int_impl)]
@@ -735,11 +728,11 @@ macro_rules! wrapping_int_impl {
                 Wrapping(self.0.rotate_right(n))
             }
 
-            /// Reverses the byte order of the integer.
+            /// 反转该整数的字节顺序。
             ///
-            /// # Examples
+            /// # 示例
             ///
-            /// Basic usage:
+            /// 基本用法：
             ///
             /// ```
             /// #![feature(wrapping_int_impl)]
@@ -761,14 +754,13 @@ macro_rules! wrapping_int_impl {
                 Wrapping(self.0.swap_bytes())
             }
 
-            /// Reverses the bit pattern of the integer.
+            /// 反转该整数的位模式。
             ///
-            /// # Examples
+            /// # 示例
             ///
-            /// Please note that this example is shared among integer types, which is why `i16`
-            /// is used.
+            /// 注意该示例在多个整数类型之间共享，因此使用 `i16`。
             ///
-            /// Basic usage:
+            /// 基本用法：
             ///
             /// ```
             /// use std::num::Wrapping;
@@ -790,14 +782,13 @@ macro_rules! wrapping_int_impl {
                 Wrapping(self.0.reverse_bits())
             }
 
-            /// Converts an integer from big endian to the target's endianness.
+            /// 把一个 big endian 整数转换为目标平台字节序。
             ///
-            /// On big endian this is a no-op. On little endian the bytes are
-            /// swapped.
+            /// 在 big endian 平台上这是 no-op；在 little endian 平台上会交换字节。
             ///
-            /// # Examples
+            /// # 示例
             ///
-            /// Basic usage:
+            /// 基本用法：
             ///
             /// ```
             /// #![feature(wrapping_int_impl)]
@@ -818,14 +809,13 @@ macro_rules! wrapping_int_impl {
                 Wrapping(<$t>::from_be(x.0))
             }
 
-            /// Converts an integer from little endian to the target's endianness.
+            /// 把一个 little endian 整数转换为目标平台字节序。
             ///
-            /// On little endian this is a no-op. On big endian the bytes are
-            /// swapped.
+            /// 在 little endian 平台上这是 no-op；在 big endian 平台上会交换字节。
             ///
-            /// # Examples
+            /// # 示例
             ///
-            /// Basic usage:
+            /// 基本用法：
             ///
             /// ```
             /// #![feature(wrapping_int_impl)]
@@ -846,14 +836,13 @@ macro_rules! wrapping_int_impl {
                 Wrapping(<$t>::from_le(x.0))
             }
 
-            /// Converts `self` to big endian from the target's endianness.
+            /// 把 `self` 从目标平台字节序转换为 big endian。
             ///
-            /// On big endian this is a no-op. On little endian the bytes are
-            /// swapped.
+            /// 在 big endian 平台上这是 no-op；在 little endian 平台上会交换字节。
             ///
-            /// # Examples
+            /// # 示例
             ///
-            /// Basic usage:
+            /// 基本用法：
             ///
             /// ```
             /// #![feature(wrapping_int_impl)]
@@ -875,14 +864,13 @@ macro_rules! wrapping_int_impl {
                 Wrapping(self.0.to_be())
             }
 
-            /// Converts `self` to little endian from the target's endianness.
+            /// 把 `self` 从目标平台字节序转换为 little endian。
             ///
-            /// On little endian this is a no-op. On big endian the bytes are
-            /// swapped.
+            /// 在 little endian 平台上这是 no-op；在 big endian 平台上会交换字节。
             ///
-            /// # Examples
+            /// # 示例
             ///
-            /// Basic usage:
+            /// 基本用法：
             ///
             /// ```
             /// #![feature(wrapping_int_impl)]
@@ -904,11 +892,11 @@ macro_rules! wrapping_int_impl {
                 Wrapping(self.0.to_le())
             }
 
-            /// Raises self to the power of `exp`, using exponentiation by squaring.
+            /// 使用平方求幂计算 `self` 的 `exp` 次幂。
             ///
-            /// # Examples
+            /// # 示例
             ///
-            /// Basic usage:
+            /// 基本用法：
             ///
             /// ```
             /// #![feature(wrapping_int_impl)]
@@ -917,7 +905,7 @@ macro_rules! wrapping_int_impl {
             #[doc = concat!("assert_eq!(Wrapping(3", stringify!($t), ").pow(4), Wrapping(81));")]
             /// ```
             ///
-            /// Results that are too large are wrapped:
+            /// 过大的结果会按 wrapping 语义回绕：
             ///
             /// ```
             /// #![feature(wrapping_int_impl)]
@@ -942,11 +930,11 @@ wrapping_int_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 }
 macro_rules! wrapping_int_impl_signed {
     ($($t:ty)*) => ($(
         impl Wrapping<$t> {
-            /// Returns the number of leading zeros in the binary representation of `self`.
+            /// 返回 `self` 的二进制表示中前导 0 的数量。
             ///
-            /// # Examples
+            /// # 示例
             ///
-            /// Basic usage:
+            /// 基本用法：
             ///
             /// ```
             /// #![feature(wrapping_int_impl)]
@@ -964,16 +952,14 @@ macro_rules! wrapping_int_impl_signed {
                 self.0.leading_zeros()
             }
 
-            /// Computes the absolute value of `self`, wrapping around at
-            /// the boundary of the type.
+            /// 计算 `self` 的绝对值，并在类型边界处按 wrapping 语义回绕。
             ///
-            /// The only case where such wrapping can occur is when one takes the absolute value of the negative
-            /// minimal value for the type this is a positive value that is too large to represent in the type. In
-            /// such a case, this function returns `MIN` itself.
+            /// 唯一会发生这种回绕的情况，是对该类型的最小负值取绝对值：其数学结果是一个
+            /// 无法由该有符号类型表示的正值。此时函数返回 `MIN` 本身。
             ///
-            /// # Examples
+            /// # 示例
             ///
-            /// Basic usage:
+            /// 基本用法：
             ///
             /// ```
             /// #![feature(wrapping_int_impl)]
@@ -992,15 +978,15 @@ macro_rules! wrapping_int_impl_signed {
                 Wrapping(self.0.wrapping_abs())
             }
 
-            /// Returns a number representing sign of `self`.
+            /// 返回表示 `self` 符号的数。
             ///
-            ///  - `0` if the number is zero
-            ///  - `1` if the number is positive
-            ///  - `-1` if the number is negative
+            ///  - 数值为零时返回 `0`
+            ///  - 数值为正时返回 `1`
+            ///  - 数值为负时返回 `-1`
             ///
-            /// # Examples
+            /// # 示例
             ///
-            /// Basic usage:
+            /// 基本用法：
             ///
             /// ```
             /// #![feature(wrapping_int_impl)]
@@ -1018,12 +1004,11 @@ macro_rules! wrapping_int_impl_signed {
                 Wrapping(self.0.signum())
             }
 
-            /// Returns `true` if `self` is positive and `false` if the number is zero or
-            /// negative.
+            /// 当 `self` 为正数时返回 `true`；为零或负数时返回 `false`。
             ///
-            /// # Examples
+            /// # 示例
             ///
-            /// Basic usage:
+            /// 基本用法：
             ///
             /// ```
             /// #![feature(wrapping_int_impl)]
@@ -1039,12 +1024,11 @@ macro_rules! wrapping_int_impl_signed {
                 self.0.is_positive()
             }
 
-            /// Returns `true` if `self` is negative and `false` if the number is zero or
-            /// positive.
+            /// 当 `self` 为负数时返回 `true`；为零或正数时返回 `false`。
             ///
-            /// # Examples
+            /// # 示例
             ///
-            /// Basic usage:
+            /// 基本用法：
             ///
             /// ```
             /// #![feature(wrapping_int_impl)]
@@ -1068,11 +1052,11 @@ wrapping_int_impl_signed! { isize i8 i16 i32 i64 i128 }
 macro_rules! wrapping_int_impl_unsigned {
     ($($t:ty)*) => ($(
         impl Wrapping<$t> {
-            /// Returns the number of leading zeros in the binary representation of `self`.
+            /// 返回 `self` 的二进制表示中前导 0 的数量。
             ///
-            /// # Examples
+            /// # 示例
             ///
-            /// Basic usage:
+            /// 基本用法：
             ///
             /// ```
             /// #![feature(wrapping_int_impl)]
@@ -1090,11 +1074,11 @@ macro_rules! wrapping_int_impl_unsigned {
                 self.0.leading_zeros()
             }
 
-            /// Returns `true` if and only if `self == 2^k` for some `k`.
+            /// 当且仅当存在某个 `k` 使 `self == 2^k` 时返回 `true`。
             ///
-            /// # Examples
+            /// # 示例
             ///
-            /// Basic usage:
+            /// 基本用法：
             ///
             /// ```
             /// #![feature(wrapping_int_impl)]
@@ -1110,14 +1094,14 @@ macro_rules! wrapping_int_impl_unsigned {
                 self.0.is_power_of_two()
             }
 
-            /// Returns the smallest power of two greater than or equal to `self`.
+            /// 返回大于或等于 `self` 的最小 2 的幂。
             ///
-            /// When return value overflows (i.e., `self > (1 << (N-1))` for type
-            /// `uN`), overflows to `2^N = 0`.
+            /// 当返回值溢出时（例如对 `uN` 类型有 `self > (1 << (N - 1))`），结果按
+            /// wrapping 语义回绕为 `2^N = 0`。
             ///
-            /// # Examples
+            /// # 示例
             ///
-            /// Basic usage:
+            /// 基本用法：
             ///
             /// ```
             /// #![feature(wrapping_next_power_of_two)]

@@ -5,12 +5,11 @@ use crate::hash::{Hash, Hasher};
 use crate::mem::transmute;
 use crate::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, Not};
 
-/// An IP address, either IPv4 or IPv6.
+/// 一个 IP 地址，可以是 IPv4 或 IPv6。
 ///
-/// This enum can contain either an [`Ipv4Addr`] or an [`Ipv6Addr`], see their
-/// respective documentation for more details.
+/// 该枚举可以包含 [`Ipv4Addr`] 或 [`Ipv6Addr`]；更多细节请分别参见这两个类型的文档。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
@@ -28,34 +27,32 @@ use crate::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, Not};
 #[stable(feature = "ip_addr", since = "1.7.0")]
 #[derive(Copy, Clone, Eq, PartialEq, Hash, PartialOrd, Ord)]
 pub enum IpAddr {
-    /// An IPv4 address.
+    /// IPv4 地址。
     #[stable(feature = "ip_addr", since = "1.7.0")]
     V4(#[stable(feature = "ip_addr", since = "1.7.0")] Ipv4Addr),
-    /// An IPv6 address.
+    /// IPv6 地址。
     #[stable(feature = "ip_addr", since = "1.7.0")]
     V6(#[stable(feature = "ip_addr", since = "1.7.0")] Ipv6Addr),
 }
 
-/// An IPv4 address.
+/// 一个 IPv4 地址。
 ///
-/// IPv4 addresses are defined as 32-bit integers in [IETF RFC 791].
-/// They are usually represented as four octets.
+/// [IETF RFC 791] 将 IPv4 地址定义为 32 位整数。它通常表示为四个 octet。
 ///
-/// See [`IpAddr`] for a type encompassing both IPv4 and IPv6 addresses.
+/// 需要同时覆盖 IPv4 和 IPv6 地址的类型时，请参见 [`IpAddr`]。
 ///
 /// [IETF RFC 791]: https://tools.ietf.org/html/rfc791
 ///
-/// # Textual representation
+/// # 文本表示
 ///
-/// `Ipv4Addr` provides a [`FromStr`] implementation. The four octets are in decimal
-/// notation, divided by `.` (this is called "dot-decimal notation").
-/// Notably, octal numbers (which are indicated with a leading `0`) and hexadecimal numbers (which
-/// are indicated with a leading `0x`) are not allowed per [IETF RFC 6943].
+/// `Ipv4Addr` 提供 [`FromStr`] 实现。四个 octet 以十进制记法书写，并用 `.`
+/// 分隔；这种格式称为“点分十进制记法”。按照 [IETF RFC 6943]，带前导 `0`
+/// 的八进制数字和带前导 `0x` 的十六进制数字都不被允许。
 ///
 /// [IETF RFC 6943]: https://tools.ietf.org/html/rfc6943#section-3.1.1
 /// [`FromStr`]: crate::str::FromStr
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use std::net::Ipv4Addr;
@@ -77,36 +74,34 @@ pub struct Ipv4Addr {
 #[stable(feature = "rust1", since = "1.0.0")]
 impl Hash for Ipv4Addr {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        // Hashers are often more efficient at hashing a fixed-width integer
-        // than a bytestring, so convert before hashing. We don't use to_bits()
-        // here as that may involve a byteswap which is unnecessary.
+        // 对固定宽度整数做哈希通常比对字节串做哈希更高效，因此先转换再哈希。
+        // 这里不使用 `to_bits()`，因为它可能引入不必要的字节交换。
         u32::from_ne_bytes(self.octets).hash(state);
     }
 }
 
-/// An IPv6 address.
+/// 一个 IPv6 地址。
 ///
-/// IPv6 addresses are defined as 128-bit integers in [IETF RFC 4291].
-/// They are usually represented as eight 16-bit segments.
+/// [IETF RFC 4291] 将 IPv6 地址定义为 128 位整数。它通常表示为八个 16 位 segment。
 ///
 /// [IETF RFC 4291]: https://tools.ietf.org/html/rfc4291
 ///
-/// # Embedding IPv4 Addresses
+/// # 嵌入 IPv4 地址
 ///
-/// See [`IpAddr`] for a type encompassing both IPv4 and IPv6 addresses.
+/// 需要同时覆盖 IPv4 和 IPv6 地址的类型时，请参见 [`IpAddr`]。
 ///
-/// To assist in the transition from IPv4 to IPv6 two types of IPv6 addresses that embed an IPv4 address were defined:
-/// IPv4-compatible and IPv4-mapped addresses. Of these IPv4-compatible addresses have been officially deprecated.
+/// 为协助从 IPv4 过渡到 IPv6，标准定义了两类嵌入 IPv4 地址的 IPv6 地址：
+/// IPv4-compatible 地址和 IPv4-mapped 地址。其中 IPv4-compatible 地址已经正式废弃。
 ///
-/// Both types of addresses are not assigned any special meaning by this implementation,
-/// other than what the relevant standards prescribe. This means that an address like `::ffff:127.0.0.1`,
-/// while representing an IPv4 loopback address, is not itself an IPv6 loopback address; only `::1` is.
-/// To handle these so called "IPv4-in-IPv6" addresses, they have to first be converted to their canonical IPv4 address.
+/// 除相关标准规定的含义外，本实现不会为这两类地址额外赋予特殊语义。这意味着
+/// `::ffff:127.0.0.1` 这样的地址虽然表示一个 IPv4 loopback 地址，但它本身并不是
+/// IPv6 loopback 地址；IPv6 loopback 地址只有 `::1`。处理这类所谓
+/// “IPv4-in-IPv6” 地址时，应先将其转换为规范的 IPv4 地址。
 ///
-/// ### IPv4-Compatible IPv6 Addresses
+/// ### IPv4-Compatible IPv6 地址
 ///
-/// IPv4-compatible IPv6 addresses are defined in [IETF RFC 4291 Section 2.5.5.1], and have been officially deprecated.
-/// The RFC describes the format of an "IPv4-Compatible IPv6 address" as follows:
+/// IPv4-compatible IPv6 地址定义于 [IETF RFC 4291 Section 2.5.5.1]，并且已经正式废弃。
+/// RFC 对 “IPv4-Compatible IPv6 address” 的格式描述如下：
 ///
 /// ```text
 /// |                80 bits               | 16 |      32 bits        |
@@ -114,17 +109,18 @@ impl Hash for Ipv4Addr {
 /// |0000..............................0000|0000|    IPv4 address     |
 /// +--------------------------------------+----+---------------------+
 /// ```
-/// So `::a.b.c.d` would be an IPv4-compatible IPv6 address representing the IPv4 address `a.b.c.d`.
+/// 因此，`::a.b.c.d` 是一个 IPv4-compatible IPv6 地址，表示 IPv4 地址 `a.b.c.d`。
 ///
-/// To convert from an IPv4 address to an IPv4-compatible IPv6 address, use [`Ipv4Addr::to_ipv6_compatible`].
-/// Use [`Ipv6Addr::to_ipv4`] to convert an IPv4-compatible IPv6 address to the canonical IPv4 address.
+/// 使用 [`Ipv4Addr::to_ipv6_compatible`] 可将 IPv4 地址转换为 IPv4-compatible IPv6
+/// 地址。使用 [`Ipv6Addr::to_ipv4`] 可将 IPv4-compatible IPv6 地址转换回规范的
+/// IPv4 地址。
 ///
 /// [IETF RFC 4291 Section 2.5.5.1]: https://datatracker.ietf.org/doc/html/rfc4291#section-2.5.5.1
 ///
-/// ### IPv4-Mapped IPv6 Addresses
+/// ### IPv4-Mapped IPv6 地址
 ///
-/// IPv4-mapped IPv6 addresses are defined in [IETF RFC 4291 Section 2.5.5.2].
-/// The RFC describes the format of an "IPv4-Mapped IPv6 address" as follows:
+/// IPv4-mapped IPv6 地址定义于 [IETF RFC 4291 Section 2.5.5.2]。
+/// RFC 对 “IPv4-Mapped IPv6 address” 的格式描述如下：
 ///
 /// ```text
 /// |                80 bits               | 16 |      32 bits        |
@@ -132,26 +128,24 @@ impl Hash for Ipv4Addr {
 /// |0000..............................0000|FFFF|    IPv4 address     |
 /// +--------------------------------------+----+---------------------+
 /// ```
-/// So `::ffff:a.b.c.d` would be an IPv4-mapped IPv6 address representing the IPv4 address `a.b.c.d`.
+/// 因此，`::ffff:a.b.c.d` 是一个 IPv4-mapped IPv6 地址，表示 IPv4 地址 `a.b.c.d`。
 ///
-/// To convert from an IPv4 address to an IPv4-mapped IPv6 address, use [`Ipv4Addr::to_ipv6_mapped`].
-/// Use [`Ipv6Addr::to_ipv4`] to convert an IPv4-mapped IPv6 address to the canonical IPv4 address.
-/// Note that this will also convert the IPv6 loopback address `::1` to `0.0.0.1`. Use
-/// [`Ipv6Addr::to_ipv4_mapped`] to avoid this.
+/// 使用 [`Ipv4Addr::to_ipv6_mapped`] 可将 IPv4 地址转换为 IPv4-mapped IPv6 地址。
+/// 使用 [`Ipv6Addr::to_ipv4`] 可将 IPv4-mapped IPv6 地址转换回规范的 IPv4 地址。
+/// 注意，该方法也会把 IPv6 loopback 地址 `::1` 转换为 `0.0.0.1`；如果要避免这种情况，
+/// 请使用 [`Ipv6Addr::to_ipv4_mapped`]。
 ///
 /// [IETF RFC 4291 Section 2.5.5.2]: https://datatracker.ietf.org/doc/html/rfc4291#section-2.5.5.2
 ///
-/// # Textual representation
+/// # 文本表示
 ///
-/// `Ipv6Addr` provides a [`FromStr`] implementation. There are many ways to represent
-/// an IPv6 address in text, but in general, each segments is written in hexadecimal
-/// notation, and segments are separated by `:`. For more information, see
-/// [IETF RFC 5952].
+/// `Ipv6Addr` 提供 [`FromStr`] 实现。IPv6 地址有多种文本写法；通常每个 segment
+/// 使用十六进制记法，segment 之间用 `:` 分隔。更多信息见 [IETF RFC 5952]。
 ///
 /// [`FromStr`]: crate::str::FromStr
 /// [IETF RFC 5952]: https://tools.ietf.org/html/rfc5952
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use std::net::Ipv6Addr;
@@ -170,22 +164,20 @@ pub struct Ipv6Addr {
 #[stable(feature = "rust1", since = "1.0.0")]
 impl Hash for Ipv6Addr {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        // Hashers are often more efficient at hashing a fixed-width integer
-        // than a bytestring, so convert before hashing. We don't use to_bits()
-        // here as that may involve unnecessary byteswaps.
+        // 对固定宽度整数做哈希通常比对字节串做哈希更高效，因此先转换再哈希。
+        // 这里不使用 `to_bits()`，因为它可能引入不必要的字节交换。
         u128::from_ne_bytes(self.octets).hash(state);
     }
 }
 
-/// Scope of an [IPv6 multicast address] as defined in [IETF RFC 7346 section 2].
+/// [IETF RFC 7346 section 2] 定义的 [IPv6 multicast address] scope。
 ///
-/// # Stability Guarantees
+/// # 稳定性保证
 ///
-/// Not all possible values for a multicast scope have been assigned.
-/// Future RFCs may introduce new scopes, which will be added as variants to this enum;
-/// because of this the enum is marked as `#[non_exhaustive]`.
+/// multicast scope 的所有可能取值并非都已经分配。未来 RFC 可能引入新的 scope，
+/// 这些 scope 会作为新 variant 加入此枚举；因此该枚举标记为 `#[non_exhaustive]`。
 ///
-/// # Examples
+/// # 示例
 /// ```
 /// #![feature(ip)]
 ///
@@ -216,29 +208,29 @@ impl Hash for Ipv6Addr {
 #[unstable(feature = "ip", issue = "27709")]
 #[non_exhaustive]
 pub enum Ipv6MulticastScope {
-    /// Interface-Local scope.
+    /// Interface-Local scope。
     InterfaceLocal,
-    /// Link-Local scope.
+    /// Link-Local scope。
     LinkLocal,
-    /// Realm-Local scope.
+    /// Realm-Local scope。
     RealmLocal,
-    /// Admin-Local scope.
+    /// Admin-Local scope。
     AdminLocal,
-    /// Site-Local scope.
+    /// Site-Local scope。
     SiteLocal,
-    /// Organization-Local scope.
+    /// Organization-Local scope。
     OrganizationLocal,
-    /// Global scope.
+    /// Global scope。
     Global,
 }
 
 impl IpAddr {
-    /// Returns [`true`] for the special 'unspecified' address.
+    /// 如果是特殊的 “unspecified” 地址，则返回 [`true`]。
+///
+    /// 更多细节请参见 [`Ipv4Addr::is_unspecified()`] 和
+    /// [`Ipv6Addr::is_unspecified()`] 的文档。
     ///
-    /// See the documentation for [`Ipv4Addr::is_unspecified()`] and
-    /// [`Ipv6Addr::is_unspecified()`] for more details.
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
@@ -257,12 +249,12 @@ impl IpAddr {
         }
     }
 
-    /// Returns [`true`] if this is a loopback address.
+    /// 如果这是 loopback 地址，则返回 [`true`]。
+///
+    /// 更多细节请参见 [`Ipv4Addr::is_loopback()`] 和
+    /// [`Ipv6Addr::is_loopback()`] 的文档。
     ///
-    /// See the documentation for [`Ipv4Addr::is_loopback()`] and
-    /// [`Ipv6Addr::is_loopback()`] for more details.
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
@@ -281,12 +273,11 @@ impl IpAddr {
         }
     }
 
-    /// Returns [`true`] if the address appears to be globally routable.
+    /// 如果该地址看起来是全局可路由的，则返回 [`true`]。
+///
+    /// 更多细节请参见 [`Ipv4Addr::is_global()`] 和 [`Ipv6Addr::is_global()`] 的文档。
     ///
-    /// See the documentation for [`Ipv4Addr::is_global()`] and
-    /// [`Ipv6Addr::is_global()`] for more details.
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(ip)]
@@ -306,12 +297,12 @@ impl IpAddr {
         }
     }
 
-    /// Returns [`true`] if this is a multicast address.
+    /// 如果这是 multicast 地址，则返回 [`true`]。
+///
+    /// 更多细节请参见 [`Ipv4Addr::is_multicast()`] 和
+    /// [`Ipv6Addr::is_multicast()`] 的文档。
     ///
-    /// See the documentation for [`Ipv4Addr::is_multicast()`] and
-    /// [`Ipv6Addr::is_multicast()`] for more details.
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
@@ -330,12 +321,12 @@ impl IpAddr {
         }
     }
 
-    /// Returns [`true`] if this address is in a range designated for documentation.
+    /// 如果此地址位于保留给文档示例使用的地址范围内，则返回 [`true`]。
+///
+    /// 更多细节请参见 [`Ipv4Addr::is_documentation()`] 和
+    /// [`Ipv6Addr::is_documentation()`] 的文档。
     ///
-    /// See the documentation for [`Ipv4Addr::is_documentation()`] and
-    /// [`Ipv6Addr::is_documentation()`] for more details.
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(ip)]
@@ -358,12 +349,12 @@ impl IpAddr {
         }
     }
 
-    /// Returns [`true`] if this address is in a range designated for benchmarking.
+    /// 如果此地址位于保留给基准测试使用的地址范围内，则返回 [`true`]。
+///
+    /// 更多细节请参见 [`Ipv4Addr::is_benchmarking()`] 和
+    /// [`Ipv6Addr::is_benchmarking()`] 的文档。
     ///
-    /// See the documentation for [`Ipv4Addr::is_benchmarking()`] and
-    /// [`Ipv6Addr::is_benchmarking()`] for more details.
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(ip)]
@@ -383,12 +374,11 @@ impl IpAddr {
         }
     }
 
-    /// Returns [`true`] if this address is an [`IPv4` address], and [`false`]
-    /// otherwise.
+    /// 如果此地址是 [`IPv4` address]，则返回 [`true`]；否则返回 [`false`]。
     ///
     /// [`IPv4` address]: IpAddr::V4
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
@@ -404,12 +394,11 @@ impl IpAddr {
         matches!(self, IpAddr::V4(_))
     }
 
-    /// Returns [`true`] if this address is an [`IPv6` address], and [`false`]
-    /// otherwise.
+    /// 如果此地址是 [`IPv6` address]，则返回 [`true`]；否则返回 [`false`]。
     ///
     /// [`IPv6` address]: IpAddr::V6
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
@@ -425,10 +414,9 @@ impl IpAddr {
         matches!(self, IpAddr::V6(_))
     }
 
-    /// Converts this address to an `IpAddr::V4` if it is an IPv4-mapped IPv6
-    /// address, otherwise returns `self` as-is.
+    /// 如果此地址是 IPv4-mapped IPv6 地址，则转换为 `IpAddr::V4`；否则原样返回 `self`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
@@ -453,9 +441,9 @@ impl IpAddr {
         }
     }
 
-    /// Returns the eight-bit integers this address consists of as a slice.
+    /// 以切片形式返回组成此地址的 8 位整数。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(ip_as_octets)]
@@ -477,11 +465,11 @@ impl IpAddr {
 }
 
 impl Ipv4Addr {
-    /// Creates a new IPv4 address from four eight-bit octets.
+    /// 根据四个 8 位 octet 创建新的 IPv4 地址。
+///
+    /// 结果表示 IP 地址 `a`.`b`.`c`.`d`。
     ///
-    /// The result will represent the IP address `a`.`b`.`c`.`d`.
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::Ipv4Addr;
@@ -496,9 +484,9 @@ impl Ipv4Addr {
         Ipv4Addr { octets: [a, b, c, d] }
     }
 
-    /// The size of an IPv4 address in bits.
+    /// IPv4 地址的位数。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::Ipv4Addr;
@@ -508,15 +496,14 @@ impl Ipv4Addr {
     #[stable(feature = "ip_bits", since = "1.80.0")]
     pub const BITS: u32 = 32;
 
-    /// Converts an IPv4 address into a `u32` representation using native byte order.
+    /// 将 IPv4 地址转换为使用本机字节序的 `u32` 表示。
+///
+    /// 虽然 IPv4 地址按 big-endian 定义，但返回的 `u32` 值使用目标平台的本机字节序。
+    /// 也就是说，这个 `u32` 是 IPv4 地址的整数表示，而不是把 IPv4 地址的 big-endian
+    /// 位串按平台字节序重新解释得到的整数。因此，无论目标平台采用哪种端序，对返回值应用
+    /// `0xffffff00` 掩码都会把地址中的最后一个 octet 置为 0。
     ///
-    /// Although IPv4 addresses are big-endian, the `u32` value will use the target platform's
-    /// native byte order. That is, the `u32` value is an integer representation of the IPv4
-    /// address and not an integer interpretation of the IPv4 address's big-endian bitstring. This
-    /// means that the `u32` value masked with `0xffffff00` will set the last octet in the address
-    /// to 0, regardless of the target platform's endianness.
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::Ipv4Addr;
@@ -541,11 +528,11 @@ impl Ipv4Addr {
         u32::from_be_bytes(self.octets)
     }
 
-    /// Converts a native byte order `u32` into an IPv4 address.
+    /// 将使用本机字节序的 `u32` 转换为 IPv4 地址。
+///
+    /// 端序语义请参见 [`Ipv4Addr::to_bits`]。
     ///
-    /// See [`Ipv4Addr::to_bits`] for an explanation on endianness.
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::Ipv4Addr;
@@ -561,9 +548,9 @@ impl Ipv4Addr {
         Ipv4Addr { octets: bits.to_be_bytes() }
     }
 
-    /// An IPv4 address with the address pointing to localhost: `127.0.0.1`
+    /// 指向 localhost 的 IPv4 地址：`127.0.0.1`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::Ipv4Addr;
@@ -574,11 +561,11 @@ impl Ipv4Addr {
     #[stable(feature = "ip_constructors", since = "1.30.0")]
     pub const LOCALHOST: Self = Ipv4Addr::new(127, 0, 0, 1);
 
-    /// An IPv4 address representing an unspecified address: `0.0.0.0`
+    /// 表示 unspecified 地址的 IPv4 地址：`0.0.0.0`。
+///
+    /// 这对应其他语言中的常量 `INADDR_ANY`。
     ///
-    /// This corresponds to the constant `INADDR_ANY` in other languages.
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::Ipv4Addr;
@@ -590,9 +577,9 @@ impl Ipv4Addr {
     #[stable(feature = "ip_constructors", since = "1.30.0")]
     pub const UNSPECIFIED: Self = Ipv4Addr::new(0, 0, 0, 0);
 
-    /// An IPv4 address representing the broadcast address: `255.255.255.255`.
+    /// 表示 broadcast 地址的 IPv4 地址：`255.255.255.255`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::Ipv4Addr;
@@ -603,9 +590,9 @@ impl Ipv4Addr {
     #[stable(feature = "ip_constructors", since = "1.30.0")]
     pub const BROADCAST: Self = Ipv4Addr::new(255, 255, 255, 255);
 
-    /// Returns the four eight-bit integers that make up this address.
+    /// 返回组成此地址的四个 8 位整数。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::Ipv4Addr;
@@ -621,9 +608,9 @@ impl Ipv4Addr {
         self.octets
     }
 
-    /// Creates an `Ipv4Addr` from a four element byte array.
+    /// 根据包含四个元素的字节数组创建 `Ipv4Addr`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::Ipv4Addr;
@@ -639,10 +626,9 @@ impl Ipv4Addr {
         Ipv4Addr { octets }
     }
 
-    /// Returns the four eight-bit integers that make up this address
-    /// as a slice.
+    /// 以切片形式返回组成此地址的四个 8 位整数。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(ip_as_octets)]
@@ -658,14 +644,14 @@ impl Ipv4Addr {
         &self.octets
     }
 
-    /// Returns [`true`] for the special 'unspecified' address (`0.0.0.0`).
-    ///
-    /// This property is defined in _UNIX Network Programming, Second Edition_,
-    /// W. Richard Stevens, p. 891; see also [ip7].
+    /// 如果是特殊的 “unspecified” 地址（`0.0.0.0`），则返回 [`true`]。
+///
+    /// 该属性定义于 _UNIX Network Programming, Second Edition_,
+    /// W. Richard Stevens, p. 891；另见 [ip7]。
     ///
     /// [ip7]: https://man7.org/linux/man-pages/man7/ip.7.html
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::Ipv4Addr;
@@ -681,13 +667,13 @@ impl Ipv4Addr {
         u32::from_be_bytes(self.octets) == 0
     }
 
-    /// Returns [`true`] if this is a loopback address (`127.0.0.0/8`).
-    ///
-    /// This property is defined by [IETF RFC 1122].
+    /// 如果这是 loopback 地址（`127.0.0.0/8`），则返回 [`true`]。
+///
+    /// 该属性由 [IETF RFC 1122] 定义。
     ///
     /// [IETF RFC 1122]: https://tools.ietf.org/html/rfc1122
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::Ipv4Addr;
@@ -703,9 +689,9 @@ impl Ipv4Addr {
         self.octets()[0] == 127
     }
 
-    /// Returns [`true`] if this is a private address.
-    ///
-    /// The private address ranges are defined in [IETF RFC 1918] and include:
+    /// 如果这是 private 地址，则返回 [`true`]。
+///
+    /// private 地址范围定义于 [IETF RFC 1918]，包括：
     ///
     ///  - `10.0.0.0/8`
     ///  - `172.16.0.0/12`
@@ -713,7 +699,7 @@ impl Ipv4Addr {
     ///
     /// [IETF RFC 1918]: https://tools.ietf.org/html/rfc1918
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::Ipv4Addr;
@@ -739,13 +725,13 @@ impl Ipv4Addr {
         }
     }
 
-    /// Returns [`true`] if the address is link-local (`169.254.0.0/16`).
-    ///
-    /// This property is defined by [IETF RFC 3927].
+    /// 如果该地址是 link-local 地址（`169.254.0.0/16`），则返回 [`true`]。
+///
+    /// 该属性由 [IETF RFC 3927] 定义。
     ///
     /// [IETF RFC 3927]: https://tools.ietf.org/html/rfc3927
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::Ipv4Addr;
@@ -762,32 +748,31 @@ impl Ipv4Addr {
         matches!(self.octets(), [169, 254, ..])
     }
 
-    /// Returns [`true`] if the address appears to be globally reachable
-    /// as specified by the [IANA IPv4 Special-Purpose Address Registry].
-    ///
-    /// Whether or not an address is practically reachable will depend on your
-    /// network configuration. Most IPv4 addresses are globally reachable, unless
-    /// they are specifically defined as *not* globally reachable.
-    ///
-    /// Non-exhaustive list of notable addresses that are not globally reachable:
-    ///
-    /// - The [unspecified address] ([`is_unspecified`](Ipv4Addr::is_unspecified))
-    /// - Addresses reserved for private use ([`is_private`](Ipv4Addr::is_private))
-    /// - Addresses in the shared address space ([`is_shared`](Ipv4Addr::is_shared))
-    /// - Loopback addresses ([`is_loopback`](Ipv4Addr::is_loopback))
-    /// - Link-local addresses ([`is_link_local`](Ipv4Addr::is_link_local))
-    /// - Addresses reserved for documentation ([`is_documentation`](Ipv4Addr::is_documentation))
-    /// - Addresses reserved for benchmarking ([`is_benchmarking`](Ipv4Addr::is_benchmarking))
-    /// - Reserved addresses ([`is_reserved`](Ipv4Addr::is_reserved))
-    /// - The [broadcast address] ([`is_broadcast`](Ipv4Addr::is_broadcast))
-    ///
-    /// For the complete overview of which addresses are globally reachable, see the table at the [IANA IPv4 Special-Purpose Address Registry].
+    /// 如果该地址按 [IANA IPv4 Special-Purpose Address Registry] 看起来是全局可达的，
+    /// 则返回 [`true`]。
+///
+    /// 地址在实际网络中能否到达取决于具体网络配置。除非某个 IPv4 地址被明确标记为
+    /// *非*全局可达，大多数 IPv4 地址都视为全局可达。
+///
+    /// 以下列出一些重要但并非穷尽的非全局可达地址：
+///
+    /// - [unspecified address]（[`is_unspecified`](Ipv4Addr::is_unspecified)）
+    /// - 保留给 private use 的地址（[`is_private`](Ipv4Addr::is_private)）
+    /// - shared address space 中的地址（[`is_shared`](Ipv4Addr::is_shared)）
+    /// - loopback 地址（[`is_loopback`](Ipv4Addr::is_loopback)）
+    /// - link-local 地址（[`is_link_local`](Ipv4Addr::is_link_local)）
+    /// - 保留给文档示例的地址（[`is_documentation`](Ipv4Addr::is_documentation)）
+    /// - 保留给基准测试的地址（[`is_benchmarking`](Ipv4Addr::is_benchmarking)）
+    /// - reserved 地址（[`is_reserved`](Ipv4Addr::is_reserved)）
+    /// - [broadcast address]（[`is_broadcast`](Ipv4Addr::is_broadcast)）
+///
+    /// 哪些地址全局可达的完整概览，请参见 [IANA IPv4 Special-Purpose Address Registry] 中的表格。
     ///
     /// [IANA IPv4 Special-Purpose Address Registry]: https://www.iana.org/assignments/iana-ipv4-special-registry/iana-ipv4-special-registry.xhtml
     /// [unspecified address]: Ipv4Addr::UNSPECIFIED
     /// [broadcast address]: Ipv4Addr::BROADCAST
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(ip)]
@@ -842,8 +827,8 @@ impl Ipv4Addr {
             || self.is_shared()
             || self.is_loopback()
             || self.is_link_local()
-            // addresses reserved for future protocols (`192.0.0.0/24`)
-            // .9 and .10 are documented as globally reachable so they're excluded
+            // 为未来协议保留的地址（`192.0.0.0/24`）。
+            // .9 和 .10 在文档中标记为全局可达，因此排除在外。
             || (
                 self.octets()[0] == 192 && self.octets()[1] == 0 && self.octets()[2] == 0
                 && self.octets()[3] != 9 && self.octets()[3] != 10
@@ -854,12 +839,12 @@ impl Ipv4Addr {
             || self.is_broadcast())
     }
 
-    /// Returns [`true`] if this address is part of the Shared Address Space defined in
-    /// [IETF RFC 6598] (`100.64.0.0/10`).
+    /// 如果此地址属于 [IETF RFC 6598] 定义的 Shared Address Space（`100.64.0.0/10`），
+    /// 则返回 [`true`]。
     ///
     /// [IETF RFC 6598]: https://tools.ietf.org/html/rfc6598
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(ip)]
@@ -876,16 +861,15 @@ impl Ipv4Addr {
         self.octets()[0] == 100 && (self.octets()[1] & 0b1100_0000 == 0b0100_0000)
     }
 
-    /// Returns [`true`] if this address part of the `198.18.0.0/15` range, which is reserved for
-    /// network devices benchmarking.
-    ///
-    /// This range is defined in [IETF RFC 2544] as `192.18.0.0` through
-    /// `198.19.255.255` but [errata 423] corrects it to `198.18.0.0/15`.
+    /// 如果此地址属于 `198.18.0.0/15` 范围，则返回 [`true`]；该范围保留给网络设备基准测试。
+///
+    /// [IETF RFC 2544] 将该范围定义为 `192.18.0.0` 到 `198.19.255.255`，
+    /// 但 [errata 423] 将其更正为 `198.18.0.0/15`。
     ///
     /// [IETF RFC 2544]: https://tools.ietf.org/html/rfc2544
     /// [errata 423]: https://www.rfc-editor.org/errata/eid423
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(ip)]
@@ -903,23 +887,20 @@ impl Ipv4Addr {
         self.octets()[0] == 198 && (self.octets()[1] & 0xfe) == 18
     }
 
-    /// Returns [`true`] if this address is reserved by IANA for future use.
-    ///
-    /// [IETF RFC 1112] defines the block of reserved addresses as `240.0.0.0/4`.
-    /// This range normally includes the broadcast address `255.255.255.255`, but
-    /// this implementation explicitly excludes it, since it is obviously not
-    /// reserved for future use.
+    /// 如果此地址被 IANA 保留给未来使用，则返回 [`true`]。
+///
+    /// [IETF RFC 1112] 将 reserved 地址块定义为 `240.0.0.0/4`。该范围通常包含
+    /// broadcast 地址 `255.255.255.255`，但本实现明确将其排除，因为它显然不是
+    /// 保留给未来使用的地址。
     ///
     /// [IETF RFC 1112]: https://tools.ietf.org/html/rfc1112
     ///
-    /// # Warning
+    /// # 警告
+///
+    /// 随着 IANA 分配新地址，本方法会随之更新。依赖旧版本本方法的代码中，
+    /// 原本不属于 reserved 的地址可能会在新版本中被视为 reserved。
     ///
-    /// As IANA assigns new addresses, this method will be
-    /// updated. This may result in non-reserved addresses being
-    /// treated as reserved in code that relies on an outdated version
-    /// of this method.
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(ip)]
@@ -939,14 +920,13 @@ impl Ipv4Addr {
         self.octets()[0] & 240 == 240 && !self.is_broadcast()
     }
 
-    /// Returns [`true`] if this is a multicast address (`224.0.0.0/4`).
-    ///
-    /// Multicast addresses have a most significant octet between `224` and `239`,
-    /// and is defined by [IETF RFC 5771].
+    /// 如果这是 multicast 地址（`224.0.0.0/4`），则返回 [`true`]。
+///
+    /// multicast 地址的最高有效 octet 位于 `224` 到 `239` 之间，由 [IETF RFC 5771] 定义。
     ///
     /// [IETF RFC 5771]: https://tools.ietf.org/html/rfc5771
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::Ipv4Addr;
@@ -963,13 +943,13 @@ impl Ipv4Addr {
         self.octets()[0] >= 224 && self.octets()[0] <= 239
     }
 
-    /// Returns [`true`] if this is a broadcast address (`255.255.255.255`).
-    ///
-    /// A broadcast address has all octets set to `255` as defined in [IETF RFC 919].
+    /// 如果这是 broadcast 地址（`255.255.255.255`），则返回 [`true`]。
+///
+    /// 按 [IETF RFC 919] 定义，broadcast 地址的所有 octet 都设置为 `255`。
     ///
     /// [IETF RFC 919]: https://tools.ietf.org/html/rfc919
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::Ipv4Addr;
@@ -985,9 +965,9 @@ impl Ipv4Addr {
         u32::from_be_bytes(self.octets()) == u32::from_be_bytes(Self::BROADCAST.octets())
     }
 
-    /// Returns [`true`] if this address is in a range designated for documentation.
-    ///
-    /// This is defined in [IETF RFC 5737]:
+    /// 如果此地址位于保留给文档示例使用的范围内，则返回 [`true`]。
+///
+    /// 这些范围定义于 [IETF RFC 5737]：
     ///
     /// - `192.0.2.0/24` (TEST-NET-1)
     /// - `198.51.100.0/24` (TEST-NET-2)
@@ -995,7 +975,7 @@ impl Ipv4Addr {
     ///
     /// [IETF RFC 5737]: https://tools.ietf.org/html/rfc5737
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::Ipv4Addr;
@@ -1013,17 +993,17 @@ impl Ipv4Addr {
         matches!(self.octets(), [192, 0, 2, _] | [198, 51, 100, _] | [203, 0, 113, _])
     }
 
-    /// Converts this address to an [IPv4-compatible] [`IPv6` address].
-    ///
-    /// `a.b.c.d` becomes `::a.b.c.d`
-    ///
-    /// Note that IPv4-compatible addresses have been officially deprecated.
-    /// If you don't explicitly need an IPv4-compatible address for legacy reasons, consider using `to_ipv6_mapped` instead.
+    /// 将此地址转换为 [IPv4-compatible] [`IPv6` address]。
+///
+    /// `a.b.c.d` 会变为 `::a.b.c.d`。
+///
+    /// 注意，IPv4-compatible 地址已经正式废弃。除非出于遗留兼容原因明确需要
+    /// IPv4-compatible 地址，否则应考虑改用 `to_ipv6_mapped`。
     ///
     /// [IPv4-compatible]: Ipv6Addr#ipv4-compatible-ipv6-addresses
     /// [`IPv6` address]: Ipv6Addr
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::{Ipv4Addr, Ipv6Addr};
@@ -1043,14 +1023,14 @@ impl Ipv4Addr {
         Ipv6Addr { octets: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, a, b, c, d] }
     }
 
-    /// Converts this address to an [IPv4-mapped] [`IPv6` address].
-    ///
-    /// `a.b.c.d` becomes `::ffff:a.b.c.d`
+    /// 将此地址转换为 [IPv4-mapped] [`IPv6` address]。
+///
+    /// `a.b.c.d` 会变为 `::ffff:a.b.c.d`。
     ///
     /// [IPv4-mapped]: Ipv6Addr#ipv4-mapped-ipv6-addresses
     /// [`IPv6` address]: Ipv6Addr
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::{Ipv4Addr, Ipv6Addr};
@@ -1089,9 +1069,9 @@ impl fmt::Debug for IpAddr {
 #[stable(feature = "ip_from_ip", since = "1.16.0")]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
 impl const From<Ipv4Addr> for IpAddr {
-    /// Copies this address to a new `IpAddr::V4`.
+    /// 将此地址复制为新的 `IpAddr::V4`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::{IpAddr, Ipv4Addr};
@@ -1112,9 +1092,9 @@ impl const From<Ipv4Addr> for IpAddr {
 #[stable(feature = "ip_from_ip", since = "1.16.0")]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
 impl const From<Ipv6Addr> for IpAddr {
-    /// Copies this address to a new `IpAddr::V6`.
+    /// 将此地址复制为新的 `IpAddr::V6`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::{IpAddr, Ipv6Addr};
@@ -1137,15 +1117,15 @@ impl fmt::Display for Ipv4Addr {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         let octets = self.octets();
 
-        // If there are no alignment requirements, write the IP address directly to `f`.
-        // Otherwise, write it to a local buffer and then use `f.pad`.
+        // 如果没有对齐要求，则直接把 IP 地址写入 `f`。
+        // 否则先写入本地缓冲区，再调用 `f.pad`。
         if fmt.precision().is_none() && fmt.width().is_none() {
             write!(fmt, "{}.{}.{}.{}", octets[0], octets[1], octets[2], octets[3])
         } else {
             const LONGEST_IPV4_ADDR: &str = "255.255.255.255";
 
             let mut buf = DisplayBuffer::<{ LONGEST_IPV4_ADDR.len() }>::new();
-            // Buffer is long enough for the longest possible IPv4 address, so this should never fail.
+            // 缓冲区足以容纳最长的 IPv4 地址，因此这里不应失败。
             write!(buf, "{}.{}.{}.{}", octets[0], octets[1], octets[2], octets[3]).unwrap();
 
             fmt.pad(buf.as_str())
@@ -1223,7 +1203,7 @@ impl Ord for Ipv4Addr {
 #[stable(feature = "ip_u32", since = "1.1.0")]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
 impl const From<Ipv4Addr> for u32 {
-    /// Uses [`Ipv4Addr::to_bits`] to convert an IPv4 address to a host byte order `u32`.
+    /// 使用 [`Ipv4Addr::to_bits`] 将 IPv4 地址转换为本机字节序的 `u32`。
     #[inline]
     fn from(ip: Ipv4Addr) -> u32 {
         ip.to_bits()
@@ -1233,7 +1213,7 @@ impl const From<Ipv4Addr> for u32 {
 #[stable(feature = "ip_u32", since = "1.1.0")]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
 impl const From<u32> for Ipv4Addr {
-    /// Uses [`Ipv4Addr::from_bits`] to convert a host byte order `u32` into an IPv4 address.
+    /// 使用 [`Ipv4Addr::from_bits`] 将本机字节序的 `u32` 转换为 IPv4 地址。
     #[inline]
     fn from(ip: u32) -> Ipv4Addr {
         Ipv4Addr::from_bits(ip)
@@ -1243,9 +1223,9 @@ impl const From<u32> for Ipv4Addr {
 #[stable(feature = "from_slice_v4", since = "1.9.0")]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
 impl const From<[u8; 4]> for Ipv4Addr {
-    /// Creates an `Ipv4Addr` from a four element byte array.
+    /// 根据包含四个元素的字节数组创建 `Ipv4Addr`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::Ipv4Addr;
@@ -1262,9 +1242,9 @@ impl const From<[u8; 4]> for Ipv4Addr {
 #[stable(feature = "ip_from_slice", since = "1.17.0")]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
 impl const From<[u8; 4]> for IpAddr {
-    /// Creates an `IpAddr::V4` from a four element byte array.
+    /// 根据包含四个元素的字节数组创建 `IpAddr::V4`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::{IpAddr, Ipv4Addr};
@@ -1279,11 +1259,11 @@ impl const From<[u8; 4]> for IpAddr {
 }
 
 impl Ipv6Addr {
-    /// Creates a new IPv6 address from eight 16-bit segments.
+    /// 根据八个 16 位 segment 创建新的 IPv6 地址。
+///
+    /// 结果表示 IP 地址 `a:b:c:d:e:f:g:h`。
     ///
-    /// The result will represent the IP address `a:b:c:d:e:f:g:h`.
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::Ipv6Addr;
@@ -1306,15 +1286,15 @@ impl Ipv6Addr {
             h.to_be(),
         ];
         Ipv6Addr {
-            // All elements in `addr16` are big endian.
-            // SAFETY: `[u16; 8]` is always safe to transmute to `[u8; 16]`.
+            // `addr16` 中的所有元素都是 big endian。
+            // SAFETY: `[u16; 8]` 总是可以安全地转置为 `[u8; 16]`。
             octets: unsafe { transmute::<_, [u8; 16]>(addr16) },
         }
     }
 
-    /// The size of an IPv6 address in bits.
+    /// IPv6 地址的位数。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::Ipv6Addr;
@@ -1324,15 +1304,14 @@ impl Ipv6Addr {
     #[stable(feature = "ip_bits", since = "1.80.0")]
     pub const BITS: u32 = 128;
 
-    /// Converts an IPv6 address into a `u128` representation using native byte order.
+    /// 将 IPv6 地址转换为使用本机字节序的 `u128` 表示。
+///
+    /// 虽然 IPv6 地址按 big-endian 定义，但返回的 `u128` 值使用目标平台的本机字节序。
+    /// 也就是说，这个 `u128` 是 IPv6 地址的整数表示，而不是把 IPv6 地址的 big-endian
+    /// 位串按平台字节序重新解释得到的整数。因此，无论目标平台采用哪种端序，对返回值应用
+    /// `0xffffffffffffffffffffffffffff0000_u128` 掩码都会把地址中的最后一个 segment 置为 0。
     ///
-    /// Although IPv6 addresses are big-endian, the `u128` value will use the target platform's
-    /// native byte order. That is, the `u128` value is an integer representation of the IPv6
-    /// address and not an integer interpretation of the IPv6 address's big-endian bitstring. This
-    /// means that the `u128` value masked with `0xffffffffffffffffffffffffffff0000_u128` will set
-    /// the last segment in the address to 0, regardless of the target platform's endianness.
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::Ipv6Addr;
@@ -1368,11 +1347,11 @@ impl Ipv6Addr {
         u128::from_be_bytes(self.octets)
     }
 
-    /// Converts a native byte order `u128` into an IPv6 address.
+    /// 将使用本机字节序的 `u128` 转换为 IPv6 地址。
+///
+    /// 端序语义请参见 [`Ipv6Addr::to_bits`]。
     ///
-    /// See [`Ipv6Addr::to_bits`] for an explanation on endianness.
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::Ipv6Addr;
@@ -1393,12 +1372,11 @@ impl Ipv6Addr {
         Ipv6Addr { octets: bits.to_be_bytes() }
     }
 
-    /// An IPv6 address representing localhost: `::1`.
+    /// 表示 localhost 的 IPv6 地址：`::1`。
+///
+    /// 这对应其他语言中的常量 `IN6ADDR_LOOPBACK_INIT` 或 `in6addr_loopback`。
     ///
-    /// This corresponds to constant `IN6ADDR_LOOPBACK_INIT` or `in6addr_loopback` in other
-    /// languages.
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::Ipv6Addr;
@@ -1411,11 +1389,11 @@ impl Ipv6Addr {
     #[stable(feature = "ip_constructors", since = "1.30.0")]
     pub const LOCALHOST: Self = Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1);
 
-    /// An IPv6 address representing the unspecified address: `::`.
+    /// 表示 unspecified 地址的 IPv6 地址：`::`。
+///
+    /// 这对应其他语言中的常量 `IN6ADDR_ANY_INIT` 或 `in6addr_any`。
     ///
-    /// This corresponds to constant `IN6ADDR_ANY_INIT` or `in6addr_any` in other languages.
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::Ipv6Addr;
@@ -1428,9 +1406,9 @@ impl Ipv6Addr {
     #[stable(feature = "ip_constructors", since = "1.30.0")]
     pub const UNSPECIFIED: Self = Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0);
 
-    /// Returns the eight 16-bit segments that make up this address.
+    /// 返回组成此地址的八个 16 位 segment。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::Ipv6Addr;
@@ -1443,10 +1421,10 @@ impl Ipv6Addr {
     #[must_use]
     #[inline]
     pub const fn segments(&self) -> [u16; 8] {
-        // All elements in `self.octets` must be big endian.
-        // SAFETY: `[u8; 16]` is always safe to transmute to `[u16; 8]`.
+        // `self.octets` 中的所有元素都必须是 big endian。
+        // SAFETY: `[u8; 16]` 总是可以安全地转置为 `[u16; 8]`。
         let [a, b, c, d, e, f, g, h] = unsafe { transmute::<_, [u16; 8]>(self.octets) };
-        // We want native endian u16
+        // 这里需要本机端序的 `u16`。
         [
             u16::from_be(a),
             u16::from_be(b),
@@ -1459,9 +1437,9 @@ impl Ipv6Addr {
         ]
     }
 
-    /// Creates an `Ipv6Addr` from an eight element 16-bit array.
+    /// 根据包含八个元素的 16 位数组创建 `Ipv6Addr`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::Ipv6Addr;
@@ -1487,13 +1465,13 @@ impl Ipv6Addr {
         Ipv6Addr::new(a, b, c, d, e, f, g, h)
     }
 
-    /// Returns [`true`] for the special 'unspecified' address (`::`).
-    ///
-    /// This property is defined in [IETF RFC 4291].
+    /// 如果是特殊的 “unspecified” 地址（`::`），则返回 [`true`]。
+///
+    /// 该属性定义于 [IETF RFC 4291]。
     ///
     /// [IETF RFC 4291]: https://tools.ietf.org/html/rfc4291
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::Ipv6Addr;
@@ -1509,15 +1487,15 @@ impl Ipv6Addr {
         u128::from_be_bytes(self.octets()) == u128::from_be_bytes(Ipv6Addr::UNSPECIFIED.octets())
     }
 
-    /// Returns [`true`] if this is the [loopback address] (`::1`),
-    /// as defined in [IETF RFC 4291 section 2.5.3].
-    ///
-    /// Contrary to IPv4, in IPv6 there is only one loopback address.
+    /// 如果这是 [loopback address]（`::1`），则返回 [`true`]；
+    /// 该地址定义于 [IETF RFC 4291 section 2.5.3]。
+///
+    /// 与 IPv4 不同，IPv6 只有一个 loopback 地址。
     ///
     /// [loopback address]: Ipv6Addr::LOCALHOST
     /// [IETF RFC 4291 section 2.5.3]: https://tools.ietf.org/html/rfc4291#section-2.5.3
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::Ipv6Addr;
@@ -1533,35 +1511,32 @@ impl Ipv6Addr {
         u128::from_be_bytes(self.octets()) == u128::from_be_bytes(Ipv6Addr::LOCALHOST.octets())
     }
 
-    /// Returns [`true`] if the address appears to be globally reachable
-    /// as specified by the [IANA IPv6 Special-Purpose Address Registry].
-    ///
-    /// Whether or not an address is practically reachable will depend on your
-    /// network configuration. Most IPv6 addresses are globally reachable, unless
-    /// they are specifically defined as *not* globally reachable.
-    ///
-    /// Non-exhaustive list of notable addresses that are not globally reachable:
-    /// - The [unspecified address] ([`is_unspecified`](Ipv6Addr::is_unspecified))
-    /// - The [loopback address] ([`is_loopback`](Ipv6Addr::is_loopback))
-    /// - IPv4-mapped addresses
-    /// - Addresses reserved for benchmarking ([`is_benchmarking`](Ipv6Addr::is_benchmarking))
-    /// - Addresses reserved for documentation ([`is_documentation`](Ipv6Addr::is_documentation))
-    /// - Unique local addresses ([`is_unique_local`](Ipv6Addr::is_unique_local))
-    /// - Unicast addresses with link-local scope ([`is_unicast_link_local`](Ipv6Addr::is_unicast_link_local))
-    ///
-    /// For the complete overview of which addresses are globally reachable, see the table at the [IANA IPv6 Special-Purpose Address Registry].
-    ///
-    /// Note that an address having global scope is not the same as being globally reachable,
-    /// and there is no direct relation between the two concepts: There exist addresses with global scope
-    /// that are not globally reachable (for example unique local addresses),
-    /// and addresses that are globally reachable without having global scope
-    /// (multicast addresses with non-global scope).
+    /// 如果该地址按 [IANA IPv6 Special-Purpose Address Registry] 看起来是全局可达的，
+    /// 则返回 [`true`]。
+///
+    /// 地址在实际网络中能否到达取决于具体网络配置。除非某个 IPv6 地址被明确标记为
+    /// *非*全局可达，大多数 IPv6 地址都视为全局可达。
+///
+    /// 以下列出一些重要但并非穷尽的非全局可达地址：
+    /// - [unspecified address]（[`is_unspecified`](Ipv6Addr::is_unspecified)）
+    /// - [loopback address]（[`is_loopback`](Ipv6Addr::is_loopback)）
+    /// - IPv4-mapped 地址
+    /// - 保留给基准测试的地址（[`is_benchmarking`](Ipv6Addr::is_benchmarking)）
+    /// - 保留给文档示例的地址（[`is_documentation`](Ipv6Addr::is_documentation)）
+    /// - unique local 地址（[`is_unique_local`](Ipv6Addr::is_unique_local)）
+    /// - 具有 link-local scope 的 unicast 地址（[`is_unicast_link_local`](Ipv6Addr::is_unicast_link_local)）
+///
+    /// 哪些地址全局可达的完整概览，请参见 [IANA IPv6 Special-Purpose Address Registry] 中的表格。
+///
+    /// 注意，地址具有 global scope 并不等同于全局可达；这两个概念没有直接对应关系。
+    /// 有些地址具有 global scope 却不是全局可达（例如 unique local 地址），也有些地址
+    /// 全局可达但没有 global scope（例如非 global scope 的 multicast 地址）。
     ///
     /// [IANA IPv6 Special-Purpose Address Registry]: https://www.iana.org/assignments/iana-ipv6-special-registry/iana-ipv6-special-registry.xhtml
     /// [unspecified address]: Ipv6Addr::UNSPECIFIED
     /// [loopback address]: Ipv6Addr::LOCALHOST
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(ip)]
@@ -1604,44 +1579,43 @@ impl Ipv6Addr {
     pub const fn is_global(&self) -> bool {
         !(self.is_unspecified()
             || self.is_loopback()
-            // IPv4-mapped Address (`::ffff:0:0/96`)
+            // IPv4-mapped Address（`::ffff:0:0/96`）
             || matches!(self.segments(), [0, 0, 0, 0, 0, 0xffff, _, _])
-            // IPv4-IPv6 Translat. (`64:ff9b:1::/48`)
+            // IPv4-IPv6 Translat.（`64:ff9b:1::/48`）
             || matches!(self.segments(), [0x64, 0xff9b, 1, _, _, _, _, _])
-            // Discard-Only Address Block (`100::/64`)
+            // Discard-Only Address Block（`100::/64`）
             || matches!(self.segments(), [0x100, 0, 0, 0, _, _, _, _])
-            // IETF Protocol Assignments (`2001::/23`)
+            // IETF Protocol Assignments（`2001::/23`）
             || (matches!(self.segments(), [0x2001, b, _, _, _, _, _, _] if b < 0x200)
                 && !(
-                    // Port Control Protocol Anycast (`2001:1::1`)
+                    // Port Control Protocol Anycast（`2001:1::1`）
                     u128::from_be_bytes(self.octets()) == 0x2001_0001_0000_0000_0000_0000_0000_0001
-                    // Traversal Using Relays around NAT Anycast (`2001:1::2`)
+                    // Traversal Using Relays around NAT Anycast（`2001:1::2`）
                     || u128::from_be_bytes(self.octets()) == 0x2001_0001_0000_0000_0000_0000_0000_0002
-                    // AMT (`2001:3::/32`)
+                    // AMT（`2001:3::/32`）
                     || matches!(self.segments(), [0x2001, 3, _, _, _, _, _, _])
-                    // AS112-v6 (`2001:4:112::/48`)
+                    // AS112-v6（`2001:4:112::/48`）
                     || matches!(self.segments(), [0x2001, 4, 0x112, _, _, _, _, _])
-                    // ORCHIDv2 (`2001:20::/28`)
-                    // Drone Remote ID Protocol Entity Tags (DETs) Prefix (`2001:30::/28`)`
+                    // ORCHIDv2（`2001:20::/28`）
+                    // Drone Remote ID Protocol Entity Tags（DETs）Prefix（`2001:30::/28`）`
                     || matches!(self.segments(), [0x2001, b, _, _, _, _, _, _] if b >= 0x20 && b <= 0x3F)
                 ))
-            // 6to4 (`2002::/16`) – it's not explicitly documented as globally reachable,
-            // IANA says N/A.
+            // 6to4（`2002::/16`）没有明确记录为全局可达，IANA 标注为 N/A。
             || matches!(self.segments(), [0x2002, _, _, _, _, _, _, _])
             || self.is_documentation()
-            // Segment Routing (SRv6) SIDs (`5f00::/16`)
+            // Segment Routing（SRv6）SIDs（`5f00::/16`）
             || matches!(self.segments(), [0x5f00, ..])
             || self.is_unique_local()
             || self.is_unicast_link_local())
     }
 
-    /// Returns [`true`] if this is a unique local address (`fc00::/7`).
-    ///
-    /// This property is defined in [IETF RFC 4193].
+    /// 如果这是 unique local 地址（`fc00::/7`），则返回 [`true`]。
+///
+    /// 该属性定义于 [IETF RFC 4193]。
     ///
     /// [IETF RFC 4193]: https://tools.ietf.org/html/rfc4193
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::Ipv6Addr;
@@ -1657,13 +1631,13 @@ impl Ipv6Addr {
         (self.segments()[0] & 0xfe00) == 0xfc00
     }
 
-    /// Returns [`true`] if this is a unicast address, as defined by [IETF RFC 4291].
-    /// Any address that is not a [multicast address] (`ff00::/8`) is unicast.
+    /// 如果这是 [IETF RFC 4291] 定义的 unicast 地址，则返回 [`true`]。
+    /// 任何不是 [multicast address]（`ff00::/8`）的地址都是 unicast 地址。
     ///
     /// [IETF RFC 4291]: https://tools.ietf.org/html/rfc4291
     /// [multicast address]: Ipv6Addr::is_multicast
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(ip)]
@@ -1685,12 +1659,11 @@ impl Ipv6Addr {
         !self.is_multicast()
     }
 
-    /// Returns `true` if the address is a unicast address with link-local scope,
-    /// as defined in [RFC 4291].
-    ///
-    /// A unicast address has link-local scope if it has the prefix `fe80::/10`, as per [RFC 4291 section 2.4].
-    /// Note that this encompasses more addresses than those defined in [RFC 4291 section 2.5.6],
-    /// which describes "Link-Local IPv6 Unicast Addresses" as having the following stricter format:
+    /// 如果该地址是 [RFC 4291] 定义的、具有 link-local scope 的 unicast 地址，则返回 `true`。
+///
+    /// 按 [RFC 4291 section 2.4]，带 `fe80::/10` 前缀的 unicast 地址具有 link-local scope。
+    /// 注意，这覆盖的地址多于 [RFC 4291 section 2.5.6] 中定义的范围；后者描述的
+    /// “Link-Local IPv6 Unicast Addresses” 使用下面更严格的格式：
     ///
     /// ```text
     /// | 10 bits  |         54 bits         |          64 bits           |
@@ -1698,12 +1671,13 @@ impl Ipv6Addr {
     /// |1111111010|           0             |       interface ID         |
     /// +----------+-------------------------+----------------------------+
     /// ```
-    /// So while currently the only addresses with link-local scope an application will encounter are all in `fe80::/64`,
-    /// this might change in the future with the publication of new standards. More addresses in `fe80::/10` could be allocated,
-    /// and those addresses will have link-local scope.
-    ///
-    /// Also note that while [RFC 4291 section 2.5.3] mentions about the [loopback address] (`::1`) that "it is treated as having Link-Local scope",
-    /// this does not mean that the loopback address actually has link-local scope and this method will return `false` on it.
+    /// 因此，虽然应用目前会遇到的 link-local scope 地址都在 `fe80::/64` 中，
+    /// 但未来发布的新标准可能改变这一点。`fe80::/10` 中可能分配更多地址，
+    /// 这些地址也会具有 link-local scope。
+///
+    /// 还要注意，[RFC 4291 section 2.5.3] 提到 [loopback address]（`::1`）
+    /// “it is treated as having Link-Local scope”，但这并不表示 loopback 地址实际上
+    /// 具有 link-local scope；本方法会对它返回 `false`。
     ///
     /// [RFC 4291]: https://tools.ietf.org/html/rfc4291
     /// [RFC 4291 section 2.4]: https://tools.ietf.org/html/rfc4291#section-2.4
@@ -1711,7 +1685,7 @@ impl Ipv6Addr {
     /// [RFC 4291 section 2.5.6]: https://tools.ietf.org/html/rfc4291#section-2.5.6
     /// [loopback address]: Ipv6Addr::LOCALHOST
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::Ipv6Addr;
@@ -1735,15 +1709,15 @@ impl Ipv6Addr {
         (self.segments()[0] & 0xffc0) == 0xfe80
     }
 
-    /// Returns [`true`] if this is an address reserved for documentation
-    /// (`2001:db8::/32` and `3fff::/20`).
-    ///
-    /// This property is defined by [IETF RFC 3849] and [IETF RFC 9637].
+    /// 如果这是保留给文档示例使用的地址（`2001:db8::/32` 和 `3fff::/20`），
+    /// 则返回 [`true`]。
+///
+    /// 该属性由 [IETF RFC 3849] 和 [IETF RFC 9637] 定义。
     ///
     /// [IETF RFC 3849]: https://tools.ietf.org/html/rfc3849
     /// [IETF RFC 9637]: https://tools.ietf.org/html/rfc9637
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(ip)]
@@ -1761,10 +1735,10 @@ impl Ipv6Addr {
         matches!(self.segments(), [0x2001, 0xdb8, ..] | [0x3fff, 0..=0x0fff, ..])
     }
 
-    /// Returns [`true`] if this is an address reserved for benchmarking (`2001:2::/48`).
-    ///
-    /// This property is defined in [IETF RFC 5180], where it is mistakenly specified as covering the range `2001:0200::/48`.
-    /// This is corrected in [IETF RFC Errata 1752] to `2001:0002::/48`.
+    /// 如果这是保留给基准测试使用的地址（`2001:2::/48`），则返回 [`true`]。
+///
+    /// 该属性定义于 [IETF RFC 5180]；该 RFC 误将范围写为 `2001:0200::/48`。
+    /// [IETF RFC Errata 1752] 将其更正为 `2001:0002::/48`。
     ///
     /// [IETF RFC 5180]: https://tools.ietf.org/html/rfc5180
     /// [IETF RFC Errata 1752]: https://www.rfc-editor.org/errata_search.php?eid=1752
@@ -1784,17 +1758,17 @@ impl Ipv6Addr {
         (self.segments()[0] == 0x2001) && (self.segments()[1] == 0x2) && (self.segments()[2] == 0)
     }
 
-    /// Returns [`true`] if the address is a globally routable unicast address.
-    ///
-    /// The following return false:
-    ///
-    /// - the loopback address
-    /// - the link-local addresses
-    /// - unique local addresses
-    /// - the unspecified address
-    /// - the address range reserved for documentation
-    ///
-    /// This method returns [`true`] for site-local addresses as per [RFC 4291 section 2.5.7]
+    /// 如果该地址是全局可路由的 unicast 地址，则返回 [`true`]。
+///
+    /// 以下情况返回 false：
+///
+    /// - loopback 地址
+    /// - link-local 地址
+    /// - unique local 地址
+    /// - unspecified 地址
+    /// - 保留给文档示例使用的地址范围
+///
+    /// 根据 [RFC 4291 section 2.5.7]，本方法会对 site-local 地址返回 [`true`]。
     ///
     /// ```no_rust
     /// The special behavior of [the site-local unicast] prefix defined in [RFC3513] must no longer
@@ -1804,7 +1778,7 @@ impl Ipv6Addr {
     ///
     /// [RFC 4291 section 2.5.7]: https://tools.ietf.org/html/rfc4291#section-2.5.7
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(ip)]
@@ -1827,9 +1801,9 @@ impl Ipv6Addr {
             && !self.is_benchmarking()
     }
 
-    /// Returns the address's multicast scope if the address is multicast.
+    /// 如果该地址是 multicast 地址，则返回它的 multicast scope。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(ip)]
@@ -1862,13 +1836,13 @@ impl Ipv6Addr {
         }
     }
 
-    /// Returns [`true`] if this is a multicast address (`ff00::/8`).
-    ///
-    /// This property is defined by [IETF RFC 4291].
+    /// 如果这是 multicast 地址（`ff00::/8`），则返回 [`true`]。
+///
+    /// 该属性由 [IETF RFC 4291] 定义。
     ///
     /// [IETF RFC 4291]: https://tools.ietf.org/html/rfc4291
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::Ipv6Addr;
@@ -1884,12 +1858,12 @@ impl Ipv6Addr {
         (self.segments()[0] & 0xff00) == 0xff00
     }
 
-    /// Returns [`true`] if the address is an IPv4-mapped address (`::ffff:0:0/96`).
+    /// 如果该地址是 IPv4-mapped 地址（`::ffff:0:0/96`），则返回 [`true`]。
+///
+    /// IPv4-mapped 地址可通过 [`to_ipv4_mapped`](Ipv6Addr::to_ipv4_mapped)
+    /// 转换为其规范 IPv4 地址。
     ///
-    /// IPv4-mapped addresses can be converted to their canonical IPv4 address with
-    /// [`to_ipv4_mapped`](Ipv6Addr::to_ipv4_mapped).
-    ///
-    /// # Examples
+    /// # 示例
     /// ```
     /// #![feature(ip)]
     ///
@@ -1908,17 +1882,17 @@ impl Ipv6Addr {
         matches!(self.segments(), [0, 0, 0, 0, 0, 0xffff, _, _])
     }
 
-    /// Converts this address to an [`IPv4` address] if it's an [IPv4-mapped] address,
-    /// as defined in [IETF RFC 4291 section 2.5.5.2], otherwise returns [`None`].
-    ///
-    /// `::ffff:a.b.c.d` becomes `a.b.c.d`.
-    /// All addresses *not* starting with `::ffff` will return `None`.
+    /// 如果此地址是 [IETF RFC 4291 section 2.5.5.2] 定义的 [IPv4-mapped] 地址，
+    /// 则将其转换为 [`IPv4` address]；否则返回 [`None`]。
+///
+    /// `::ffff:a.b.c.d` 会变为 `a.b.c.d`。
+    /// 所有*不是*以 `::ffff` 开头的地址都会返回 `None`。
     ///
     /// [`IPv4` address]: Ipv4Addr
     /// [IPv4-mapped]: Ipv6Addr
     /// [IETF RFC 4291 section 2.5.5.2]: https://tools.ietf.org/html/rfc4291#section-2.5.5.2
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::{Ipv4Addr, Ipv6Addr};
@@ -1942,16 +1916,15 @@ impl Ipv6Addr {
         }
     }
 
-    /// Converts this address to an [`IPv4` address] if it is either
-    /// an [IPv4-compatible] address as defined in [IETF RFC 4291 section 2.5.5.1],
-    /// or an [IPv4-mapped] address as defined in [IETF RFC 4291 section 2.5.5.2],
-    /// otherwise returns [`None`].
-    ///
-    /// Note that this will return an [`IPv4` address] for the IPv6 loopback address `::1`. Use
-    /// [`Ipv6Addr::to_ipv4_mapped`] to avoid this.
-    ///
-    /// `::a.b.c.d` and `::ffff:a.b.c.d` become `a.b.c.d`. `::1` becomes `0.0.0.1`.
-    /// All addresses *not* starting with either all zeroes or `::ffff` will return `None`.
+    /// 如果此地址是 [IETF RFC 4291 section 2.5.5.1] 定义的 [IPv4-compatible] 地址，
+    /// 或是 [IETF RFC 4291 section 2.5.5.2] 定义的 [IPv4-mapped] 地址，
+    /// 则将其转换为 [`IPv4` address]；否则返回 [`None`]。
+///
+    /// 注意，这会把 IPv6 loopback 地址 `::1` 转换为一个 [`IPv4` address]。
+    /// 如果要避免这种情况，请使用 [`Ipv6Addr::to_ipv4_mapped`]。
+///
+    /// `::a.b.c.d` 和 `::ffff:a.b.c.d` 会变为 `a.b.c.d`。`::1` 会变为 `0.0.0.1`。
+    /// 所有*不是*以全零前缀或 `::ffff` 开头的地址都会返回 `None`。
     ///
     /// [`IPv4` address]: Ipv4Addr
     /// [IPv4-compatible]: Ipv6Addr#ipv4-compatible-ipv6-addresses
@@ -1959,7 +1932,7 @@ impl Ipv6Addr {
     /// [IETF RFC 4291 section 2.5.5.1]: https://tools.ietf.org/html/rfc4291#section-2.5.5.1
     /// [IETF RFC 4291 section 2.5.5.2]: https://tools.ietf.org/html/rfc4291#section-2.5.5.2
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::{Ipv4Addr, Ipv6Addr};
@@ -1985,10 +1958,9 @@ impl Ipv6Addr {
         }
     }
 
-    /// Converts this address to an `IpAddr::V4` if it is an IPv4-mapped address,
-    /// otherwise returns self wrapped in an `IpAddr::V6`.
+    /// 如果此地址是 IPv4-mapped 地址，则转换为 `IpAddr::V4`；否则将自身包装为 `IpAddr::V6` 返回。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::Ipv6Addr;
@@ -2008,7 +1980,7 @@ impl Ipv6Addr {
         IpAddr::V6(*self)
     }
 
-    /// Returns the sixteen eight-bit integers the IPv6 address consists of.
+    /// 返回组成此 IPv6 地址的十六个 8 位整数。
     ///
     /// ```
     /// use std::net::Ipv6Addr;
@@ -2024,9 +1996,9 @@ impl Ipv6Addr {
         self.octets
     }
 
-    /// Creates an `Ipv6Addr` from a sixteen element byte array.
+    /// 根据包含十六个元素的字节数组创建 `Ipv6Addr`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::Ipv6Addr;
@@ -2051,10 +2023,9 @@ impl Ipv6Addr {
         Ipv6Addr { octets }
     }
 
-    /// Returns the sixteen eight-bit integers the IPv6 address consists of
-    /// as a slice.
+    /// 以切片形式返回组成此 IPv6 地址的十六个 8 位整数。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(ip_as_octets)]
@@ -2071,13 +2042,12 @@ impl Ipv6Addr {
     }
 }
 
-/// Writes an Ipv6Addr, conforming to the canonical style described by
-/// [RFC 5952](https://tools.ietf.org/html/rfc5952).
+/// 按 [RFC 5952](https://tools.ietf.org/html/rfc5952) 描述的规范样式写出 `Ipv6Addr`。
 #[stable(feature = "rust1", since = "1.0.0")]
 impl fmt::Display for Ipv6Addr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // If there are no alignment requirements, write the IP address directly to `f`.
-        // Otherwise, write it to a local buffer and then use `f.pad`.
+        // 如果没有对齐要求，则直接把 IP 地址写入 `f`。
+        // 否则先写入本地缓冲区，再调用 `f.pad`。
         if f.precision().is_none() && f.width().is_none() {
             let segments = self.segments();
 
@@ -2090,7 +2060,7 @@ impl fmt::Display for Ipv6Addr {
                     len: usize,
                 }
 
-                // Find the inner 0 span
+                // 找出内部最长的 0 segment 连续区间。
                 let zeroes = {
                     let mut longest = Span::default();
                     let mut current = Span::default();
@@ -2114,7 +2084,7 @@ impl fmt::Display for Ipv6Addr {
                     longest
                 };
 
-                /// Writes a colon-separated part of the address.
+                /// 写出地址中以冒号分隔的一段。
                 #[inline]
                 fn fmt_subslice(f: &mut fmt::Formatter<'_>, chunk: &[u16]) -> fmt::Result {
                     if let Some((first, tail)) = chunk.split_first() {
@@ -2139,7 +2109,7 @@ impl fmt::Display for Ipv6Addr {
             const LONGEST_IPV6_ADDR: &str = "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff";
 
             let mut buf = DisplayBuffer::<{ LONGEST_IPV6_ADDR.len() }>::new();
-            // Buffer is long enough for the longest possible IPv6 address, so this should never fail.
+            // 缓冲区足以容纳最长的 IPv6 地址，因此这里不应失败。
             write!(buf, "{}", self).unwrap();
 
             f.pad(buf.as_str())
@@ -2217,7 +2187,7 @@ impl Ord for Ipv6Addr {
 #[stable(feature = "i128", since = "1.26.0")]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
 impl const From<Ipv6Addr> for u128 {
-    /// Uses [`Ipv6Addr::to_bits`] to convert an IPv6 address to a host byte order `u128`.
+    /// 使用 [`Ipv6Addr::to_bits`] 将 IPv6 地址转换为本机字节序的 `u128`。
     #[inline]
     fn from(ip: Ipv6Addr) -> u128 {
         ip.to_bits()
@@ -2226,7 +2196,7 @@ impl const From<Ipv6Addr> for u128 {
 #[stable(feature = "i128", since = "1.26.0")]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
 impl const From<u128> for Ipv6Addr {
-    /// Uses [`Ipv6Addr::from_bits`] to convert a host byte order `u128` to an IPv6 address.
+    /// 使用 [`Ipv6Addr::from_bits`] 将本机字节序的 `u128` 转换为 IPv6 地址。
     #[inline]
     fn from(ip: u128) -> Ipv6Addr {
         Ipv6Addr::from_bits(ip)
@@ -2236,9 +2206,9 @@ impl const From<u128> for Ipv6Addr {
 #[stable(feature = "ipv6_from_octets", since = "1.9.0")]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
 impl const From<[u8; 16]> for Ipv6Addr {
-    /// Creates an `Ipv6Addr` from a sixteen element byte array.
+    /// 根据包含十六个元素的字节数组创建 `Ipv6Addr`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::Ipv6Addr;
@@ -2264,9 +2234,9 @@ impl const From<[u8; 16]> for Ipv6Addr {
 #[stable(feature = "ipv6_from_segments", since = "1.16.0")]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
 impl const From<[u16; 8]> for Ipv6Addr {
-    /// Creates an `Ipv6Addr` from an eight element 16-bit array.
+    /// 根据包含八个元素的 16 位数组创建 `Ipv6Addr`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::Ipv6Addr;
@@ -2293,9 +2263,9 @@ impl const From<[u16; 8]> for Ipv6Addr {
 #[stable(feature = "ip_from_slice", since = "1.17.0")]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
 impl const From<[u8; 16]> for IpAddr {
-    /// Creates an `IpAddr::V6` from a sixteen element byte array.
+    /// 根据包含十六个元素的字节数组创建 `IpAddr::V6`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::{IpAddr, Ipv6Addr};
@@ -2321,9 +2291,9 @@ impl const From<[u8; 16]> for IpAddr {
 #[stable(feature = "ip_from_slice", since = "1.17.0")]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
 impl const From<[u16; 8]> for IpAddr {
-    /// Creates an `IpAddr::V6` from an eight element 16-bit array.
+    /// 根据包含八个元素的 16 位数组创建 `IpAddr::V6`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::{IpAddr, Ipv6Addr};

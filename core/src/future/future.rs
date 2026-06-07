@@ -17,6 +17,11 @@ use crate::task::{Context, Poll};
 ///
 /// 使用 future 时通常不直接调用 `poll`,而是对其值使用 `.await`。
 ///
+/// future 没有单独的“取消”方法。调用方若在 future 返回 `Poll::Ready` 之前丢弃它,就等价于取消
+/// 这次异步计算:状态机会被正常 drop,但运行时不会再承诺继续调用 `poll`,也不会额外发送取消通知。
+/// 因此实现者需要把释放资源、注销 I/O 兴趣、减少引用计数等清理逻辑放在自身的 drop 路径中,
+/// 而不能假定取消时还会再收到一次 `poll`。
+///
 /// [`async`]: ../../std/keyword.async.html
 /// [`Waker`]: crate::task::Waker
 #[doc(notable_trait)]
@@ -36,7 +41,7 @@ pub trait Future {
 
     /// 尝试把 future 推进到最终结果;若结果尚不可用,则登记当前任务以便后续被唤醒。
     ///
-    /// # 返回值(Return value)
+    /// # 返回值
     ///
     /// 本函数返回:
     ///
@@ -44,7 +49,7 @@ pub trait Future {
     /// - [`Poll::Ready(val)`]:表示 future 已成功完成,`val` 是它的结果。
     ///
     /// **完成契约**:一旦 future 返回了 `Poll::Ready`(即已完成),调用方就**不得再次
-    /// `poll` 它**(即所谓的 “poll after completion”)。再次 `poll` 的行为不被 `Future`
+    /// `poll` 它**(即“完成后再次 poll”)。再次 `poll` 的行为不被 `Future`
     /// trait 约束,可能 panic、永久阻塞或产生其他问题(详见下方 `# Panics`)。
     ///
     /// **唤醒契约**:当 future 尚未就绪时,`poll` 返回 `Poll::Pending`,并且在返回 `Pending`
@@ -63,10 +68,15 @@ pub trait Future {
     /// 还要注意:在多次 `poll` 调用中,只应安排最近一次调用所传入 [`Context`] 中的 [`Waker`]
     /// 去接收唤醒(见下文 `Context` 不保证跨 `poll` 相同的说明)。
     ///
-    /// # 运行时特征(Runtime characteristics)
+    /// **取消契约**:丢弃一个尚未完成的 future 就是取消它。取消不会通过 `Poll` 返回值表达,也不会
+    /// 要求执行器再次调用 `poll`;它只表现为 future 的字段按 Rust 的析构规则被 drop。已经克隆并
+    /// 注册到外部事件源中的 [`Waker`] 可能仍然存在,但这些唤醒最多只能让执行器发现任务已不再需要
+    /// 继续推进,不能复活已经被 drop 的 future。
+    ///
+    /// # 运行时特征
     ///
     /// future 自身是*惰性的*:必须被*主动* `poll` 底层计算才会前进。这意味着每当当前任务被
-    /// 唤醒,它都应主动对自己仍然关心的、处于 pending 状态的 future 重新 `poll`。
+    /// 唤醒,它都应主动对自己仍然关心的、处于 `Pending` 状态的 future 重新 `poll`。
     ///
     /// 话虽如此,某些 future 代表的值实际上是在另一个任务里计算的。此时该 future 的底层计算
     /// 只是作为一个“管道”,传递由那个独立运行的任务算出的值。这类 future 通常是在把新任务

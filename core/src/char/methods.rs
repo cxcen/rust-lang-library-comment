@@ -1,4 +1,4 @@
-//! impl char {}
+//! `char` 的固有方法实现。
 
 use super::*;
 use crate::panic::const_panic;
@@ -9,12 +9,12 @@ use crate::unicode::printable::is_printable;
 use crate::unicode::{self, conversions};
 
 impl char {
-    /// The lowest valid code point a `char` can have, `'\0'`.
+    /// `char` 可具有的最低有效 code point，`'\0'`。
     ///
-    /// Unlike integer types, `char` actually has a gap in the middle,
-    /// meaning that the range of possible `char`s is smaller than you
-    /// might expect. Ranges of `char` will automatically hop this gap
-    /// for you:
+    /// 与整数类型不同，`char` 的取值空间中间存在一个空洞：UTF-16 代理项范围
+    /// U+D800..=U+DFFF 不是 Unicode scalar value，因此不能由 `char` 表示。
+    /// 这意味着可能的 `char` 数量少于从 `MIN` 到 [`MAX`] 的整数距离。
+    /// `char` 范围迭代会自动跳过这个空洞：
     ///
     /// ```
     /// let dist = u32::from(char::MAX) - u32::from(char::MIN);
@@ -22,12 +22,11 @@ impl char {
     /// assert!(size < dist);
     /// ```
     ///
-    /// Despite this gap, the `MIN` and [`MAX`] values can be used as bounds for
-    /// all `char` values.
+    /// 尽管中间存在该空洞，`MIN` 和 [`MAX`] 仍可作为所有 `char` 值的上下界。
     ///
     /// [`MAX`]: char::MAX
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # fn something_which_returns_char() -> char { 'a' }
@@ -40,12 +39,12 @@ impl char {
     #[stable(feature = "char_min", since = "1.83.0")]
     pub const MIN: char = '\0';
 
-    /// The highest valid code point a `char` can have, `'\u{10FFFF}'`.
+    /// `char` 可具有的最高有效 code point，`'\u{10FFFF}'`。
     ///
-    /// Unlike integer types, `char` actually has a gap in the middle,
-    /// meaning that the range of possible `char`s is smaller than you
-    /// might expect. Ranges of `char` will automatically hop this gap
-    /// for you:
+    /// 与整数类型不同，`char` 的取值空间中间存在一个空洞：UTF-16 代理项范围
+    /// U+D800..=U+DFFF 不是 Unicode scalar value，因此不能由 `char` 表示。
+    /// 这意味着可能的 `char` 数量少于从 [`MIN`] 到 `MAX` 的整数距离。
+    /// `char` 范围迭代会自动跳过这个空洞：
     ///
     /// ```
     /// let dist = u32::from(char::MAX) - u32::from(char::MIN);
@@ -53,12 +52,11 @@ impl char {
     /// assert!(size < dist);
     /// ```
     ///
-    /// Despite this gap, the [`MIN`] and `MAX` values can be used as bounds for
-    /// all `char` values.
+    /// 尽管中间存在该空洞，[`MIN`] 和 `MAX` 仍可作为所有 `char` 值的上下界。
     ///
     /// [`MIN`]: char::MIN
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # fn something_which_returns_char() -> char { 'a' }
@@ -72,43 +70,48 @@ impl char {
     #[stable(feature = "assoc_char_consts", since = "1.52.0")]
     pub const MAX: char = '\u{10FFFF}';
 
-    /// The maximum number of bytes required to [encode](char::encode_utf8) a `char` to
-    /// UTF-8 encoding.
+    /// 将 `char` [编码](char::encode_utf8)为 UTF-8 时最多需要的字节数。
+    ///
+    /// 由于 `char` 是 Unicode scalar value，UTF-8 编码长度最多为 4 字节。
     #[stable(feature = "char_max_len_assoc", since = "1.93.0")]
     pub const MAX_LEN_UTF8: usize = 4;
 
-    /// The maximum number of two-byte units required to [encode](char::encode_utf16) a `char`
-    /// to UTF-16 encoding.
+    /// 将 `char` [编码](char::encode_utf16)为 UTF-16 时最多需要的 2 字节 code unit 数。
+    ///
+    /// BMP 内的 scalar value 需要 1 个 code unit，补充平面中的 scalar value 需要一个代理对，
+    /// 即 2 个 code unit。
     #[stable(feature = "char_max_len_assoc", since = "1.93.0")]
     pub const MAX_LEN_UTF16: usize = 2;
 
-    /// `U+FFFD REPLACEMENT CHARACTER` (�) is used in Unicode to represent a
-    /// decoding error.
+    /// `U+FFFD REPLACEMENT CHARACTER`（�）在 Unicode 中用于表示解码错误。
     ///
-    /// It can occur, for example, when giving ill-formed UTF-8 bytes to
-    /// [`String::from_utf8_lossy`](../std/string/struct.String.html#method.from_utf8_lossy).
+    /// 例如，把非良构 UTF-8 字节交给
+    /// [`String::from_utf8_lossy`](../std/string/struct.String.html#method.from_utf8_lossy)
+    /// 时，非法片段会被替换为该字符。
     #[stable(feature = "assoc_char_consts", since = "1.52.0")]
     pub const REPLACEMENT_CHARACTER: char = '\u{FFFD}';
 
-    /// The version of [Unicode](https://www.unicode.org/) that the Unicode parts of
-    /// `char` and `str` methods are based on.
+    /// `char` 和 `str` 中 Unicode 相关方法所依据的
+    /// [Unicode](https://www.unicode.org/) 版本。
     ///
-    /// New versions of Unicode are released regularly and subsequently all methods
-    /// in the standard library depending on Unicode are updated. Therefore the
-    /// behavior of some `char` and `str` methods and the value of this constant
-    /// changes over time. This is *not* considered to be a breaking change.
+    /// Unicode 会定期发布新版本，标准库中依赖 Unicode 数据的方法也会随之更新。
+    /// 因此，部分 `char` 和 `str` 方法的行为以及该常量的值会随时间变化；
+    /// 这种随 Unicode 标准演进而发生的变化不视为破坏性变更。
     ///
-    /// The version numbering scheme is explained in
-    /// [Unicode 11.0 or later, Section 3.1 Versions of the Unicode Standard](https://www.unicode.org/versions/Unicode11.0.0/ch03.pdf#page=4).
+    /// 版本号规则见
+    /// [Unicode 11.0 或更高版本，3.1 节 Versions of the Unicode Standard](https://www.unicode.org/versions/Unicode11.0.0/ch03.pdf#page=4)。
     #[stable(feature = "assoc_char_consts", since = "1.52.0")]
     pub const UNICODE_VERSION: (u8, u8, u8) = crate::unicode::UNICODE_VERSION;
 
-    /// Creates an iterator over the native endian UTF-16 encoded code points in `iter`,
-    /// returning unpaired surrogates as `Err`s.
+    /// 为 `iter` 中按本机端序表示的 UTF-16 code unit 创建解码迭代器，
+    /// 遇到未配对代理项时返回 `Err`。
     ///
-    /// # Examples
+    /// 合法代理对会合成为一个 `char`。单独的前导代理项或尾随代理项都不是
+    /// Unicode scalar value，因此不能作为 `char` 产生，只能通过错误暴露给调用方。
     ///
-    /// Basic usage:
+    /// # 示例
+    ///
+    /// 基本用法：
     ///
     /// ```
     /// // 𝄞mus<invalid>ic<invalid>
@@ -130,7 +133,7 @@ impl char {
     /// );
     /// ```
     ///
-    /// A lossy decoder can be obtained by replacing `Err` results with the replacement character:
+    /// 把 `Err` 结果替换为替换字符，就可以得到有损解码器：
     ///
     /// ```
     /// // 𝄞mus<invalid>ic<invalid>
@@ -151,10 +154,10 @@ impl char {
         super::decode::decode_utf16(iter)
     }
 
-    /// Converts a `u32` to a `char`.
+    /// 将 `u32` 转换为 `char`。
     ///
-    /// Note that all `char`s are valid [`u32`]s, and can be cast to one with
-    /// [`as`](../std/keyword.as.html):
+    /// 所有 `char` 都能作为 [`u32`] 表示，并可用
+    /// [`as`](../std/keyword.as.html) 转换为数值 code point：
     ///
     /// ```
     /// let c = '💯';
@@ -163,18 +166,16 @@ impl char {
     /// assert_eq!(128175, i);
     /// ```
     ///
-    /// However, the reverse is not true: not all valid [`u32`]s are valid
-    /// `char`s. `from_u32()` will return `None` if the input is not a valid value
-    /// for a `char`.
+    /// 反过来并不成立：不是所有 [`u32`] 都是合法 `char`。如果输入超过 U+10FFFF，
+    /// 或位于 UTF-16 代理项范围 U+D800..=U+DFFF，`from_u32()` 会返回 `None`。
     ///
-    /// For an unsafe version of this function which ignores these checks, see
-    /// [`from_u32_unchecked`].
+    /// 如需忽略这些检查的 unsafe 版本，见 [`from_u32_unchecked`]。
     ///
     /// [`from_u32_unchecked`]: #method.from_u32_unchecked
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage:
+    /// 基本用法：
     ///
     /// ```
     /// let c = char::from_u32(0x2764);
@@ -182,7 +183,7 @@ impl char {
     /// assert_eq!(Some('❤'), c);
     /// ```
     ///
-    /// Returning `None` when the input is not a valid `char`:
+    /// 当输入不是合法 `char` 时返回 `None`：
     ///
     /// ```
     /// let c = char::from_u32(0x110000);
@@ -197,10 +198,9 @@ impl char {
         super::convert::from_u32(i)
     }
 
-    /// Converts a `u32` to a `char`, ignoring validity.
+    /// 忽略有效性检查，将 `u32` 转换为 `char`。
     ///
-    /// Note that all `char`s are valid [`u32`]s, and can be cast to one with
-    /// `as`:
+    /// 所有 `char` 都能作为 [`u32`] 表示，并可用 `as` 转换为数值 code point：
     ///
     /// ```
     /// let c = '💯';
@@ -209,21 +209,24 @@ impl char {
     /// assert_eq!(128175, i);
     /// ```
     ///
-    /// However, the reverse is not true: not all valid [`u32`]s are valid
-    /// `char`s. `from_u32_unchecked()` will ignore this, and blindly cast to
-    /// `char`, possibly creating an invalid one.
+    /// 反过来并不成立：不是所有 [`u32`] 都是合法 `char`。`from_u32_unchecked()`
+    /// 会跳过检查并直接构造 `char`，因此可能制造无效值。
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// This function is unsafe, as it may construct invalid `char` values.
+    /// 调用方必须保证 `i` 是 Unicode scalar value：`i <= 0x10FFFF`，
+    /// 且 `i` 不在代理项范围 `0xD800..=0xDFFF` 内。
     ///
-    /// For a safe version of this function, see the [`from_u32`] function.
+    /// 违反该前置条件会构造无效 `char`。`char` 的有效性是编译器和标准库依赖的类型不变量；
+    /// 一旦被破坏，后续模式匹配、编码或优化都可能在错误假设下运行并导致 UB。
+    ///
+    /// 安全版本见 [`from_u32`]。
     ///
     /// [`from_u32`]: #method.from_u32
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage:
+    /// 基本用法：
     ///
     /// ```
     /// let c = unsafe { char::from_u32_unchecked(0x2764) };
@@ -235,40 +238,38 @@ impl char {
     #[must_use]
     #[inline]
     pub const unsafe fn from_u32_unchecked(i: u32) -> char {
-        // SAFETY: the safety contract must be upheld by the caller.
+        // SAFETY: 调用方必须维护 `from_u32_unchecked` 的契约：
+        // `i` 是合法 Unicode scalar value，不越界且不是代理项。
         unsafe { super::convert::from_u32_unchecked(i) }
     }
 
-    /// Converts a digit in the given radix to a `char`.
+    /// 将给定基数中的数字转换为 `char`。
     ///
-    /// A 'radix' here is sometimes also called a 'base'. A radix of two
-    /// indicates a binary number, a radix of ten, decimal, and a radix of
-    /// sixteen, hexadecimal, to give some common values. Arbitrary
-    /// radices are supported.
+    /// 这里的 radix 也常称为 base：2 表示二进制，10 表示十进制，16 表示十六进制。
+    /// 支持任意 2 到 36 之间的基数。
     ///
-    /// `from_digit()` will return `None` if the input is not a digit in
-    /// the given radix.
+    /// 如果 `num` 不是给定基数中的一位数字，`from_digit()` 返回 `None`。
     ///
     /// # Panics
     ///
-    /// Panics if given a radix larger than 36.
+    /// 当给定基数大于 36 时 panic。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage:
+    /// 基本用法：
     ///
     /// ```
     /// let c = char::from_digit(4, 10);
     ///
     /// assert_eq!(Some('4'), c);
     ///
-    /// // Decimal 11 is a single digit in base 16
+    /// // 十进制 11 是 16 进制中的一位数字。
     /// let c = char::from_digit(11, 16);
     ///
     /// assert_eq!(Some('b'), c);
     /// ```
     ///
-    /// Returning `None` when the input is not a digit:
+    /// 当输入不是该基数中的数字时返回 `None`：
     ///
     /// ```
     /// let c = char::from_digit(20, 10);
@@ -276,10 +277,10 @@ impl char {
     /// assert_eq!(None, c);
     /// ```
     ///
-    /// Passing a large radix, causing a panic:
+    /// 传入过大的基数会导致 panic：
     ///
     /// ```should_panic
-    /// // this panics
+    /// // 这里会 panic。
     /// let _c = char::from_digit(1, 37);
     /// ```
     #[stable(feature = "assoc_char_funcs", since = "1.52.0")]
@@ -290,33 +291,30 @@ impl char {
         super::convert::from_digit(num, radix)
     }
 
-    /// Checks if a `char` is a digit in the given radix.
+    /// 检查 `char` 是否是给定基数中的数字。
     ///
-    /// A 'radix' here is sometimes also called a 'base'. A radix of two
-    /// indicates a binary number, a radix of ten, decimal, and a radix of
-    /// sixteen, hexadecimal, to give some common values. Arbitrary
-    /// radices are supported.
+    /// 这里的 radix 也常称为 base：2 表示二进制，10 表示十进制，16 表示十六进制。
+    /// 支持任意 2 到 36 之间的基数。
     ///
-    /// Compared to [`is_numeric()`], this function only recognizes the characters
-    /// `0-9`, `a-z` and `A-Z`.
+    /// 与 [`is_numeric()`] 相比，该函数只识别 `0-9`、`a-z` 和 `A-Z`。
     ///
-    /// 'Digit' is defined to be only the following characters:
+    /// 这里的“数字”只包括以下字符：
     ///
     /// * `0-9`
     /// * `a-z`
     /// * `A-Z`
     ///
-    /// For a more comprehensive understanding of 'digit', see [`is_numeric()`].
+    /// 如果需要更广义的 Unicode 数字概念，见 [`is_numeric()`]。
     ///
     /// [`is_numeric()`]: #method.is_numeric
     ///
     /// # Panics
     ///
-    /// Panics if given a radix smaller than 2 or larger than 36.
+    /// 当给定基数小于 2 或大于 36 时 panic。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage:
+    /// 基本用法：
     ///
     /// ```
     /// assert!('1'.is_digit(10));
@@ -324,17 +322,17 @@ impl char {
     /// assert!(!'f'.is_digit(10));
     /// ```
     ///
-    /// Passing a large radix, causing a panic:
+    /// 传入过大的基数会导致 panic：
     ///
     /// ```should_panic
-    /// // this panics
+    /// // 这里会 panic。
     /// '1'.is_digit(37);
     /// ```
     ///
-    /// Passing a small radix, causing a panic:
+    /// 传入过小的基数会导致 panic：
     ///
     /// ```should_panic
-    /// // this panics
+    /// // 这里会 panic。
     /// '1'.is_digit(1);
     /// ```
     #[stable(feature = "rust1", since = "1.0.0")]
@@ -344,53 +342,51 @@ impl char {
         self.to_digit(radix).is_some()
     }
 
-    /// Converts a `char` to a digit in the given radix.
+    /// 将 `char` 转换为给定基数中的数字值。
     ///
-    /// A 'radix' here is sometimes also called a 'base'. A radix of two
-    /// indicates a binary number, a radix of ten, decimal, and a radix of
-    /// sixteen, hexadecimal, to give some common values. Arbitrary
-    /// radices are supported.
+    /// 这里的 radix 也常称为 base：2 表示二进制，10 表示十进制，16 表示十六进制。
+    /// 支持任意 2 到 36 之间的基数。
     ///
-    /// 'Digit' is defined to be only the following characters:
+    /// 这里的“数字”只包括以下字符：
     ///
     /// * `0-9`
     /// * `a-z`
     /// * `A-Z`
     ///
-    /// # Errors
+    /// # 错误
     ///
-    /// Returns `None` if the `char` does not refer to a digit in the given radix.
+    /// 如果该 `char` 不是给定基数中的一位数字，则返回 `None`。
     ///
     /// # Panics
     ///
-    /// Panics if given a radix smaller than 2 or larger than 36.
+    /// 当给定基数小于 2 或大于 36 时 panic。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage:
+    /// 基本用法：
     ///
     /// ```
     /// assert_eq!('1'.to_digit(10), Some(1));
     /// assert_eq!('f'.to_digit(16), Some(15));
     /// ```
     ///
-    /// Passing a non-digit results in failure:
+    /// 传入非数字会失败：
     ///
     /// ```
     /// assert_eq!('f'.to_digit(10), None);
     /// assert_eq!('z'.to_digit(16), None);
     /// ```
     ///
-    /// Passing a large radix, causing a panic:
+    /// 传入过大的基数会导致 panic：
     ///
     /// ```should_panic
-    /// // this panics
+    /// // 这里会 panic。
     /// let _ = '1'.to_digit(37);
     /// ```
-    /// Passing a small radix, causing a panic:
+    /// 传入过小的基数会导致 panic：
     ///
     /// ```should_panic
-    /// // this panics
+    /// // 这里会 panic。
     /// let _ = '1'.to_digit(1);
     /// ```
     #[stable(feature = "rust1", since = "1.0.0")]
@@ -404,34 +400,31 @@ impl char {
             radix >= 2 && radix <= 36,
             "to_digit: invalid radix -- radix must be in the range 2 to 36 inclusive"
         );
-        // check radix to remove letter handling code when radix is a known constant
+        // 检查 radix，使 radix 为已知常量时可以消除字母处理代码。
         let value = if self > '9' && radix > 10 {
-            // mask to convert ASCII letters to uppercase
+            // 用掩码把 ASCII 字母转换为大写形式。
             const TO_UPPERCASE_MASK: u32 = !0b0010_0000;
-            // Converts an ASCII letter to its corresponding integer value:
-            // A-Z => 10-35, a-z => 10-35. Other characters produce values >= 36.
+            // 把 ASCII 字母转换为对应整数值：
+            // A-Z => 10-35，a-z => 10-35；其他字符会产生 >= 36 的值。
             //
-            // Add Overflow Safety:
-            // By applying the mask after the subtraction, the first addendum is
-            // constrained such that it never exceeds u32::MAX - 0x20.
+            // 加法溢出安全性：
+            // 在减法之后应用掩码，会把第一个加数限制在永远不超过 u32::MAX - 0x20 的范围内。
             ((self as u32).wrapping_sub('A' as u32) & TO_UPPERCASE_MASK) + 10
         } else {
-            // convert digit to value, non-digits wrap to values > 36
+            // 把数字字符转换为值；非数字会环绕到大于 36 的值。
             (self as u32).wrapping_sub('0' as u32)
         };
-        // FIXME(const-hack): once then_some is const fn, use it here
+        // FIXME(const-hack): 当 `then_some` 成为 const fn 后，改用它。
         if value < radix { Some(value) } else { None }
     }
 
-    /// Returns an iterator that yields the hexadecimal Unicode escape of a
-    /// character as `char`s.
+    /// 返回一个迭代器，以 `char` 形式产生字符的十六进制 Unicode 转义序列。
     ///
-    /// This will escape characters with the Rust syntax of the form
-    /// `\u{NNNNNN}` where `NNNNNN` is a hexadecimal representation.
+    /// 转义结果采用 Rust 语法 `\u{NNNNNN}`，其中 `NNNNNN` 是十六进制表示。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// As an iterator:
+    /// 作为迭代器：
     ///
     /// ```
     /// for c in '❤'.escape_unicode() {
@@ -440,19 +433,19 @@ impl char {
     /// println!();
     /// ```
     ///
-    /// Using `println!` directly:
+    /// 直接使用 `println!`：
     ///
     /// ```
     /// println!("{}", '❤'.escape_unicode());
     /// ```
     ///
-    /// Both are equivalent to:
+    /// 二者等价于：
     ///
     /// ```
     /// println!("\\u{{2764}}");
     /// ```
     ///
-    /// Using [`to_string`](../std/string/trait.ToString.html#tymethod.to_string):
+    /// 使用 [`to_string`](../std/string/trait.ToString.html#tymethod.to_string):
     ///
     /// ```
     /// assert_eq!('❤'.escape_unicode().to_string(), "\\u{2764}");
@@ -465,11 +458,11 @@ impl char {
         EscapeUnicode::new(self)
     }
 
-    /// An extended version of `escape_debug` that optionally permits escaping
-    /// Extended Grapheme codepoints, single quotes, and double quotes. This
-    /// allows us to format characters like nonspacing marks better when they're
-    /// at the start of a string, and allows escaping single quotes in
-    /// characters, and double quotes in strings.
+    /// `escape_debug` 的扩展版本，可按需转义 Extended Grapheme code point、
+    /// 单引号和双引号。
+    ///
+    /// 这让字符串开头的非间距标记等字符能以更适合调试的形式展示，也允许在字符字面量中转义单引号、
+    /// 在字符串中转义双引号。
     #[inline]
     pub(crate) fn escape_debug_ext(self, args: EscapeDebugExtArgs) -> EscapeDebug {
         match self {
@@ -488,15 +481,14 @@ impl char {
         }
     }
 
-    /// Returns an iterator that yields the literal escape code of a character
-    /// as `char`s.
+    /// 返回一个迭代器，以 `char` 形式产生字符的调试字面量转义序列。
     ///
-    /// This will escape the characters similar to the [`Debug`](core::fmt::Debug) implementations
-    /// of `str` or `char`.
+    /// 其转义规则与 `str` 或 `char` 的 [`Debug`](core::fmt::Debug) 实现相近，
+    /// 用于生成适合调试输出的文本。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// As an iterator:
+    /// 作为迭代器：
     ///
     /// ```
     /// for c in '\n'.escape_debug() {
@@ -505,19 +497,19 @@ impl char {
     /// println!();
     /// ```
     ///
-    /// Using `println!` directly:
+    /// 直接使用 `println!`：
     ///
     /// ```
     /// println!("{}", '\n'.escape_debug());
     /// ```
     ///
-    /// Both are equivalent to:
+    /// 二者等价于：
     ///
     /// ```
     /// println!("\\n");
     /// ```
     ///
-    /// Using [`to_string`](../std/string/trait.ToString.html#tymethod.to_string):
+    /// 使用 [`to_string`](../std/string/trait.ToString.html#tymethod.to_string):
     ///
     /// ```
     /// assert_eq!('\n'.escape_debug().to_string(), "\\n");
@@ -530,29 +522,25 @@ impl char {
         self.escape_debug_ext(EscapeDebugExtArgs::ESCAPE_ALL)
     }
 
-    /// Returns an iterator that yields the literal escape code of a character
-    /// as `char`s.
+    /// 返回一个迭代器，以 `char` 形式产生字符的默认字面量转义序列。
     ///
-    /// The default is chosen with a bias toward producing literals that are
-    /// legal in a variety of languages, including C++11 and similar C-family
-    /// languages. The exact rules are:
+    /// 默认规则偏向生成可被多种语言接受的字面量，包括 C++11 和类似的 C 系语言。
+    /// 具体规则如下：
     ///
-    /// * Tab is escaped as `\t`.
-    /// * Carriage return is escaped as `\r`.
-    /// * Line feed is escaped as `\n`.
-    /// * Single quote is escaped as `\'`.
-    /// * Double quote is escaped as `\"`.
-    /// * Backslash is escaped as `\\`.
-    /// * Any character in the 'printable ASCII' range `0x20` .. `0x7e`
-    ///   inclusive is not escaped.
-    /// * All other characters are given hexadecimal Unicode escapes; see
-    ///   [`escape_unicode`].
+    /// * Tab 转义为 `\t`。
+    /// * Carriage return 转义为 `\r`。
+    /// * Line feed 转义为 `\n`。
+    /// * 单引号转义为 `\'`。
+    /// * 双引号转义为 `\"`。
+    /// * 反斜杠转义为 `\\`。
+    /// * `0x20` .. `0x7e`（含）范围内的 “printable ASCII” 字符不转义。
+    /// * 所有其他字符使用十六进制 Unicode 转义；见 [`escape_unicode`]。
     ///
     /// [`escape_unicode`]: #method.escape_unicode
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// As an iterator:
+    /// 作为迭代器：
     ///
     /// ```
     /// for c in '"'.escape_default() {
@@ -561,19 +549,19 @@ impl char {
     /// println!();
     /// ```
     ///
-    /// Using `println!` directly:
+    /// 直接使用 `println!`：
     ///
     /// ```
     /// println!("{}", '"'.escape_default());
     /// ```
     ///
-    /// Both are equivalent to:
+    /// 二者等价于：
     ///
     /// ```
     /// println!("\\\"");
     /// ```
     ///
-    /// Using [`to_string`](../std/string/trait.ToString.html#tymethod.to_string):
+    /// 使用 [`to_string`](../std/string/trait.ToString.html#tymethod.to_string):
     ///
     /// ```
     /// assert_eq!('"'.escape_default().to_string(), "\\\"");
@@ -593,13 +581,13 @@ impl char {
         }
     }
 
-    /// Returns the number of bytes this `char` would need if encoded in UTF-8.
+    /// 返回该 `char` 编码为 UTF-8 时需要的字节数。
     ///
-    /// That number of bytes is always between 1 and 4, inclusive.
+    /// 返回值始终在 1 到 4 之间（含两端），因为 `char` 是 Unicode scalar value。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage:
+    /// 基本用法：
     ///
     /// ```
     /// let len = 'A'.len_utf8();
@@ -615,27 +603,27 @@ impl char {
     /// assert_eq!(len, 4);
     /// ```
     ///
-    /// The `&str` type guarantees that its contents are UTF-8, and so we can compare the length it
-    /// would take if each code point was represented as a `char` vs in the `&str` itself:
+    /// `&str` 类型保证其内容是 UTF-8，因此可以比较每个 code point 作为 `char`
+    /// 单独编码所需长度与它们在 `&str` 中实际占用长度：
     ///
     /// ```
-    /// // as chars
+    /// // 作为 `char`
     /// let eastern = '東';
     /// let capital = '京';
     ///
-    /// // both can be represented as three bytes
+    /// // 二者都可以表示为三个字节。
     /// assert_eq!(3, eastern.len_utf8());
     /// assert_eq!(3, capital.len_utf8());
     ///
-    /// // as a &str, these two are encoded in UTF-8
+    /// // 作为 &str 时，这两个字符以 UTF-8 连续编码。
     /// let tokyo = "東京";
     ///
     /// let len = eastern.len_utf8() + capital.len_utf8();
     ///
-    /// // we can see that they take six bytes total...
+    /// // 可以看到它们总共占六个字节……
     /// assert_eq!(6, tokyo.len());
     ///
-    /// // ... just like the &str
+    /// // ……与 &str 的长度一致。
     /// assert_eq!(len, tokyo.len());
     /// ```
     #[stable(feature = "rust1", since = "1.0.0")]
@@ -646,22 +634,20 @@ impl char {
         len_utf8(self as u32)
     }
 
-    /// Returns the number of 16-bit code units this `char` would need if
-    /// encoded in UTF-16.
+    /// 返回该 `char` 编码为 UTF-16 时需要的 16 位 code unit 数。
     ///
-    /// That number of code units is always either 1 or 2, for unicode scalar values in
-    /// the [basic multilingual plane] or [supplementary planes] respectively.
+    /// 对 [basic multilingual plane] 中的 Unicode scalar value，结果为 1；
+    /// 对 [supplementary planes] 中的 scalar value，结果为 2。
     ///
-    /// See the documentation for [`len_utf8()`] for more explanation of this
-    /// concept. This function is a mirror, but for UTF-16 instead of UTF-8.
+    /// 这个概念可参见 [`len_utf8()`] 的说明；本函数是针对 UTF-16 的对应版本。
     ///
     /// [basic multilingual plane]: http://www.unicode.org/glossary/#basic_multilingual_plane
     /// [supplementary planes]: http://www.unicode.org/glossary/#supplementary_planes
     /// [`len_utf8()`]: #method.len_utf8
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage:
+    /// 基本用法：
     ///
     /// ```
     /// let n = 'ß'.len_utf16();
@@ -678,17 +664,16 @@ impl char {
         len_utf16(self as u32)
     }
 
-    /// Encodes this character as UTF-8 into the provided byte buffer,
-    /// and then returns the subslice of the buffer that contains the encoded character.
+    /// 将该字符以 UTF-8 编码写入给定字节缓冲区，
+    /// 然后返回包含已编码字符的缓冲区子切片。
     ///
     /// # Panics
     ///
-    /// Panics if the buffer is not large enough.
-    /// A buffer of length four is large enough to encode any `char`.
+    /// 当缓冲区长度不足时 panic。长度为 4 的缓冲区足以编码任意 `char`。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// In both of these examples, 'ß' takes two bytes to encode.
+    /// 在这个示例中，'ß' 需要两个字节编码。
     ///
     /// ```
     /// let mut b = [0; 2];
@@ -700,33 +685,33 @@ impl char {
     /// assert_eq!(result.len(), 2);
     /// ```
     ///
-    /// A buffer that's too small:
+    /// 缓冲区过小：
     ///
     /// ```should_panic
     /// let mut b = [0; 1];
     ///
-    /// // this panics
+    /// // 这里会 panic。
     /// 'ß'.encode_utf8(&mut b);
     /// ```
     #[stable(feature = "unicode_encode_char", since = "1.15.0")]
     #[rustc_const_stable(feature = "const_char_encode_utf8", since = "1.83.0")]
     #[inline]
     pub const fn encode_utf8(self, dst: &mut [u8]) -> &mut str {
-        // SAFETY: `char` is not a surrogate, so this is valid UTF-8.
+        // SAFETY: `char` 永远不是代理项，且不超过 U+10FFFF；`encode_utf8_raw`
+        // 产生的字节序列因此是合法 UTF-8，满足 `from_utf8_unchecked_mut` 前置条件。
         unsafe { from_utf8_unchecked_mut(encode_utf8_raw(self as u32, dst)) }
     }
 
-    /// Encodes this character as native endian UTF-16 into the provided `u16` buffer,
-    /// and then returns the subslice of the buffer that contains the encoded character.
+    /// 将该字符以本机端序 UTF-16 编码写入给定 `u16` 缓冲区，
+    /// 然后返回包含已编码字符的缓冲区子切片。
     ///
     /// # Panics
     ///
-    /// Panics if the buffer is not large enough.
-    /// A buffer of length 2 is large enough to encode any `char`.
+    /// 当缓冲区长度不足时 panic。长度为 2 的缓冲区足以编码任意 `char`。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// In both of these examples, '𝕊' takes two `u16`s to encode.
+    /// 在这个示例中，'𝕊' 需要两个 `u16` 编码。
     ///
     /// ```
     /// let mut b = [0; 2];
@@ -736,12 +721,12 @@ impl char {
     /// assert_eq!(result.len(), 2);
     /// ```
     ///
-    /// A buffer that's too small:
+    /// 缓冲区过小：
     ///
     /// ```should_panic
     /// let mut b = [0; 1];
     ///
-    /// // this panics
+    /// // 这里会 panic。
     /// '𝕊'.encode_utf16(&mut b);
     /// ```
     #[stable(feature = "unicode_encode_char", since = "1.15.0")]
@@ -751,25 +736,25 @@ impl char {
         encode_utf16_raw(self as u32, dst)
     }
 
-    /// Returns `true` if this `char` has the `Alphabetic` property.
+    /// 如果该 `char` 具有 `Alphabetic` 属性，则返回 `true`。
     ///
-    /// `Alphabetic` is described in Chapter 4 (Character Properties) of the [Unicode Standard] and
-    /// specified in the [Unicode Character Database][ucd] [`DerivedCoreProperties.txt`].
+    /// `Alphabetic` 在 [Unicode Standard] 第 4 章 Character Properties 中说明，
+    /// 并由 [Unicode Character Database][ucd] 的 [`DerivedCoreProperties.txt`] 指定。
     ///
     /// [Unicode Standard]: https://www.unicode.org/versions/latest/
     /// [ucd]: https://www.unicode.org/reports/tr44/
     /// [`DerivedCoreProperties.txt`]: https://www.unicode.org/Public/UCD/latest/ucd/DerivedCoreProperties.txt
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage:
+    /// 基本用法：
     ///
     /// ```
     /// assert!('a'.is_alphabetic());
     /// assert!('京'.is_alphabetic());
     ///
     /// let c = '💝';
-    /// // love is many things, but it is not alphabetic
+    /// // 爱有很多含义，但这个字符不具有 `Alphabetic` 属性。
     /// assert!(!c.is_alphabetic());
     /// ```
     #[must_use]
@@ -782,18 +767,18 @@ impl char {
         }
     }
 
-    /// Returns `true` if this `char` has the `Lowercase` property.
+    /// 如果该 `char` 具有 `Lowercase` 属性，则返回 `true`。
     ///
-    /// `Lowercase` is described in Chapter 4 (Character Properties) of the [Unicode Standard] and
-    /// specified in the [Unicode Character Database][ucd] [`DerivedCoreProperties.txt`].
+    /// `Lowercase` 在 [Unicode Standard] 第 4 章 Character Properties 中说明，
+    /// 并由 [Unicode Character Database][ucd] 的 [`DerivedCoreProperties.txt`] 指定。
     ///
     /// [Unicode Standard]: https://www.unicode.org/versions/latest/
     /// [ucd]: https://www.unicode.org/reports/tr44/
     /// [`DerivedCoreProperties.txt`]: https://www.unicode.org/Public/UCD/latest/ucd/DerivedCoreProperties.txt
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage:
+    /// 基本用法：
     ///
     /// ```
     /// assert!('a'.is_lowercase());
@@ -801,12 +786,12 @@ impl char {
     /// assert!(!'A'.is_lowercase());
     /// assert!(!'Δ'.is_lowercase());
     ///
-    /// // The various Chinese scripts and punctuation do not have case, and so:
+    /// // 各种中文文字和标点没有大小写，因此：
     /// assert!(!'中'.is_lowercase());
     /// assert!(!' '.is_lowercase());
     /// ```
     ///
-    /// In a const context:
+    /// 在 const 上下文中：
     ///
     /// ```
     /// const CAPITAL_DELTA_IS_LOWERCASE: bool = 'Δ'.is_lowercase();
@@ -823,18 +808,18 @@ impl char {
         }
     }
 
-    /// Returns `true` if this `char` has the `Uppercase` property.
+    /// 如果该 `char` 具有 `Uppercase` 属性，则返回 `true`。
     ///
-    /// `Uppercase` is described in Chapter 4 (Character Properties) of the [Unicode Standard] and
-    /// specified in the [Unicode Character Database][ucd] [`DerivedCoreProperties.txt`].
+    /// `Uppercase` 在 [Unicode Standard] 第 4 章 Character Properties 中说明，
+    /// 并由 [Unicode Character Database][ucd] 的 [`DerivedCoreProperties.txt`] 指定。
     ///
     /// [Unicode Standard]: https://www.unicode.org/versions/latest/
     /// [ucd]: https://www.unicode.org/reports/tr44/
     /// [`DerivedCoreProperties.txt`]: https://www.unicode.org/Public/UCD/latest/ucd/DerivedCoreProperties.txt
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage:
+    /// 基本用法：
     ///
     /// ```
     /// assert!(!'a'.is_uppercase());
@@ -842,12 +827,12 @@ impl char {
     /// assert!('A'.is_uppercase());
     /// assert!('Δ'.is_uppercase());
     ///
-    /// // The various Chinese scripts and punctuation do not have case, and so:
+    /// // 各种中文文字和标点没有大小写，因此：
     /// assert!(!'中'.is_uppercase());
     /// assert!(!' '.is_uppercase());
     /// ```
     ///
-    /// In a const context:
+    /// 在 const 上下文中：
     ///
     /// ```
     /// const CAPITAL_DELTA_IS_UPPERCASE: bool = 'Δ'.is_uppercase();
@@ -864,24 +849,24 @@ impl char {
         }
     }
 
-    /// Returns `true` if this `char` has the `White_Space` property.
+    /// 如果该 `char` 具有 `White_Space` 属性，则返回 `true`。
     ///
-    /// `White_Space` is specified in the [Unicode Character Database][ucd] [`PropList.txt`].
+    /// `White_Space` 由 [Unicode Character Database][ucd] 的 [`PropList.txt`] 指定。
     ///
     /// [ucd]: https://www.unicode.org/reports/tr44/
     /// [`PropList.txt`]: https://www.unicode.org/Public/UCD/latest/ucd/PropList.txt
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage:
+    /// 基本用法：
     ///
     /// ```
     /// assert!(' '.is_whitespace());
     ///
-    /// // line break
+    /// // 换行符。
     /// assert!('\n'.is_whitespace());
     ///
-    /// // a non-breaking space
+    /// // 不换行空格。
     /// assert!('\u{A0}'.is_whitespace());
     ///
     /// assert!(!'越'.is_whitespace());
@@ -897,14 +882,16 @@ impl char {
         }
     }
 
-    /// Returns `true` if this `char` satisfies either [`is_alphabetic()`] or [`is_numeric()`].
+    /// 如果该 `char` 满足 [`is_alphabetic()`] 或 [`is_numeric()`]，则返回 `true`。
+    ///
+    /// ASCII 字符走快速路径；非 ASCII 字符根据 Unicode 属性表判断。
     ///
     /// [`is_alphabetic()`]: #method.is_alphabetic
     /// [`is_numeric()`]: #method.is_numeric
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage:
+    /// 基本用法：
     ///
     /// ```
     /// assert!('٣'.is_alphanumeric());
@@ -927,22 +914,22 @@ impl char {
         }
     }
 
-    /// Returns `true` if this `char` has the general category for control codes.
+    /// 如果该 `char` 的 General Category 是控制码类别，则返回 `true`。
     ///
-    /// Control codes (code points with the general category of `Cc`) are described in Chapter 4
-    /// (Character Properties) of the [Unicode Standard] and specified in the [Unicode Character
-    /// Database][ucd] [`UnicodeData.txt`].
+    /// 控制码是 General Category 为 `Cc` 的 code point；它们在 [Unicode Standard]
+    /// 第 4 章 Character Properties 中说明，并由 [Unicode Character Database][ucd]
+    /// 的 [`UnicodeData.txt`] 指定。
     ///
     /// [Unicode Standard]: https://www.unicode.org/versions/latest/
     /// [ucd]: https://www.unicode.org/reports/tr44/
     /// [`UnicodeData.txt`]: https://www.unicode.org/Public/UCD/latest/ucd/UnicodeData.txt
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage:
+    /// 基本用法：
     ///
     /// ```
-    /// // U+009C, STRING TERMINATOR
+    /// // U+009C，STRING TERMINATOR。
     /// assert!(''.is_control());
     /// assert!(!'q'.is_control());
     /// ```
@@ -950,18 +937,17 @@ impl char {
     #[stable(feature = "rust1", since = "1.0.0")]
     #[inline]
     pub fn is_control(self) -> bool {
-        // According to
-        // https://www.unicode.org/policies/stability_policy.html#Property_Value,
-        // the set of codepoints in `Cc` will never change.
-        // So we can just hard-code the patterns to match against instead of using a table.
+        // 根据 https://www.unicode.org/policies/stability_policy.html#Property_Value，
+        // `Cc` 中的 code point 集合永远不会变化。
+        // 因此这里可以直接硬编码匹配模式，而不必查表。
         matches!(self, '\0'..='\x1f' | '\x7f'..='\u{9f}')
     }
 
-    /// Returns `true` if this `char` has the `Grapheme_Extend` property.
+    /// 如果该 `char` 具有 `Grapheme_Extend` 属性，则返回 `true`。
     ///
-    /// `Grapheme_Extend` is described in [Unicode Standard Annex #29 (Unicode Text
-    /// Segmentation)][uax29] and specified in the [Unicode Character Database][ucd]
-    /// [`DerivedCoreProperties.txt`].
+    /// `Grapheme_Extend` 在 [Unicode Standard Annex #29 (Unicode Text
+    /// Segmentation)][uax29] 中说明，并由 [Unicode Character Database][ucd]
+    /// 的 [`DerivedCoreProperties.txt`] 指定。它常用于判断组合标记是否会扩展前一个字素簇。
     ///
     /// [uax29]: https://www.unicode.org/reports/tr29/
     /// [ucd]: https://www.unicode.org/reports/tr44/
@@ -972,10 +958,10 @@ impl char {
         !self.is_ascii() && unicode::Grapheme_Extend(self)
     }
 
-    /// Returns `true` if this `char` has the `Cased` property.
+    /// 如果该 `char` 具有 `Cased` 属性，则返回 `true`。
     ///
-    /// `Cased` is described in Chapter 4 (Character Properties) of the [Unicode Standard] and
-    /// specified in the [Unicode Character Database][ucd] [`DerivedCoreProperties.txt`].
+    /// `Cased` 在 [Unicode Standard] 第 4 章 Character Properties 中说明，
+    /// 并由 [Unicode Character Database][ucd] 的 [`DerivedCoreProperties.txt`] 指定。
     ///
     /// [Unicode Standard]: https://www.unicode.org/versions/latest/
     /// [ucd]: https://www.unicode.org/reports/tr44/
@@ -988,10 +974,10 @@ impl char {
         if self.is_ascii() { self.is_ascii_alphabetic() } else { unicode::Cased(self) }
     }
 
-    /// Returns `true` if this `char` has the `Case_Ignorable` property.
+    /// 如果该 `char` 具有 `Case_Ignorable` 属性，则返回 `true`。
     ///
-    /// `Case_Ignorable` is described in Chapter 4 (Character Properties) of the [Unicode Standard] and
-    /// specified in the [Unicode Character Database][ucd] [`DerivedCoreProperties.txt`].
+    /// `Case_Ignorable` 在 [Unicode Standard] 第 4 章 Character Properties 中说明，
+    /// 并由 [Unicode Character Database][ucd] 的 [`DerivedCoreProperties.txt`] 指定。
     ///
     /// [Unicode Standard]: https://www.unicode.org/versions/latest/
     /// [ucd]: https://www.unicode.org/reports/tr44/
@@ -1008,27 +994,26 @@ impl char {
         }
     }
 
-    /// Returns `true` if this `char` has one of the general categories for numbers.
+    /// 如果该 `char` 属于 Unicode 数字相关的 General Category 之一，则返回 `true`。
     ///
-    /// The general categories for numbers (`Nd` for decimal digits, `Nl` for letter-like numeric
-    /// characters, and `No` for other numeric characters) are specified in the [Unicode Character
-    /// Database][ucd] [`UnicodeData.txt`].
+    /// 数字相关的 General Category 包括 `Nd`（十进制数字）、`Nl`（类字母数字字符）
+    /// 和 `No`（其他数字字符），由 [Unicode Character Database][ucd]
+    /// 的 [`UnicodeData.txt`] 指定。
     ///
-    /// This method doesn't cover everything that could be considered a number, e.g. ideographic numbers like '三'.
-    /// If you want everything including characters with overlapping purposes then you might want to use
-    /// a unicode or language-processing library that exposes the appropriate character properties instead
-    /// of looking at the unicode categories.
+    /// 该方法并不覆盖所有可被人理解为数字的字符，例如表意数字 '三'。
+    /// 如果需要包含用途交叠的字符，应使用暴露更细粒度字符属性的 Unicode 或语言处理库，
+    /// 而不是只查看 Unicode category。
     ///
-    /// If you want to parse ASCII decimal digits (0-9) or ASCII base-N, use
-    /// `is_ascii_digit` or `is_digit` instead.
+    /// 如果只想解析 ASCII 十进制数字（0-9）或 ASCII base-N 数字，请改用
+    /// `is_ascii_digit` 或 `is_digit`。
     ///
     /// [Unicode Standard]: https://www.unicode.org/versions/latest/
     /// [ucd]: https://www.unicode.org/reports/tr44/
     /// [`UnicodeData.txt`]: https://www.unicode.org/Public/UCD/latest/ucd/UnicodeData.txt
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage:
+    /// 基本用法：
     ///
     /// ```
     /// assert!('٣'.is_numeric());
@@ -1051,33 +1036,31 @@ impl char {
         }
     }
 
-    /// Returns an iterator that yields the lowercase mapping of this `char` as one or more
-    /// `char`s.
+    /// 返回一个迭代器，产生该 `char` 的小写映射；结果可能是一个或多个 `char`。
     ///
-    /// If this `char` does not have a lowercase mapping, the iterator yields the same `char`.
+    /// 如果该 `char` 没有小写映射，迭代器会产生原始 `char`。
     ///
-    /// If this `char` has a one-to-one lowercase mapping given by the [Unicode Character
-    /// Database][ucd] [`UnicodeData.txt`], the iterator yields that `char`.
+    /// 如果 [Unicode Character Database][ucd] 的 [`UnicodeData.txt`] 给出了
+    /// 一对一小写映射，迭代器会产生对应 `char`。
     ///
     /// [ucd]: https://www.unicode.org/reports/tr44/
     /// [`UnicodeData.txt`]: https://www.unicode.org/Public/UCD/latest/ucd/UnicodeData.txt
     ///
-    /// If this `char` requires special considerations (e.g. multiple `char`s) the iterator yields
-    /// the `char`(s) given by [`SpecialCasing.txt`].
+    /// 如果该 `char` 需要特殊处理（例如映射为多个 `char`），迭代器会产生
+    /// [`SpecialCasing.txt`] 给出的 `char` 序列。
     ///
     /// [`SpecialCasing.txt`]: https://www.unicode.org/Public/UCD/latest/ucd/SpecialCasing.txt
     ///
-    /// This operation performs an unconditional mapping without tailoring. That is, the conversion
-    /// is independent of context and language.
+    /// 该操作执行无条件映射，不做 tailoring；也就是说，转换不依赖上下文或语言环境。
     ///
-    /// In the [Unicode Standard], Chapter 4 (Character Properties) discusses case mapping in
-    /// general and Chapter 3 (Conformance) discusses the default algorithm for case conversion.
+    /// 在 [Unicode Standard] 中，第 4 章 Character Properties 讨论大小写映射，
+    /// 第 3 章 Conformance 讨论默认大小写转换算法。
     ///
     /// [Unicode Standard]: https://www.unicode.org/versions/latest/
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// As an iterator:
+    /// 作为迭代器：
     ///
     /// ```
     /// for c in 'İ'.to_lowercase() {
@@ -1086,28 +1069,27 @@ impl char {
     /// println!();
     /// ```
     ///
-    /// Using `println!` directly:
+    /// 直接使用 `println!`：
     ///
     /// ```
     /// println!("{}", 'İ'.to_lowercase());
     /// ```
     ///
-    /// Both are equivalent to:
+    /// 二者等价于：
     ///
     /// ```
     /// println!("i\u{307}");
     /// ```
     ///
-    /// Using [`to_string`](../std/string/trait.ToString.html#tymethod.to_string):
+    /// 使用 [`to_string`](../std/string/trait.ToString.html#tymethod.to_string):
     ///
     /// ```
     /// assert_eq!('C'.to_lowercase().to_string(), "c");
     ///
-    /// // Sometimes the result is more than one character:
+    /// // 有时结果包含多个字符：
     /// assert_eq!('İ'.to_lowercase().to_string(), "i\u{307}");
     ///
-    /// // Characters that do not have both uppercase and lowercase
-    /// // convert into themselves.
+    /// // 没有大小写对应关系的字符会转换为自身。
     /// assert_eq!('山'.to_lowercase().to_string(), "山");
     /// ```
     #[must_use = "this returns the lowercase character as a new iterator, \
@@ -1118,34 +1100,32 @@ impl char {
         ToLowercase(CaseMappingIter::new(conversions::to_lower(self)))
     }
 
-    /// Returns an iterator that yields the uppercase mapping of this `char` as one or more
-    /// `char`s.
+    /// 返回一个迭代器，产生该 `char` 的大写映射；结果可能是一个或多个 `char`。
     ///
-    /// If this `char` does not have an uppercase mapping, the iterator yields the same `char`.
+    /// 如果该 `char` 没有大写映射，迭代器会产生原始 `char`。
     ///
-    /// If this `char` has a one-to-one uppercase mapping given by the [Unicode Character
-    /// Database][ucd] [`UnicodeData.txt`], the iterator yields that `char`.
+    /// 如果 [Unicode Character Database][ucd] 的 [`UnicodeData.txt`] 给出了
+    /// 一对一大写映射，迭代器会产生对应 `char`。
     ///
     /// [ucd]: https://www.unicode.org/reports/tr44/
     /// [`UnicodeData.txt`]: https://www.unicode.org/Public/UCD/latest/ucd/UnicodeData.txt
     ///
-    /// If this `char` requires special considerations (e.g. multiple `char`s) the iterator yields
-    /// the `char`(s) given by [`SpecialCasing.txt`].
+    /// 如果该 `char` 需要特殊处理（例如映射为多个 `char`），迭代器会产生
+    /// [`SpecialCasing.txt`] 给出的 `char` 序列。
     ///
     /// [`SpecialCasing.txt`]: https://www.unicode.org/Public/UCD/latest/ucd/SpecialCasing.txt
     ///
-    /// This operation performs an unconditional mapping without tailoring. That is, the conversion
-    /// is independent of context and language.
+    /// 该操作执行无条件映射，不做 tailoring；也就是说，转换不依赖上下文或语言环境。
     ///
-    /// In the [Unicode Standard], Chapter 4 (Character Properties) discusses case mapping in
-    /// general and Chapter 3 (Conformance) discusses the default algorithm for case conversion.
+    /// 在 [Unicode Standard] 中，第 4 章 Character Properties 讨论大小写映射，
+    /// 第 3 章 Conformance 讨论默认大小写转换算法。
     ///
     /// [Unicode Standard]: https://www.unicode.org/versions/latest/
     ///
-    /// # Examples
-    /// `'ﬅ'` (U+FB05) is a single Unicode code point (a ligature) that maps to "ST" in uppercase.
+    /// # 示例
+    /// `'ﬅ'`（U+FB05）是单个 Unicode code point（连字），其大写映射为 "ST"。
     ///
-    /// As an iterator:
+    /// 作为迭代器：
     ///
     /// ```
     /// for c in 'ﬅ'.to_uppercase() {
@@ -1154,47 +1134,45 @@ impl char {
     /// println!();
     /// ```
     ///
-    /// Using `println!` directly:
+    /// 直接使用 `println!`：
     ///
     /// ```
     /// println!("{}", 'ﬅ'.to_uppercase());
     /// ```
     ///
-    /// Both are equivalent to:
+    /// 二者等价于：
     ///
     /// ```
     /// println!("ST");
     /// ```
     ///
-    /// Using [`to_string`](../std/string/trait.ToString.html#tymethod.to_string):
+    /// 使用 [`to_string`](../std/string/trait.ToString.html#tymethod.to_string):
     ///
     /// ```
     /// assert_eq!('c'.to_uppercase().to_string(), "C");
     ///
-    /// // Sometimes the result is more than one character:
+    /// // 有时结果包含多个字符：
     /// assert_eq!('ﬅ'.to_uppercase().to_string(), "ST");
     ///
-    /// // Characters that do not have both uppercase and lowercase
-    /// // convert into themselves.
+    /// // 没有大小写对应关系的字符会转换为自身。
     /// assert_eq!('山'.to_uppercase().to_string(), "山");
     /// ```
     ///
-    /// # Note on locale
+    /// # 关于区域设置的说明
     ///
-    /// In Turkish, the equivalent of 'i' in Latin has five forms instead of two:
+    /// 在土耳其语中，拉丁字母 'i' 的对应形式不是两个，而是五个：
     ///
-    /// * 'Dotless': I / ı, sometimes written ï
-    /// * 'Dotted': İ / i
+    /// * “无点”形式：I / ı，有时写作 ï
+    /// * “有点”形式：İ / i
     ///
-    /// Note that the lowercase dotted 'i' is the same as the Latin. Therefore:
+    /// 注意，小写有点 'i' 与普通拉丁字母相同。因此：
     ///
     /// ```
     /// let upper_i = 'i'.to_uppercase().to_string();
     /// ```
     ///
-    /// The value of `upper_i` here relies on the language of the text: if we're
-    /// in `en-US`, it should be `"I"`, but if we're in `tr_TR`, it should
-    /// be `"İ"`. `to_uppercase()` does not take this into account, and so:
+    /// 这里 `upper_i` 的值取决于文本语言：在 `en-US` 中应为 `"I"`，
+    /// 在 `tr_TR` 中应为 `"İ"`。`to_uppercase()` 不考虑区域设置，因此：
     ///
     /// ```
     /// let upper_i = 'i'.to_uppercase().to_string();
@@ -1202,7 +1180,7 @@ impl char {
     /// assert_eq!(upper_i, "I");
     /// ```
     ///
-    /// holds across languages.
+    /// 在所有语言环境中都成立。
     #[must_use = "this returns the uppercase character as a new iterator, \
                   without modifying the original"]
     #[stable(feature = "rust1", since = "1.0.0")]
@@ -1211,9 +1189,9 @@ impl char {
         ToUppercase(CaseMappingIter::new(conversions::to_upper(self)))
     }
 
-    /// Checks if the value is within the ASCII range.
+    /// 检查该值是否位于 ASCII 范围内。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let ascii = 'a';
@@ -1231,30 +1209,28 @@ impl char {
         *self as u32 <= 0x7F
     }
 
-    /// Returns `Some` if the value is within the ASCII range,
-    /// or `None` if it's not.
+    /// 如果该值位于 ASCII 范围内，则返回 `Some`；否则返回 `None`。
     ///
-    /// This is preferred to [`Self::is_ascii`] when you're passing the value
-    /// along to something else that can take [`ascii::Char`] rather than
-    /// needing to check again for itself whether the value is in ASCII.
+    /// 当要把值继续传给接受 [`ascii::Char`] 的代码时，该方法优于先调用
+    /// [`Self::is_ascii`]；返回类型已经携带 ASCII 不变量，后续代码无需再次检查。
     #[must_use]
     #[unstable(feature = "ascii_char", issue = "110998")]
     #[inline]
     pub const fn as_ascii(&self) -> Option<ascii::Char> {
         if self.is_ascii() {
-            // SAFETY: Just checked that this is ASCII.
+            // SAFETY: 上面刚检查过该值位于 ASCII 范围内。
             Some(unsafe { ascii::Char::from_u8_unchecked(*self as u8) })
         } else {
             None
         }
     }
 
-    /// Converts this char into an [ASCII character](`ascii::Char`), without
-    /// checking whether it is valid.
+    /// 不检查有效性，直接把该 `char` 转换为 [ASCII character](`ascii::Char`)。
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// This char must be within the ASCII range, or else this is UB.
+    /// 该 `char` 必须位于 ASCII 范围内（U+0000..=U+007F）。否则会构造无效
+    /// `ascii::Char`，破坏该类型“只含 ASCII”的不变量并导致 UB。
     #[must_use]
     #[unstable(feature = "ascii_char", issue = "110998")]
     #[inline]
@@ -1265,21 +1241,20 @@ impl char {
             (it: &char = self) => it.is_ascii()
         );
 
-        // SAFETY: the caller promised that this char is ASCII.
+        // SAFETY: 调用方已经承诺该 `char` 位于 ASCII 范围内。
         unsafe { ascii::Char::from_u8_unchecked(*self as u8) }
     }
 
-    /// Makes a copy of the value in its ASCII upper case equivalent.
+    /// 返回该值的 ASCII 大写等价副本。
     ///
-    /// ASCII letters 'a' to 'z' are mapped to 'A' to 'Z',
-    /// but non-ASCII letters are unchanged.
+    /// ASCII 字母 'a' 到 'z' 会映射为 'A' 到 'Z'；
+    /// 非 ASCII 字母保持不变。
     ///
-    /// To uppercase the value in-place, use [`make_ascii_uppercase()`].
+    /// 若要原地大写化该值，请使用 [`make_ascii_uppercase()`]。
     ///
-    /// To uppercase ASCII characters in addition to non-ASCII characters, use
-    /// [`to_uppercase()`].
+    /// 若要同时处理非 ASCII 字符的 Unicode 大写映射，请使用 [`to_uppercase()`]。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let ascii = 'a';
@@ -1303,17 +1278,16 @@ impl char {
         }
     }
 
-    /// Makes a copy of the value in its ASCII lower case equivalent.
+    /// 返回该值的 ASCII 小写等价副本。
     ///
-    /// ASCII letters 'A' to 'Z' are mapped to 'a' to 'z',
-    /// but non-ASCII letters are unchanged.
+    /// ASCII 字母 'A' 到 'Z' 会映射为 'a' 到 'z'；
+    /// 非 ASCII 字母保持不变。
     ///
-    /// To lowercase the value in-place, use [`make_ascii_lowercase()`].
+    /// 若要原地小写化该值，请使用 [`make_ascii_lowercase()`]。
     ///
-    /// To lowercase ASCII characters in addition to non-ASCII characters, use
-    /// [`to_lowercase()`].
+    /// 若要同时处理非 ASCII 字符的 Unicode 小写映射，请使用 [`to_lowercase()`]。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let ascii = 'A';
@@ -1337,11 +1311,12 @@ impl char {
         }
     }
 
-    /// Checks that two values are an ASCII case-insensitive match.
+    /// 检查两个值是否按 ASCII 大小写不敏感规则匹配。
     ///
-    /// Equivalent to <code>[to_ascii_lowercase]\(a) == [to_ascii_lowercase]\(b)</code>.
+    /// 等价于 <code>[to_ascii_lowercase]\(a) == [to_ascii_lowercase]\(b)</code>。
+    /// 非 ASCII 字符不会执行 Unicode 大小写折叠。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let upper_a = 'A';
@@ -1361,15 +1336,14 @@ impl char {
         self.to_ascii_lowercase() == other.to_ascii_lowercase()
     }
 
-    /// Converts this type to its ASCII upper case equivalent in-place.
+    /// 原地转换为 ASCII 大写等价形式。
     ///
-    /// ASCII letters 'a' to 'z' are mapped to 'A' to 'Z',
-    /// but non-ASCII letters are unchanged.
+    /// ASCII 字母 'a' 到 'z' 会映射为 'A' 到 'Z'；
+    /// 非 ASCII 字母保持不变。
     ///
-    /// To return a new uppercased value without modifying the existing one, use
-    /// [`to_ascii_uppercase()`].
+    /// 若要返回新的大写值而不修改原值，请使用 [`to_ascii_uppercase()`]。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let mut ascii = 'a';
@@ -1387,15 +1361,14 @@ impl char {
         *self = self.to_ascii_uppercase();
     }
 
-    /// Converts this type to its ASCII lower case equivalent in-place.
+    /// 原地转换为 ASCII 小写等价形式。
     ///
-    /// ASCII letters 'A' to 'Z' are mapped to 'a' to 'z',
-    /// but non-ASCII letters are unchanged.
+    /// ASCII 字母 'A' 到 'Z' 会映射为 'a' 到 'z'；
+    /// 非 ASCII 字母保持不变。
     ///
-    /// To return a new lowercased value without modifying the existing one, use
-    /// [`to_ascii_lowercase()`].
+    /// 若要返回新的小写值而不修改原值，请使用 [`to_ascii_lowercase()`]。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let mut ascii = 'A';
@@ -1413,12 +1386,12 @@ impl char {
         *self = self.to_ascii_lowercase();
     }
 
-    /// Checks if the value is an ASCII alphabetic character:
+    /// 检查该值是否是 ASCII 字母字符：
     ///
-    /// - U+0041 'A' ..= U+005A 'Z', or
+    /// - U+0041 'A' ..= U+005A 'Z'，或
     /// - U+0061 'a' ..= U+007A 'z'.
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let uppercase_a = 'A';
@@ -1449,10 +1422,10 @@ impl char {
         matches!(*self, 'A'..='Z' | 'a'..='z')
     }
 
-    /// Checks if the value is an ASCII uppercase character:
+    /// 检查该值是否是 ASCII 大写字符：
     /// U+0041 'A' ..= U+005A 'Z'.
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let uppercase_a = 'A';
@@ -1483,10 +1456,10 @@ impl char {
         matches!(*self, 'A'..='Z')
     }
 
-    /// Checks if the value is an ASCII lowercase character:
+    /// 检查该值是否是 ASCII 小写字符：
     /// U+0061 'a' ..= U+007A 'z'.
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let uppercase_a = 'A';
@@ -1517,13 +1490,13 @@ impl char {
         matches!(*self, 'a'..='z')
     }
 
-    /// Checks if the value is an ASCII alphanumeric character:
+    /// 检查该值是否是 ASCII 字母或数字字符：
     ///
-    /// - U+0041 'A' ..= U+005A 'Z', or
-    /// - U+0061 'a' ..= U+007A 'z', or
+    /// - U+0041 'A' ..= U+005A 'Z'，或
+    /// - U+0061 'a' ..= U+007A 'z'，或
     /// - U+0030 '0' ..= U+0039 '9'.
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let uppercase_a = 'A';
@@ -1554,10 +1527,10 @@ impl char {
         matches!(*self, '0'..='9') | matches!(*self, 'A'..='Z') | matches!(*self, 'a'..='z')
     }
 
-    /// Checks if the value is an ASCII decimal digit:
+    /// 检查该值是否是 ASCII 十进制数字：
     /// U+0030 '0' ..= U+0039 '9'.
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let uppercase_a = 'A';
@@ -1588,10 +1561,10 @@ impl char {
         matches!(*self, '0'..='9')
     }
 
-    /// Checks if the value is an ASCII octal digit:
+    /// 检查该值是否是 ASCII 八进制数字：
     /// U+0030 '0' ..= U+0037 '7'.
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(is_ascii_octdigit)]
@@ -1619,13 +1592,13 @@ impl char {
         matches!(*self, '0'..='7')
     }
 
-    /// Checks if the value is an ASCII hexadecimal digit:
+    /// 检查该值是否是 ASCII 十六进制数字：
     ///
-    /// - U+0030 '0' ..= U+0039 '9', or
-    /// - U+0041 'A' ..= U+0046 'F', or
+    /// - U+0030 '0' ..= U+0039 '9'，或
+    /// - U+0041 'A' ..= U+0046 'F'，或
     /// - U+0061 'a' ..= U+0066 'f'.
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let uppercase_a = 'A';
@@ -1656,14 +1629,14 @@ impl char {
         matches!(*self, '0'..='9') | matches!(*self, 'A'..='F') | matches!(*self, 'a'..='f')
     }
 
-    /// Checks if the value is an ASCII punctuation character:
+    /// 检查该值是否是 ASCII 标点字符：
     ///
-    /// - U+0021 ..= U+002F `! " # $ % & ' ( ) * + , - . /`, or
-    /// - U+003A ..= U+0040 `: ; < = > ? @`, or
-    /// - U+005B ..= U+0060 ``[ \ ] ^ _ ` ``, or
+    /// - U+0021 ..= U+002F `! " # $ % & ' ( ) * + , - . /`，或
+    /// - U+003A ..= U+0040 `: ; < = > ? @`，或
+    /// - U+005B ..= U+0060 ``[ \ ] ^ _ ` ``，或
     /// - U+007B ..= U+007E `{ | } ~`
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let uppercase_a = 'A';
@@ -1697,10 +1670,10 @@ impl char {
             | matches!(*self, '{'..='~')
     }
 
-    /// Checks if the value is an ASCII graphic character:
+    /// 检查该值是否是 ASCII 图形字符：
     /// U+0021 '!' ..= U+007E '~'.
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let uppercase_a = 'A';
@@ -1731,27 +1704,23 @@ impl char {
         matches!(*self, '!'..='~')
     }
 
-    /// Checks if the value is an ASCII whitespace character:
+    /// 检查该值是否是 ASCII whitespace 字符：
     /// U+0020 SPACE, U+0009 HORIZONTAL TAB, U+000A LINE FEED,
     /// U+000C FORM FEED, or U+000D CARRIAGE RETURN.
     ///
-    /// Rust uses the WhatWG Infra Standard's [definition of ASCII
-    /// whitespace][infra-aw]. There are several other definitions in
-    /// wide use. For instance, [the POSIX locale][pct] includes
-    /// U+000B VERTICAL TAB as well as all the above characters,
-    /// but—from the very same specification—[the default rule for
-    /// "field splitting" in the Bourne shell][bfs] considers *only*
-    /// SPACE, HORIZONTAL TAB, and LINE FEED as whitespace.
+    /// Rust 使用 WhatWG Infra Standard 对 [ASCII whitespace][infra-aw] 的定义。
+    /// 其他上下文中还广泛使用若干不同定义。例如，[POSIX locale][pct] 除了上述字符外还包含
+    /// U+000B VERTICAL TAB；但同一规范中 Bourne shell 的
+    /// ["field splitting" 默认规则][bfs] 只把 SPACE、HORIZONTAL TAB 和 LINE FEED
+    /// 视为 whitespace。
     ///
-    /// If you are writing a program that will process an existing
-    /// file format, check what that format's definition of whitespace is
-    /// before using this function.
+    /// 如果程序要处理既有文件格式，在使用该函数前应先确认该格式采用哪一种 whitespace 定义。
     ///
     /// [infra-aw]: https://infra.spec.whatwg.org/#ascii-whitespace
     /// [pct]: https://pubs.opengroup.org/onlinepubs/9699919799/basedefs/V1_chap07.html#tag_07_03_01
     /// [bfs]: https://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html#tag_18_06_05
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let uppercase_a = 'A';
@@ -1782,12 +1751,11 @@ impl char {
         matches!(*self, '\t' | '\n' | '\x0C' | '\r' | ' ')
     }
 
-    /// Checks if the value is an ASCII control character:
+    /// 检查该值是否是 ASCII 控制字符：
     /// U+0000 NUL ..= U+001F UNIT SEPARATOR, or U+007F DELETE.
-    /// Note that most ASCII whitespace characters are control
-    /// characters, but SPACE is not.
+    /// 注意，大多数 ASCII whitespace 字符也是控制字符，但 SPACE 不是。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let uppercase_a = 'A';
@@ -1820,13 +1788,13 @@ impl char {
 }
 
 pub(crate) struct EscapeDebugExtArgs {
-    /// Escape Extended Grapheme codepoints?
+    /// 是否转义 Extended Grapheme code point？
     pub(crate) escape_grapheme_extended: bool,
 
-    /// Escape single quotes?
+    /// 是否转义单引号？
     pub(crate) escape_single_quote: bool,
 
-    /// Escape double quotes?
+    /// 是否转义双引号？
     pub(crate) escape_double_quote: bool,
 }
 
@@ -1855,19 +1823,18 @@ const fn len_utf16(code: u32) -> usize {
     if (code & 0xFFFF) == code { 1 } else { 2 }
 }
 
-/// Encodes a raw `u32` value as UTF-8 into the provided byte buffer,
-/// and then returns the subslice of the buffer that contains the encoded character.
+/// 将原始 `u32` 值按 UTF-8 形式编码到给定字节缓冲区，
+/// 然后返回包含已编码内容的缓冲区子切片。
 ///
-/// Unlike `char::encode_utf8`, this method also handles codepoints in the surrogate range.
-/// (Creating a `char` in the surrogate range is UB.)
-/// The result is valid [generalized UTF-8] but not valid UTF-8.
+/// 与 `char::encode_utf8` 不同，该方法也处理代理项范围内的 code point。
+/// （创建位于代理项范围内的 `char` 是 UB。）结果是合法 [generalized UTF-8]，
+/// 但不是合法 UTF-8；这类路径供 WTF-8/OS 字符串桥接等内部表示使用。
 ///
 /// [generalized UTF-8]: https://simonsapin.github.io/wtf-8/#generalized-utf8
 ///
 /// # Panics
 ///
-/// Panics if the buffer is not large enough.
-/// A buffer of length four is large enough to encode any `char`.
+/// 当缓冲区长度不足时 panic。长度为 4 的缓冲区足以编码任意 `char` 或 generalized UTF-8 code point。
 #[unstable(feature = "char_internals", reason = "exposed only for libstd", issue = "none")]
 #[doc(hidden)]
 #[inline]
@@ -1883,35 +1850,35 @@ pub const fn encode_utf8_raw(code: u32, dst: &mut [u8]) -> &mut [u8] {
         );
     }
 
-    // SAFETY: `dst` is checked to be at least the length needed to encode the codepoint.
+    // SAFETY: 已检查 `dst` 至少具有编码该 code point 所需的 `len` 字节。
     unsafe { encode_utf8_raw_unchecked(code, dst.as_mut_ptr()) };
 
-    // SAFETY: `<&mut [u8]>::as_mut_ptr` is guaranteed to return a valid pointer and `len` has been tested to be within bounds.
+    // SAFETY: `<&mut [u8]>::as_mut_ptr` 保证返回有效指针，且 `len` 已经检查在切片范围内。
     unsafe { slice::from_raw_parts_mut(dst.as_mut_ptr(), len) }
 }
 
-/// Encodes a raw `u32` value as UTF-8 into the byte buffer pointed to by `dst`.
+/// 将原始 `u32` 值按 UTF-8 形式编码到 `dst` 指向的字节缓冲区。
 ///
-/// Unlike `char::encode_utf8`, this method also handles codepoints in the surrogate range.
-/// (Creating a `char` in the surrogate range is UB.)
-/// The result is valid [generalized UTF-8] but not valid UTF-8.
+/// 与 `char::encode_utf8` 不同，该方法也处理代理项范围内的 code point。
+/// （创建位于代理项范围内的 `char` 是 UB。）结果是合法 [generalized UTF-8]，
+/// 但不是合法 UTF-8。
 ///
 /// [generalized UTF-8]: https://simonsapin.github.io/wtf-8/#generalized-utf8
 ///
-/// # Safety
+/// # 安全性(Safety）
 ///
-/// The behavior is undefined if the buffer pointed to by `dst` is not
-/// large enough to hold the encoded codepoint. A buffer of length four
-/// is large enough to encode any `char`.
+/// 调用方必须保证 `dst` 指向一段可写、对 `u8` 有效的缓冲区，且至少包含
+/// `len_utf8(code)` 个字节。若缓冲区不足、指针无效或写入越界，行为未定义。
+/// 长度为 4 的缓冲区足以编码任意 `char`，也足以覆盖 generalized UTF-8 中的代理项 code point。
 ///
-/// For a safe version of this function, see the [`encode_utf8_raw`] function.
+/// 安全版本见 [`encode_utf8_raw`]。
 #[unstable(feature = "char_internals", reason = "exposed only for libstd", issue = "none")]
 #[doc(hidden)]
 #[inline]
 pub const unsafe fn encode_utf8_raw_unchecked(code: u32, dst: *mut u8) {
     let len = len_utf8(code);
-    // SAFETY: The caller must guarantee that the buffer pointed to by `dst`
-    // is at least `len` bytes long.
+    // SAFETY: 调用方必须保证 `dst` 指向的缓冲区至少有 `len` 个可写字节；
+    // 本函数只在该范围内写入编码结果。
     unsafe {
         if len == 1 {
             *dst = code as u8;
@@ -1943,16 +1910,16 @@ pub const unsafe fn encode_utf8_raw_unchecked(code: u32, dst: *mut u8) {
     }
 }
 
-/// Encodes a raw `u32` value as native endian UTF-16 into the provided `u16` buffer,
-/// and then returns the subslice of the buffer that contains the encoded character.
+/// 将原始 `u32` 值按本机端序 UTF-16 编码到给定 `u16` 缓冲区，
+/// 然后返回包含已编码内容的缓冲区子切片。
 ///
-/// Unlike `char::encode_utf16`, this method also handles codepoints in the surrogate range.
-/// (Creating a `char` in the surrogate range is UB.)
+/// 与 `char::encode_utf16` 不同，该方法也处理代理项范围内的 code point。
+/// （创建位于代理项范围内的 `char` 是 UB。）该内部函数用于需要保留可能非良构
+/// UTF-16 code unit 的桥接逻辑。
 ///
 /// # Panics
 ///
-/// Panics if the buffer is not large enough.
-/// A buffer of length 2 is large enough to encode any `char`.
+/// 当缓冲区长度不足时 panic。长度为 2 的缓冲区足以编码任意 `char`。
 #[unstable(feature = "char_internals", reason = "exposed only for libstd", issue = "none")]
 #[doc(hidden)]
 #[inline]
@@ -1977,6 +1944,6 @@ pub const fn encode_utf16_raw(mut code: u32, dst: &mut [u16]) -> &mut [u16] {
             )
         }
     };
-    // SAFETY: `<&mut [u16]>::as_mut_ptr` is guaranteed to return a valid pointer and `len` has been tested to be within bounds.
+    // SAFETY: `<&mut [u16]>::as_mut_ptr` 保证返回有效指针，且 `len` 已经检查在切片范围内。
     unsafe { slice::from_raw_parts_mut(dst.as_mut_ptr(), len) }
 }

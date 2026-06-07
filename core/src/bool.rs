@@ -1,16 +1,15 @@
 //! impl bool {}
 
 impl bool {
-    /// Returns `Some(t)` if the `bool` is [`true`](../std/keyword.true.html),
-    /// or `None` otherwise.
+    /// 如果此 `bool` 为 [`true`](../std/keyword.true.html)，返回 `Some(t)`；
+    /// 否则返回 `None`。
     ///
-    /// Arguments passed to `then_some` are eagerly evaluated; if you are
-    /// passing the result of a function call, it is recommended to use
-    /// [`then`], which is lazily evaluated.
+    /// 传给 `then_some` 的参数会被立即求值；如果要传入函数调用的结果，
+    /// 建议改用惰性求值的 [`then`]。
     ///
     /// [`then`]: bool::then
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// assert_eq!(false.then_some(0), None);
@@ -24,8 +23,7 @@ impl bool {
     /// true.then_some(function_with_side_effects());
     /// false.then_some(function_with_side_effects());
     ///
-    /// // `a` is incremented twice because the value passed to `then_some` is
-    /// // evaluated eagerly.
+    /// // `a` 会递增两次，因为传给 `then_some` 的值会被立即求值。
     /// assert_eq!(a, 2);
     /// ```
     #[stable(feature = "bool_to_option", since = "1.62.0")]
@@ -34,10 +32,10 @@ impl bool {
         if self { Some(t) } else { None }
     }
 
-    /// Returns `Some(f())` if the `bool` is [`true`](../std/keyword.true.html),
-    /// or `None` otherwise.
+    /// 如果此 `bool` 为 [`true`](../std/keyword.true.html)，返回 `Some(f())`；
+    /// 否则返回 `None`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// assert_eq!(false.then(|| 0), None);
@@ -50,8 +48,7 @@ impl bool {
     /// true.then(|| { a += 1; });
     /// false.then(|| { a += 1; });
     ///
-    /// // `a` is incremented once because the closure is evaluated lazily by
-    /// // `then`.
+    /// // `a` 只会递增一次，因为闭包由 `then` 惰性求值。
     /// assert_eq!(a, 1);
     /// ```
     #[doc(alias = "then_with")]
@@ -62,16 +59,15 @@ impl bool {
         if self { Some(f()) } else { None }
     }
 
-    /// Returns `Ok(())` if the `bool` is [`true`](../std/keyword.true.html),
-    /// or `Err(err)` otherwise.
+    /// 如果此 `bool` 为 [`true`](../std/keyword.true.html)，返回 `Ok(())`；
+    /// 否则返回 `Err(err)`。
     ///
-    /// Arguments passed to `ok_or` are eagerly evaluated; if you are
-    /// passing the result of a function call, it is recommended to use
-    /// [`ok_or_else`], which is lazily evaluated.
+    /// 传给 `ok_or` 的参数会被立即求值；如果要传入函数调用的结果，
+    /// 建议改用惰性求值的 [`ok_or_else`]。
     ///
     /// [`ok_or_else`]: bool::ok_or_else
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(bool_to_result)]
@@ -89,8 +85,7 @@ impl bool {
     /// assert!(true.ok_or(function_with_side_effects()).is_ok());
     /// assert!(false.ok_or(function_with_side_effects()).is_err());
     ///
-    /// // `a` is incremented twice because the value passed to `ok_or` is
-    /// // evaluated eagerly.
+    /// // `a` 会递增两次，因为传给 `ok_or` 的值会被立即求值。
     /// assert_eq!(a, 2);
     /// ```
     #[unstable(feature = "bool_to_result", issue = "142748")]
@@ -99,10 +94,10 @@ impl bool {
         if self { Ok(()) } else { Err(err) }
     }
 
-    /// Returns `Ok(())` if the `bool` is [`true`](../std/keyword.true.html),
-    /// or `Err(f())` otherwise.
+    /// 如果此 `bool` 为 [`true`](../std/keyword.true.html)，返回 `Ok(())`；
+    /// 否则返回 `Err(f())`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(bool_to_result)]
@@ -119,8 +114,7 @@ impl bool {
     /// assert!(true.ok_or_else(|| { a += 1; }).is_ok());
     /// assert!(false.ok_or_else(|| { a += 1; }).is_err());
     ///
-    /// // `a` is incremented once because the closure is evaluated lazily by
-    /// // `ok_or_else`.
+    /// // `a` 只会递增一次，因为闭包由 `ok_or_else` 惰性求值。
     /// assert_eq!(a, 1);
     /// ```
     #[unstable(feature = "bool_to_result", issue = "142748")]

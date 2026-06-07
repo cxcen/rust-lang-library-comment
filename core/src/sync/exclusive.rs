@@ -226,7 +226,7 @@ where
     }
 }
 
-#[unstable(feature = "coroutine_trait", issue = "43122")] // also #98407
+#[unstable(feature = "coroutine_trait", issue = "43122")] // 另见 #98407
 impl<R, G> Coroutine<R> for Exclusive<G>
 where
     G: Coroutine<R> + ?Sized,

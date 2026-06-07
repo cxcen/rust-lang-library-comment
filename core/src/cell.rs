@@ -16,7 +16,9 @@
 //! `Cell<T>`、`RefCell<T>` 和 `OnceCell<T>` 类型的值可以通过共享引用(即常见的 `&T` 类型)
 //! 来修改,而大多数 Rust 类型只能通过独占引用(`&mut T`)修改。我们称这些 cell 类型提供
 //! “内部可变性(interior mutability)”(可经由 `&T` 修改),以区别于绝大多数 Rust 类型所
-//! 体现的“继承可变性(inherited mutability)”(只能经由 `&mut T` 修改)。
+//! 体现的“继承可变性(inherited mutability)”(只能经由 `&mut T` 修改)。这不是让借用规则
+//! 消失,而是把“何时允许读写”这件事转移给 cell 类型自身维护:有的通过按值移动规避引用,
+//! 有的通过运行时计数检查,有的通过一次性初始化不变量限制写入次数。
 //!
 //! ## 设计背景:内部可变性是对借用规则的受控突破
 //!
@@ -33,6 +35,9 @@
 //!
 //! cell 类型共有四种风味:`Cell<T>`、`RefCell<T>`、`OnceCell<T>` 和 `LazyCell<T>`。
 //! 它们各自以不同方式提供安全的内部可变性。
+//! 因为这些类型允许在存在共享引用时修改内部状态,它们默认都停在单线程边界内:`Cell<T>`、
+//! `RefCell<T>`、`OnceCell<T>` 和 `LazyCell<T>` 都是 `!Sync`。这条边界很重要:跨线程共享时,
+//! 单靠 `UnsafeCell` 并不会提供同步,如果没有锁或原子操作来协调冲突访问,就会变成数据竞争 UB。
 //!
 //! ## `Cell<T>`
 //!
@@ -40,6 +45,9 @@
 //! `&T`,而要直接拿到那个值本身,就必须用别的值把它替换出来。它没有任何运行时借用检查,因此
 //! get/set/replace 等操作开销几乎为零。之所以**不能**给出指向内部值的引用,正是为了避免产生
 //! 别名:既然拿不到内部引用,就不可能出现“引用还活着、值却被换掉”的情形。该类型提供以下方法:
+//! 对 `Copy` 类型来说,`get` 读取的是一份按值拷贝;对所有类型来说,`set`/`replace` 都是在原位置
+//! 写入一个新值并按值取出或丢弃旧值。因此 `Cell` 适合那些“状态就是一个小值”的场景,而不适合
+//! 需要长期借用内部字段的场景。
 //!
 //!  - 对实现了 [`Copy`] 的类型,[`get`](Cell::get) 方法通过复制返回当前内部值的一份拷贝。
 //!  - 对实现了 [`Default`] 的类型,[`take`](Cell::take) 方法用 [`Default::default()`] 替换
@@ -95,10 +103,13 @@
 //!
 //! `LazyCell` 的工作方式是提供一个会调用该函数的 `impl Deref`,因此你可以直接通过解引用来使用它
 //! (例如 `*lazy_cell` 或 `lazy_cell.deref()`)。
+//! 初始化过程只能成功一次。若初始化闭包 panic,`LazyCell` 会进入毒化状态;若初始化逻辑在尚未完成时
+//! 重入访问同一个 cell,也会触发对应的重入保护或 panic,因为这会破坏“一次初始化后再交出稳定引用”
+//! 的核心不变量。
 //!
 //! `LazyCell<T, F>` 对应的 [`Sync`] 线程安全版本是 [`LazyLock<T, F>`]。
 //!
-//! # 何时选择内部可变性(When to choose interior mutability)
+//! # 何时选择内部可变性
 //!
 //! 更常见的继承可变性——即必须独占访问才能修改一个值——是使 Rust 能够强有力地推理指针别名、
 //! 在编译期静态地防止崩溃类 bug 的关键语言要素之一。正因如此,继承可变性是首选,而内部可变性
@@ -263,7 +274,7 @@ pub use once::OnceCell;
 
 /// 一处可变的内存位置。
 ///
-/// # 内存布局(Memory layout）
+/// # 内存布局 {#memory-layout}
 ///
 /// `Cell<T>` 拥有[与 `UnsafeCell<T>` 相同的内存布局及注意事项](UnsafeCell#memory-layout)。
 /// 特别地,这意味着 `Cell<T>` 在内存中的表示与其内部类型 `T` 完全相同。
@@ -309,7 +320,7 @@ pub struct Cell<T: ?Sized> {
 #[stable(feature = "rust1", since = "1.0.0")]
 unsafe impl<T: ?Sized> Send for Cell<T> where T: Send {}
 
-// 注意:从正确性角度讲这个负向(negative)impl 并非严格必需,因为 `Cell` 包裹的是
+// 注意:从正确性角度讲这个负向 impl 并非严格必需,因为 `Cell` 包裹的是
 // `UnsafeCell`,而后者本身就是 `!Sync`。
 // 不过,鉴于 `Cell` 的 `!Sync` 这一性质极其重要,显式写出一个负向 impl 既有利于文档表达,
 // 也能让编译器给出更友好的错误信息。
@@ -665,8 +676,7 @@ impl<T: Default> Cell<T> {
 #[unstable(feature = "coerce_unsized", issue = "18598")]
 impl<T: CoerceUnsized<U>, U> CoerceUnsized<Cell<U>> for Cell<T> {}
 
-// 允许那些包裹了 `Cell` 的类型也实现 `DispatchFromDyn`,从而成为可用于动态分发的方法接收者
-// (dyn-compatible method receiver)。
+// 允许那些包裹了 `Cell` 的类型也实现 `DispatchFromDyn`,从而成为可用于动态分发的方法接收者。
 // 注意:目前 `Cell` 本身还不能作为方法接收者,因为它没有实现 Deref。
 // 换言之:
 // `self: Cell<&Self>` 不能工作
@@ -716,7 +726,7 @@ impl<T, const N: usize> Cell<[T; N]> {
     }
 }
 
-/// 标记那些“对 `Cell<Self>` 进行克隆是健全(sound)的”类型。
+/// 标记那些“对 `Cell<Self>` 进行克隆是健全的”类型。
 ///
 /// # 安全性(Safety）
 ///
@@ -754,11 +764,11 @@ impl<T, const N: usize> Cell<[T; N]> {
 /// // unsafe impl CloneFromCell for Bad<'_> {}
 /// ```
 #[unstable(feature = "cell_get_cloned", issue = "145329")]
-// 允许用户代码中可能出现的重叠实现(overlapping implementations)
+// 允许用户代码中可能出现的重叠实现。
 #[marker]
 pub unsafe trait CloneFromCell: Clone {}
 
-// `CloneFromCell` 可以为以下这类类型实现:它们不含间接引用(indirection),并且其 `Clone`
+// `CloneFromCell` 可以为以下这类类型实现:它们不含间接引用,并且其 `Clone`
 // 实现中不会去访问任何 `Cell`。这里覆盖了一个常用的子集。
 #[unstable(feature = "cell_get_cloned", issue = "145329")]
 unsafe impl<T: CloneFromCell, const N: usize> CloneFromCell for [T; N] {}
@@ -864,7 +874,7 @@ impl Display for BorrowMutError {
     }
 }
 
-// 这确保了 panic 代码会被从 `RefCell` 的 `borrow_mut` 中外联(outline)出去。
+// 这确保了 panic 代码会被从 `RefCell` 的 `borrow_mut` 热路径中外联出去。
 #[cfg_attr(not(panic = "immediate-abort"), inline(never))]
 #[track_caller]
 #[cold]
@@ -876,7 +886,7 @@ const fn panic_already_borrowed(err: BorrowMutError) -> ! {
     )
 }
 
-// 这确保了 panic 代码会被从 `RefCell` 的 `borrow` 中外联(outline)出去。
+// 这确保了 panic 代码会被从 `RefCell` 的 `borrow` 热路径中外联出去。
 #[cfg_attr(not(panic = "immediate-abort"), inline(never))]
 #[track_caller]
 #[cold]
@@ -952,7 +962,7 @@ impl<T> RefCell<T> {
         self.value.into_inner()
     }
 
-    /// 用一个新值替换所包裹的值并返回旧值,过程中不会对二者中的任何一个执行析构(deinitialize)。
+    /// 用一个新值替换所包裹的值并返回旧值,过程中不会提前析构新值或旧值。
     ///
     /// 本函数对应 [`std::mem::replace`](../mem/fn.replace.html)。
     ///
@@ -980,7 +990,7 @@ impl<T> RefCell<T> {
     }
 
     /// 用一个由 `f` 计算出的新值替换所包裹的值并返回旧值,过程中不会对二者中的任何一个
-    /// 执行析构(deinitialize)。
+    /// 提前执行析构。
     ///
     /// # Panics
     ///
@@ -1006,7 +1016,7 @@ impl<T> RefCell<T> {
     }
 
     /// 将 `self` 所包裹的值与 `other` 所包裹的值互换,过程中不会对二者中的任何一个
-    /// 执行析构(deinitialize)。
+    /// 提前执行析构。
     ///
     /// 本函数对应 [`std::mem::swap`](../mem/fn.swap.html)。
     ///
@@ -1274,7 +1284,7 @@ impl<T: ?Sized> RefCell<T> {
         self.value.get_mut()
     }
 
-    /// 撤销已泄漏的守护(guard)对 `RefCell` 借用状态造成的影响。
+    /// 撤销已泄漏的借用守护对 `RefCell` 借用状态造成的影响。
     ///
     /// 本调用与 [`get_mut`] 类似,但更为专门化。它以可变方式借用 `RefCell` 以确保不存在任何
     /// 借用,然后重置用于跟踪共享借用的状态。当某些 `Ref` 或 `RefMut` 借用已被泄漏时,这才有意义。
@@ -1547,7 +1557,7 @@ impl const Clone for BorrowRef<'_> {
 pub struct Ref<'b, T: ?Sized + 'b> {
     // 注意:这里我们使用裸指针而非 `&'b T`,以避免违反 `noalias`。因为 `Ref` 作为参数时,
     // 它并不会在其整个作用域内都保持其指向数据的不可变性,而只到它被 drop 为止。
-    // `NonNull` 也像 `&T` 那样对 `T` 是协变的(covariant)。
+    // `NonNull` 也像 `&T` 那样对 `T` 是协变的。
     value: NonNull<T>,
     borrow: BorrowRef<'b>,
 }
@@ -1608,8 +1618,8 @@ impl<'b, T: ?Sized> Ref<'b, T> {
         Ref { value: NonNull::from(f(&*orig)), borrow: orig.borrow }
     }
 
-    /// 为所借用数据中某个可选(optional)的组成部分制作一个新的 `Ref`。如果闭包返回 `None`,
-    /// 则原来的守护(guard)会以 `Err(..)` 的形式被返回。
+    /// 为所借用数据中某个可选的组成部分制作一个新的 `Ref`。如果闭包返回 `None`,
+    /// 则原来的借用守护会以 `Err(..)` 的形式被返回。
     ///
     /// 此时该 `RefCell` 已经被不可变借用,所以这一操作不会失败。
     ///
@@ -1639,7 +1649,7 @@ impl<'b, T: ?Sized> Ref<'b, T> {
     }
 
     /// 尝试为所借用数据的某个组成部分制作一个新的 `Ref`。
-    /// 失败时,会连同闭包返回的错误一起,把原来的守护(guard)返回回来。
+    /// 失败时,会连同闭包返回的错误一起,把原来的借用守护返回回来。
     ///
     /// 此时该 `RefCell` 已经被不可变借用,所以这一操作不会失败。
     ///
@@ -1784,8 +1794,8 @@ impl<'b, T: ?Sized> RefMut<'b, T> {
         RefMut { value, borrow: orig.borrow, marker: PhantomData }
     }
 
-    /// 为所借用数据中某个可选(optional)的组成部分制作一个新的 `RefMut`。如果闭包返回 `None`,
-    /// 则原来的守护(guard)会以 `Err(..)` 的形式被返回。
+    /// 为所借用数据中某个可选的组成部分制作一个新的 `RefMut`。如果闭包返回 `None`,
+    /// 则原来的借用守护会以 `Err(..)` 的形式被返回。
     ///
     /// 此时该 `RefCell` 已经被可变借用,所以这一操作不会失败。
     ///
@@ -1827,7 +1837,7 @@ impl<'b, T: ?Sized> RefMut<'b, T> {
     }
 
     /// 尝试为所借用数据的某个组成部分制作一个新的 `RefMut`。
-    /// 失败时,会连同闭包返回的错误一起,把原来的守护(guard)返回回来。
+    /// 失败时,会连同闭包返回的错误一起,把原来的借用守护返回回来。
     ///
     /// 此时该 `RefCell` 已经被可变借用,所以这一操作不会失败。
     ///
@@ -1876,8 +1886,9 @@ impl<'b, T: ?Sized> RefMut<'b, T> {
 
     /// 把一个 `RefMut` 拆分成多个 `RefMut`,分别对应所借用数据的不同组成部分。
     ///
-    /// The underlying `RefCell` will remain mutably borrowed until both
-    /// returned `RefMut`s go out of scope.
+    /// 底层的 `RefCell` 会一直保持可变借用状态,直到返回的两个 `RefMut` 都离开作用域为止。
+    /// 这两个 `RefMut` 必须指向原值中互不重叠的部分;借用计数会用两个可变守护共同表示同一次
+    /// 动态独占借用。
     ///
     /// 此时该 `RefCell` 已经被可变借用,所以这一操作不会失败。
     ///
@@ -2003,7 +2014,7 @@ pub struct RefMut<'b, T: ?Sized + 'b> {
     // 它并不会在其整个作用域内都保持其独占性,而只到它被 drop 为止。
     value: NonNull<T>,
     borrow: BorrowRefMut<'b>,
-    // `NonNull` 对 `T` 是协变的(covariant),因此我们需要重新引入不变性(invariance)。
+    // `NonNull` 对 `T` 是协变的,因此我们需要重新引入不变性。
     marker: PhantomData<&'b mut T>,
 }
 
@@ -2067,7 +2078,7 @@ impl<T: ?Sized + fmt::Display> fmt::Display for RefMut<'_, T> {
 /// [`.get()`]: `UnsafeCell::get`
 /// [concurrent memory model]: ../sync/atomic/index.html#memory-model-for-atomic-accesses
 ///
-/// # 别名规则(Aliasing rules）
+/// # 别名规则 {#aliasing-rules}
 ///
 /// Rust 精确的别名规则目前仍在不断演变,但其主要要点并无争议:
 ///
@@ -2078,14 +2089,14 @@ impl<T: ?Sized + fmt::Display> fmt::Display for RefMut<'_, T> {
 ///   你创建了一个 `&mut T` 引用并把它交给了安全代码,那么直到该引用过期之前,你都不得去访问
 ///   那个 `UnsafeCell` 内部的数据。
 ///
-/// - 对于不含 `UnsafeCell<_>` 的 `&T` 以及对于 `&mut T`,在引用过期之前你也不得释放(deallocate)
+/// - 对于不含 `UnsafeCell<_>` 的 `&T` 以及对于 `&mut T`,在引用过期之前你也不得释放
 ///   那块数据。作为一个特例:给定一个 `&T`,其中任何处于 `UnsafeCell<_>` 内部的部分,可以在该
 ///   引用生命周期内、在该引用最后一次被使用(被解引用或被重新借用)之后被释放。由于你无法只释放
 ///   一个引用所指对象的一部分,这意味着:只有当 `&T` 所指对象的*每一个部分*(包括 padding)
 ///   都位于某个 `UnsafeCell` 内部时,它所指向的内存才能被释放。
 ///
 /// 然而,每当一个 `&UnsafeCell<T>` 被构造或被解引用时,它仍必须指向存活的内存;并且,如果编译器
-/// 能证明这块内存尚未被释放,它就被允许插入伪读取(spurious reads)。
+/// 能证明这块内存尚未被释放,它就被允许插入并不来自源代码的伪读取。
 ///
 /// 为了帮助进行正确的设计,以下场景被明确声明为对单线程代码合法:
 ///
@@ -2100,11 +2111,11 @@ impl<T: ?Sized + fmt::Display> fmt::Display for RefMut<'_, T> {
 /// (*即*经由 `&UnsafeCell<_>` 引用进行的访问)产生特殊交互的包装器;在处理*独占*访问(*例如*
 /// 经由 `&mut UnsafeCell<_>` 进行的访问)时,它没有任何魔法:在那个 `&mut` 借用持续期间,无论是
 /// 该 cell 还是被包裹的值都不得被形成别名。
-/// [`.get_mut()`] 访问器正展示了这一点——它是一个*安全的* getter,会交出一个 `&mut T`。
+/// [`.get_mut()`] 访问器正展示了这一点——它是一个*安全的*取值方法,会交出一个 `&mut T`。
 ///
 /// [`.get_mut()`]: `UnsafeCell::get_mut`
 ///
-/// # 内存布局(Memory layout）
+/// # 内存布局 {#memory-layout}
 ///
 /// `UnsafeCell<T>` 在内存中的表示与其内部类型 `T` 相同。这一保证的一个推论是:可以在 `T` 与
 /// `UnsafeCell<T>` 之间进行转换。当把某个 `Outer<T>` 类型内部嵌套的 `T` 转换成 `Outer<UnsafeCell<T>>`
@@ -2460,7 +2471,7 @@ impl<T> const From<T> for UnsafeCell<T> {
 impl<T: CoerceUnsized<U>, U> CoerceUnsized<UnsafeCell<U>> for UnsafeCell<T> {}
 
 // 允许那些包裹了 `UnsafeCell` 的类型也实现 `DispatchFromDyn`,从而成为可用于动态分发的方法
-// 接收者(dyn-compatible method receiver)。
+// 接收者。
 // 注意:目前 `UnsafeCell` 本身还不能作为方法接收者,因为它没有实现 Deref。
 // 换言之:
 // `self: UnsafeCell<&Self>` 不能工作
@@ -2562,7 +2573,7 @@ impl<T> const From<T> for SyncUnsafeCell<T> {
 impl<T: CoerceUnsized<U>, U> CoerceUnsized<SyncUnsafeCell<U>> for SyncUnsafeCell<T> {}
 
 // 允许那些包裹了 `SyncUnsafeCell` 的类型也实现 `DispatchFromDyn`,从而成为可用于动态分发的
-// 方法接收者(dyn-compatible method receiver)。
+// 方法接收者。
 // 注意:目前 `SyncUnsafeCell` 本身还不能作为方法接收者,因为它没有实现 Deref。
 // 换言之:
 // `self: SyncUnsafeCell<&Self>` 不能工作

@@ -1,13 +1,13 @@
-//! UTF-8 and UTF-16 decoding iterators
+//! UTF-8 和 UTF-16 解码迭代器。
 
 use crate::error::Error;
 use crate::fmt;
 use crate::iter::FusedIterator;
 
-/// An iterator that decodes UTF-16 encoded code points from an iterator of `u16`s.
+/// 从 `u16` 迭代器中解码 UTF-16 code unit 的迭代器。
 ///
-/// This `struct` is created by the [`decode_utf16`] method on [`char`]. See its
-/// documentation for more.
+/// 该 `struct` 由 [`char`] 上的 [`decode_utf16`] 方法创建；更多行为说明见该方法文档。
+/// 它会把合法代理对合成为一个 `char`，并把未配对代理项作为错误返回。
 ///
 /// [`decode_utf16`]: char::decode_utf16
 #[stable(feature = "decode_utf16", since = "1.9.0")]
@@ -20,17 +20,18 @@ where
     buf: Option<u16>,
 }
 
-/// An error that can be returned when decoding UTF-16 code points.
+/// 解码 UTF-16 code unit 时可能返回的错误。
 ///
-/// This `struct` is created when using the [`DecodeUtf16`] type.
+/// 使用 [`DecodeUtf16`] 类型时会创建该 `struct`，表示输入中出现了无法组成合法
+/// Unicode 标量值的未配对代理项。
 #[stable(feature = "decode_utf16", since = "1.9.0")]
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct DecodeUtf16Error {
     code: u16,
 }
 
-/// Creates an iterator over the UTF-16 encoded code points in `iter`,
-/// returning unpaired surrogates as `Err`s. See [`char::decode_utf16`].
+/// 为 `iter` 中的 UTF-16 code unit 创建迭代器，遇到未配对代理项时返回 `Err`。
+/// 见 [`char::decode_utf16`]。
 #[inline]
 pub(super) fn decode_utf16<I: IntoIterator<Item = u16>>(iter: I) -> DecodeUtf16<I::IntoIter> {
     DecodeUtf16 { iter: iter.into_iter(), buf: None }
@@ -47,27 +48,28 @@ impl<I: Iterator<Item = u16>> Iterator for DecodeUtf16<I> {
         };
 
         if !u.is_utf16_surrogate() {
-            // SAFETY: not a surrogate
+            // SAFETY: 该 `u16` 不是代理项，且必然不超过 U+FFFF，因此是合法 Unicode scalar value。
             Some(Ok(unsafe { char::from_u32_unchecked(u as u32) }))
         } else if u >= 0xDC00 {
-            // a trailing surrogate
+            // 单独出现尾随代理项，无法组成合法代理对。
             Some(Err(DecodeUtf16Error { code: u }))
         } else {
             let u2 = match self.iter.next() {
                 Some(u2) => u2,
-                // eof
+                // 输入结束，前导代理项未能配对。
                 None => return Some(Err(DecodeUtf16Error { code: u })),
             };
             if u2 < 0xDC00 || u2 > 0xDFFF {
-                // not a trailing surrogate so we're not a valid
-                // surrogate pair, so rewind to redecode u2 next time.
+                // `u2` 不是尾随代理项，因此当前前导代理项无法组成合法代理对；
+                // 把 `u2` 放回缓冲区，下一轮按新的起点重新解码。
                 self.buf = Some(u2);
                 return Some(Err(DecodeUtf16Error { code: u }));
             }
 
-            // all ok, so lets decode it.
+            // 代理对合法，可以合成为补充平面的 Unicode scalar value。
             let c = (((u & 0x3ff) as u32) << 10 | (u2 & 0x3ff) as u32) + 0x1_0000;
-            // SAFETY: we checked that it's a legal unicode value
+            // SAFETY: 已确认 `u` 是前导代理项、`u2` 是尾随代理项；
+            // 公式得到的值位于 U+10000..=U+10FFFF，是合法 `char`。
             Some(Ok(unsafe { char::from_u32_unchecked(c) }))
         }
     }
@@ -77,28 +79,26 @@ impl<I: Iterator<Item = u16>> Iterator for DecodeUtf16<I> {
         let (low, high) = self.iter.size_hint();
 
         let (low_buf, high_buf) = match self.buf {
-            // buf is empty, no additional elements from it.
+            // 缓冲为空，不会从缓冲产生额外元素。
             None => (0, 0),
-            // `u` is a non surrogate, so it's always an additional character.
+            // `u` 不是代理项，因此一定会作为额外 `char` 产生。
             Some(u) if !u.is_utf16_surrogate() => (1, 1),
-            // `u` is a leading surrogate (it can never be a trailing surrogate and
-            // it's a surrogate due to the previous branch) and `self.iter` is empty.
+            // `u` 是前导代理项：前一分支已排除非代理项，且它不可能是尾随代理项；
+            // 此时 `self.iter` 为空。
             //
-            // `u` can't be paired, since the `self.iter` is empty,
-            // so it will always become an additional element (error).
+            // 因为后续输入为空，`u` 无法配对，所以一定会成为一个额外元素（错误）。
             Some(_u) if high == Some(0) => (1, 1),
-            // `u` is a leading surrogate and `iter` may be non-empty.
+            // `u` 是前导代理项，且 `iter` 可能仍有输入。
             //
-            // `u` can either pair with a trailing surrogate, in which case no additional elements
-            // are produced, or it can become an error, in which case it's an additional character (error).
+            // `u` 可能与下一个尾随代理项配对，此时不会额外增加元素；
+            // 也可能无法配对而成为一个额外错误元素。
             Some(_u) => (0, 1),
         };
 
-        // `self.iter` could contain entirely valid surrogates (2 elements per
-        // char), or entirely non-surrogates (1 element per char).
+        // `self.iter` 可能全部由合法代理对组成（每 2 个 code unit 产生 1 个 `char`），
+        // 也可能全部是非代理项（每 1 个 code unit 产生 1 个 `char`）。
         //
-        // On odd lower bound, at least one element must stay unpaired
-        // (with other elements from `self.iter`), so we round up.
+        // 当下界为奇数时，至少有一个元素无法与 `self.iter` 中其他元素配对，因此向上取整。
         let low = low.div_ceil(2) + low_buf;
         let high = high.and_then(|h| h.checked_add(high_buf));
 
@@ -110,7 +110,7 @@ impl<I: Iterator<Item = u16>> Iterator for DecodeUtf16<I> {
 impl<I: Iterator<Item = u16> + FusedIterator> FusedIterator for DecodeUtf16<I> {}
 
 impl DecodeUtf16Error {
-    /// Returns the unpaired surrogate which caused this error.
+    /// 返回导致该错误的未配对代理项。
     #[must_use]
     #[stable(feature = "decode_utf16", since = "1.9.0")]
     pub fn unpaired_surrogate(&self) -> u16 {

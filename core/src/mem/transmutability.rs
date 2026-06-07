@@ -8,7 +8,7 @@ use crate::marker::ConstParamTy_;
 /// 与 `Self` 实现：在给定一组施加于程序员身上的安全义务（参见 [`Assume`]）的前提下，
 /// 编译器已经证明类型 `Src` 的值的各个位（bits）可以被健全地（soundly）重解释为一个 `Self`。
 ///
-/// # 安全性（Safety）
+/// # 安全性(Safety）
 ///
 /// 如果 `Dst: TransmuteFrom<Src, ASSUMPTIONS>`，那么只要程序员保证给定的
 /// [`ASSUMPTIONS`](Assume) 得到满足，编译器就保证 `Src` 可以被健全地
@@ -83,7 +83,7 @@ where
 {
     /// 把一个 `Src` 值 transmute 为一个 `Self`。
     ///
-    /// # 安全性（Safety）
+    /// # 安全性(Safety）
     ///
     /// 调用方的安全义务取决于 `ASSUME` 的取值：
     /// - 如果 [`ASSUME.alignment`](Assume::alignment)，调用方必须保证返回的 `Self` 中各个引用的
@@ -310,7 +310,7 @@ impl Assume {
     /// ///
     /// /// 如果 `src` 违反了 `&Dst` 的对齐要求，则返回 `None`。
     /// ///
-    /// /// # Safety
+    /// /// # 安全性(Safety）
     /// ///
     /// /// 调用方保证 `ASSUME` 所要求的义务（对齐除外）均已满足。
     /// unsafe fn try_transmute_ref<'a, Src, Dst, const ASSUME: Assume>(src: &'a Src) -> Option<&'a Dst>

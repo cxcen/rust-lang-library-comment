@@ -6,15 +6,14 @@ use crate::fmt::{Formatter, Write};
 use crate::iter::FusedIterator;
 
 impl [u8] {
-    /// Creates an iterator over the contiguous valid UTF-8 ranges of this
-    /// slice, and the non-UTF-8 fragments in between.
+    /// 创建一个迭代器，遍历该切片中连续的合法 UTF-8 片段，
+    /// 以及夹在它们之间的非 UTF-8 片段。
     ///
-    /// See the [`Utf8Chunk`] type for documentation of the items yielded by this iterator.
+    /// 该迭代器产生的条目详见 [`Utf8Chunk`] 类型文档。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// This function formats arbitrary but mostly-UTF-8 bytes into Rust source
-    /// code in the form of a C-string literal (`c"..."`).
+    /// 该函数把任意但大多是 UTF-8 的字节格式化为 Rust 源码中的 C 字符串字面量（`c"..."`）形式。
     ///
     /// ```
     /// use std::fmt::Write as _;
@@ -24,7 +23,7 @@ impl [u8] {
     ///     repr.push_str("c\"");
     ///     for chunk in bytes.utf8_chunks() {
     ///         for ch in chunk.valid().chars() {
-    ///             // Escapes \0, \t, \r, \n, \\, \', \", and uses \u{...} for non-printable characters.
+    ///             // 转义 \0、\t、\r、\n、\\、\'、\"，并对不可打印字符使用 \u{...}。
     ///             write!(repr, "{}", ch.escape_debug()).unwrap();
     ///         }
     ///         for byte in chunk.invalid() {
@@ -47,24 +46,24 @@ impl [u8] {
     }
 }
 
-/// An item returned by the [`Utf8Chunks`] iterator.
+/// [`Utf8Chunks`] 迭代器返回的条目。
 ///
-/// A `Utf8Chunk` stores a sequence of [`u8`] up to the first broken character
-/// when decoding a UTF-8 string.
+/// `Utf8Chunk` 保存 UTF-8 解码时遇到的下一段内容：先是已经验证合法的 [`u8`] 序列，
+/// 然后是导致本轮失败的非法片段。调用方可用它实现无分配的有损解码。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
-/// // An invalid UTF-8 string
+/// // 一个非法 UTF-8 字符串。
 /// let bytes = b"foo\xF1\x80bar";
 ///
-/// // Decode the first `Utf8Chunk`
+/// // 解码第一个 `Utf8Chunk`。
 /// let chunk = bytes.utf8_chunks().next().unwrap();
 ///
-/// // The first three characters are valid UTF-8
+/// // 前三个字符是合法 UTF-8。
 /// assert_eq!("foo", chunk.valid());
 ///
-/// // The fourth character is broken
+/// // 第四个字符的字节序列是损坏的。
 /// assert_eq!(b"\xF1\x80", chunk.invalid());
 /// ```
 #[stable(feature = "utf8_chunks", since = "1.79.0")]
@@ -75,27 +74,24 @@ pub struct Utf8Chunk<'a> {
 }
 
 impl<'a> Utf8Chunk<'a> {
-    /// Returns the next validated UTF-8 substring.
+    /// 返回下一段已验证合法的 UTF-8 子串。
     ///
-    /// This substring can be empty at the start of the string or between
-    /// broken UTF-8 characters.
+    /// 该子串可能为空，例如输入开头就是非法片段，或两个损坏 UTF-8 片段相邻。
     #[must_use]
     #[stable(feature = "utf8_chunks", since = "1.79.0")]
     pub fn valid(&self) -> &'a str {
         self.valid
     }
 
-    /// Returns the invalid sequence that caused a failure.
+    /// 返回导致验证失败的非法字节序列。
     ///
-    /// The returned slice will have a maximum length of 3 and starts after the
-    /// substring given by [`valid`]. Decoding will resume after this sequence.
+    /// 返回切片最长为 3 字节，位于 [`valid`] 返回的合法子串之后。
+    /// 解码应从该序列之后继续。
     ///
-    /// If empty, this is the last chunk in the string. If non-empty, an
-    /// unexpected byte was encountered or the end of the input was reached
-    /// unexpectedly.
+    /// 如果为空，说明这是字符串中的最后一个 chunk。若非空，则表示遇到了非预期字节，
+    /// 或输入在一个 UTF-8 序列中途意外结束。
     ///
-    /// Lossy decoding would replace this sequence with [`U+FFFD REPLACEMENT
-    /// CHARACTER`].
+    /// 有损解码通常会把该序列替换为 [`U+FFFD REPLACEMENT CHARACTER`]。
     ///
     /// [`valid`]: Self::valid
     /// [`U+FFFD REPLACEMENT CHARACTER`]: crate::char::REPLACEMENT_CHARACTER
@@ -116,8 +112,8 @@ impl fmt::Debug for Debug<'_> {
         f.write_char('"')?;
 
         for chunk in self.0.utf8_chunks() {
-            // Valid part.
-            // Here we partially parse UTF-8 again which is suboptimal.
+            // 合法部分。
+            // 这里会再次部分解析 UTF-8，性能上并非最优。
             {
                 let valid = chunk.valid();
                 let mut from = 0;
@@ -127,7 +123,7 @@ impl fmt::Debug for Debug<'_> {
                         escape_single_quote: false,
                         escape_double_quote: true,
                     });
-                    // If char needs escaping, flush backlog so far and write, else skip
+                    // 如果该 char 需要转义，先写出目前积压的原文片段再写转义；否则继续累积。
                     if esc.len() != 1 {
                         f.write_str(&valid[from..i])?;
                         for c in esc {
@@ -139,7 +135,7 @@ impl fmt::Debug for Debug<'_> {
                 f.write_str(&valid[from..])?;
             }
 
-            // Broken parts of string as hex escape.
+            // 字符串中损坏的部分按十六进制转义输出。
             for &b in chunk.invalid() {
                 write!(f, "\\x{:02X}", b)?;
             }
@@ -149,23 +145,21 @@ impl fmt::Debug for Debug<'_> {
     }
 }
 
-/// An iterator used to decode a slice of mostly UTF-8 bytes to string slices
-/// ([`&str`]) and byte slices ([`&[u8]`][byteslice]).
+/// 用于把大多是 UTF-8 的字节切片解码为字符串切片（[`&str`]）和字节切片
+///（[`&[u8]`][byteslice]）的迭代器。
 ///
-/// This struct is created by the [`utf8_chunks`] method on bytes slices.
-/// If you want a simple conversion from UTF-8 byte slices to string slices,
-/// [`from_utf8`] is easier to use.
+/// 该结构体由字节切片上的 [`utf8_chunks`] 方法创建。如果只需要把完全合法的 UTF-8
+/// 字节切片转换为字符串切片，使用 [`from_utf8`] 更简单。
 ///
-/// See the [`Utf8Chunk`] type for documentation of the items yielded by this iterator.
+/// 该迭代器产生的条目详见 [`Utf8Chunk`] 类型文档。
 ///
 /// [byteslice]: slice
 /// [`utf8_chunks`]: slice::utf8_chunks
 /// [`from_utf8`]: super::from_utf8
 ///
-/// # Examples
+/// # 示例
 ///
-/// This can be used to create functionality similar to
-/// [`String::from_utf8_lossy`] without allocating heap memory:
+/// 这可用于在不分配堆内存的情况下构造类似 [`String::from_utf8_lossy`] 的功能：
 ///
 /// ```
 /// fn from_utf8_lossy<F>(input: &[u8], mut push: F) where F: FnMut(&str) {
@@ -212,17 +206,16 @@ impl<'a> Iterator for Utf8Chunks<'a> {
         let mut i = 0;
         let mut valid_up_to = 0;
         while i < self.source.len() {
-            // SAFETY: `i < self.source.len()` per previous line.
-            // For some reason the following are both significantly slower:
+            // SAFETY: 上一行已经保证 `i < self.source.len()`。
+            // 出于某些原因，下面两种写法都会明显更慢：
             // while let Some(&byte) = self.source.get(i) {
             // while let Some(byte) = self.source.get(i).copied() {
             let byte = unsafe { *self.source.get_unchecked(i) };
             i += 1;
 
             if byte < 128 {
-                // This could be a `1 => ...` case in the match below, but for
-                // the common case of all-ASCII inputs, we bypass loading the
-                // sizeable UTF8_CHAR_WIDTH table into cache.
+                // 这本可作为下面 match 的 `1 => ...` 分支处理；但对全 ASCII 输入这一常见情形，
+                // 这里能避免把较大的 UTF8_CHAR_WIDTH 表加载进缓存。
             } else {
                 let w = utf8_char_width(byte);
 
@@ -271,23 +264,19 @@ impl<'a> Iterator for Utf8Chunks<'a> {
             valid_up_to = i;
         }
 
-        // SAFETY: `i <= self.source.len()` because it is only ever incremented
-        // via `i += 1` and in between every single one of those increments, `i`
-        // is compared against `self.source.len()`. That happens either
-        // literally by `i < self.source.len()` in the while-loop's condition,
-        // or indirectly by `safe_get(self.source, i) & 192 != TAG_CONT_U8`. The
-        // loop is terminated as soon as the latest `i += 1` has made `i` no
-        // longer less than `self.source.len()`, which means it'll be at most
-        // equal to `self.source.len()`.
+        // SAFETY: `i <= self.source.len()`。`i` 只通过 `i += 1` 增长，
+        // 且每次增长之间都会与 `self.source.len()` 比较；比较要么直接发生在 while
+        // 条件 `i < self.source.len()` 中，要么通过
+        // `safe_get(self.source, i) & 192 != TAG_CONT_U8` 间接完成。
+        // 当最近一次 `i += 1` 使其不再小于长度时循环立即终止，因此它最多等于长度。
         let (inspected, remaining) = unsafe { self.source.split_at_unchecked(i) };
         self.source = remaining;
 
-        // SAFETY: `valid_up_to <= i` because it is only ever assigned via
-        // `valid_up_to = i` and `i` only increases.
+        // SAFETY: `valid_up_to <= i`，因为它只通过 `valid_up_to = i` 赋值，而 `i` 单调递增。
         let (valid, invalid) = unsafe { inspected.split_at_unchecked(valid_up_to) };
 
         Some(Utf8Chunk {
-            // SAFETY: All bytes up to `valid_up_to` are valid UTF-8.
+            // SAFETY: 到 `valid_up_to` 为止的所有字节都已按 UTF-8 规则验证为合法。
             valid: unsafe { from_utf8_unchecked(valid) },
             invalid,
         })

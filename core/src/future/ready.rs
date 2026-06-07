@@ -51,6 +51,10 @@ impl<T> Ready<T> {
 /// 通过本函数创建的 future,在功能上与通过 `async {}` 创建的 future 相似。主要区别在于:本函数
 /// 创建的 future 是具名的,并且实现了 `Unpin`。
 ///
+/// 它第一次被 `poll` 时会立即返回 `Poll::Ready(t)`。按照 [`Future`](crate::future::Future)
+/// 的完成契约,调用方在收到 `Ready` 后不得再次 poll 它;本类型内部会把值取走,因此完成后再次
+/// poll 会触发 panic。
+///
 /// # 示例
 ///
 /// ```

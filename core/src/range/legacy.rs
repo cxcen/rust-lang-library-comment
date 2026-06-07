@@ -1,10 +1,9 @@
-//! # Legacy range types
+//! # 旧版 range 类型
 //!
-//! The types within this module will be replaced by the types
-//! [`Range`], [`RangeInclusive`], [`RangeToInclusive`], and [`RangeFrom`] in the parent
-//! module, [`core::range`].
+//! 本模块中的类型将由父模块 [`core::range`] 中的 [`Range`]、
+//! [`RangeInclusive`]、[`RangeToInclusive`] 和 [`RangeFrom`] 类型取代。
 //!
-//! The types here are equivalent to those in [`core::ops`].
+//! 这里的类型等价于 [`core::ops`] 中的同名类型。
 
 #[doc(inline)]
 pub use crate::ops::{Range, RangeFrom, RangeInclusive, RangeToInclusive};

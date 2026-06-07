@@ -12,7 +12,7 @@
 //! * **解引用裸指针需要 `unsafe`**：`*ptr` 必须写在 `unsafe` 块里，因为编译器无法替你
 //!   证明这次访问是安全的。
 //!
-//! # 安全性（Safety）
+//! # 安全性(Safety）
 //!
 //! 本模块中的许多函数接收裸指针作为参数，并对其进行读取或写入。要让这些操作安全，
 //! 这些指针必须对所要进行的访问是 *valid*（有效的）。一个指针是否有效，取决于它被
@@ -386,7 +386,7 @@ mod mut_ptr;
 ///
 /// [`memcpy`]: https://en.cppreference.com/w/c/string/byte/memcpy
 ///
-/// # 安全性（Safety）
+/// # 安全性(Safety）
 ///
 /// 若违反以下任一条件，行为即为未定义。调用方必须维护以下全部不变量：
 ///
@@ -497,7 +497,7 @@ pub const unsafe fn copy_nonoverlapping<T>(src: *const T, dst: *mut T, count: us
 ///
 /// [`memmove`]: https://en.cppreference.com/w/c/string/byte/memmove
 ///
-/// # 安全性（Safety）
+/// # 安全性(Safety）
 ///
 /// 若违反以下任一条件，行为即为未定义。调用方必须维护以下全部不变量：
 ///
@@ -527,7 +527,7 @@ pub const unsafe fn copy_nonoverlapping<T>(src: *const T, dst: *mut T, count: us
 /// ```
 /// use std::ptr;
 ///
-/// /// # 安全性（Safety）
+/// /// # 安全性(Safety）
 /// ///
 /// /// * `ptr` 必须按其类型正确对齐且非零。
 /// /// * `ptr` 必须对读取 `elts` 个连续的、类型为 `T` 的元素是 valid 的。
@@ -578,7 +578,7 @@ pub const unsafe fn copy<T>(src: *const T, dst: *mut T, count: usize) {
 ///
 /// [`memset`]: https://en.cppreference.com/w/c/string/byte/memset
 ///
-/// # 安全性（Safety）
+/// # 安全性(Safety）
 ///
 /// 若违反以下任一条件，行为即为未定义。调用方必须维护以下全部不变量：
 ///
@@ -666,7 +666,7 @@ pub const unsafe fn write_bytes<T>(dst: *mut T, val: u8, count: usize) {
 /// [`ptr::read_unaligned`]: self::read_unaligned
 /// [pinned]: crate::pin
 ///
-/// # 安全性（Safety）
+/// # 安全性(Safety）
 ///
 /// 若违反以下任一条件，行为即为未定义。调用方必须维护以下全部不变量：
 ///
@@ -1114,7 +1114,7 @@ pub const fn slice_from_raw_parts_mut<T>(data: *mut T, len: usize) -> *mut [T] {
 /// * 该操作是“无类型的”（untyped），意思是数据可以是未初始化的、或以其他方式违反 `T` 的要求。
 ///   初始化状态会被原样保留。
 ///
-/// # 安全性（Safety）
+/// # 安全性(Safety）
 ///
 /// 若违反以下任一条件，行为即为未定义。调用方必须维护以下全部不变量：
 ///
@@ -1190,12 +1190,12 @@ pub const unsafe fn swap<T>(x: *mut T, y: *mut T) {
 }
 
 /// 在分别从 `x` 和 `y` 起的两段内存区域之间交换 `count * size_of::<T>()` 个字节。这两段区域
-///*不得*重叠。
+/// *不得*重叠。
 ///
 /// 该操作是“无类型的”（untyped），意思是数据可以是未初始化的、或以其他方式违反 `T` 的要求。
 /// 初始化状态会被原样保留。
 ///
-/// # 安全性（Safety）
+/// # 安全性(Safety）
 ///
 /// 若违反以下任一条件，行为即为未定义。调用方必须维护以下全部不变量：
 ///
@@ -1377,7 +1377,7 @@ unsafe fn swap_nonoverlapping_bytes(x: *mut u8, y: *mut u8, bytes: NonZero<usize
 /// 本函数在语义上等价于 [`mem::replace`]，区别仅在于它操作的是裸指针而非引用。当引用可用时，
 /// 应优先使用 [`mem::replace`]。
 ///
-/// # 安全性（Safety）
+/// # 安全性(Safety）
 ///
 /// 若违反以下任一条件，行为即为未定义。调用方必须维护以下全部不变量：
 ///
@@ -1431,7 +1431,7 @@ pub const unsafe fn replace<T>(dst: *mut T, src: T) -> T {
 
 /// 从 `src` 处读取值，但不移动它。这会使 `src` 处的内存保持不变。
 ///
-/// # 安全性（Safety）
+/// # 安全性(Safety）
 ///
 /// 若违反以下任一条件，行为即为未定义。调用方必须维护以下全部不变量：
 ///
@@ -1576,7 +1576,7 @@ pub const unsafe fn read<T>(src: *const T) -> T {
 ///
 /// 与 [`read`] 不同，`read_unaligned` 可用于未对齐（unaligned）的指针。
 ///
-/// # 安全性（Safety）
+/// # 安全性(Safety）
 ///
 /// 若违反以下任一条件，行为即为未定义。调用方必须维护以下全部不变量：
 ///
@@ -1597,7 +1597,7 @@ pub const unsafe fn read<T>(src: *const T) -> T {
 ///（未对齐）结构体字段的裸指针，会先创建一个中间的未对齐引用，然后再把它转换为裸指针。
 /// 这个引用是临时的、且会被立即转换，这一点无关紧要——因为编译器始终期望引用是正确对齐的。
 /// 结果就是：使用 `&packed.unaligned as *const FieldType` 会在你的程序中立即造成
-///*未定义行为*。
+/// *未定义行为*。
 ///
 /// 正确的做法是使用 `&raw const` 语法来创建指针。你可以把这样构造出的指针与本函数一起使用。
 ///
@@ -1656,35 +1656,34 @@ pub const unsafe fn read_unaligned<T>(src: *const T) -> T {
     }
 }
 
-/// Overwrites a memory location with the given value without reading or
-/// dropping the old value.
+/// 用给定值覆盖一个内存位置，不读取也不丢弃(drop)旧值。
 ///
-/// `write` does not drop the contents of `dst`. This is safe, but it could leak
-/// allocations or resources, so care should be taken not to overwrite an object
-/// that should be dropped.
+/// `write` 不会 drop `dst` 原本指向的内容。这一语义本身不会读取旧值，因此适合裸指针
+/// 写入；但如果旧值本应运行析构逻辑，它可能泄漏 allocation 或其他资源。调用方必须自己
+/// 知道该位置是否未初始化，或者旧值是否已经通过 [`read`] 等方式被取走。
 ///
-/// Additionally, it does not drop `src`. Semantically, `src` is moved into the
-/// location pointed to by `dst`.
+/// 另外，`write` 也不会 drop `src`。语义上，`src` 被移动到 `dst` 指向的位置；
+/// `write` 取得第二个参数的所有权后，原来的 `src` 位置不会再被隐式析构。
 ///
-/// This is appropriate for initializing uninitialized memory, or overwriting
-/// memory that has previously been [`read`] from.
+/// 因此，本函数常用于初始化未初始化内存，或覆盖之前已经被 [`read`] 取走值的内存。
 ///
-/// # Safety
+/// # 安全性(Safety）
 ///
-/// Behavior is undefined if any of the following conditions are violated:
+/// 如果违反以下任一条件，行为即为未定义：
 ///
-/// * `dst` must be [valid] for writes.
+/// * `dst` 必须对写入 [valid]。它必须带有允许写入该内存的 provenance，并且覆盖的
+///   字节范围必须位于同一个有效 allocation 内。
 ///
-/// * `dst` must be properly aligned. Use [`write_unaligned`] if this is not the
-///   case.
+/// * `dst` 必须为 `T` 正确对齐。如果不能满足对齐要求，应使用 [`write_unaligned`]。
 ///
-/// Note that even if `T` has size `0`, the pointer must be properly aligned.
+/// 注意：即便 `T` 的大小为 0，指针也必须正确对齐；零大小类型不读写字节，但引用和指针
+/// API 的对齐不变量仍然会被编译器优化依赖。
 ///
 /// [valid]: self#safety
 ///
-/// # Examples
+/// # 示例
 ///
-/// Basic usage:
+/// 基本用法：
 ///
 /// ```
 /// let mut x = 0;
@@ -1697,33 +1696,29 @@ pub const unsafe fn read_unaligned<T>(src: *const T) -> T {
 /// }
 /// ```
 ///
-/// Manually implement [`mem::swap`]:
+/// 手动实现 [`mem::swap`]：
 ///
 /// ```
 /// use std::ptr;
 ///
 /// fn swap<T>(a: &mut T, b: &mut T) {
 ///     unsafe {
-///         // Create a bitwise copy of the value at `a` in `tmp`.
+///         // 在 `tmp` 中创建 `a` 处值的按位副本。
 ///         let tmp = ptr::read(a);
 ///
-///         // Exiting at this point (either by explicitly returning or by
-///         // calling a function which panics) would cause the value in `tmp` to
-///         // be dropped while the same value is still referenced by `a`. This
-///         // could trigger undefined behavior if `T` is not `Copy`.
+///         // 如果此时退出（无论显式 return，还是调用会 panic 的函数），`tmp` 中的值会
+///         // 被 drop，而同一个值仍由 `a` 引用。若 `T` 不是 `Copy`，这可能触发未定义行为。
 ///
-///         // Create a bitwise copy of the value at `b` in `a`.
-///         // This is safe because mutable references cannot alias.
+///         // 在 `a` 中创建 `b` 处值的按位副本。
+///         // 这里成立是因为可变引用不能互相 alias。
 ///         ptr::copy_nonoverlapping(b, a, 1);
 ///
-///         // As above, exiting here could trigger undefined behavior because
-///         // the same value is referenced by `a` and `b`.
+///         // 同理，如果此时退出，同一个值会同时由 `a` 和 `b` 引用，可能触发未定义行为。
 ///
-///         // Move `tmp` into `b`.
+///         // 把 `tmp` 移动进 `b`。
 ///         ptr::write(b, tmp);
 ///
-///         // `tmp` has been moved (`write` takes ownership of its second argument),
-///         // so nothing is dropped implicitly here.
+///         // `tmp` 已被移动（`write` 接管第二个参数的所有权），此处不会再隐式 drop。
 ///     }
 /// }
 ///
@@ -1741,19 +1736,17 @@ pub const unsafe fn read_unaligned<T>(src: *const T) -> T {
 #[rustc_diagnostic_item = "ptr_write"]
 #[track_caller]
 pub const unsafe fn write<T>(dst: *mut T, src: T) {
-    // Semantically, it would be fine for this to be implemented as a
-    // `copy_nonoverlapping` and appropriate drop suppression of `src`.
-
-    // However, implementing via that currently produces more MIR than is ideal.
-    // Using an intrinsic keeps it down to just the simple `*dst = move src` in
-    // MIR (11 statements shorter, at the time of writing), and also allows
-    // `src` to stay an SSA value in codegen_ssa, rather than a memory one.
-
-    // SAFETY: the caller must guarantee that `dst` is valid for writes.
-    // `dst` cannot overlap `src` because the caller has mutable access
-    // to `dst` while `src` is owned by this function.
+    // 从语义上讲，这可以用 `copy_nonoverlapping` 加上适当抑制 `src` 的 drop 来实现。
+    //
+    // 但那样当前会产生偏多 MIR。直接使用 intrinsic 可以把 MIR 降到简单的
+    // `*dst = move src`（撰写时少 11 条语句），并让 `src` 在 codegen_ssa 中保持
+    // SSA 值，而不是落到内存对象。
+    //
+    // SAFETY: 调用方必须保证 `dst` 对写入有效且满足 `T` 的对齐要求。`dst` 不能与
+    // `src` 重叠，因为调用方在传入时拥有对 `dst` 的可变访问，而 `src` 的所有权已经
+    // 转移给本函数。
     unsafe {
-        #[cfg(debug_assertions)] // Too expensive to always enable (for now?)
+        #[cfg(debug_assertions)] // 目前始终启用的开销过高。
         ub_checks::assert_unsafe_precondition!(
             check_language_ub,
             "ptr::write requires that the pointer argument is aligned and non-null",
@@ -1767,43 +1760,36 @@ pub const unsafe fn write<T>(dst: *mut T, src: T) {
     }
 }
 
-/// Overwrites a memory location with the given value without reading or
-/// dropping the old value.
+/// 用给定值覆盖一个内存位置，不读取也不丢弃(drop)旧值。
 ///
-/// Unlike [`write()`], the pointer may be unaligned.
+/// 与 [`write()`] 不同，目标指针可以不对齐。
 ///
-/// `write_unaligned` does not drop the contents of `dst`. This is safe, but it
-/// could leak allocations or resources, so care should be taken not to overwrite
-/// an object that should be dropped.
+/// `write_unaligned` 不会 drop `dst` 原本指向的内容。这避免了读取旧值，但如果旧值
+/// 本应析构，仍可能泄漏 allocation 或资源；调用方必须自行确保覆盖该位置是正确的。
 ///
-/// Additionally, it does not drop `src`. Semantically, `src` is moved into the
-/// location pointed to by `dst`.
+/// 另外，它也不会 drop `src`。语义上，`src` 被移动到 `dst` 指向的位置。
 ///
-/// This is appropriate for initializing uninitialized memory, or overwriting
-/// memory that has previously been read with [`read_unaligned`].
+/// 本函数适合初始化未初始化内存，或覆盖之前已经用 [`read_unaligned`] 取走值的内存。
 ///
-/// # Safety
+/// # 安全性(Safety）
 ///
-/// Behavior is undefined if any of the following conditions are violated:
+/// 如果违反以下任一条件，行为即为未定义：
 ///
-/// * `dst` must be [valid] for writes.
+/// * `dst` 必须对写入 [valid]。它必须带有允许写入该内存的 provenance，且写入的
+///   字节范围必须落在同一个有效 allocation 内。
 ///
 /// [valid]: self#safety
 ///
-/// ## On `packed` structs
+/// ## 关于 `packed` 结构体
 ///
-/// Attempting to create a raw pointer to an `unaligned` struct field with
-/// an expression such as `&packed.unaligned as *const FieldType` creates an
-/// intermediate unaligned reference before converting that to a raw pointer.
-/// That this reference is temporary and immediately cast is inconsequential
-/// as the compiler always expects references to be properly aligned.
-/// As a result, using `&packed.unaligned as *const FieldType` causes immediate
-/// *undefined behavior* in your program.
+/// 如果用 `&packed.unaligned as *const FieldType` 这类表达式为 `unaligned` 字段创建
+/// 裸指针，会先创建一个中间的未对齐引用，然后再把它转换为裸指针。这个引用只是临时值并
+/// 立即被 cast 并不重要：编译器始终假设引用已经正确对齐。因此，使用
+/// `&packed.unaligned as *const FieldType` 会立刻在程序中造成 *undefined behavior*。
 ///
-/// Instead, you must use the `&raw mut` syntax to create the pointer.
-/// You may use that constructed pointer together with this function.
+/// 应改用 `&raw mut` 语法创建指针。这样构造出的指针可以与本函数配合使用。
 ///
-/// An example of how to do it and how this relates to `write_unaligned` is:
+/// 下面示例展示这种写法以及它与 `write_unaligned` 的关系：
 ///
 /// ```
 /// #[repr(packed, C)]
@@ -1814,21 +1800,21 @@ pub const unsafe fn write<T>(dst: *mut T, src: T) {
 ///
 /// let mut packed: Packed = unsafe { std::mem::zeroed() };
 ///
-/// // Take the address of a 32-bit integer which is not aligned.
-/// // In contrast to `&packed.unaligned as *mut _`, this has no undefined behavior.
+/// // 取得一个未对齐 32 位整数的地址。
+/// // 与 `&packed.unaligned as *mut _` 不同，这不会造成未定义行为。
 /// let unaligned = &raw mut packed.unaligned;
 ///
 /// unsafe { std::ptr::write_unaligned(unaligned, 42) };
 ///
-/// assert_eq!({packed.unaligned}, 42); // `{...}` forces copying the field instead of creating a reference.
+/// assert_eq!({packed.unaligned}, 42); // `{...}` 强制复制字段，而不是创建引用。
 /// ```
 ///
-/// Accessing unaligned fields directly with e.g. `packed.unaligned` is safe however
-/// (as can be seen in the `assert_eq!` above).
+/// 不过，像 `packed.unaligned` 这样直接访问未对齐字段本身是安全的（上面的 `assert_eq!`
+/// 就展示了这一点），因为编译器会生成不经由未对齐引用的访问。
 ///
-/// # Examples
+/// # 示例
 ///
-/// Write a `usize` value to a byte buffer:
+/// 向字节缓冲区写入一个 `usize` 值：
 ///
 /// ```
 /// fn write_usize(x: &mut [u8], val: usize) {
@@ -1845,74 +1831,66 @@ pub const unsafe fn write<T>(dst: *mut T, src: T) {
 #[rustc_diagnostic_item = "ptr_write_unaligned"]
 #[track_caller]
 pub const unsafe fn write_unaligned<T>(dst: *mut T, src: T) {
-    // SAFETY: the caller must guarantee that `dst` is valid for writes.
-    // `dst` cannot overlap `src` because the caller has mutable access
-    // to `dst` while `src` is owned by this function.
+    // SAFETY: 调用方必须保证 `dst` 对写入有效。`dst` 不能与 `src` 重叠，因为调用方
+    // 在传入时拥有对 `dst` 的可变访问，而 `src` 的所有权已经转移给本函数。
     unsafe {
         copy_nonoverlapping((&raw const src) as *const u8, dst as *mut u8, size_of::<T>());
-        // We are calling the intrinsic directly to avoid function calls in the generated code.
+        // 直接调用 intrinsic，以避免生成代码中出现额外函数调用。
         intrinsics::forget(src);
     }
 }
 
-/// Performs a volatile read of the value from `src` without moving it.
+/// 对 `src` 执行 volatile 读取，按位复制出一个 `T`，但不移动原位置的值。
 ///
-/// Volatile operations are intended to act on I/O memory. As such, they are considered externally
-/// observable events (just like syscalls, but less opaque), and are guaranteed to not be elided or
-/// reordered by the compiler across other externally observable events. With this in mind, there
-/// are two cases of usage that need to be distinguished:
+/// Volatile 操作主要用于 I/O 内存。它们会被视为外部可观察事件（类似系统调用，但更少
+/// 不透明性），编译器保证不会删除它们，也不会让它们跨过其他外部可观察事件发生重排。
+/// 因此必须区分两类使用场景：
 ///
-/// - When a volatile operation is used for memory inside an [allocation], it behaves exactly like
-///   [`read`], except for the additional guarantee that it won't be elided or reordered (see
-///   above). This implies that the operation will actually access memory and not e.g. be lowered to
-///   reusing data from a previous read. Other than that, all the usual rules for memory accesses
-///   apply (including provenance).  In particular, just like in C, whether an operation is volatile
-///   has no bearing whatsoever on questions involving concurrent accesses from multiple threads.
-///   Volatile accesses behave exactly like non-atomic accesses in that regard.
+/// - 当 volatile 操作用于 [allocation] 内的内存时，它除了“不会被删除或重排”这一额外保证外，
+///   行为与 [`read`] 完全相同。这意味着操作会真的访问内存，而不是复用之前读取到的数据。
+///   除此之外，普通内存访问的所有规则仍然适用，包括 provenance、对齐、初始化以及 aliasing。
+///   特别是，和 C 中一样，`volatile` 与多线程并发访问没有任何同步关系；在这一点上，
+///   volatile 访问仍然是非 atomic 访问。
 ///
-/// - Volatile operations, however, may also be used to access memory that is _outside_ of any Rust
-///   allocation. In this use-case, the pointer does *not* have to be [valid] for reads. This is
-///   typically used for CPU and peripheral registers that must be accessed via an I/O memory
-///   mapping, most commonly at fixed addresses reserved by the hardware. These often have special
-///   semantics associated to their manipulation, and cannot be used as general purpose memory.
-///   Here, any address value is possible, including 0 and [`usize::MAX`], so long as the semantics
-///   of such a read are well-defined by the target hardware. The provenance of the pointer is
-///   irrelevant, and it can be created with [`without_provenance`]. The access must not trap. It
-///   can cause side-effects, but those must not affect Rust-allocated memory in any way. This
-///   access is still not considered [atomic], and as such it cannot be used for inter-thread
-///   synchronization.
+/// - Volatile 操作也可用于访问任何 Rust allocation 之外的内存。在这种场景下，指针不必对读取
+///   [valid]。典型用途是经由 I/O 内存映射访问 CPU 或外设寄存器，通常位于硬件保留的固定
+///   地址。这些地址的读写常带有特殊硬件语义，不能当作通用内存使用。此时任意地址值都可能
+///   合法，包括 0 和 [`usize::MAX`]，前提是目标硬件明确定义了这次读取的语义。指针的
+///   provenance 与该访问无关，可以用 [`without_provenance`] 创建。访问不得 trap；它可以有
+///   副作用，但这些副作用不得以任何方式修改 Rust allocation 内的内存。该访问仍不属于
+///   [atomic] 访问，不能用于线程间同步。
 ///
-/// Note that volatile memory operations where T is a zero-sized type are noops and may be ignored.
+/// 注意：当 `T` 是零大小类型时，volatile 内存操作是 no-op，可能被忽略。
 ///
 /// [allocation]: crate::ptr#allocated-object
 /// [atomic]: crate::sync::atomic#memory-model-for-atomic-accesses
 ///
-/// # Safety
+/// # 安全性(Safety）
 ///
-/// Like [`read`], `read_volatile` creates a bitwise copy of `T`, regardless of whether `T` is
-/// [`Copy`]. If `T` is not [`Copy`], using both the returned value and the value at `*src` can
-/// [violate memory safety][read-ownership]. However, storing non-[`Copy`] types in volatile memory
-/// is almost certainly incorrect.
+/// 与 [`read`] 一样，无论 `T` 是否实现 [`Copy`]，`read_volatile` 都会创建一个 `T` 的
+/// 按位副本。如果 `T` 不是 [`Copy`]，同时使用返回值和 `*src` 处的原值可能
+/// [破坏内存安全][read-ownership]。不过，把非 [`Copy`] 类型放在 volatile 内存中几乎一定
+/// 是错误用法。
 ///
-/// Behavior is undefined if any of the following conditions are violated:
+/// 如果违反以下任一条件，行为即为未定义：
 ///
-/// * `src` must be either [valid] for reads, or it must point to memory outside of all Rust
-///   allocations and reading from that memory must:
-///   - not trap, and
-///   - not cause any memory inside a Rust allocation to be modified.
+/// * `src` 必须满足二者之一：要么对读取 [valid]；要么指向所有 Rust allocation 之外的
+///   内存，并且读取该内存必须：
+///   - 不会 trap；且
+///   - 不会导致任何 Rust allocation 内的内存被修改。
 ///
-/// * `src` must be properly aligned.
+/// * `src` 必须为 `T` 正确对齐。
 ///
-/// * Reading from `src` must produce a properly initialized value of type `T`.
+/// * 从 `src` 读取必须产生一个已正确初始化的 `T` 值。
 ///
-/// Note that even if `T` has size `0`, the pointer must be properly aligned.
+/// 注意：即便 `T` 的大小为 0，指针也必须正确对齐。
 ///
 /// [valid]: self#safety
 /// [read-ownership]: read#ownership-of-the-returned-value
 ///
-/// # Examples
+/// # 示例
 ///
-/// Basic usage:
+/// 基本用法：
 ///
 /// ```
 /// let x = 12;
@@ -1927,7 +1905,7 @@ pub const unsafe fn write_unaligned<T>(dst: *mut T, src: T) {
 #[track_caller]
 #[rustc_diagnostic_item = "ptr_read_volatile"]
 pub unsafe fn read_volatile<T>(src: *const T) -> T {
-    // SAFETY: the caller must uphold the safety contract for `volatile_load`.
+    // SAFETY: 调用方必须维护 `volatile_load` 的安全契约。
     unsafe {
         ub_checks::assert_unsafe_precondition!(
             check_language_ub,
@@ -1941,63 +1919,54 @@ pub unsafe fn read_volatile<T>(src: *const T) -> T {
     }
 }
 
-/// Performs a volatile write of a memory location with the given value without reading or dropping
-/// the old value.
+/// 对某个内存位置执行 volatile 写入，用给定值覆盖旧值，但不读取也不 drop 旧值。
 ///
-/// Volatile operations are intended to act on I/O memory. As such, they are considered externally
-/// observable events (just like syscalls), and are guaranteed to not be elided or reordered by the
-/// compiler across other externally observable events. With this in mind, there are two cases of
-/// usage that need to be distinguished:
+/// Volatile 操作主要用于 I/O 内存。它们会被视为外部可观察事件（类似系统调用），编译器
+/// 保证不会删除它们，也不会让它们跨过其他外部可观察事件发生重排。因此必须区分两类
+/// 使用场景：
 ///
-/// - When a volatile operation is used for memory inside an [allocation], it behaves exactly like
-///   [`write`][write()], except for the additional guarantee that it won't be elided or reordered
-///   (see above). This implies that the operation will actually access memory and not e.g. be
-///   lowered to a register access. Other than that, all the usual rules for memory accesses apply
-///   (including provenance). In particular, just like in C, whether an operation is volatile has no
-///   bearing whatsoever on questions involving concurrent access from multiple threads. Volatile
-///   accesses behave exactly like non-atomic accesses in that regard.
+/// - 当 volatile 操作用于 [allocation] 内的内存时，它除了“不会被删除或重排”这一额外保证外，
+///   行为与 [`write`][write()] 完全相同。这意味着操作会真的访问内存，而不是被降级成寄存器
+///   写入等形式。除此之外，普通内存访问的所有规则仍然适用，包括 provenance、对齐和
+///   aliasing。特别是，和 C 中一样，`volatile` 与多线程并发访问没有任何同步关系；在这一点上，
+///   volatile 访问仍然是非 atomic 访问。
 ///
-/// - Volatile operations, however, may also be used to access memory that is _outside_ of any Rust
-///   allocation. In this use-case, the pointer does *not* have to be [valid] for writes. This is
-///   typically used for CPU and peripheral registers that must be accessed via an I/O memory
-///   mapping, most commonly at fixed addresses reserved by the hardware. These often have special
-///   semantics associated to their manipulation, and cannot be used as general purpose memory.
-///   Here, any address value is possible, including 0 and [`usize::MAX`], so long as the semantics
-///   of such a write are well-defined by the target hardware. The provenance of the pointer is
-///   irrelevant, and it can be created with [`without_provenance`]. The access must not trap. It
-///   can cause side-effects, but those must not affect Rust-allocated memory in any way. This
-///   access is still not considered [atomic], and as such it cannot be used for inter-thread
-///   synchronization.
+/// - Volatile 操作也可用于访问任何 Rust allocation 之外的内存。在这种场景下，指针不必对写入
+///   [valid]。典型用途是经由 I/O 内存映射访问 CPU 或外设寄存器，通常位于硬件保留的固定
+///   地址。这些地址的读写常带有特殊硬件语义，不能当作通用内存使用。此时任意地址值都可能
+///   合法，包括 0 和 [`usize::MAX`]，前提是目标硬件明确定义了这次写入的语义。指针的
+///   provenance 与该访问无关，可以用 [`without_provenance`] 创建。访问不得 trap；它可以有
+///   副作用，但这些副作用不得以任何方式修改 Rust allocation 内的内存。该访问仍不属于
+///   [atomic] 访问，不能用于线程间同步。
 ///
-/// Note that volatile memory operations on zero-sized types (e.g., if a zero-sized type is passed
-/// to `write_volatile`) are noops and may be ignored.
+/// 注意：对零大小类型执行 volatile 内存操作（例如给 `write_volatile` 传入零大小类型）
+/// 是 no-op，可能被忽略。
 ///
-/// `write_volatile` does not drop the contents of `dst`. This is safe, but it could leak
-/// allocations or resources, so care should be taken not to overwrite an object that should be
-/// dropped when operating on Rust memory. Additionally, it does not drop `src`. Semantically, `src`
-/// is moved into the location pointed to by `dst`.
+/// `write_volatile` 不会 drop `dst` 原本指向的内容。对 Rust 内存操作时，如果旧值本应
+/// 析构，这可能泄漏 allocation 或资源。它也不会 drop `src`；语义上，`src` 被移动到
+/// `dst` 指向的位置。
 ///
 /// [allocation]: crate::ptr#allocated-object
 /// [atomic]: crate::sync::atomic#memory-model-for-atomic-accesses
 ///
-/// # Safety
+/// # 安全性(Safety）
 ///
-/// Behavior is undefined if any of the following conditions are violated:
+/// 如果违反以下任一条件，行为即为未定义：
 ///
-/// * `dst` must be either [valid] for writes, or it must point to memory outside of all Rust
-///   allocations and writing to that memory must:
-///   - not trap, and
-///   - not cause any memory inside a Rust allocation to be modified.
+/// * `dst` 必须满足二者之一：要么对写入 [valid]；要么指向所有 Rust allocation 之外的
+///   内存，并且写入该内存必须：
+///   - 不会 trap；且
+///   - 不会导致任何 Rust allocation 内的内存被修改。
 ///
-/// * `dst` must be properly aligned.
+/// * `dst` 必须为 `T` 正确对齐。
 ///
-/// Note that even if `T` has size `0`, the pointer must be properly aligned.
+/// 注意：即便 `T` 的大小为 0，指针也必须正确对齐。
 ///
 /// [valid]: self#safety
 ///
-/// # Examples
+/// # 示例
 ///
-/// Basic usage:
+/// 基本用法：
 ///
 /// ```
 /// let mut x = 0;
@@ -2014,7 +1983,7 @@ pub unsafe fn read_volatile<T>(src: *const T) -> T {
 #[rustc_diagnostic_item = "ptr_write_volatile"]
 #[track_caller]
 pub unsafe fn write_volatile<T>(dst: *mut T, src: T) {
-    // SAFETY: the caller must uphold the safety contract for `volatile_store`.
+    // SAFETY: 调用方必须维护 `volatile_store` 的安全契约。
     unsafe {
         ub_checks::assert_unsafe_precondition!(
             check_language_ub,
@@ -2028,70 +1997,67 @@ pub unsafe fn write_volatile<T>(dst: *mut T, src: T) {
     }
 }
 
-/// Calculate an element-offset that increases a pointer's alignment.
+/// 计算一个以元素为单位的偏移量，用来提高指针的对齐程度。
 ///
-/// Calculate an element-offset (not byte-offset) that when added to a given pointer `p`, increases `p`'s alignment to at least the given alignment `a`.
+/// 返回的偏移量不是字节偏移，而是 `T` 元素个数。把它加到给定指针 `p` 上后，
+/// 结果指针的地址会至少满足给定对齐值 `a`；如果无法通过元素步长做到这一点，则返回
+/// `usize::MAX`。
 ///
-/// # Safety
-/// `a` must be a power of two.
+/// # 安全性(Safety）
+/// `a` 必须是 2 的幂。调用方若传入其他值，会破坏本函数内部对 unchecked 算术和
+/// 模逆运算的前置假设。
 ///
-/// # Notes
-/// This implementation has been carefully tailored to not panic. It is UB for this to panic.
-/// The only real change that can be made here is change of `INV_TABLE_MOD_16` and associated
-/// constants.
+/// # 说明
 ///
-/// If we ever decide to make it possible to call the intrinsic with `a` that is not a
-/// power-of-two, it will probably be more prudent to just change to a naive implementation rather
-/// than trying to adapt this to accommodate that change.
+/// 这个实现经过专门设计，不能 panic；如果它 panic，则调用该 intrinsic 的路径会产生 UB。
+/// 这里真正适合调整的只有 `INV_TABLE_MOD_16` 及其相关常量。
 ///
-/// Any questions go to @nagisa.
+/// 如果将来决定允许用非 2 的幂的 `a` 调用该 intrinsic，更稳妥的做法大概是改用朴素实现，
+/// 而不是强行扩展当前这套为 2 的幂对齐定制的实现。
+///
+/// 如有疑问请联系 @nagisa。
 #[allow(ptr_to_integer_transmute_in_consts)]
 pub(crate) unsafe fn align_offset<T: Sized>(p: *const T, a: usize) -> usize {
-    // FIXME(#75598): Direct use of these intrinsics improves codegen significantly at opt-level <=
-    // 1, where the method versions of these operations are not inlined.
+    // FIXME(#75598): 在 opt-level <= 1 时，这些操作的方法版本不会被内联；直接使用这些
+    // intrinsic 能显著改善 codegen。
     use intrinsics::{
         assume, cttz_nonzero, exact_div, mul_with_overflow, unchecked_rem, unchecked_shl,
         unchecked_shr, unchecked_sub, wrapping_add, wrapping_mul, wrapping_sub,
     };
 
-    /// Calculate multiplicative modular inverse of `x` modulo `m`.
+    /// 计算 `x` 在模 `m` 意义下的乘法逆元。
     ///
-    /// This implementation is tailored for `align_offset` and has following preconditions:
+    /// 这个实现专门服务于 `align_offset`，并依赖以下前置条件：
     ///
-    /// * `m` is a power-of-two;
-    /// * `x < m`; (if `x ≥ m`, pass in `x % m` instead)
+    /// * `m` 是 2 的幂；
+    /// * `x < m`；如果 `x ≥ m`，调用方应传入 `x % m`。
     ///
-    /// Implementation of this function shall not panic. Ever.
+    /// 本函数实现绝不能 panic。
     #[inline]
     const unsafe fn mod_inv(x: usize, m: usize) -> usize {
-        /// Multiplicative modular inverse table modulo 2⁴ = 16.
+        /// 模 2⁴ = 16 意义下的乘法逆元表。
         ///
-        /// Note, that this table does not contain values where inverse does not exist (i.e., for
-        /// `0⁻¹ mod 16`, `2⁻¹ mod 16`, etc.)
+        /// 注意：这个表不包含逆元不存在的取值，例如 `0⁻¹ mod 16`、`2⁻¹ mod 16` 等。
         const INV_TABLE_MOD_16: [u8; 8] = [1, 11, 13, 7, 9, 3, 5, 15];
-        /// Modulo for which the `INV_TABLE_MOD_16` is intended.
+        /// `INV_TABLE_MOD_16` 所针对的模数。
         const INV_TABLE_MOD: usize = 16;
 
-        // SAFETY: `m` is required to be a power-of-two, hence non-zero.
+        // SAFETY: 前置要求 `m` 是 2 的幂，因此非零。
         let m_minus_one = unsafe { unchecked_sub(m, 1) };
         let mut inverse = INV_TABLE_MOD_16[(x & (INV_TABLE_MOD - 1)) >> 1] as usize;
         let mut mod_gate = INV_TABLE_MOD;
-        // We iterate "up" using the following formula:
+        // 使用下面的公式逐步“抬升”模数：
         //
         // $$ xy ≡ 1 (mod 2ⁿ) → xy (2 - xy) ≡ 1 (mod 2²ⁿ) $$
         //
-        // This application needs to be applied at least until `2²ⁿ ≥ m`, at which point we can
-        // finally reduce the computation to our desired `m` by taking `inverse mod m`.
+        // 至少要应用到 `2²ⁿ ≥ m`，此时就可以通过取 `inverse mod m` 把结果约化到目标模数 `m`。
         //
-        // This computation is `O(log log m)`, which is to say, that on 64-bit machines this loop
-        // will always finish in at most 4 iterations.
+        // 该计算复杂度为 `O(log log m)`；也就是说，在 64 位机器上这个循环最多 4 次迭代就会结束。
         loop {
             // y = y * (2 - xy) mod n
             //
-            // Note, that we use wrapping operations here intentionally – the original formula
-            // uses e.g., subtraction `mod n`. It is entirely fine to do them `mod
-            // usize::MAX` instead, because we take the result `mod n` at the end
-            // anyway.
+            // 这里有意使用 wrapping 运算：原始公式使用的是例如模 `n` 意义下的减法。
+            // 先在 `usize::MAX` 的回绕语义下计算也没问题，因为最后仍会把结果取 `mod n`。
             if mod_gate >= m {
                 break;
             }
@@ -2109,132 +2075,117 @@ pub(crate) unsafe fn align_offset<T: Sized>(p: *const T, a: usize) -> usize {
 
     let addr: usize = p.addr();
 
-    // SAFETY: `a` is a power-of-two, therefore non-zero.
+    // SAFETY: `a` 是 2 的幂，因此非零。
     let a_minus_one = unsafe { unchecked_sub(a, 1) };
 
     if stride == 0 {
-        // SPECIAL_CASE: handle 0-sized types. No matter how many times we step, the address will
-        // stay the same, so no offset will be able to align the pointer unless it is already
-        // aligned. This branch _will_ be optimized out as `stride` is known at compile-time.
+        // 特殊情况:处理零大小类型。无论前进多少步，地址都保持不变；因此除非指针
+        // 本来已经对齐，否则不存在能让它对齐的偏移量。`stride` 在编译期已知，所以此分支会被优化掉。
         let p_mod_a = addr & a_minus_one;
         return if p_mod_a == 0 { 0 } else { usize::MAX };
     }
 
-    // SAFETY: `stride == 0` case has been handled by the special case above.
+    // SAFETY: `stride == 0` 的情况已由上面的特殊分支处理。
     let a_mod_stride = unsafe { unchecked_rem(a, stride) };
     if a_mod_stride == 0 {
-        // SPECIAL_CASE: In cases where the `a` is divisible by `stride`, byte offset to align a
-        // pointer can be computed more simply through `-p (mod a)`. In the off-chance the byte
-        // offset is not a multiple of `stride`, the input pointer was misaligned and no pointer
-        // offset will be able to produce a `p` aligned to the specified `a`.
+        // 特殊情况:当 `a` 能被 `stride` 整除时，用于对齐指针的字节偏移可以更简单地
+        // 通过 `-p (mod a)` 计算。若这个字节偏移恰好不是 `stride` 的倍数，则输入指针
+        // 本身相对 `T` 就是未对齐的，任何以元素为单位的偏移都无法得到满足指定 `a` 的 `p`。
         //
-        // The naive `-p (mod a)` equation inhibits LLVM's ability to select instructions
-        // like `lea`. We compute `(round_up_to_next_alignment(p, a) - p)` instead. This
-        // redistributes operations around the load-bearing, but pessimizing `and` instruction
-        // sufficiently for LLVM to be able to utilize the various optimizations it knows about.
+        // 朴素的 `-p (mod a)` 方程会妨碍 LLVM 选择 `lea` 等指令。这里改为计算
+        // `(round_up_to_next_alignment(p, a) - p)`，把运算重新分布到关键但会悲观化的
+        // `and` 指令周围，使 LLVM 仍能利用它已知的多种优化。
         //
-        // LLVM handles the branch here particularly nicely. If this branch needs to be evaluated
-        // at runtime, it will produce a mask `if addr_mod_stride == 0 { 0 } else { usize::MAX }`
-        // in a branch-free way and then bitwise-OR it with whatever result the `-p mod a`
-        // computation produces.
+        // LLVM 对这里的分支处理得很好。如果该分支需要在运行时求值，它会以无分支方式生成
+        // `if addr_mod_stride == 0 { 0 } else { usize::MAX }` 这个 mask，然后把它与
+        // `-p mod a` 计算得到的结果做 bitwise-OR。
 
         let aligned_address = wrapping_add(addr, a_minus_one) & wrapping_sub(0, a);
         let byte_offset = wrapping_sub(aligned_address, addr);
-        // FIXME: Remove the assume after <https://github.com/llvm/llvm-project/issues/62502>
-        // SAFETY: Masking by `-a` can only affect the low bits, and thus cannot have reduced
-        // the value by more than `a-1`, so even though the intermediate values might have
-        // wrapped, the byte_offset is always in `[0, a)`.
+        // FIXME: <https://github.com/llvm/llvm-project/issues/62502> 解决后移除该 assume。
+        // SAFETY: 用 `-a` 做掩码只会影响低位，因此最多把值减少 `a - 1`；所以即便中间值
+        // 发生 wrapping，`byte_offset` 也始终位于 `[0, a)`。
         unsafe { assume(byte_offset < a) };
 
-        // SAFETY: `stride == 0` case has been handled by the special case above.
+        // SAFETY: `stride == 0` 的情况已由上面的特殊分支处理。
         let addr_mod_stride = unsafe { unchecked_rem(addr, stride) };
 
         return if addr_mod_stride == 0 {
-            // SAFETY: `stride` is non-zero. This is guaranteed to divide exactly as well, because
-            // addr has been verified to be aligned to the original type’s alignment requirements.
+            // SAFETY: `stride` 非零。这里也保证能整除，因为 addr 已经被验证满足原始类型的对齐要求。
             unsafe { exact_div(byte_offset, stride) }
         } else {
             usize::MAX
         };
     }
 
-    // GENERAL_CASE: From here on we’re handling the very general case where `addr` may be
-    // misaligned, there isn’t an obvious relationship between `stride` and `a` that we can take an
-    // advantage of, etc. This case produces machine code that isn’t particularly high quality,
-    // compared to the special cases above. The code produced here is still within the realm of
-    // miracles, given the situations this case has to deal with.
+    // 一般情况:从这里开始处理最一般的情况：`addr` 可能未对齐，`stride` 与 `a`
+    // 之间没有明显可利用的关系，等等。相比上面的特殊分支，这里生成的机器码质量不会特别高；
+    // 但考虑到它必须覆盖的场景，结果仍然相当不错。
 
-    // SAFETY: a is power-of-two hence non-zero. stride == 0 case is handled above.
-    // FIXME(const-hack) replace with min
+    // SAFETY: `a` 是 2 的幂，因此非零；`stride == 0` 的情况已在上面处理。
+    // FIXME(const-hack): 替换为 min。
     let gcdpow = unsafe {
         let x = cttz_nonzero(stride);
         let y = cttz_nonzero(a);
         if x < y { x } else { y }
     };
-    // SAFETY: gcdpow has an upper-bound that’s at most the number of bits in a `usize`.
+    // SAFETY: `gcdpow` 的上界最多是 `usize` 的位数。
     let gcd = unsafe { unchecked_shl(1usize, gcdpow) };
-    // SAFETY: gcd is always greater or equal to 1.
+    // SAFETY: `gcd` 始终大于或等于 1。
     if addr & unsafe { unchecked_sub(gcd, 1) } == 0 {
-        // This branch solves for the following linear congruence equation:
+        // 该分支求解下面的线性同余方程：
         //
         // ` p + so = 0 mod a `
         //
-        // `p` here is the pointer value, `s` - stride of `T`, `o` offset in `T`s, and `a` - the
-        // requested alignment.
+        // 这里 `p` 是指针值，`s` 是 `T` 的步长(stride)，`o` 是以 `T` 为单位的偏移量，
+        // `a` 是请求的对齐值。
         //
-        // With `g = gcd(a, s)`, and the above condition asserting that `p` is also divisible by
-        // `g`, we can denote `a' = a/g`, `s' = s/g`, `p' = p/g`, then this becomes equivalent to:
+        // 令 `g = gcd(a, s)`，且上面的条件已经断言 `p` 也能被 `g` 整除。记
+        // `a' = a/g`、`s' = s/g`、`p' = p/g`，则该方程等价于：
         //
         // ` p' + s'o = 0 mod a' `
         // ` o = (a' - (p' mod a')) * (s'^-1 mod a') `
         //
-        // The first term is "the relative alignment of `p` to `a`" (divided by the `g`), the
-        // second term is "how does incrementing `p` by `s` bytes change the relative alignment of
-        // `p`" (again divided by `g`). Division by `g` is necessary to make the inverse well
-        // formed if `a` and `s` are not co-prime.
+        // 第一项表示“`p` 相对于 `a` 的相对对齐”（再除以 `g`）；第二项表示“把 `p`
+        // 增加 `s` 字节会如何改变 `p` 的相对对齐”（同样除以 `g`）。当 `a` 与 `s`
+        // 不互素时，必须先除以 `g`，逆元才是良定义的。
         //
-        // Furthermore, the result produced by this solution is not "minimal", so it is necessary
-        // to take the result `o mod lcm(s, a)`. This `lcm(s, a)` is the same as `a'`.
+        // 此外，该解产生的结果并不一定“最小”，因此需要取 `o mod lcm(s, a)`。
+        // 这里的 `lcm(s, a)` 与 `a'` 相同。
 
-        // SAFETY: `gcdpow` has an upper-bound not greater than the number of trailing 0-bits in
-        // `a`.
+        // SAFETY: `gcdpow` 的上界不超过 `a` 的尾随 0 位数。
         let a2 = unsafe { unchecked_shr(a, gcdpow) };
-        // SAFETY: `a2` is non-zero. Shifting `a` by `gcdpow` cannot shift out any of the set bits
-        // in `a` (of which it has exactly one).
+        // SAFETY: `a2` 非零。把 `a` 右移 `gcdpow` 不会移掉 `a` 中任何置位 bit；
+        // `a` 是 2 的幂，只有一个置位 bit。
         let a2minus1 = unsafe { unchecked_sub(a2, 1) };
-        // SAFETY: `gcdpow` has an upper-bound not greater than the number of trailing 0-bits in
-        // `a`.
+        // SAFETY: `gcdpow` 的上界不超过 `a` 的尾随 0 位数。
         let s2 = unsafe { unchecked_shr(stride & a_minus_one, gcdpow) };
-        // SAFETY: `gcdpow` has an upper-bound not greater than the number of trailing 0-bits in
-        // `a`. Furthermore, the subtraction cannot overflow, because `a2 = a >> gcdpow` will
-        // always be strictly greater than `(p % a) >> gcdpow`.
+        // SAFETY: `gcdpow` 的上界不超过 `a` 的尾随 0 位数。此外减法不会溢出，因为
+        // `a2 = a >> gcdpow` 始终严格大于 `(p % a) >> gcdpow`。
         let minusp2 = unsafe { unchecked_sub(a2, unchecked_shr(addr & a_minus_one, gcdpow)) };
-        // SAFETY: `a2` is a power-of-two, as proven above. `s2` is strictly less than `a2`
-        // because `(s % a) >> gcdpow` is strictly less than `a >> gcdpow`.
+        // SAFETY: 如上所证，`a2` 是 2 的幂。`s2` 严格小于 `a2`，因为
+        // `(s % a) >> gcdpow` 严格小于 `a >> gcdpow`。
         return wrapping_mul(minusp2, unsafe { mod_inv(s2, a2) }) & a2minus1;
     }
 
-    // Cannot be aligned at all.
+    // 完全无法对齐。
     usize::MAX
 }
 
-/// Compares raw pointers for equality.
+/// 比较两个裸指针是否相等。
 ///
-/// This is the same as using the `==` operator, but less generic:
-/// the arguments have to be `*const T` raw pointers,
-/// not anything that implements `PartialEq`.
+/// 这与使用 `==` 运算符相同，但泛型程度更低：参数必须是 `*const T` 裸指针，
+/// 而不是任意实现了 `PartialEq` 的值。
 ///
-/// This can be used to compare `&T` references (which coerce to `*const T` implicitly)
-/// by their address rather than comparing the values they point to
-/// (which is what the `PartialEq for &T` implementation does).
+/// 这可用于按地址比较 `&T` 引用（它们会隐式强转为 `*const T`），而不是比较引用所指向的
+/// 值；后者才是 `PartialEq for &T` 的行为。
 ///
-/// When comparing wide pointers, both the address and the metadata are tested for equality.
-/// However, note that comparing trait object pointers (`*const dyn Trait`) is unreliable: pointers
-/// to values of the same underlying type can compare inequal (because vtables are duplicated in
-/// multiple codegen units), and pointers to values of *different* underlying type can compare equal
-/// (since identical vtables can be deduplicated within a codegen unit).
+/// 比较宽指针时，地址和 metadata 都会参与相等性判断。不过要注意：比较 trait object 指针
+/// （`*const dyn Trait`）并不可靠。指向同一底层类型的值的指针可能比较为不相等，因为
+/// vtable 可能在多个 codegen unit 中被复制；而指向*不同*底层类型的值的指针也可能比较为
+/// 相等，因为相同 vtable 可能在同一个 codegen unit 内被去重。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use std::ptr;
@@ -2252,7 +2203,7 @@ pub(crate) unsafe fn align_offset<T: Sized>(p: *const T, a: usize) -> usize {
 /// assert!(!ptr::eq(five_ref, other_five_ref));
 /// ```
 ///
-/// Slices are also compared by their length (fat pointers):
+/// 切片也会按长度一起比较，因为切片指针是胖指针：
 ///
 /// ```
 /// let a = [1, 2, 3];
@@ -2264,18 +2215,16 @@ pub(crate) unsafe fn align_offset<T: Sized>(p: *const T, a: usize) -> usize {
 #[inline(always)]
 #[must_use = "pointer comparison produces a value"]
 #[rustc_diagnostic_item = "ptr_eq"]
-#[allow(ambiguous_wide_pointer_comparisons)] // it's actually clear here
+#[allow(ambiguous_wide_pointer_comparisons)] // 这里的语义实际是明确的。
 pub fn eq<T: PointeeSized>(a: *const T, b: *const T) -> bool {
     a == b
 }
 
-/// Compares the *addresses* of the two pointers for equality,
-/// ignoring any metadata in fat pointers.
+/// 只比较两个指针的*地址*是否相等，忽略胖指针中的任何 metadata。
 ///
-/// If the arguments are thin pointers of the same type,
-/// then this is the same as [`eq`].
+/// 如果参数是同一类型的瘦指针，则这与 [`eq`] 相同。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use std::ptr;
@@ -2293,42 +2242,38 @@ pub fn addr_eq<T: PointeeSized, U: PointeeSized>(p: *const T, q: *const U) -> bo
     (p as *const ()) == (q as *const ())
 }
 
-/// Compares the *addresses* of the two function pointers for equality.
+/// 比较两个函数指针的*地址*是否相等。
 ///
-/// This is the same as `f == g`, but using this function makes clear that the potentially
-/// surprising semantics of function pointer comparison are involved.
+/// 这与 `f == g` 相同，但使用此函数可以明确表达：这里涉及函数指针比较那套可能令人意外的语义。
 ///
-/// There are **very few guarantees** about how functions are compiled and they have no intrinsic
-/// “identity”; in particular, this comparison:
+/// Rust 对函数如何被编译只给出**极少保证**，函数也没有内在的“身份(identity)”。特别地，
+/// 这种比较：
 ///
-/// * May return `true` unexpectedly, in cases where functions are equivalent.
+/// * 在函数等价的情况下，可能意外返回 `true`。
 ///
-///   For example, the following program is likely (but not guaranteed) to print `(true, true)`
-///   when compiled with optimization:
+///   例如，下面的程序在开启优化后很可能（但不保证）打印 `(true, true)`：
 ///
 ///   ```
 ///   let f: fn(i32) -> i32 = |x| x;
-///   let g: fn(i32) -> i32 = |x| x + 0;  // different closure, different body
-///   let h: fn(u32) -> u32 = |x| x + 0;  // different signature too
-///   dbg!(std::ptr::fn_addr_eq(f, g), std::ptr::fn_addr_eq(f, h)); // not guaranteed to be equal
+///   let g: fn(i32) -> i32 = |x| x + 0;  // 不同 closure，不同函数体
+///   let h: fn(u32) -> u32 = |x| x + 0;  // 签名也不同
+///   dbg!(std::ptr::fn_addr_eq(f, g), std::ptr::fn_addr_eq(f, h)); // 不保证相等
 ///   ```
 ///
-/// * May return `false` in any case.
+/// * 在任何情况下都可能返回 `false`。
 ///
-///   This is particularly likely with generic functions but may happen with any function.
-///   (From an implementation perspective, this is possible because functions may sometimes be
-///   processed more than once by the compiler, resulting in duplicate machine code.)
+///   这在泛型函数上尤其常见，但也可能发生在任何函数上。（从实现角度看，函数有时可能被
+///   编译器处理多次，从而产生重复的机器码。）
 ///
-/// Despite these false positives and false negatives, this comparison can still be useful.
-/// Specifically, if
+/// 尽管可能出现这些假阳性和假阴性，该比较仍然有用。具体来说，如果：
 ///
-/// * `T` is the same type as `U`, `T` is a [subtype] of `U`, or `U` is a [subtype] of `T`, and
-/// * `ptr::fn_addr_eq(f, g)` returns true,
+/// * `T` 与 `U` 是同一类型，或 `T` 是 `U` 的[subtype]，或 `U` 是 `T` 的[subtype]；并且
+/// * `ptr::fn_addr_eq(f, g)` 返回 true；
 ///
-/// then calling `f` and calling `g` will be equivalent.
+/// 那么调用 `f` 与调用 `g` 是等价的。
 ///
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use std::ptr;
@@ -2346,13 +2291,12 @@ pub fn fn_addr_eq<T: FnPtr, U: FnPtr>(f: T, g: U) -> bool {
     f.addr() == g.addr()
 }
 
-/// Hash a raw pointer.
+/// 对裸指针进行 hash。
 ///
-/// This can be used to hash a `&T` reference (which coerces to `*const T` implicitly)
-/// by its address rather than the value it points to
-/// (which is what the `Hash for &T` implementation does).
+/// 这可用于按地址 hash 一个 `&T` 引用（它会隐式强转为 `*const T`），而不是 hash
+/// 它所指向的值；后者才是 `Hash for &T` 的行为。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use std::hash::{DefaultHasher, Hash, Hasher};
@@ -2439,47 +2383,40 @@ impl<F: FnPtr> fmt::Debug for F {
     }
 }
 
-/// Creates a `const` raw pointer to a place, without creating an intermediate reference.
+/// 为一个 place 创建 `const` 裸指针，且不创建中间引用。
 ///
-/// `addr_of!(expr)` is equivalent to `&raw const expr`. The macro is *soft-deprecated*;
-/// use `&raw const` instead.
+/// `addr_of!(expr)` 等价于 `&raw const expr`。该宏已被*软弃用(soft-deprecated)*；
+/// 请改用 `&raw const`。
 ///
-/// It is still an open question under which conditions writing through an `addr_of!`-created
-/// pointer is permitted. If the place `expr` evaluates to is based on a raw pointer, then the
-/// result of `addr_of!` inherits all permissions from that raw pointer. However, if the place is
-/// based on a reference, local variable, or `static`, then until all details are decided, the same
-/// rules as for shared references apply: it is UB to write through a pointer created with this
-/// operation, except for bytes located inside an `UnsafeCell`. Use `&raw mut` (or [`addr_of_mut`])
-/// to create a raw pointer that definitely permits mutation.
+/// 通过 `addr_of!` 创建出的指针在什么条件下允许写入，目前仍是开放问题。如果 place
+/// `expr` 的求值基于某个裸指针，那么 `addr_of!` 的结果会继承该裸指针的所有权限。
+/// 但如果该 place 基于引用、局部变量或 `static`，在所有细节最终确定前，应按共享引用的
+/// 规则处理：除位于 `UnsafeCell` 内的字节外，通过这种操作创建的指针写入是 UB。
+/// 若需要明确允许 mutation 的裸指针，请使用 `&raw mut`（或 [`addr_of_mut`]）。
 ///
-/// Creating a reference with `&`/`&mut` is only allowed if the pointer is properly aligned
-/// and points to initialized data. For cases where those requirements do not hold,
-/// raw pointers should be used instead. However, `&expr as *const _` creates a reference
-/// before casting it to a raw pointer, and that reference is subject to the same rules
-/// as all other references. This macro can create a raw pointer *without* creating
-/// a reference first.
+/// 只有在指针正确对齐并指向已初始化数据时，才允许用 `&`/`&mut` 创建引用。若这些要求不成立，
+/// 应使用裸指针。不过，`&expr as *const _` 会先创建引用，再把它 cast 成裸指针；该引用必须
+/// 遵守所有引用规则。本宏可以在*不先创建引用*的情况下创建裸指针。
 ///
-/// See [`addr_of_mut`] for how to create a pointer to uninitialized data.
-/// Doing that with `addr_of` would not make much sense since one could only
-/// read the data, and that would be Undefined Behavior.
+/// 如何创建指向未初始化数据的指针，请见 [`addr_of_mut`]。用 `addr_of` 做这件事意义不大，
+/// 因为它只能读取该数据，而读取未初始化数据会造成未定义行为(Undefined Behavior)。
 ///
-/// # Safety
+/// # 安全性(Safety）
 ///
-/// The `expr` in `addr_of!(expr)` is evaluated as a place expression, but never loads from the
-/// place or requires the place to be dereferenceable. This means that `addr_of!((*ptr).field)`
-/// still requires the projection to `field` to be in-bounds, using the same rules as [`offset`].
-/// However, `addr_of!(*ptr)` is defined behavior even if `ptr` is null, dangling, or misaligned.
+/// `addr_of!(expr)` 中的 `expr` 会作为 place expression 求值，但不会从该 place 读取，
+/// 也不要求该 place 可解引用。这意味着 `addr_of!((*ptr).field)` 仍要求投影到 `field`
+/// 的过程保持 in-bounds，规则与 [`offset`] 相同。不过，即便 `ptr` 为空、悬垂或未对齐，
+/// `addr_of!(*ptr)` 本身也是定义行为。
 ///
-/// Note that `Deref`/`Index` coercions (and their mutable counterparts) are applied inside
-/// `addr_of!` like everywhere else, in which case a reference is created to call `Deref::deref` or
-/// `Index::index`, respectively. The statements above only apply when no such coercions are
-/// applied.
+/// 注意：`Deref`/`Index` 强转（以及它们的可变版本）在 `addr_of!` 内也会照常应用。
+/// 此时会创建引用以调用 `Deref::deref` 或 `Index::index`。上面的说明只适用于没有发生
+/// 这类强转的情况。
 ///
 /// [`offset`]: pointer::offset
 ///
-/// # Example
+/// # 示例
 ///
-/// **Correct usage: Creating a pointer to unaligned data**
+/// **正确用法：创建指向未对齐数据的指针**
 ///
 /// ```
 /// use std::ptr;
@@ -2491,12 +2428,12 @@ impl<F: FnPtr> fmt::Debug for F {
 /// }
 ///
 /// let packed = Packed { f1: 1, f2: 2 };
-/// // `&packed.f2` would create an unaligned reference, and thus be Undefined Behavior!
+/// // `&packed.f2` 会创建未对齐引用，因此是未定义行为(Undefined Behavior)！
 /// let raw_f2 = ptr::addr_of!(packed.f2);
 /// assert_eq!(unsafe { raw_f2.read_unaligned() }, 2);
 /// ```
 ///
-/// **Incorrect usage: Out-of-bounds fields projection**
+/// **错误用法：越界字段投影**
 ///
 /// ```rust,no_run
 /// use std::ptr;
@@ -2508,50 +2445,44 @@ impl<F: FnPtr> fmt::Debug for F {
 /// }
 ///
 /// let ptr: *const MyStruct = ptr::null();
-/// let fieldptr = unsafe { ptr::addr_of!((*ptr).field2) }; // Undefined Behavior ⚠️
+/// let fieldptr = unsafe { ptr::addr_of!((*ptr).field2) }; // 未定义行为(Undefined Behavior) ⚠️
 /// ```
 ///
-/// The field projection `.field2` would offset the pointer by 4 bytes,
-/// but the pointer is not in-bounds of an allocation for 4 bytes,
-/// so this offset is Undefined Behavior.
-/// See the [`offset`] docs for a full list of requirements for inbounds pointer arithmetic; the
-/// same requirements apply to field projections, even inside `addr_of!`. (In particular, it makes
-/// no difference whether the pointer is null or dangling.)
+/// 字段投影 `.field2` 会把指针偏移 4 字节，但该指针并不位于某个至少覆盖这 4 字节的
+/// allocation 边界内，因此该偏移是未定义行为(Undefined Behavior)。关于 inbounds 指针算术的完整要求，
+/// 见 [`offset`] 文档；同样的要求也适用于字段投影，即便投影发生在 `addr_of!` 内也是如此。
+/// 特别是，指针为空还是悬垂并不会改变这一点。
 #[stable(feature = "raw_ref_macros", since = "1.51.0")]
 #[rustc_macro_transparency = "semiopaque"]
 pub macro addr_of($place:expr) {
     &raw const $place
 }
 
-/// Creates a `mut` raw pointer to a place, without creating an intermediate reference.
+/// 为一个 place 创建 `mut` 裸指针，且不创建中间引用。
 ///
-/// `addr_of_mut!(expr)` is equivalent to `&raw mut expr`. The macro is *soft-deprecated*;
-/// use `&raw mut` instead.
+/// `addr_of_mut!(expr)` 等价于 `&raw mut expr`。该宏已被*软弃用(soft-deprecated)*；
+/// 请改用 `&raw mut`。
 ///
-/// Creating a reference with `&`/`&mut` is only allowed if the pointer is properly aligned
-/// and points to initialized data. For cases where those requirements do not hold,
-/// raw pointers should be used instead. However, `&mut expr as *mut _` creates a reference
-/// before casting it to a raw pointer, and that reference is subject to the same rules
-/// as all other references. This macro can create a raw pointer *without* creating
-/// a reference first.
+/// 只有在指针正确对齐并指向已初始化数据时，才允许用 `&`/`&mut` 创建引用。若这些要求不成立，
+/// 应使用裸指针。不过，`&mut expr as *mut _` 会先创建引用，再把它 cast 成裸指针；该引用
+/// 必须遵守所有引用规则。本宏可以在*不先创建引用*的情况下创建裸指针。
 ///
-/// # Safety
+/// # 安全性(Safety）
 ///
-/// The `expr` in `addr_of_mut!(expr)` is evaluated as a place expression, but never loads from the
-/// place or requires the place to be dereferenceable. This means that `addr_of_mut!((*ptr).field)`
-/// still requires the projection to `field` to be in-bounds, using the same rules as [`offset`].
-/// However, `addr_of_mut!(*ptr)` is defined behavior even if `ptr` is null, dangling, or misaligned.
+/// `addr_of_mut!(expr)` 中的 `expr` 会作为 place expression 求值，但不会从该 place 读取，
+/// 也不要求该 place 可解引用。这意味着 `addr_of_mut!((*ptr).field)` 仍要求投影到 `field`
+/// 的过程保持 in-bounds，规则与 [`offset`] 相同。不过，即便 `ptr` 为空、悬垂或未对齐，
+/// `addr_of_mut!(*ptr)` 本身也是定义行为。
 ///
-/// Note that `Deref`/`Index` coercions (and their mutable counterparts) are applied inside
-/// `addr_of_mut!` like everywhere else, in which case a reference is created to call `Deref::deref`
-/// or `Index::index`, respectively. The statements above only apply when no such coercions are
-/// applied.
+/// 注意：`Deref`/`Index` 强转（以及它们的可变版本）在 `addr_of_mut!` 内也会照常应用。
+/// 此时会创建引用以调用 `Deref::deref` 或 `Index::index`。上面的说明只适用于没有发生
+/// 这类强转的情况。
 ///
 /// [`offset`]: pointer::offset
 ///
-/// # Examples
+/// # 示例
 ///
-/// **Correct usage: Creating a pointer to unaligned data**
+/// **正确用法：创建指向未对齐数据的指针**
 ///
 /// ```
 /// use std::ptr;
@@ -2563,13 +2494,13 @@ pub macro addr_of($place:expr) {
 /// }
 ///
 /// let mut packed = Packed { f1: 1, f2: 2 };
-/// // `&mut packed.f2` would create an unaligned reference, and thus be Undefined Behavior!
+/// // `&mut packed.f2` 会创建未对齐引用，因此是未定义行为(Undefined Behavior)！
 /// let raw_f2 = ptr::addr_of_mut!(packed.f2);
 /// unsafe { raw_f2.write_unaligned(42); }
-/// assert_eq!({packed.f2}, 42); // `{...}` forces copying the field instead of creating a reference.
+/// assert_eq!({packed.f2}, 42); // `{...}` 强制复制字段，而不是创建引用。
 /// ```
 ///
-/// **Correct usage: Creating a pointer to uninitialized data**
+/// **正确用法：创建指向未初始化数据的指针**
 ///
 /// ```rust
 /// use std::{ptr, mem::MaybeUninit};
@@ -2579,14 +2510,14 @@ pub macro addr_of($place:expr) {
 /// }
 ///
 /// let mut uninit = MaybeUninit::<Demo>::uninit();
-/// // `&uninit.as_mut().field` would create a reference to an uninitialized `bool`,
-/// // and thus be Undefined Behavior!
+/// // `&uninit.as_mut().field` 会创建指向未初始化 `bool` 的引用，
+/// // 因此是未定义行为(Undefined Behavior)！
 /// let f1_ptr = unsafe { ptr::addr_of_mut!((*uninit.as_mut_ptr()).field) };
 /// unsafe { f1_ptr.write(true); }
 /// let init = unsafe { uninit.assume_init() };
 /// ```
 ///
-/// **Incorrect usage: Out-of-bounds fields projection**
+/// **错误用法：越界字段投影**
 ///
 /// ```rust,no_run
 /// use std::ptr;
@@ -2598,15 +2529,13 @@ pub macro addr_of($place:expr) {
 /// }
 ///
 /// let ptr: *mut MyStruct = ptr::null_mut();
-/// let fieldptr = unsafe { ptr::addr_of_mut!((*ptr).field2) }; // Undefined Behavior ⚠️
+/// let fieldptr = unsafe { ptr::addr_of_mut!((*ptr).field2) }; // 未定义行为(Undefined Behavior) ⚠️
 /// ```
 ///
-/// The field projection `.field2` would offset the pointer by 4 bytes,
-/// but the pointer is not in-bounds of an allocation for 4 bytes,
-/// so this offset is Undefined Behavior.
-/// See the [`offset`] docs for a full list of requirements for inbounds pointer arithmetic; the
-/// same requirements apply to field projections, even inside `addr_of_mut!`. (In particular, it
-/// makes no difference whether the pointer is null or dangling.)
+/// 字段投影 `.field2` 会把指针偏移 4 字节，但该指针并不位于某个至少覆盖这 4 字节的
+/// allocation 边界内，因此该偏移是未定义行为(Undefined Behavior)。关于 inbounds 指针算术的完整要求，
+/// 见 [`offset`] 文档；同样的要求也适用于字段投影，即便投影发生在 `addr_of_mut!` 内也是如此。
+/// 特别是，指针为空还是悬垂并不会改变这一点。
 #[stable(feature = "raw_ref_macros", since = "1.51.0")]
 #[rustc_macro_transparency = "semiopaque"]
 pub macro addr_of_mut($place:expr) {

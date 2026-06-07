@@ -1,4 +1,8 @@
-//! Definitions of integer that is known not to equal zero.
+//! 已知不等于零的整数类型定义。
+//!
+//! `NonZero<T>` 把“值不为零”编码进类型。这个不变量既服务于 API 语义，也服务于布局优化：
+//! 零位模式不能作为 `NonZero` 的有效值出现，因此编译器可以把零当作 niche 存放枚举判别
+//! 信息，让 `Option<NonZero<T>>` 与 `T` 保持相同大小。
 
 use super::{IntErrorKind, ParseIntError};
 use crate::clone::{TrivialClone, UseCloned};
@@ -10,21 +14,22 @@ use crate::panic::{RefUnwindSafe, UnwindSafe};
 use crate::str::FromStr;
 use crate::{fmt, intrinsics, ptr, ub_checks};
 
-/// A marker trait for primitive types which can be zero.
+/// 可为零的原始类型所实现的标记 trait。
 ///
-/// This is an implementation detail for <code>[NonZero]\<T></code> which may disappear or be replaced at any time.
+/// 这是 <code>[NonZero]\<T></code> 的实现细节，随时可能消失或被替换。
 ///
-/// # Safety
+/// # 安全性(Safety）
 ///
-/// Types implementing this trait must be primitives that are valid when zeroed.
+/// 实现该 trait 的类型必须是“零位模式有效”的原始类型。
 ///
-/// The associated `Self::NonZeroInner` type must have the same size+align as `Self`,
-/// but with a niche and bit validity making it so the following `transmutes` are sound:
+/// 关联类型 `Self::NonZeroInner` 必须与 `Self` 具有相同大小和对齐，但通过 niche 和位有效性
+/// 排除零，使下列 `transmute` 是 sound 的：
 ///
-/// - `Self::NonZeroInner` to `Option<Self::NonZeroInner>`
-/// - `Option<Self::NonZeroInner>` to `Self`
+/// - 从 `Self::NonZeroInner` 到 `Option<Self::NonZeroInner>`
+/// - 从 `Option<Self::NonZeroInner>` 到 `Self`
 ///
-/// (And, consequently, `Self::NonZeroInner` to `Self`.)
+/// 因而 `Self::NonZeroInner` 到 `Self` 的转换也必须 sound。若实现者错误声明这些布局关系，
+/// 编译器会基于不存在的 niche 优化枚举布局，导致后续读取产生 UB。
 #[unstable(
     feature = "nonzero_internals",
     reason = "implementation detail which may disappear or be replaced at any time",
@@ -82,10 +87,9 @@ impl_zeroable_primitive!(
     NonZeroCharInner(char),
 );
 
-/// A value that is known not to equal zero.
+/// 一个已知不等于零的值。
 ///
-/// This enables some memory layout optimization.
-/// For example, `Option<NonZero<u32>>` is the same size as `u32`:
+/// 该类型启用一些内存布局优化。例如，`Option<NonZero<u32>>` 与 `u32` 大小相同：
 ///
 /// ```
 /// use core::{num::NonZero};
@@ -93,15 +97,13 @@ impl_zeroable_primitive!(
 /// assert_eq!(size_of::<Option<NonZero<u32>>>(), size_of::<u32>());
 /// ```
 ///
-/// # Layout
+/// # 布局(Layout)
 ///
-/// `NonZero<T>` is guaranteed to have the same layout and bit validity as `T`
-/// with the exception that the all-zero bit pattern is invalid.
-/// `Option<NonZero<T>>` is guaranteed to be compatible with `T`, including in
-/// FFI.
+/// `NonZero<T>` 保证与 `T` 具有相同布局和位有效性，唯一例外是全零位模式无效。
+/// `Option<NonZero<T>>` 保证与 `T` 兼容，包括 FFI 场景。
 ///
-/// Thanks to the [null pointer optimization], `NonZero<T>` and
-/// `Option<NonZero<T>>` are guaranteed to have the same size and alignment:
+/// 得益于 [null pointer optimization]，`NonZero<T>` 和 `Option<NonZero<T>>` 保证具有相同
+/// 大小和对齐：
 ///
 /// ```
 /// use std::num::NonZero;
@@ -112,14 +114,12 @@ impl_zeroable_primitive!(
 ///
 /// [null pointer optimization]: crate::option#representation
 ///
-/// # Note on generic usage
+/// # 泛型用法说明
 ///
-/// `NonZero<T>` can only be used with some standard library primitive types
-/// (such as `u8`, `i32`, and etc.). The type parameter `T` must implement the
-/// internal trait [`ZeroablePrimitive`], which is currently permanently unstable
-/// and cannot be implemented by users. Therefore, you cannot use `NonZero<T>`
-/// with your own types, nor can you implement traits for all `NonZero<T>`,
-/// only for concrete types.
+/// `NonZero<T>` 只能用于部分标准库原始类型（例如 `u8`、`i32` 等）。类型参数 `T` 必须实现
+/// 内部 trait [`ZeroablePrimitive`]；该 trait 目前永久 unstable，用户不能自行实现。
+/// 因此不能把 `NonZero<T>` 用在自定义类型上，也不能为所有 `NonZero<T>` 泛型实现 trait，
+/// 只能为具体类型实现。
 #[stable(feature = "generic_nonzero", since = "1.79.0")]
 #[repr(transparent)]
 #[rustc_nonnull_optimization_guaranteed]
@@ -173,8 +173,7 @@ macro_rules! impl_nonzero_auto_trait {
     };
 }
 
-// Implement auto-traits manually based on `T` to avoid docs exposing
-// the `ZeroablePrimitive::NonZeroInner` implementation detail.
+// 基于 `T` 手写 auto-trait 实现，避免文档暴露 `ZeroablePrimitive::NonZeroInner` 这个实现细节。
 impl_nonzero_auto_trait!(unsafe Freeze);
 impl_nonzero_auto_trait!(RefUnwindSafe);
 impl_nonzero_auto_trait!(unsafe Send);
@@ -263,8 +262,8 @@ where
 #[rustc_const_unstable(feature = "const_cmp", issue = "143800")]
 impl<T> const Ord for NonZero<T>
 where
-    // FIXME(const_hack): the T: ~const Destruct should be inferred from the Self: ~const Destruct.
-    // See https://github.com/rust-lang/rust/issues/144207
+    // FIXME(const_hack): `T: ~const Destruct` 应该能从 `Self: ~const Destruct` 推断出来。
+    // 见 https://github.com/rust-lang/rust/issues/144207
     T: ZeroablePrimitive + [const] Ord + [const] Destruct,
 {
     #[inline]
@@ -274,19 +273,19 @@ where
 
     #[inline]
     fn max(self, other: Self) -> Self {
-        // SAFETY: The maximum of two non-zero values is still non-zero.
+        // SAFETY: 两个非零值的最大值仍然非零。
         unsafe { Self::new_unchecked(self.get().max(other.get())) }
     }
 
     #[inline]
     fn min(self, other: Self) -> Self {
-        // SAFETY: The minimum of two non-zero values is still non-zero.
+        // SAFETY: 两个非零值的最小值仍然非零。
         unsafe { Self::new_unchecked(self.get().min(other.get())) }
     }
 
     #[inline]
     fn clamp(self, min: Self, max: Self) -> Self {
-        // SAFETY: A non-zero value clamped between two non-zero values is still non-zero.
+        // SAFETY: 非零值夹在两个非零边界之间后仍然非零。
         unsafe { Self::new_unchecked(self.get().clamp(min.get(), max.get())) }
     }
 }
@@ -313,7 +312,7 @@ where
 {
     #[inline]
     fn from(nonzero: NonZero<T>) -> Self {
-        // Call `get` method to keep range information.
+        // 调用 `get` 方法以保留范围信息。
         nonzero.get()
     }
 }
@@ -328,7 +327,7 @@ where
 
     #[inline]
     fn bitor(self, rhs: Self) -> Self::Output {
-        // SAFETY: Bitwise OR of two non-zero values is still non-zero.
+        // SAFETY: 两个非零值按位 OR 后仍然非零。
         unsafe { Self::new_unchecked(self.get() | rhs.get()) }
     }
 }
@@ -343,7 +342,7 @@ where
 
     #[inline]
     fn bitor(self, rhs: T) -> Self::Output {
-        // SAFETY: Bitwise OR of a non-zero value with anything is still non-zero.
+        // SAFETY: 非零值与任意值按位 OR 后仍然非零。
         unsafe { Self::new_unchecked(self.get() | rhs) }
     }
 }
@@ -358,7 +357,7 @@ where
 
     #[inline]
     fn bitor(self, rhs: NonZero<T>) -> Self::Output {
-        // SAFETY: Bitwise OR of anything with a non-zero value is still non-zero.
+        // SAFETY: 任意值与非零值按位 OR 后仍然非零。
         unsafe { NonZero::new_unchecked(self | rhs.get()) }
     }
 }
@@ -393,23 +392,25 @@ impl<T> NonZero<T>
 where
     T: ZeroablePrimitive,
 {
-    /// Creates a non-zero if the given value is not zero.
+    /// 如果给定值不为零，则创建 `NonZero`。
     #[stable(feature = "nonzero", since = "1.28.0")]
     #[rustc_const_stable(feature = "const_nonzero_int_methods", since = "1.47.0")]
     #[must_use]
     #[inline]
     pub const fn new(n: T) -> Option<Self> {
-        // SAFETY: Memory layout optimization guarantees that `Option<NonZero<T>>` has
-        //         the same layout and size as `T`, with `0` representing `None`.
+        // SAFETY: 内存布局优化保证 `Option<NonZero<T>>` 与 `T` 具有相同布局和大小，
+        // 且用 `0` 表示 `None`。
         unsafe { intrinsics::transmute_unchecked(n) }
     }
 
-    /// Creates a non-zero without checking whether the value is non-zero.
-    /// This results in undefined behavior if the value is zero.
+    /// 不检查值是否非零，直接创建 `NonZero`。
     ///
-    /// # Safety
+    /// 若值为零，会导致 undefined behavior。
     ///
-    /// The value must not be zero.
+    /// # 安全性(Safety）
+    ///
+    /// `n` 必须不为零。零会破坏 `NonZero` 的类型有效性，也会让编译器基于 niche 的布局
+    /// 优化假设失效。
     #[stable(feature = "nonzero", since = "1.28.0")]
     #[rustc_const_stable(feature = "nonzero", since = "1.28.0")]
     #[must_use]
@@ -419,7 +420,7 @@ where
         match Self::new(n) {
             Some(n) => n,
             None => {
-                // SAFETY: The caller guarantees that `n` is non-zero, so this is unreachable.
+                // SAFETY: 调用方保证 `n` 非零，因此这里不可达。
                 unsafe {
                     ub_checks::assert_unsafe_precondition!(
                         check_language_ub,
@@ -432,26 +433,25 @@ where
         }
     }
 
-    /// Converts a reference to a non-zero mutable reference
-    /// if the referenced value is not zero.
+    /// 如果引用指向的值不为零，则把它转换为 `NonZero` 的可变引用。
     #[unstable(feature = "nonzero_from_mut", issue = "106290")]
     #[must_use]
     #[inline]
     pub fn from_mut(n: &mut T) -> Option<&mut Self> {
-        // SAFETY: Memory layout optimization guarantees that `Option<NonZero<T>>` has
-        //         the same layout and size as `T`, with `0` representing `None`.
+        // SAFETY: 内存布局优化保证 `Option<NonZero<T>>` 与 `T` 具有相同布局和大小，
+        // 且用 `0` 表示 `None`。
         let opt_n = unsafe { &mut *(ptr::from_mut(n).cast::<Option<Self>>()) };
 
         opt_n.as_mut()
     }
 
-    /// Converts a mutable reference to a non-zero mutable reference
-    /// without checking whether the referenced value is non-zero.
-    /// This results in undefined behavior if the referenced value is zero.
+    /// 不检查引用指向的值是否非零，直接把可变引用转换为 `NonZero` 的可变引用。
     ///
-    /// # Safety
+    /// 若引用指向零，会导致 undefined behavior。
     ///
-    /// The referenced value must not be zero.
+    /// # 安全性(Safety）
+    ///
+    /// 被引用的值必须不为零，并且在返回的 `&mut NonZero<T>` 生命周期内不能被写成零。
     #[unstable(feature = "nonzero_from_mut", issue = "106290")]
     #[must_use]
     #[inline]
@@ -460,7 +460,7 @@ where
         match Self::from_mut(n) {
             Some(n) => n,
             None => {
-                // SAFETY: The caller guarantees that `n` references a value that is non-zero, so this is unreachable.
+                // SAFETY: 调用方保证 `n` 引用的值非零，因此这里不可达。
                 unsafe {
                     ub_checks::assert_unsafe_precondition!(
                         check_library_ub,
@@ -473,29 +473,24 @@ where
         }
     }
 
-    /// Returns the contained value as a primitive type.
+    /// 以原始类型返回内部值。
     #[stable(feature = "nonzero", since = "1.28.0")]
     #[rustc_const_stable(feature = "const_nonzero_get", since = "1.34.0")]
     #[inline]
     pub const fn get(self) -> T {
-        // Rustc can set range metadata only if it loads `self` from
-        // memory somewhere. If the value of `self` was from by-value argument
-        // of some not-inlined function, LLVM don't have range metadata
-        // to understand that the value cannot be zero.
+        // rustc 只有在从某处内存加载 `self` 时，才能设置 range metadata。若 `self` 的值来自
+        // 某个未内联函数的按值参数，LLVM 没有 range metadata 能理解该值不可能为零。
         //
-        // Using the transmute `assume`s the range at runtime.
+        // 使用 transmute 会在运行时 `assume` 该范围。
         //
-        // Even once LLVM supports `!range` metadata for function arguments
-        // (see <https://github.com/llvm/llvm-project/issues/76628>), this can't
-        // be `.0` because MCP#807 bans field-projecting into `scalar_valid_range`
-        // types, and it arguably wouldn't want to be anyway because if this is
-        // MIR-inlined, there's no opportunity to put that argument metadata anywhere.
+        // 即使 LLVM 将来支持函数参数上的 `!range` metadata
+        // （见 <https://github.com/llvm/llvm-project/issues/76628>），这里也不能写成 `.0`，
+        // 因为 MCP#807 禁止对 `scalar_valid_range` 类型做字段投影。并且如果这里被 MIR 内联，
+        // 也没有机会再把参数 metadata 放到合适位置。
         //
-        // The good answer here will eventually be pattern types, which will hopefully
-        // allow it to go back to `.0`, maybe with a cast of some sort.
+        // 最终更好的方案应是 pattern types；它有望允许这里回到 `.0`，也许需要某种 cast。
         //
-        // SAFETY: `ZeroablePrimitive` guarantees that the size and bit validity
-        // of `.0` is such that this transmute is sound.
+        // SAFETY: `ZeroablePrimitive` 保证 `.0` 的大小和位有效性满足该 transmute 的 soundness。
         unsafe { intrinsics::transmute_unchecked(self) }
     }
 }
@@ -508,7 +503,7 @@ macro_rules! nonzero_integer {
         SignedPrimitive = $Sint:ty,
         UnsignedPrimitive = $Uint:ty,
 
-        // Used in doc comments.
+        // 供 rustdoc 注释拼接示例时使用。
         rot = $rot:literal,
         rot_op = $rot_op:literal,
         rot_result = $rot_result:literal,
@@ -527,23 +522,24 @@ macro_rules! nonzero_integer {
             }
         }]
         ///
-        /// This enables some memory layout optimization.
+        /// 这会启用若干内存布局优化：编译器知道该值永远不是零，
+        /// 因而零值可以作为外层枚举（例如 `Option`）的 niche。
         #[doc = concat!("For example, `Option<", stringify!($Ty), ">` is the same size as `", stringify!($Int), "`:")]
         ///
         /// ```rust
         #[doc = concat!("assert_eq!(size_of::<Option<core::num::", stringify!($Ty), ">>(), size_of::<", stringify!($Int), ">());")]
         /// ```
         ///
-        /// # Layout
+        /// # 布局(Layout)
         ///
         #[doc = concat!("`", stringify!($Ty), "` is guaranteed to have the same layout and bit validity as `", stringify!($Int), "`")]
-        /// with the exception that `0` is not a valid instance.
+        /// 唯一例外是 `0` 不是合法实例。
         #[doc = concat!("`Option<", stringify!($Ty), ">` is guaranteed to be compatible with `", stringify!($Int), "`,")]
-        /// including in FFI.
+        /// 包括在 FFI 边界上的表示兼容性。
         ///
-        /// Thanks to the [null pointer optimization],
+        /// 借助 [null pointer optimization]，
         #[doc = concat!("`", stringify!($Ty), "` and `Option<", stringify!($Ty), ">`")]
-        /// are guaranteed to have the same size and alignment:
+        /// 保证具有相同的大小和对齐方式：
         ///
         /// ```
         #[doc = concat!("use std::num::", stringify!($Ty), ";")]
@@ -552,12 +548,12 @@ macro_rules! nonzero_integer {
         #[doc = concat!("assert_eq!(align_of::<", stringify!($Ty), ">(), align_of::<Option<", stringify!($Ty), ">>());")]
         /// ```
         ///
-        /// # Compile-time creation
+        /// # 编译期创建
         ///
-        /// Since both [`Option::unwrap()`] and [`Option::expect()`] are `const`, it is possible to
-        /// define a new
+        /// 因为 [`Option::unwrap()`] 和 [`Option::expect()`] 都是 `const`，
+        /// 所以可以在编译期定义新的
         #[doc = concat!("`", stringify!($Ty), "`")]
-        /// at compile time via:
+        /// 值，例如：
         /// ```
         #[doc = concat!("use std::num::", stringify!($Ty), ";")]
         ///
@@ -569,11 +565,11 @@ macro_rules! nonzero_integer {
         pub type $Ty = NonZero<$Int>;
 
         impl NonZero<$Int> {
-            /// The size of this non-zero integer type in bits.
+            /// 该非零整数类型的位宽。
             ///
             #[doc = concat!("This value is equal to [`", stringify!($Int), "::BITS`].")]
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             /// # use std::num::NonZero;
@@ -583,11 +579,12 @@ macro_rules! nonzero_integer {
             #[stable(feature = "nonzero_bits", since = "1.67.0")]
             pub const BITS: u32 = <$Int>::BITS;
 
-            /// Returns the number of leading zeros in the binary representation of `self`.
+            /// 返回 `self` 的二进制表示中前导零的数量。
             ///
-            /// On many architectures, this function can perform better than `leading_zeros()` on the underlying integer type, as special handling of zero can be avoided.
+            /// 在许多架构上，它可能比底层整数类型的 `leading_zeros()` 更快，
+            /// 因为 `NonZero` 的非零不变量允许实现跳过零值特判。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             /// # use std::num::NonZero;
@@ -606,18 +603,18 @@ macro_rules! nonzero_integer {
                           without modifying the original"]
             #[inline]
             pub const fn leading_zeros(self) -> u32 {
-                // SAFETY: since `self` cannot be zero, it is safe to call `ctlz_nonzero`.
+                // SAFETY: `self` 不可能为零，因此可以调用要求非零输入的 `ctlz_nonzero`。
                 unsafe {
                     intrinsics::ctlz_nonzero(self.get() as $Uint)
                 }
             }
 
-            /// Returns the number of trailing zeros in the binary representation
-            /// of `self`.
+            /// 返回 `self` 的二进制表示中尾随零的数量。
             ///
-            /// On many architectures, this function can perform better than `trailing_zeros()` on the underlying integer type, as special handling of zero can be avoided.
+            /// 在许多架构上，该函数可能比底层整数类型的 `trailing_zeros()` 更快，
+            /// 因为 `NonZero` 的类型不变量允许实现跳过零值特判。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             /// # use std::num::NonZero;
@@ -636,15 +633,15 @@ macro_rules! nonzero_integer {
                           without modifying the original"]
             #[inline]
             pub const fn trailing_zeros(self) -> u32 {
-                // SAFETY: since `self` cannot be zero, it is safe to call `cttz_nonzero`.
+                // SAFETY: `self` 不可能为零，因此可以调用要求非零输入的 `cttz_nonzero`。
                 unsafe {
                     intrinsics::cttz_nonzero(self.get() as $Uint)
                 }
             }
 
-            /// Returns `self` with only the most significant bit set.
+            /// 返回只保留最高有效 1 位后的 `self`。
             ///
-            /// # Example
+            /// # 示例
             ///
             /// ```
             /// #![feature(isolate_most_least_significant_one)]
@@ -665,19 +662,17 @@ macro_rules! nonzero_integer {
             #[inline(always)]
             pub const fn isolate_highest_one(self) -> Self {
                 // SAFETY:
-                // `self` is non-zero, so masking to preserve only the most
-                // significant set bit will result in a non-zero `n`.
-                // and self.leading_zeros() is always < $INT::BITS since
-                // at least one of the bits in the number is not zero
+                // `self` 非零，因此掩码只保留最高有效 1 位后仍会得到非零值。并且由于
+                // 至少有一位不是零，`self.leading_zeros()` 始终小于 `$Int::BITS`。
                 unsafe {
                     let bit = (((1 as $Uint) << (<$Uint>::BITS - 1)).unchecked_shr(self.leading_zeros()));
                     NonZero::new_unchecked(bit as $Int)
                 }
             }
 
-            /// Returns `self` with only the least significant bit set.
+            /// 返回只保留最低有效 1 位后的 `self`。
             ///
-            /// # Example
+            /// # 示例
             ///
             /// ```
             /// #![feature(isolate_most_least_significant_one)]
@@ -700,14 +695,13 @@ macro_rules! nonzero_integer {
                 let n = self.get();
                 let n = n & n.wrapping_neg();
 
-                // SAFETY: `self` is non-zero, so `self` with only its least
-                // significant set bit will remain non-zero.
+                // SAFETY: `self` 非零，因此只保留最低有效 1 位后仍然非零。
                 unsafe { NonZero::new_unchecked(n) }
             }
 
-            /// Returns the index of the highest bit set to one in `self`.
+            /// 返回 `self` 中最高 1 位的索引。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             /// #![feature(int_lowest_highest_one)]
@@ -729,9 +723,9 @@ macro_rules! nonzero_integer {
                 Self::BITS - 1 - self.leading_zeros()
             }
 
-            /// Returns the index of the lowest bit set to one in `self`.
+            /// 返回 `self` 中最低 1 位的索引。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             /// #![feature(int_lowest_highest_one)]
@@ -753,9 +747,9 @@ macro_rules! nonzero_integer {
                 self.trailing_zeros()
             }
 
-            /// Returns the number of ones in the binary representation of `self`.
+            /// 返回 `self` 的二进制表示中 1 的数量。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             /// # use std::num::NonZero;
@@ -780,17 +774,15 @@ macro_rules! nonzero_integer {
             #[inline(always)]
             pub const fn count_ones(self) -> NonZero<u32> {
                 // SAFETY:
-                // `self` is non-zero, which means it has at least one bit set, which means
-                // that the result of `count_ones` is non-zero.
+                // `self` 非零意味着至少有一位为 1，因此 `count_ones` 的结果也非零。
                 unsafe { NonZero::new_unchecked(self.get().count_ones()) }
             }
 
-            /// Shifts the bits to the left by a specified amount, `n`,
-            /// wrapping the truncated bits to the end of the resulting integer.
+            /// 将位模式向左旋转指定数量 `n`，并把被截掉的高位绕回结果的低位。
             ///
-            /// Please note this isn't the same operation as the `<<` shifting operator!
+            /// 注意这不是 `<<` 移位运算符；旋转不会丢弃位，只会改变位的位置。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             /// #![feature(nonzero_bitwise)]
@@ -811,17 +803,15 @@ macro_rules! nonzero_integer {
             #[inline(always)]
             pub const fn rotate_left(self, n: u32) -> Self {
                 let result = self.get().rotate_left(n);
-                // SAFETY: Rotating bits preserves the property int > 0.
+                // SAFETY: 旋转位模式会保留“至少有一位为 1”的性质，因此结果仍非零。
                 unsafe { Self::new_unchecked(result) }
             }
 
-            /// Shifts the bits to the right by a specified amount, `n`,
-            /// wrapping the truncated bits to the beginning of the resulting
-            /// integer.
+            /// 将位模式向右旋转指定数量 `n`，并把被截掉的低位绕回结果的高位。
             ///
-            /// Please note this isn't the same operation as the `>>` shifting operator!
+            /// 注意这不是 `>>` 移位运算符；旋转不会丢弃位，只会改变位的位置。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             /// #![feature(nonzero_bitwise)]
@@ -842,13 +832,13 @@ macro_rules! nonzero_integer {
             #[inline(always)]
             pub const fn rotate_right(self, n: u32) -> Self {
                 let result = self.get().rotate_right(n);
-                // SAFETY: Rotating bits preserves the property int > 0.
+                // SAFETY: 旋转位模式会保留“至少有一位为 1”的性质，因此结果仍非零。
                 unsafe { Self::new_unchecked(result) }
             }
 
-            /// Reverses the byte order of the integer.
+            /// 反转该整数的字节顺序。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             /// #![feature(nonzero_bitwise)]
@@ -869,14 +859,15 @@ macro_rules! nonzero_integer {
             #[inline(always)]
             pub const fn swap_bytes(self) -> Self {
                 let result = self.get().swap_bytes();
-                // SAFETY: Shuffling bytes preserves the property int > 0.
+                // SAFETY: 交换字节会保留“至少有一位为 1”的性质，因此结果仍非零。
                 unsafe { Self::new_unchecked(result) }
             }
 
-            /// Reverses the order of bits in the integer. The least significant bit becomes the most significant bit,
-            /// second least-significant bit becomes second most-significant bit, etc.
+            /// 反转该整数中的位顺序。
             ///
-            /// # Examples
+            /// 最低有效位会变成最高有效位，次低有效位会变成次高有效位，依此类推。
+            ///
+            /// # 示例
             ///
             /// ```
             /// #![feature(nonzero_bitwise)]
@@ -897,16 +888,15 @@ macro_rules! nonzero_integer {
             #[inline(always)]
             pub const fn reverse_bits(self) -> Self {
                 let result = self.get().reverse_bits();
-                // SAFETY: Reversing bits preserves the property int > 0.
+                // SAFETY: 反转位顺序会保留“至少有一位为 1”的性质，因此结果仍非零。
                 unsafe { Self::new_unchecked(result) }
             }
 
-            /// Converts an integer from big endian to the target's endianness.
+            /// 把一个 big endian 整数转换为目标平台字节序。
             ///
-            /// On big endian this is a no-op. On little endian the bytes are
-            /// swapped.
+            /// 在 big endian 平台上这是 no-op；在 little endian 平台上会交换字节。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             /// #![feature(nonzero_bitwise)]
@@ -930,16 +920,15 @@ macro_rules! nonzero_integer {
             #[inline(always)]
             pub const fn from_be(x: Self) -> Self {
                 let result = $Int::from_be(x.get());
-                // SAFETY: Shuffling bytes preserves the property int > 0.
+                // SAFETY: 交换字节会保留“至少有一位为 1”的性质，因此结果仍非零。
                 unsafe { Self::new_unchecked(result) }
             }
 
-            /// Converts an integer from little endian to the target's endianness.
+            /// 把一个 little endian 整数转换为目标平台字节序。
             ///
-            /// On little endian this is a no-op. On big endian the bytes are
-            /// swapped.
+            /// 在 little endian 平台上这是 no-op；在 big endian 平台上会交换字节。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             /// #![feature(nonzero_bitwise)]
@@ -963,16 +952,15 @@ macro_rules! nonzero_integer {
             #[inline(always)]
             pub const fn from_le(x: Self) -> Self {
                 let result = $Int::from_le(x.get());
-                // SAFETY: Shuffling bytes preserves the property int > 0.
+                // SAFETY: 交换字节会保留“至少有一位为 1”的性质，因此结果仍非零。
                 unsafe { Self::new_unchecked(result) }
             }
 
-            /// Converts `self` to big endian from the target's endianness.
+            /// 把 `self` 从目标平台字节序转换为 big endian。
             ///
-            /// On big endian this is a no-op. On little endian the bytes are
-            /// swapped.
+            /// 在 big endian 平台上这是 no-op；在 little endian 平台上会交换字节。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             /// #![feature(nonzero_bitwise)]
@@ -996,16 +984,15 @@ macro_rules! nonzero_integer {
             #[inline(always)]
             pub const fn to_be(self) -> Self {
                 let result = self.get().to_be();
-                // SAFETY: Shuffling bytes preserves the property int > 0.
+                // SAFETY: 交换字节会保留“至少有一位为 1”的性质，因此结果仍非零。
                 unsafe { Self::new_unchecked(result) }
             }
 
-            /// Converts `self` to little endian from the target's endianness.
+            /// 把 `self` 从目标平台字节序转换为 little endian。
             ///
-            /// On little endian this is a no-op. On big endian the bytes are
-            /// swapped.
+            /// 在 little endian 平台上这是 no-op；在 big endian 平台上会交换字节。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             /// #![feature(nonzero_bitwise)]
@@ -1029,7 +1016,7 @@ macro_rules! nonzero_integer {
             #[inline(always)]
             pub const fn to_le(self) -> Self {
                 let result = self.get().to_le();
-                // SAFETY: Shuffling bytes preserves the property int > 0.
+                // SAFETY: 交换字节会保留“至少有一位为 1”的性质，因此结果仍非零。
                 unsafe { Self::new_unchecked(result) }
             }
 
@@ -1039,11 +1026,11 @@ macro_rules! nonzero_integer {
                 UnsignedPrimitive = $Uint,
             }
 
-            /// Multiplies two non-zero integers together.
-            /// Checks for overflow and returns [`None`] on overflow.
-            /// As a consequence, the result cannot wrap to zero.
+            /// 将两个非零整数相乘。
             ///
-            /// # Examples
+            /// 该方法会检查溢出，并在溢出时返回 [`None`]。因此结果不会通过 wrapping 变成零。
+            ///
+            /// # 示例
             ///
             /// ```
             /// # use std::num::NonZero;
@@ -1067,22 +1054,21 @@ macro_rules! nonzero_integer {
             pub const fn checked_mul(self, other: Self) -> Option<Self> {
                 if let Some(result) = self.get().checked_mul(other.get()) {
                     // SAFETY:
-                    // - `checked_mul` returns `None` on overflow
-                    // - `self` and `other` are non-zero
-                    // - the only way to get zero from a multiplication without overflow is for one
-                    //   of the sides to be zero
+                    // - `checked_mul` 在溢出时返回 `None`
+                    // - `self` 和 `other` 都非零
+                    // - 不发生溢出的乘法只有在某个操作数为零时才会得到零
                     //
-                    // So the result cannot be zero.
+                    // 因此结果不可能为零。
                     Some(unsafe { Self::new_unchecked(result) })
                 } else {
                     None
                 }
             }
 
-            /// Multiplies two non-zero integers together.
+            /// 将两个非零整数相乘。
             #[doc = concat!("Return [`NonZero::<", stringify!($Int), ">::MAX`] on overflow.")]
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             /// # use std::num::NonZero;
@@ -1104,22 +1090,20 @@ macro_rules! nonzero_integer {
                           without modifying the original"]
             #[inline]
             pub const fn saturating_mul(self, other: Self) -> Self {
-                // SAFETY:
-                // - `saturating_mul` returns `u*::MAX`/`i*::MAX`/`i*::MIN` on overflow/underflow,
-                //   all of which are non-zero
-                // - `self` and `other` are non-zero
-                // - the only way to get zero from a multiplication without overflow is for one
-                //   of the sides to be zero
-                //
-                // So the result cannot be zero.
+                    // SAFETY:
+                    // - `saturating_mul` 在溢出/下溢时返回 `u*::MAX`/`i*::MAX`/`i*::MIN`，
+                    //   它们全都非零
+                    // - `self` 和 `other` 都非零
+                    // - 不发生溢出的乘法只有在某个操作数为零时才会得到零
+                    //
+                    // 因此结果不可能为零。
                 unsafe { Self::new_unchecked(self.get().saturating_mul(other.get())) }
             }
 
-            /// Multiplies two non-zero integers together,
-            /// assuming overflow cannot occur.
-            /// Overflow is unchecked, and it is undefined behavior to overflow
-            /// *even if the result would wrap to a non-zero value*.
-            /// The behavior is undefined as soon as
+            /// 在假设不会溢出的前提下，将两个非零整数相乘。
+            ///
+            /// 溢出不会被检查；一旦溢出就是 undefined behavior，**即使 wrapping 后的结果
+            /// 仍然是非零值**。当下列条件成立时，行为立即未定义：
             #[doc = sign_dependent_expr!{
                 $signedness ?
                 if signed {
@@ -1131,7 +1115,7 @@ macro_rules! nonzero_integer {
                 }
             }]
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             /// #![feature(nonzero_ops)]
@@ -1152,15 +1136,15 @@ macro_rules! nonzero_integer {
                           without modifying the original"]
             #[inline]
             pub const unsafe fn unchecked_mul(self, other: Self) -> Self {
-                // SAFETY: The caller ensures there is no overflow.
+                // SAFETY: 调用方保证乘法不会溢出。
                 unsafe { Self::new_unchecked(self.get().unchecked_mul(other.get())) }
             }
 
-            /// Raises non-zero value to an integer power.
-            /// Checks for overflow and returns [`None`] on overflow.
-            /// As a consequence, the result cannot wrap to zero.
+            /// 将非零值提升到整数幂。
             ///
-            /// # Examples
+            /// 该方法会检查溢出，并在溢出时返回 [`None`]。因此结果不会通过 wrapping 变成零。
+            ///
+            /// # 示例
             ///
             /// ```
             /// # use std::num::NonZero;
@@ -1184,19 +1168,18 @@ macro_rules! nonzero_integer {
             pub const fn checked_pow(self, other: u32) -> Option<Self> {
                 if let Some(result) = self.get().checked_pow(other) {
                     // SAFETY:
-                    // - `checked_pow` returns `None` on overflow/underflow
-                    // - `self` is non-zero
-                    // - the only way to get zero from an exponentiation without overflow is
-                    //   for base to be zero
+                    // - `checked_pow` 在溢出/下溢时返回 `None`
+                    // - `self` 非零
+                    // - 不发生溢出的幂运算只有在底数为零时才会得到零
                     //
-                    // So the result cannot be zero.
+                    // 因此结果不可能为零。
                     Some(unsafe { Self::new_unchecked(result) })
                 } else {
                     None
                 }
             }
 
-            /// Raise non-zero value to an integer power.
+            /// 将非零值提升到整数幂。
             #[doc = sign_dependent_expr!{
                 $signedness ?
                 if signed {
@@ -1208,7 +1191,7 @@ macro_rules! nonzero_integer {
                 }
             }]
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             /// # use std::num::NonZero;
@@ -1231,13 +1214,12 @@ macro_rules! nonzero_integer {
             #[inline]
             pub const fn saturating_pow(self, other: u32) -> Self {
                 // SAFETY:
-                // - `saturating_pow` returns `u*::MAX`/`i*::MAX`/`i*::MIN` on overflow/underflow,
-                //   all of which are non-zero
-                // - `self` is non-zero
-                // - the only way to get zero from an exponentiation without overflow is
-                //   for base to be zero
+                // - `saturating_pow` 在溢出/下溢时返回 `u*::MAX`/`i*::MAX`/`i*::MIN`，
+                //   它们全都非零
+                // - `self` 非零
+                // - 不发生溢出的幂运算只有在底数为零时才会得到零
                 //
-                // So the result cannot be zero.
+                // 因此结果不可能为零。
                 unsafe { Self::new_unchecked(self.get().saturating_pow(other)) }
             }
         }
@@ -1313,23 +1295,22 @@ macro_rules! nonzero_integer {
 }
 
 macro_rules! nonzero_integer_signedness_dependent_impls {
-    // Impls for unsigned nonzero types only.
+    // 仅供无符号 NonZero 类型使用的 impl。
     (unsigned $Int:ty) => {
         #[stable(feature = "nonzero_div", since = "1.51.0")]
         #[rustc_const_unstable(feature = "const_ops", issue = "143802")]
         impl const Div<NonZero<$Int>> for $Int {
             type Output = $Int;
 
-            /// Same as `self / other.get()`, but because `other` is a `NonZero<_>`,
-            /// there's never a runtime check for division-by-zero.
+            /// 等价于 `self / other.get()`；但因为 `other` 是 `NonZero<_>`，
+            /// 除数不可能为零，所以运行时不需要再做除零检查。
             ///
-            /// This operation rounds towards zero, truncating any fractional
-            /// part of the exact result, and cannot panic.
+            /// 该操作向零舍入，截断精确结果的小数部分，并且不会 panic。
             #[doc(alias = "unchecked_div")]
             #[inline]
             fn div(self, other: NonZero<$Int>) -> $Int {
-                // SAFETY: Division by zero is checked because `other` is non-zero,
-                // and MIN/-1 is checked because `self` is an unsigned int.
+                // SAFETY: `other` 的非零不变量排除了除零；`self` 是无符号整数，
+                // 因而不存在有符号 `MIN / -1` 的溢出情形。
                 unsafe { intrinsics::unchecked_div(self, other.get()) }
             }
         }
@@ -1337,11 +1318,10 @@ macro_rules! nonzero_integer_signedness_dependent_impls {
         #[stable(feature = "nonzero_div_assign", since = "1.79.0")]
         #[rustc_const_unstable(feature = "const_ops", issue = "143802")]
         impl const DivAssign<NonZero<$Int>> for $Int {
-            /// Same as `self /= other.get()`, but because `other` is a `NonZero<_>`,
-            /// there's never a runtime check for division-by-zero.
+            /// 等价于 `self /= other.get()`；但因为 `other` 是 `NonZero<_>`，
+            /// 除数不可能为零，所以运行时不需要再做除零检查。
             ///
-            /// This operation rounds towards zero, truncating any fractional
-            /// part of the exact result, and cannot panic.
+            /// 该操作向零舍入，截断精确结果的小数部分，并且不会 panic。
             #[inline]
             fn div_assign(&mut self, other: NonZero<$Int>) {
                 *self = *self / other;
@@ -1353,11 +1333,11 @@ macro_rules! nonzero_integer_signedness_dependent_impls {
         impl const Rem<NonZero<$Int>> for $Int {
             type Output = $Int;
 
-            /// This operation satisfies `n % d == n - (n / d) * d`, and cannot panic.
+            /// 该操作满足 `n % d == n - (n / d) * d`，并且不会 panic。
             #[inline]
             fn rem(self, other: NonZero<$Int>) -> $Int {
-                // SAFETY: Remainder by zero is checked because `other` is non-zero,
-                // and MIN/-1 is checked because `self` is an unsigned int.
+                // SAFETY: `other` 的非零不变量排除了对零取余；`self` 是无符号整数，
+                // 因而不存在有符号 `MIN % -1` 的溢出情形。
                 unsafe { intrinsics::unchecked_rem(self, other.get()) }
             }
         }
@@ -1365,7 +1345,7 @@ macro_rules! nonzero_integer_signedness_dependent_impls {
         #[stable(feature = "nonzero_div_assign", since = "1.79.0")]
         #[rustc_const_unstable(feature = "const_ops", issue = "143802")]
         impl const RemAssign<NonZero<$Int>> for $Int {
-            /// This operation satisfies `n % d == n - (n / d) * d`, and cannot panic.
+            /// 该操作满足 `n % d == n - (n / d) * d`，并且不会 panic。
             #[inline]
             fn rem_assign(&mut self, other: NonZero<$Int>) {
                 *self = *self % other;
@@ -1373,11 +1353,11 @@ macro_rules! nonzero_integer_signedness_dependent_impls {
         }
 
         impl NonZero<$Int> {
-            /// Calculates the quotient of `self` and `rhs`, rounding the result towards positive infinity.
+            /// 计算 `self` 除以 `rhs` 的商，并向正无穷方向舍入。
             ///
-            /// The result is guaranteed to be non-zero.
+            /// 两个操作数都为正的 `NonZero` 值，因此结果保证非零。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             /// # use std::num::NonZero;
@@ -1396,12 +1376,12 @@ macro_rules! nonzero_integer_signedness_dependent_impls {
             #[inline]
             pub const fn div_ceil(self, rhs: Self) -> Self {
                 let v = self.get().div_ceil(rhs.get());
-                // SAFETY: ceiled division of two positive integers can never be zero.
+                // SAFETY: 两个正整数的向上取整除法结果不可能为零。
                 unsafe { Self::new_unchecked(v) }
             }
         }
     };
-    // Impls for signed nonzero types only.
+    // 仅供有符号 NonZero 类型使用的 impl。
     (signed $Int:ty) => {
         #[stable(feature = "signed_nonzero_neg", since = "1.71.0")]
         #[rustc_const_unstable(feature = "const_ops", issue = "143802")]
@@ -1410,7 +1390,7 @@ macro_rules! nonzero_integer_signedness_dependent_impls {
 
             #[inline]
             fn neg(self) -> Self {
-                // SAFETY: negation of nonzero cannot yield zero values.
+                // SAFETY: 非零值取负仍不可能产生零。
                 unsafe { Self::new_unchecked(self.get().neg()) }
             }
         }
@@ -1423,16 +1403,15 @@ macro_rules! nonzero_integer_signedness_dependent_impls {
 
 #[rustfmt::skip] // https://github.com/rust-lang/rustfmt/issues/5974
 macro_rules! nonzero_integer_signedness_dependent_methods {
-    // Associated items for unsigned nonzero types only.
+    // 仅供无符号 NonZero 类型使用的关联项。
     (
         Primitive = unsigned $Int:ident,
         SignedPrimitive = $Sint:ty,
         UnsignedPrimitive = $Uint:ty,
     ) => {
-        /// The smallest value that can be represented by this non-zero
-        /// integer type, 1.
+        /// 该非零整数类型可以表示的最小值，即 1。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         /// # use std::num::NonZero;
@@ -1442,11 +1421,10 @@ macro_rules! nonzero_integer_signedness_dependent_methods {
         #[stable(feature = "nonzero_min_max", since = "1.70.0")]
         pub const MIN: Self = Self::new(1).unwrap();
 
-        /// The largest value that can be represented by this non-zero
-        /// integer type,
+        /// 该非零整数类型可以表示的最大值，
         #[doc = concat!("equal to [`", stringify!($Int), "::MAX`].")]
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         /// # use std::num::NonZero;
@@ -1456,12 +1434,12 @@ macro_rules! nonzero_integer_signedness_dependent_methods {
         #[stable(feature = "nonzero_min_max", since = "1.70.0")]
         pub const MAX: Self = Self::new(<$Int>::MAX).unwrap();
 
-        /// Adds an unsigned integer to a non-zero value.
-        /// Checks for overflow and returns [`None`] on overflow.
-        /// As a consequence, the result cannot wrap to zero.
+        /// 将无符号整数加到一个非零值上。
+        /// 该 `checked` 变体会检测溢出，并在溢出时返回 [`None`]。
+        /// 因为溢出不会被包裹回类型范围内，所以结果也不会绕回到零。
         ///
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         /// # use std::num::NonZero;
@@ -1485,22 +1463,21 @@ macro_rules! nonzero_integer_signedness_dependent_methods {
         pub const fn checked_add(self, other: $Int) -> Option<Self> {
             if let Some(result) = self.get().checked_add(other) {
                 // SAFETY:
-                // - `checked_add` returns `None` on overflow
-                // - `self` is non-zero
-                // - the only way to get zero from an addition without overflow is for both
-                //   sides to be zero
+                // - `checked_add` 在溢出时返回 `None`
+                // - `self` 是非零值
+                // - 未溢出的加法只有在两边都为零时才会得到零
                 //
-                // So the result cannot be zero.
+                // 因此结果不可能为零。
                 Some(unsafe { Self::new_unchecked(result) })
             } else {
                 None
             }
         }
 
-        /// Adds an unsigned integer to a non-zero value.
+        /// 将无符号整数加到一个非零值上。
         #[doc = concat!("Return [`NonZero::<", stringify!($Int), ">::MAX`] on overflow.")]
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         /// # use std::num::NonZero;
@@ -1523,23 +1500,21 @@ macro_rules! nonzero_integer_signedness_dependent_methods {
         #[inline]
         pub const fn saturating_add(self, other: $Int) -> Self {
             // SAFETY:
-            // - `saturating_add` returns `u*::MAX` on overflow, which is non-zero
-            // - `self` is non-zero
-            // - the only way to get zero from an addition without overflow is for both
-            //   sides to be zero
+            // - `saturating_add` 在溢出时返回非零的 `u*::MAX`
+            // - `self` 是非零值
+            // - 未溢出的加法只有在两边都为零时才会得到零
             //
-            // So the result cannot be zero.
+            // 因此结果不可能为零。
             unsafe { Self::new_unchecked(self.get().saturating_add(other)) }
         }
 
-        /// Adds an unsigned integer to a non-zero value,
-        /// assuming overflow cannot occur.
-        /// Overflow is unchecked, and it is undefined behavior to overflow
-        /// *even if the result would wrap to a non-zero value*.
-        /// The behavior is undefined as soon as
+        /// 将无符号整数加到一个非零值上，并假定不会发生溢出。
+        /// 这是 `unchecked` 变体：一旦加法溢出就是未定义行为，
+        /// *即使按二进制补码包裹后的结果仍然是非零值*。
+        /// 只要满足以下条件，行为就已经未定义：
         #[doc = concat!("`self + rhs > ", stringify!($Int), "::MAX`.")]
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         /// #![feature(nonzero_ops)]
@@ -1560,16 +1535,15 @@ macro_rules! nonzero_integer_signedness_dependent_methods {
                       without modifying the original"]
         #[inline]
         pub const unsafe fn unchecked_add(self, other: $Int) -> Self {
-            // SAFETY: The caller ensures there is no overflow.
+            // SAFETY: 调用方保证不会发生溢出。
             unsafe { Self::new_unchecked(self.get().unchecked_add(other)) }
         }
 
-        /// Returns the smallest power of two greater than or equal to `self`.
-        /// Checks for overflow and returns [`None`]
-        /// if the next power of two is greater than the type’s maximum value.
-        /// As a consequence, the result cannot wrap to zero.
+        /// 返回大于或等于 `self` 的最小二的幂。
+        /// 该 `checked` 变体会检测溢出；如果下一个二的幂超过该类型的最大值，
+        /// 则返回 [`None`]。因此结果不会因溢出而包裹回零。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         /// # use std::num::NonZero;
@@ -1594,22 +1568,20 @@ macro_rules! nonzero_integer_signedness_dependent_methods {
         #[inline]
         pub const fn checked_next_power_of_two(self) -> Option<Self> {
             if let Some(nz) = self.get().checked_next_power_of_two() {
-                // SAFETY: The next power of two is positive
-                // and overflow is checked.
+                // SAFETY: 下一个二的幂为正，并且溢出已经被 `checked` 路径排除。
                 Some(unsafe { Self::new_unchecked(nz) })
             } else {
                 None
             }
         }
 
-        /// Returns the base 2 logarithm of the number, rounded down.
+        /// 返回该数以 2 为底的对数，并向下取整。
         ///
-        /// This is the same operation as
+        /// 这与
         #[doc = concat!("[`", stringify!($Int), "::ilog2`],")]
-        /// except that it has no failure cases to worry about
-        /// since this value can never be zero.
+        /// 是同一操作；不同之处是该值永远不是零，因此无需处理零输入的失败情形。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         /// # use std::num::NonZero;
@@ -1631,14 +1603,13 @@ macro_rules! nonzero_integer_signedness_dependent_methods {
             Self::BITS - 1 - self.leading_zeros()
         }
 
-        /// Returns the base 10 logarithm of the number, rounded down.
+        /// 返回该数以 10 为底的对数，并向下取整。
         ///
-        /// This is the same operation as
+        /// 这与
         #[doc = concat!("[`", stringify!($Int), "::ilog10`],")]
-        /// except that it has no failure cases to worry about
-        /// since this value can never be zero.
+        /// 是同一操作；不同之处是该值永远不是零，因此无需处理零输入的失败情形。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         /// # use std::num::NonZero;
@@ -1660,13 +1631,12 @@ macro_rules! nonzero_integer_signedness_dependent_methods {
             super::int_log10::$Int(self)
         }
 
-        /// Calculates the midpoint (average) between `self` and `rhs`.
+        /// 计算 `self` 与 `rhs` 的中点（平均值）。
         ///
-        /// `midpoint(a, b)` is `(a + b) >> 1` as if it were performed in a
-        /// sufficiently-large signed integral type. This implies that the result is
-        /// always rounded towards negative infinity and that no overflow will ever occur.
+        /// `midpoint(a, b)` 的语义等同于在足够大的有符号整数类型中计算
+        /// `(a + b) >> 1`。这意味着结果总是向负无穷方向舍入，并且不会发生溢出。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         /// # use std::num::NonZero;
@@ -1690,19 +1660,18 @@ macro_rules! nonzero_integer_signedness_dependent_methods {
         #[doc(alias = "average")]
         #[inline]
         pub const fn midpoint(self, rhs: Self) -> Self {
-            // SAFETY: The only way to get `0` with midpoint is to have two opposite or
-            // near opposite numbers: (-5, 5), (0, 1), (0, 0) which is impossible because
-            // of the unsignedness of this number and also because `Self` is guaranteed to
-            // never being 0.
+            // SAFETY: 中点为 `0` 只可能来自互为相反数或近似相反的输入，
+            // 例如 (-5, 5)、(0, 1)、(0, 0)。这里的类型是无符号的，
+            // 且 `Self` 保证永远不是 0，因此这些情形不可能出现。
             unsafe { Self::new_unchecked(self.get().midpoint(rhs.get())) }
         }
 
-        /// Returns `true` if and only if `self == (1 << k)` for some `k`.
+        /// 当且仅当存在某个 `k` 使得 `self == (1 << k)` 时返回 `true`。
         ///
-        /// On many architectures, this function can perform better than `is_power_of_two()`
-        /// on the underlying integer type, as special handling of zero can be avoided.
+        /// 在许多架构上，它可能比底层整数类型的 `is_power_of_two()` 更快，
+        /// 因为 `NonZero` 的非零不变量允许实现跳过零值特判。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         /// # use std::num::NonZero;
@@ -1721,17 +1690,17 @@ macro_rules! nonzero_integer_signedness_dependent_methods {
         #[rustc_const_stable(feature = "nonzero_is_power_of_two", since = "1.59.0")]
         #[inline]
         pub const fn is_power_of_two(self) -> bool {
-            // LLVM 11 normalizes `unchecked_sub(x, 1) & x == 0` to the implementation seen here.
-            // On the basic x86-64 target, this saves 3 instructions for the zero check.
-            // On x86_64 with BMI1, being nonzero lets it codegen to `BLSR`, which saves an instruction
-            // compared to the `POPCNT` implementation on the underlying integer type.
+            // LLVM 11 会把 `unchecked_sub(x, 1) & x == 0` 规范化为这里看到的实现。
+            // 在基础 x86-64 目标上，跳过零检查可节省 3 条指令。
+            // 在带 BMI1 的 x86_64 上，非零前提让它能生成 `BLSR`，
+            // 相比底层整数类型上的 `POPCNT` 实现还能少一条指令。
 
             intrinsics::ctpop(self.get()) < 2
         }
 
-        /// Returns the square root of the number, rounded down.
+        /// 返回该数的平方根，并向下取整。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         /// # use std::num::NonZero;
@@ -1753,17 +1722,15 @@ macro_rules! nonzero_integer_signedness_dependent_methods {
         pub const fn isqrt(self) -> Self {
             let result = self.get().isqrt();
 
-            // SAFETY: Integer square root is a monotonically nondecreasing
-            // function, which means that increasing the input will never cause
-            // the output to decrease. Thus, since the input for nonzero
-            // unsigned integers has a lower bound of 1, the lower bound of the
-            // results will be sqrt(1), which is 1, so a result can't be zero.
+            // SAFETY: 整数平方根是单调不减函数；增大输入不会让输出变小。
+            // 无符号 NonZero 输入的下界为 1，因此结果下界是 sqrt(1)，也就是 1，
+            // 所以结果不可能为零。
             unsafe { Self::new_unchecked(result) }
         }
 
-        /// Returns the bit pattern of `self` reinterpreted as a signed integer of the same size.
+        /// 返回把 `self` 的位模式重新解释为同宽有符号整数后的结果。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         /// # use std::num::NonZero;
@@ -1778,13 +1745,13 @@ macro_rules! nonzero_integer_signedness_dependent_methods {
                       without modifying the original"]
         #[inline(always)]
         pub const fn cast_signed(self) -> NonZero<$Sint> {
-            // SAFETY: `self.get()` can't be zero
+            // SAFETY: `self.get()` 不可能为零。
             unsafe { NonZero::new_unchecked(self.get().cast_signed()) }
         }
 
-        /// Returns the minimum number of bits required to represent `self`.
+        /// 返回表示 `self` 所需的最少位数。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         /// #![feature(uint_bit_width)]
@@ -1804,27 +1771,25 @@ macro_rules! nonzero_integer_signedness_dependent_methods {
                       without modifying the original"]
         #[inline(always)]
         pub const fn bit_width(self) -> NonZero<u32> {
-            // SAFETY: Since `self.leading_zeros()` is always less than
-            // `Self::BITS`, this subtraction can never be zero.
+            // SAFETY: `self.leading_zeros()` 总是小于 `Self::BITS`，
+            // 因此该减法结果不可能为零。
             unsafe { NonZero::new_unchecked(Self::BITS - self.leading_zeros()) }
         }
     };
 
-    // Associated items for signed nonzero types only.
+    // 仅供有符号 NonZero 类型使用的关联项。
     (
         Primitive = signed $Int:ident,
         SignedPrimitive = $Sint:ty,
         UnsignedPrimitive = $Uint:ty,
     ) => {
-        /// The smallest value that can be represented by this non-zero
-        /// integer type,
+        /// 该非零整数类型可以表示的最小值，
         #[doc = concat!("equal to [`", stringify!($Int), "::MIN`].")]
         ///
-        /// Note: While most integer types are defined for every whole
-        /// number between `MIN` and `MAX`, signed non-zero integers are
-        /// a special case. They have a "gap" at 0.
+        /// 注意：大多数整数类型能表示 `MIN` 与 `MAX` 之间的每个整数；
+        /// 有符号非零整数是特例，它们在 0 处有一个不可表示的“空洞”。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         /// # use std::num::NonZero;
@@ -1834,15 +1799,13 @@ macro_rules! nonzero_integer_signedness_dependent_methods {
         #[stable(feature = "nonzero_min_max", since = "1.70.0")]
         pub const MIN: Self = Self::new(<$Int>::MIN).unwrap();
 
-        /// The largest value that can be represented by this non-zero
-        /// integer type,
+        /// 该非零整数类型可以表示的最大值，
         #[doc = concat!("equal to [`", stringify!($Int), "::MAX`].")]
         ///
-        /// Note: While most integer types are defined for every whole
-        /// number between `MIN` and `MAX`, signed non-zero integers are
-        /// a special case. They have a "gap" at 0.
+        /// 注意：大多数整数类型能表示 `MIN` 与 `MAX` 之间的每个整数；
+        /// 有符号非零整数是特例，它们在 0 处有一个不可表示的“空洞”。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         /// # use std::num::NonZero;
@@ -1852,11 +1815,11 @@ macro_rules! nonzero_integer_signedness_dependent_methods {
         #[stable(feature = "nonzero_min_max", since = "1.70.0")]
         pub const MAX: Self = Self::new(<$Int>::MAX).unwrap();
 
-        /// Computes the absolute value of self.
+        /// 计算 `self` 的绝对值。
         #[doc = concat!("See [`", stringify!($Int), "::abs`]")]
-        /// for documentation on overflow behavior.
+        /// 了解溢出行为的详细说明。
         ///
-        /// # Example
+        /// # 示例
         ///
         /// ```
         /// # use std::num::NonZero;
@@ -1877,16 +1840,16 @@ macro_rules! nonzero_integer_signedness_dependent_methods {
                       without modifying the original"]
         #[inline]
         pub const fn abs(self) -> Self {
-            // SAFETY: This cannot overflow to zero.
+            // SAFETY: 该操作即使溢出也不会得到零。
             unsafe { Self::new_unchecked(self.get().abs()) }
         }
 
-        /// Checked absolute value.
-        /// Checks for overflow and returns [`None`] if
+        /// `checked` 绝对值。
+        /// 该变体会检测溢出，并在以下条件成立时返回 [`None`]：
         #[doc = concat!("`self == NonZero::<", stringify!($Int), ">::MIN`.")]
-        /// The result cannot be zero.
+        /// 只要返回 [`Some`]，结果就不可能为零。
         ///
-        /// # Example
+        /// # 示例
         ///
         /// ```
         /// # use std::num::NonZero;
@@ -1909,18 +1872,17 @@ macro_rules! nonzero_integer_signedness_dependent_methods {
         #[inline]
         pub const fn checked_abs(self) -> Option<Self> {
             if let Some(nz) = self.get().checked_abs() {
-                // SAFETY: absolute value of nonzero cannot yield zero values.
+                // SAFETY: 非零值的绝对值不可能产生零。
                 Some(unsafe { Self::new_unchecked(nz) })
             } else {
                 None
             }
         }
 
-        /// Computes the absolute value of self,
-        /// with overflow information, see
+        /// 计算 `self` 的绝对值，并同时返回溢出信息；参见
         #[doc = concat!("[`", stringify!($Int), "::overflowing_abs`].")]
         ///
-        /// # Example
+        /// # 示例
         ///
         /// ```
         /// # use std::num::NonZero;
@@ -1945,16 +1907,16 @@ macro_rules! nonzero_integer_signedness_dependent_methods {
         pub const fn overflowing_abs(self) -> (Self, bool) {
             let (nz, flag) = self.get().overflowing_abs();
             (
-                // SAFETY: absolute value of nonzero cannot yield zero values.
+                // SAFETY: 非零值的绝对值不可能产生零。
                 unsafe { Self::new_unchecked(nz) },
                 flag,
             )
         }
 
-        /// Saturating absolute value, see
+        /// `saturating` 绝对值；参见
         #[doc = concat!("[`", stringify!($Int), "::saturating_abs`].")]
         ///
-        /// # Example
+        /// # 示例
         ///
         /// ```
         /// # use std::num::NonZero;
@@ -1980,14 +1942,14 @@ macro_rules! nonzero_integer_signedness_dependent_methods {
                       without modifying the original"]
         #[inline]
         pub const fn saturating_abs(self) -> Self {
-            // SAFETY: absolute value of nonzero cannot yield zero values.
+            // SAFETY: 非零值的绝对值不可能产生零。
             unsafe { Self::new_unchecked(self.get().saturating_abs()) }
         }
 
-        /// Wrapping absolute value, see
+        /// `wrapping` 绝对值；参见
         #[doc = concat!("[`", stringify!($Int), "::wrapping_abs`].")]
         ///
-        /// # Example
+        /// # 示例
         ///
         /// ```
         /// # use std::num::NonZero;
@@ -2012,14 +1974,14 @@ macro_rules! nonzero_integer_signedness_dependent_methods {
                       without modifying the original"]
         #[inline]
         pub const fn wrapping_abs(self) -> Self {
-            // SAFETY: absolute value of nonzero cannot yield zero values.
+            // SAFETY: 非零值的绝对值不可能产生零。
             unsafe { Self::new_unchecked(self.get().wrapping_abs()) }
         }
 
-        /// Computes the absolute value of self
-        /// without any wrapping or panicking.
+        /// 以无符号类型计算 `self` 的绝对值，
+        /// 不会发生 `wrapping`，也不会 panic。
         ///
-        /// # Example
+        /// # 示例
         ///
         /// ```
         /// # use std::num::NonZero;
@@ -2044,14 +2006,13 @@ macro_rules! nonzero_integer_signedness_dependent_methods {
                       without modifying the original"]
         #[inline]
         pub const fn unsigned_abs(self) -> NonZero<$Uint> {
-            // SAFETY: absolute value of nonzero cannot yield zero values.
+            // SAFETY: 非零值的绝对值不可能产生零。
             unsafe { NonZero::new_unchecked(self.get().unsigned_abs()) }
         }
 
-        /// Returns `true` if `self` is positive and `false` if the
-        /// number is negative.
+        /// 如果 `self` 为正则返回 `true`，如果该数为负则返回 `false`。
         ///
-        /// # Example
+        /// # 示例
         ///
         /// ```
         /// # use std::num::NonZero;
@@ -2074,10 +2035,9 @@ macro_rules! nonzero_integer_signedness_dependent_methods {
             self.get().is_positive()
         }
 
-        /// Returns `true` if `self` is negative and `false` if the
-        /// number is positive.
+        /// 如果 `self` 为负则返回 `true`，如果该数为正则返回 `false`。
         ///
-        /// # Example
+        /// # 示例
         ///
         /// ```
         /// # use std::num::NonZero;
@@ -2100,10 +2060,10 @@ macro_rules! nonzero_integer_signedness_dependent_methods {
             self.get().is_negative()
         }
 
-        /// Checked negation. Computes `-self`,
+        /// `checked` 取负。计算 `-self`，
         #[doc = concat!("returning `None` if `self == NonZero::<", stringify!($Int), ">::MIN`.")]
         ///
-        /// # Example
+        /// # 示例
         ///
         /// ```
         /// # use std::num::NonZero;
@@ -2124,18 +2084,18 @@ macro_rules! nonzero_integer_signedness_dependent_methods {
         #[rustc_const_stable(feature = "nonzero_negation_ops", since = "1.71.0")]
         pub const fn checked_neg(self) -> Option<Self> {
             if let Some(result) = self.get().checked_neg() {
-                // SAFETY: negation of nonzero cannot yield zero values.
+                // SAFETY: 非零值取负仍不可能产生零。
                 return Some(unsafe { Self::new_unchecked(result) });
             }
             None
         }
 
-        /// Negates self, overflowing if this is equal to the minimum value.
+        /// 对 `self` 取负；当它等于最小值时标记为溢出。
         ///
         #[doc = concat!("See [`", stringify!($Int), "::overflowing_neg`]")]
-        /// for documentation on overflow behavior.
+        /// 了解溢出行为的详细说明。
         ///
-        /// # Example
+        /// # 示例
         ///
         /// ```
         /// # use std::num::NonZero;
@@ -2156,16 +2116,16 @@ macro_rules! nonzero_integer_signedness_dependent_methods {
         #[rustc_const_stable(feature = "nonzero_negation_ops", since = "1.71.0")]
         pub const fn overflowing_neg(self) -> (Self, bool) {
             let (result, overflow) = self.get().overflowing_neg();
-            // SAFETY: negation of nonzero cannot yield zero values.
+            // SAFETY: 非零值取负仍不可能产生零。
             ((unsafe { Self::new_unchecked(result) }), overflow)
         }
 
-        /// Saturating negation. Computes `-self`,
+        /// `saturating` 取负。计算 `-self`，
         #[doc = concat!("returning [`NonZero::<", stringify!($Int), ">::MAX`]")]
         #[doc = concat!("if `self == NonZero::<", stringify!($Int), ">::MIN`")]
-        /// instead of overflowing.
+        /// 以避免溢出。
         ///
-        /// # Example
+        /// # 示例
         ///
         /// ```
         /// # use std::num::NonZero;
@@ -2194,13 +2154,13 @@ macro_rules! nonzero_integer_signedness_dependent_methods {
             Self::MAX
         }
 
-        /// Wrapping (modular) negation. Computes `-self`, wrapping around at the boundary
-        /// of the type.
+        /// `wrapping`（模运算）取负。计算 `-self`，
+        /// 并在类型边界处按模意义包裹。
         ///
         #[doc = concat!("See [`", stringify!($Int), "::wrapping_neg`]")]
-        /// for documentation on overflow behavior.
+        /// 了解溢出行为的详细说明。
         ///
-        /// # Example
+        /// # 示例
         ///
         /// ```
         /// # use std::num::NonZero;
@@ -2221,13 +2181,13 @@ macro_rules! nonzero_integer_signedness_dependent_methods {
         #[rustc_const_stable(feature = "nonzero_negation_ops", since = "1.71.0")]
         pub const fn wrapping_neg(self) -> Self {
             let result = self.get().wrapping_neg();
-            // SAFETY: negation of nonzero cannot yield zero values.
+            // SAFETY: 非零值取负仍不可能产生零。
             unsafe { Self::new_unchecked(result) }
         }
 
-        /// Returns the bit pattern of `self` reinterpreted as an unsigned integer of the same size.
+        /// 返回把 `self` 的位模式重新解释为同宽无符号整数后的结果。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         /// # use std::num::NonZero;
@@ -2242,7 +2202,7 @@ macro_rules! nonzero_integer_signedness_dependent_methods {
                       without modifying the original"]
         #[inline(always)]
         pub const fn cast_unsigned(self) -> NonZero<$Uint> {
-            // SAFETY: `self.get()` can't be zero
+            // SAFETY: `self.get()` 不可能为零。
             unsafe { NonZero::new_unchecked(self.get().cast_unsigned()) }
         }
 

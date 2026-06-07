@@ -3,7 +3,7 @@
 
 [`as_ref`]: #method.as_ref
 
-# Safety
+# 安全性(Safety）
 
 调用此方法时,你必须确保:**要么**指针为空,**要么**以下条件全部成立:
 
@@ -31,7 +31,7 @@
 [valid]: crate::ptr#safety
 [allocation]: crate::ptr#allocation
 
-# Panics during const evaluation
+# Panics
 
 如果在 const 求值(const evaluation)期间无法确定指针是否为空,本方法将在该期间
 panic。更多信息见 [`is_null`]。

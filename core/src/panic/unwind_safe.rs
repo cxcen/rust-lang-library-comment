@@ -7,80 +7,61 @@ use crate::pin::Pin;
 use crate::ptr::{NonNull, Unique};
 use crate::task::{Context, Poll};
 
-/// A marker trait which represents "panic safe" types in Rust.
+/// 表示 Rust 中“panic 安全”类型的标记 trait。
 ///
-/// This trait is implemented by default for many types and behaves similarly in
-/// terms of inference of implementation to the [`Send`] and [`Sync`] traits. The
-/// purpose of this trait is to encode what types are safe to cross a [`catch_unwind`]
-/// boundary with no fear of unwind safety.
+/// 这个 trait 会默认为许多类型实现，在实现推导方式上类似 [`Send`] 和 [`Sync`]。它的用途是
+/// 描述哪些类型可以跨过 [`catch_unwind`] 边界，而不容易让调用方在捕获 panic 后观察到已被
+/// panic 打断的逻辑不变量。
 ///
 /// [`catch_unwind`]: ../../std/panic/fn.catch_unwind.html
 ///
-/// ## What is unwind safety?
+/// ## 什么是 unwind safety？
 ///
-/// In Rust a function can "return" early if it either panics or calls a
-/// function which transitively panics. This sort of control flow is not always
-/// anticipated, and has the possibility of causing subtle bugs through a
-/// combination of two critical components:
+/// 在 Rust 中，如果函数自身 panic，或调用链中更深层函数发生 panic，函数都可能“提前返回”。
+/// 这种控制流并不总是被业务逻辑预期到，并且可能通过两个关键因素组合出隐蔽 bug：
 ///
-/// 1. A data structure is in a temporarily invalid state when the thread
-///    panics.
-/// 2. This broken invariant is then later observed.
+/// 1. 线程 panic 时，某个数据结构正处在临时无效状态。
+/// 2. 后续代码又观察到了这个已经被破坏的不变量。
 ///
-/// Typically in Rust, it is difficult to perform step (2) because catching a
-/// panic involves either spawning a thread (which in turn makes it difficult
-/// to later witness broken invariants) or using the `catch_unwind` function in this
-/// module. Additionally, even if an invariant is witnessed, it typically isn't a
-/// problem in Rust because there are no uninitialized values (like in C or C++).
+/// 通常在 Rust 中，第二步并不容易发生：捕获 panic 要么需要新建线程（这反而让后续观察同一组
+/// 被破坏不变量变得困难），要么需要使用本模块中的 `catch_unwind` 函数。此外，即使确实观察到
+/// 破坏的不变量，Rust 中通常也不会像 C/C++ 那样因为未初始化值而立刻造成内存不安全。
 ///
-/// It is possible, however, for **logical** invariants to be broken in Rust,
-/// which can end up causing behavioral bugs. Another key aspect of unwind safety
-/// in Rust is that, in the absence of `unsafe` code, a panic cannot lead to
-/// memory unsafety.
+/// 但是，Rust 仍然可能破坏 **逻辑** 不变量，并最终导致行为 bug。Rust 的 unwind safety 还有
+/// 一个关键点：在没有 `unsafe` 代码参与时，panic 不会导致内存不安全。
 ///
-/// That was a bit of a whirlwind tour of unwind safety, but for more information
-/// about unwind safety and how it applies to Rust, see an [associated RFC][rfc].
+/// 上面只是 unwind safety 的快速概览。关于它在 Rust 中的适用方式，更多信息见
+/// [相关 RFC][rfc]。
 ///
 /// [rfc]: https://github.com/rust-lang/rfcs/blob/master/text/1236-stabilize-catch-panic.md
 ///
-/// ## What is `UnwindSafe`?
+/// ## 什么是 `UnwindSafe`？
 ///
-/// Now that we've got an idea of what unwind safety is in Rust, it's also
-/// important to understand what this trait represents. As mentioned above, one
-/// way to witness broken invariants is through the `catch_unwind` function in this
-/// module as it allows catching a panic and then re-using the environment of
-/// the closure.
+/// 理解 unwind safety 之后，还需要明确这个 trait 表示什么。如上所述，观察破坏不变量的一种
+/// 方式是通过本模块的 `catch_unwind` 捕获 panic，然后继续复用闭包捕获的环境。
 ///
-/// Simply put, a type `T` implements `UnwindSafe` if it cannot easily allow
-/// witnessing a broken invariant through the use of `catch_unwind` (catching a
-/// panic). This trait is an auto trait, so it is automatically implemented for
-/// many types, and it is also structurally composed (e.g., a struct is unwind
-/// safe if all of its components are unwind safe).
+/// 简单说，如果类型 `T` 不容易让使用者通过 `catch_unwind`（捕获 panic）观察到破坏的不变量，
+/// 那么它就实现 `UnwindSafe`。这是一个 auto trait，因此会自动为许多类型实现，并且按结构组合：
+/// 例如结构体的所有字段都 unwind safe 时，结构体本身也会 unwind safe。
 ///
-/// Note, however, that this is not an unsafe trait, so there is not a succinct
-/// contract that this trait is providing. Instead it is intended as more of a
-/// "speed bump" to alert users of `catch_unwind` that broken invariants may be
-/// witnessed and may need to be accounted for.
+/// 需要注意，这不是 unsafe trait，因此它没有类似“实现者必须维护某些不变量，否则 UB”的简短
+/// 契约。它更像一个“减速带”：提醒 `catch_unwind` 的使用者，跨 panic 边界后可能观察到破坏的
+/// 逻辑不变量，需要主动纳入正确性分析。
 ///
-/// ## Who implements `UnwindSafe`?
+/// ## 谁会实现 `UnwindSafe`？
 ///
-/// Types such as `&mut T` and `&RefCell<T>` are examples which are **not**
-/// unwind safe. The general idea is that any mutable state which can be shared
-/// across `catch_unwind` is not unwind safe by default. This is because it is very
-/// easy to witness a broken invariant outside of `catch_unwind` as the data is
-/// simply accessed as usual.
+/// `&mut T` 和 `&RefCell<T>` 这类类型是 **不** unwind safe 的例子。一般原则是：任何可以跨
+/// `catch_unwind` 共享的可变状态，默认都不应视为 unwind safe。原因是捕获 panic 之后，外部代码
+/// 可以像平常一样继续访问这些数据，从而很容易观察到中途被打断的不变量。
 ///
-/// Types like `&Mutex<T>`, however, are unwind safe because they implement
-/// poisoning by default. They still allow witnessing a broken invariant, but
-/// they already provide their own "speed bumps" to do so.
+/// 另一方面，`&Mutex<T>` 这类类型通常是 unwind safe 的，因为它们默认实现 poisoning。它们仍然
+/// 可能让调用方观察到破坏的不变量，但已经提供了自己的“减速带”来显式暴露这一风险。
 ///
-/// ## When should `UnwindSafe` be used?
+/// ## 什么时候使用 `UnwindSafe`？
 ///
-/// It is not intended that most types or functions need to worry about this trait.
-/// It is only used as a bound on the `catch_unwind` function and as mentioned
-/// above, the lack of `unsafe` means it is mostly an advisory. The
-/// [`AssertUnwindSafe`] wrapper struct can be used to force this trait to be
-/// implemented for any closed over variables passed to `catch_unwind`.
+/// 大多数类型或函数并不需要关心这个 trait。它主要作为 `catch_unwind` 的约束使用；如前所述，
+/// 它不是 `unsafe`，因此更多是建议性信号。包装类型 [`AssertUnwindSafe`] 可用于强制把传给
+/// `catch_unwind` 的捕获变量视为实现了此 trait。
 #[stable(feature = "catch_unwind", since = "1.9.0")]
 #[rustc_diagnostic_item = "unwind_safe_trait"]
 #[diagnostic::on_unimplemented(
@@ -89,14 +70,12 @@ use crate::task::{Context, Poll};
 )]
 pub auto trait UnwindSafe {}
 
-/// A marker trait representing types where a shared reference is considered
-/// unwind safe.
+/// 标记某些类型的共享引用可被视为 unwind safe 的 trait。
 ///
-/// This trait is namely not implemented by [`UnsafeCell`], the root of all
-/// interior mutability.
+/// 这个 trait 明确不会为 [`UnsafeCell`] 实现；[`UnsafeCell`] 是所有内部可变性的根基。
 ///
-/// This is a "helper marker trait" used to provide impl blocks for the
-/// [`UnwindSafe`] trait, for more information see that documentation.
+/// 它是辅助性的标记 trait，用于为 [`UnwindSafe`] 提供实现规则。更多背景见 [`UnwindSafe`]
+/// 的文档。
 #[stable(feature = "catch_unwind", since = "1.9.0")]
 #[rustc_diagnostic_item = "ref_unwind_safe_trait"]
 #[diagnostic::on_unimplemented(
@@ -107,50 +86,42 @@ pub auto trait UnwindSafe {}
 )]
 pub auto trait RefUnwindSafe {}
 
-/// A simple wrapper around a type to assert that it is unwind safe.
+/// 一个简单包装器，用来断言某个类型应被视为 unwind safe。
 ///
-/// When using [`catch_unwind`] it may be the case that some of the closed over
-/// variables are not unwind safe. For example if `&mut T` is captured the
-/// compiler will generate a warning indicating that it is not unwind safe. It
-/// might not be the case, however, that this is actually a problem due to the
-/// specific usage of [`catch_unwind`] if unwind safety is specifically taken into
-/// account. This wrapper struct is useful for a quick and lightweight
-/// annotation that a variable is indeed unwind safe.
+/// 使用 [`catch_unwind`] 时，闭包捕获的某些变量可能不是 unwind safe。例如捕获 `&mut T` 时，
+/// 编译器会警告它默认不 unwind safe。但是在某些特定用法中，如果调用方已经明确分析过 unwind
+/// safety，这不一定是真正的问题。该包装结构可作为轻量注解，表达“这个变量在此处确实可以跨过
+/// panic 捕获边界”。
 ///
 /// [`catch_unwind`]: ../../std/panic/fn.catch_unwind.html
 ///
-/// # Examples
+/// # 示例
 ///
-/// One way to use `AssertUnwindSafe` is to assert that the entire closure
-/// itself is unwind safe, bypassing all checks for all variables:
+/// `AssertUnwindSafe` 的一种用法是断言整个闭包本身 unwind safe，从而绕过对所有捕获变量的检查：
 ///
 /// ```
 /// use std::panic::{self, AssertUnwindSafe};
 ///
 /// let mut variable = 4;
 ///
-/// // This code will not compile because the closure captures `&mut variable`
-/// // which is not considered unwind safe by default.
+/// // 这段代码不能编译，因为闭包捕获了 `&mut variable`，
+/// // 而 `&mut T` 默认不被视为 unwind safe。
 ///
 /// // panic::catch_unwind(|| {
 /// //     variable += 3;
 /// // });
 ///
-/// // This, however, will compile due to the `AssertUnwindSafe` wrapper
+/// // 加上 `AssertUnwindSafe` 包装后，这段代码可以编译。
 /// let result = panic::catch_unwind(AssertUnwindSafe(|| {
 ///     variable += 3;
 /// }));
 /// // ...
 /// ```
 ///
-/// Wrapping the entire closure amounts to a blanket assertion that all captured
-/// variables are unwind safe. This has the downside that if new captures are
-/// added in the future, they will also be considered unwind safe. Therefore,
-/// you may prefer to just wrap individual captures, as shown below. This is
-/// more annotation, but it ensures that if a new capture is added which is not
-/// unwind safe, you will get a compilation error at that time, which will
-/// allow you to consider whether that new capture in fact represent a bug or
-/// not.
+/// 包装整个闭包等价于一次性断言所有捕获变量都 unwind safe。缺点是，如果将来新增了捕获变量，
+/// 它们也会被自动视为 unwind safe。因此，更稳妥的做法可能是只包装单个捕获变量，如下所示。
+/// 这样注解更多，但可以保证未来新增的非 unwind safe 捕获会继续触发编译错误，迫使你重新判断
+/// 新捕获是否真的代表 bug。
 ///
 /// ```
 /// use std::panic::{self, AssertUnwindSafe};
@@ -169,13 +140,13 @@ pub auto trait RefUnwindSafe {}
 #[stable(feature = "catch_unwind", since = "1.9.0")]
 pub struct AssertUnwindSafe<T>(#[stable(feature = "catch_unwind", since = "1.9.0")] pub T);
 
-// Implementations of the `UnwindSafe` trait:
+// `UnwindSafe` trait 的实现规则：
 //
-// * By default everything is unwind safe
-// * pointers T contains mutability of some form are not unwind safe
-// * Unique, an owning pointer, lifts an implementation
-// * Types like Mutex/RwLock which are explicitly poisoned are unwind safe
-// * Our custom AssertUnwindSafe wrapper is indeed unwind safe
+// * 默认情况下，类型被视为 unwind safe。
+// * 含有某种共享可变性的指针/引用默认不是 unwind safe。
+// * Unique 作为拥有所有权的指针，会提升内部类型的实现。
+// * Mutex/RwLock 这类显式提供 poisoning 的类型是 unwind safe。
+// * 自定义的 AssertUnwindSafe 包装器明确是 unwind safe。
 
 #[stable(feature = "catch_unwind", since = "1.9.0")]
 impl<T: ?Sized> !UnwindSafe for &mut T {}
@@ -192,10 +163,9 @@ impl<T: RefUnwindSafe + ?Sized> UnwindSafe for NonNull<T> {}
 #[stable(feature = "catch_unwind", since = "1.9.0")]
 impl<T> UnwindSafe for AssertUnwindSafe<T> {}
 
-// Pretty simple implementations for the `RefUnwindSafe` marker trait,
-// basically just saying that `UnsafeCell` is the
-// only thing which doesn't implement it (which then transitively applies to
-// everything else).
+// `RefUnwindSafe` 标记 trait 的实现相对直接：
+// 基本含义是只有 `UnsafeCell` 不实现它，并且这个结论会传递到包含 `UnsafeCell`
+// 的其他类型上。
 #[stable(feature = "catch_unwind", since = "1.9.0")]
 impl<T: ?Sized> !RefUnwindSafe for UnsafeCell<T> {}
 #[stable(feature = "catch_unwind", since = "1.9.0")]
@@ -294,7 +264,7 @@ impl<F: Future> Future for AssertUnwindSafe<F> {
     type Output = F::Output;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        // SAFETY: pin projection. AssertUnwindSafe follows structural pinning.
+        // SAFETY: 这是 pin 投影；AssertUnwindSafe 遵循结构化 pinning，投影到字段不会移动内部值。
         let pinned_field = unsafe { Pin::map_unchecked_mut(self, |x| &mut x.0) };
         F::poll(pinned_field, cx)
     }
@@ -305,7 +275,7 @@ impl<S: AsyncIterator> AsyncIterator for AssertUnwindSafe<S> {
     type Item = S::Item;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<S::Item>> {
-        // SAFETY: pin projection. AssertUnwindSafe follows structural pinning.
+        // SAFETY: 这是 pin 投影；AssertUnwindSafe 遵循结构化 pinning，投影到字段不会移动内部值。
         unsafe { self.map_unchecked_mut(|x| &mut x.0) }.poll_next(cx)
     }
 

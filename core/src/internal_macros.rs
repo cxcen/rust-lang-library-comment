@@ -68,7 +68,7 @@ macro_rules! forward_ref_op_assign {
     }
 }
 
-/// Creates a zero-size type similar to a closure type, but named.
+/// 创建一个类似闭包类型但带有名称的零大小类型。
 macro_rules! impl_fn_for_zst {
     ($(
         $( #[$attr: meta] )*

@@ -1,11 +1,11 @@
-//! Defines types and macros for Objective-C interoperability.
+//! 定义用于 Objective-C 互操作的类型和宏。
 
 #![unstable(feature = "darwin_objc", issue = "145496")]
 #![allow(nonstandard_style)]
 
 use crate::fmt;
 
-/// Equivalent to Objective-C’s `struct objc_class` type.
+/// 等价于 Objective-C 的 `struct objc_class` 类型。
 #[repr(u8)]
 pub enum objc_class {
     #[unstable(
@@ -30,7 +30,7 @@ impl fmt::Debug for objc_class {
     }
 }
 
-/// Equivalent to Objective-C’s `struct objc_selector` type.
+/// 等价于 Objective-C 的 `struct objc_selector` 类型。
 #[repr(u8)]
 pub enum objc_selector {
     #[unstable(
@@ -55,17 +55,17 @@ impl fmt::Debug for objc_selector {
     }
 }
 
-/// Equivalent to Objective-C’s `Class` type.
+/// 等价于 Objective-C 的 `Class` 类型。
 pub type Class = *mut objc_class;
 
-/// Equivalent to Objective-C’s `SEL` type.
+/// 等价于 Objective-C 的 `SEL` 类型。
 pub type SEL = *mut objc_selector;
 
-/// Gets a reference to an Objective-C class.
+/// 获取 Objective-C class 的引用。
 ///
-/// This macro will yield an expression of type [`Class`] for the given class name string literal.
+/// 对给定的 class 名称字符串字面量，此宏会生成类型为 [`Class`] 的表达式。
 ///
-/// # Example
+/// # 示例
 ///
 /// ```no_run
 /// #![feature(darwin_objc)]
@@ -75,9 +75,8 @@ pub type SEL = *mut objc_selector;
 /// ```
 #[allow_internal_unstable(rustc_attrs)]
 pub macro class($classname:expr) {{
-    // Since static Objective-C class references actually end up with multiple definitions
-    // across dylib boundaries, we only expose the value of the static and don't provide a way to
-    // get the address of or a reference to the static.
+    // 静态 Objective-C class 引用最终会在 dylib 边界上产生多个定义，
+    // 因此这里只暴露该 static 的值，不提供获取该 static 地址或引用的方法。
     unsafe extern "C" {
         #[rustc_objc_class = $classname]
         safe static VAL: $crate::os::darwin::objc::Class;
@@ -85,13 +84,13 @@ pub macro class($classname:expr) {{
     VAL
 }}
 
-/// Gets a reference to an Objective-C selector.
+/// 获取 Objective-C selector 的引用。
 ///
-/// This macro will yield an expression of type [`SEL`] for the given method name string literal.
+/// 对给定的方法名字符串字面量，此宏会生成类型为 [`SEL`] 的表达式。
 ///
-/// It is similar to Objective-C’s `@selector` directive.
+/// 它类似于 Objective-C 的 `@selector` 指令。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```no_run
 /// #![feature(darwin_objc)]
@@ -102,9 +101,8 @@ pub macro class($classname:expr) {{
 /// ```
 #[allow_internal_unstable(rustc_attrs)]
 pub macro selector($methname:expr) {{
-    // Since static Objective-C selector references actually end up with multiple definitions
-    // across dylib boundaries, we only expose the value of the static and don't provide a way to
-    // get the address of or a reference to the static.
+    // 静态 Objective-C selector 引用最终会在 dylib 边界上产生多个定义，
+    // 因此这里只暴露该 static 的值，不提供获取该 static 地址或引用的方法。
     unsafe extern "C" {
         #[rustc_objc_selector = $methname]
         safe static VAL: $crate::os::darwin::objc::SEL;

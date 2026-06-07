@@ -186,11 +186,10 @@
 //!
 //! static GLOBAL_THREAD_COUNT: AtomicUsize = AtomicUsize::new(0);
 //!
-//! // 注意:Relaxed 内存序不同步任何
-//! // except the global thread counter itself.
+//! // 注意:Relaxed 内存序只保证全局线程计数器自身的原子更新,
+//! // 不会同步其他内存。
 //! let old_thread_count = GLOBAL_THREAD_COUNT.fetch_add(1, Ordering::Relaxed);
-//! // Note that this number may not be true at the moment of printing
-//! // because some other thread may have changed static value already.
+//! // 打印时这个数字可能已经过期,因为其他线程可能已经修改了静态值。
 //! println!("live threads: {}", old_thread_count + 1);
 //! ```
 
@@ -198,9 +197,9 @@
 #![cfg_attr(not(target_has_atomic_load_store = "8"), allow(dead_code))]
 #![cfg_attr(not(target_has_atomic_load_store = "8"), allow(unused_imports))]
 #![rustc_diagnostic_item = "atomic_mod"]
-// Clippy complains about the pattern of "safe function calling unsafe function taking pointers".
-// This happens with AtomicPtr intrinsics but is fine, as the pointers clippy is concerned about
-// are just normal values that get loaded/stored, but not dereferenced.
+// Clippy 会警告“安全函数调用接收指针的 unsafe 函数”这一模式。
+// 这里发生在 AtomicPtr 的 intrinsic 调用上,但这些指针只是被当作普通位值做原子
+// load/store,不会在该调用中解引用,因此不触及指针有效性问题。
 #![allow(clippy::not_unsafe_ptr_arg_deref)]
 
 use self::Ordering::*;
@@ -211,19 +210,19 @@ use crate::{fmt, intrinsics};
 
 trait Sealed {}
 
-/// A marker trait for primitive types which can be modified atomically.
+/// 标记可被原子修改的基本类型。
 ///
-/// This is an implementation detail for <code>[Atomic]\<T></code> which may disappear or be replaced at any time.
+/// 这是 <code>[Atomic]\<T></code> 的实现细节,将来可能随时消失或被替换。
 ///
-/// # Safety
+/// # 安全性(Safety）
 ///
-/// Types implementing this trait must be primitives that can be modified atomically.
+/// 实现本 trait 的类型必须是可原子修改的基本类型。
 ///
-/// The associated `Self::AtomicInner` type must have the same size and bit validity as `Self`,
-/// but may have a higher alignment requirement, so the following `transmute`s are sound:
+/// 关联类型 `Self::AtomicInner` 必须与 `Self` 拥有相同大小和相同位有效性(bit validity)。
+/// 它可以要求更高对齐,但必须保证下列重解释在类型层面是健全的:
 ///
-/// - `&mut Self::AtomicInner` as `&mut Self`
-/// - `Self` as `Self::AtomicInner` or the reverse
+/// - 把 `&mut Self::AtomicInner` 视作 `&mut Self`
+/// - 在 `Self` 与 `Self::AtomicInner` 之间按值互相转换
 #[unstable(
     feature = "atomic_internals",
     reason = "implementation detail which may disappear or be replaced at any time",
@@ -421,19 +420,18 @@ pub enum Ordering {
     /// 注意:若把本序用于一个同时含 load 与 store 的操作,其 store 部分会退化为 [`Relaxed`]
     /// 存储!
     ///
-    /// This ordering is only applicable for operations that can perform a load.
+    /// 本序只适用于能执行 load 的操作。
     ///
-    /// Corresponds to [`memory_order_acquire`] in C++20.
+    /// 对应 C++20 的 [`memory_order_acquire`]。
     ///
     /// [`memory_order_acquire`]: https://en.cppreference.com/w/cpp/atomic/memory_order#Release-Acquire_ordering
     #[stable(feature = "rust1", since = "1.0.0")]
     Acquire,
-    /// Has the effects of both [`Acquire`] and [`Release`] together:
-    /// For loads it uses [`Acquire`] ordering. For stores it uses the [`Release`] ordering.
+    /// 同时具备 [`Acquire`] 与 [`Release`] 的效果:对 load 部分使用 [`Acquire`] 顺序,
+    /// 对 store 部分使用 [`Release`] 顺序。
     ///
-    /// Notice that in the case of `compare_and_swap`, it is possible that the operation ends up
-    /// not performing any store and hence it has just [`Acquire`] ordering. However,
-    /// `AcqRel` will never perform [`Relaxed`] accesses.
+    /// 注意:在 `compare_and_swap` 这类操作中,比较失败时可能最终没有执行任何 store,
+    /// 因而只剩 [`Acquire`] 顺序。但 `AcqRel` 永远不会退化到 [`Relaxed`] 访问。
     ///
     /// 本序只适用于同时含 load 与 store 的操作。
     ///
@@ -576,7 +574,7 @@ impl AtomicBool {
     ///
     /// 之所以安全,是因为这个可变引用保证了没有其他线程正在并发访问这些原子数据。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```ignore-wasm
     /// #![feature(atomic_from_mut)]
@@ -1044,11 +1042,11 @@ impl AtomicBool {
         // 原因是底层是用一个 8 位整数来做原子操作的,与非运算会把高 7 位也置 1。
         // 所以我们改用 fetch_xor 或 swap 来实现。
         if val {
-            // !(x & true) == !x
+            // `!(x & true) == !x`,也就是对原 bool 取反。
             // 必须把这个 bool 取反。
             self.fetch_xor(true, order)
         } else {
-            // !(x & false) == true
+            // `!(x & false) == true`,结果恒为 true。
             // 必须把这个 bool 设为 true。
             self.swap(true, order)
         }

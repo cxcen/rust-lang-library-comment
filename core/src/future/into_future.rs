@@ -20,7 +20,7 @@ use crate::future::Future;
 /// # }
 /// ```
 ///
-/// # 异步构造器(Async builders)
+/// # 异步构造器
 ///
 /// 手动实现 future 时,常常要在为某类型实现 `Future` 还是 `IntoFuture` 之间做选择。大多数
 /// 情况下实现 `Future` 是更好的选择。但当你实现“异步构造器”类型——即允许其值在被 `.await`
@@ -104,7 +104,10 @@ pub trait IntoFuture {
     #[stable(feature = "into_future", since = "1.64.0")]
     type Output;
 
-    /// 我们要把它转换成哪种 future?
+    /// 转换后得到的具体 future 类型。
+    ///
+    /// 这个关联类型把“可被 `.await` 的构造器/包装器”和真正执行异步计算的 [`Future`] 分开:
+    /// `self` 可以先收集配置,而 `into_future` 再把最终状态一次性移动进要被轮询的 future。
     #[stable(feature = "into_future", since = "1.64.0")]
     type IntoFuture: Future<Output = Self::Output>;
 

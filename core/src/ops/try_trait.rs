@@ -135,7 +135,7 @@ pub const trait Try: [const] FromResidual {
     ///
     /// 它表示 `Self` 类型中那些 *不* 由 `Output` 类型表示的可能取值。
     ///
-    /// # 给实现者的提示(Note to Implementors）
+    /// # 给实现者的提示
     ///
     /// 这个类型的选取对于相互转换(interconversion)至关重要。与 `Output` 类型
     /// (它往往是一个裸的泛型类型)不同,这个类型通常是某种 newtype(新类型),

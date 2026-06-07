@@ -19,7 +19,7 @@ macro_rules! legacy_int_module {
                 "[`", stringify!($T), "::MIN", "`] instead."
             )]
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```rust
             /// // deprecated way
@@ -39,7 +39,7 @@ macro_rules! legacy_int_module {
                 "[`", stringify!($T), "::MAX", "`] instead."
             )]
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```rust
             /// // deprecated way

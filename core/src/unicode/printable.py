@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# This script uses the following Unicode tables:
+# 该脚本使用以下 Unicode 表：
 # - UnicodeData.txt
 
 
@@ -75,7 +75,7 @@ def get_codepoints(f):
 
 
 def compress_singletons(singletons):
-    uppers = []  # (upper, # items in lowers)
+    uppers = []  # (upper, lowers 中对应条目数)
     lowers = []
 
     for i in singletons:
@@ -92,8 +92,8 @@ def compress_singletons(singletons):
 
 
 def compress_normal(normal):
-    # lengths 0x00..0x7f are encoded as 00, 01, ..., 7e, 7f
-    # lengths 0x80..0x7fff are encoded as 80 80, 80 81, ..., ff fe, ff ff
+    # 长度 0x00..0x7f 编码为 00, 01, ..., 7e, 7f。
+    # 长度 0x80..0x7fff 编码为 80 80, 80 81, ..., ff fe, ff ff。
     compressed = []  # [truelen, (truelenaux), falselen, (falselenaux)]
 
     prev_start = 0

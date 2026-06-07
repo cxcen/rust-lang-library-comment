@@ -7,11 +7,9 @@ use crate::num::NonZero;
 use crate::ops::{ControlFlow, Try};
 use crate::{array, fmt, option, result};
 
-/// An iterator that maps each element to an iterator, and yields the elements
-/// of the produced iterators.
+/// 将每个元素映射为一个迭代器，并产出这些迭代器中元素的迭代器。
 ///
-/// This `struct` is created by [`Iterator::flat_map`]. See its documentation
-/// for more.
+/// 该 `struct` 由 [`Iterator::flat_map`] 创建。更多信息见该方法文档。
 #[must_use = "iterators are lazy and do nothing unless consumed"]
 #[stable(feature = "rust1", since = "1.0.0")]
 pub struct FlatMap<I, U: IntoIterator, F> {
@@ -167,16 +165,14 @@ where
 
     #[inline]
     unsafe fn as_inner(&mut self) -> &mut I::Source {
-        // SAFETY: unsafe function forwarding to unsafe function with the same requirements
+        // SAFETY: 转发到具有相同要求的 unsafe 函数。
         unsafe { SourceIter::as_inner(&mut self.inner.iter) }
     }
 }
 
-/// An iterator that flattens one level of nesting in an iterator of things
-/// that can be turned into iterators.
+/// 在“元素可转换为迭代器”的外层迭代器中，展平一层嵌套的迭代器。
 ///
-/// This `struct` is created by the [`flatten`] method on [`Iterator`]. See its
-/// documentation for more.
+/// 该 `struct` 由 [`Iterator`] 上的 [`flatten`] 方法创建。更多信息见该方法文档。
 ///
 /// [`flatten`]: Iterator::flatten()
 #[must_use = "iterators are lazy and do nothing unless consumed"]
@@ -326,7 +322,7 @@ where
 
     #[inline]
     unsafe fn as_inner(&mut self) -> &mut I::Source {
-        // SAFETY: unsafe function forwarding to unsafe function with the same requirements
+        // SAFETY: 转发到具有相同要求的 unsafe 函数。
         unsafe { SourceIter::as_inner(&mut self.inner.iter) }
     }
 }
@@ -336,7 +332,7 @@ impl<I> Default for Flatten<I>
 where
     I: Default + Iterator<Item: IntoIterator>,
 {
-    /// Creates a `Flatten` iterator from the default value of `I`.
+    /// 从 `I` 的默认值创建一个 `Flatten` 迭代器。
     ///
     /// ```
     /// # use core::slice;
@@ -349,8 +345,7 @@ where
     }
 }
 
-/// Real logic of both `Flatten` and `FlatMap` which simply delegate to
-/// this type.
+/// `Flatten` 和 `FlatMap` 的真实逻辑；二者都只是委托给该类型。
 #[derive(Clone, Debug)]
 #[unstable(feature = "trusted_len", issue = "37572")]
 struct FlattenCompat<I, U> {
@@ -362,7 +357,7 @@ impl<I, U> FlattenCompat<I, U>
 where
     I: Iterator,
 {
-    /// Adapts an iterator by flattening it, for use in `flatten()` and `flat_map()`.
+    /// 通过展平来适配迭代器，供 `flatten()` 和 `flat_map()` 使用。
     fn new(iter: I) -> FlattenCompat<I, U> {
         FlattenCompat { iter: iter.fuse(), frontiter: None, backiter: None }
     }
@@ -372,10 +367,10 @@ impl<I, U> FlattenCompat<I, U>
 where
     I: Iterator<Item: IntoIterator<IntoIter = U>>,
 {
-    /// Folds the inner iterators into an accumulator by applying an operation.
+    /// 对内层迭代器应用操作，把它们 fold 到 accumulator 中。
     ///
-    /// Folds over the inner iterators, not over their elements. Is used by the `fold`, `count`,
-    /// and `last` methods.
+    /// 这里 fold 的对象是内层迭代器本身，而不是它们的元素。供 `fold`、`count` 和
+    /// `last` 方法使用。
     #[inline]
     fn iter_fold<Acc, Fold>(self, mut acc: Acc, mut fold: Fold) -> Acc
     where
@@ -401,11 +396,11 @@ where
         acc
     }
 
-    /// Folds over the inner iterators as long as the given function returns successfully,
-    /// always storing the most recent inner iterator in `self.frontiter`.
+    /// 只要给定函数成功返回，就持续 fold 内层迭代器，并始终把最近的内层迭代器保存到
+    /// `self.frontiter`。
     ///
-    /// Folds over the inner iterators, not over their elements. Is used by the `try_fold` and
-    /// `advance_by` methods.
+    /// 这里 fold 的对象是内层迭代器本身，而不是它们的元素。供 `try_fold` 和
+    /// `advance_by` 方法使用。
     #[inline]
     fn iter_try_fold<Acc, Fold, R>(&mut self, mut acc: Acc, mut fold: Fold) -> R
     where
@@ -441,10 +436,9 @@ impl<I, U> FlattenCompat<I, U>
 where
     I: DoubleEndedIterator<Item: IntoIterator<IntoIter = U>>,
 {
-    /// Folds the inner iterators into an accumulator by applying an operation, starting form the
-    /// back.
+    /// 从后端开始对内层迭代器应用操作，把它们 fold 到 accumulator 中。
     ///
-    /// Folds over the inner iterators, not over their elements. Is used by the `rfold` method.
+    /// 这里 fold 的对象是内层迭代器本身，而不是它们的元素。供 `rfold` 方法使用。
     #[inline]
     fn iter_rfold<Acc, Fold>(self, mut acc: Acc, mut fold: Fold) -> Acc
     where
@@ -470,11 +464,11 @@ where
         acc
     }
 
-    /// Folds over the inner iterators in reverse order as long as the given function returns
-    /// successfully, always storing the most recent inner iterator in `self.backiter`.
+    /// 只要给定函数成功返回，就按反向顺序持续 fold 内层迭代器，并始终把最近的内层
+    /// 迭代器保存到 `self.backiter`。
     ///
-    /// Folds over the inner iterators, not over their elements. Is used by the `try_rfold` and
-    /// `advance_back_by` methods.
+    /// 这里 fold 的对象是内层迭代器本身，而不是它们的元素。供 `try_rfold` 和
+    /// `advance_back_by` 方法使用。
     #[inline]
     fn iter_try_rfold<Acc, Fold, R>(&mut self, mut acc: Acc, mut fold: Fold) -> R
     where
@@ -506,7 +500,7 @@ where
     }
 }
 
-// See also the `OneShot` specialization below.
+// 另见下面的 `OneShot` specialization。
 impl<I, U> Iterator for FlattenCompat<I, U>
 where
     I: Iterator<Item: IntoIterator<IntoIter = U, Item = U::Item>>,
@@ -621,7 +615,7 @@ where
     }
 }
 
-// See also the `OneShot` specialization below.
+// 另见下面的 `OneShot` specialization。
 impl<I, U> DoubleEndedIterator for FlattenCompat<I, U>
 where
     I: DoubleEndedIterator<Item: IntoIterator<IntoIter = U, Item = U::Item>>,
@@ -757,14 +751,13 @@ fn and_then_or_clear<T, U>(opt: &mut Option<T>, f: impl FnOnce(&mut T) -> Option
     x
 }
 
-/// Specialization trait for iterator types that never return more than one item.
+/// 用于那些永远不会返回多于一个项的 iterator 类型的 specialization trait。
 ///
-/// Note that we still have to deal with the possibility that the iterator was
-/// already exhausted before it came into our control.
+/// 注意，仍然必须处理 iterator 在进入我们控制之前就已经耗尽的可能性。
 #[rustc_specialization_trait]
 trait OneShot {}
 
-// These all have exactly one item, if not already consumed.
+// 如果尚未被消耗，这些类型都恰好有一个项。
 impl<T> OneShot for Once<T> {}
 impl<F> OneShot for OnceWith<F> {}
 impl<T> OneShot for array::IntoIter<T, 1> {}
@@ -830,18 +823,17 @@ where
     }
 }
 
-// Specialization: When the inner iterator `U` never returns more than one item, the `frontiter` and
-// `backiter` states are a waste, because they'll always have already consumed their item. So in
-// this impl, we completely ignore them and just focus on `self.iter`, and we only call the inner
-// `U::next()` one time.
+// Specialization: 当内层迭代器 `U` 永远不会返回超过一项时，`frontiter` 和 `backiter`
+// 状态是浪费的，因为它们总是已经消耗了自己的项。因此在这个实现中，我们完全忽略它们，
+// 只关注 `self.iter`，并且只调用一次内层 `U::next()`。
 //
-// It's mostly fine if we accidentally mix this with the more generic impls, e.g. by forgetting to
-// specialize one of the methods. If the other impl did set the front or back, we wouldn't see it
-// here, but it would be empty anyway; and if the other impl looked for a front or back that we
-// didn't bother setting, it would just see `None` (or a previous empty) and move on.
+// 如果意外把它和更通用的实现混用，例如忘记特化某个方法，大多数情况下也没问题。
+// 如果另一个实现设置了 front 或 back，这里不会看到它，但它无论如何也是空的；
+// 如果另一个实现查找我们没有设置的 front 或 back，它只会看到 `None`(或之前的空迭代器)
+// 并继续前进。
 //
-// An exception to that is `advance_by(0)` and `advance_back_by(0)`, where the generic impls may set
-// `frontiter` or `backiter` without consuming the item, so we **must** override those.
+// 例外是 `advance_by(0)` 和 `advance_back_by(0)`，通用实现可能在不消耗项的情况下设置
+// `frontiter` 或 `backiter`，因此这里 **必须** 覆盖这些方法。
 impl<I, U> Iterator for FlattenCompat<I, U>
 where
     I: Iterator<Item: IntoIterator<IntoIter = U, Item = U::Item>>,
@@ -890,7 +882,7 @@ where
         if let Some(n) = NonZero::new(n) {
             self.iter.try_fold(n, advance_by_one).map_or(Ok(()), Err)
         } else {
-            // Just advance the outer iterator
+            // 只推进外层迭代器。
             self.iter.advance_by(0)
         }
     }
@@ -906,8 +898,8 @@ where
     }
 }
 
-// Note: We don't actually care about `U: DoubleEndedIterator`, since forward and backward are the
-// same for a one-shot iterator, but we have to keep that to match the default specialization.
+// 注意: 实际上并不关心 `U: DoubleEndedIterator`，因为对 one-shot 迭代器来说正向和
+// 反向相同；但为了匹配默认 specialization，必须保留这个 bound。
 impl<I, U> DoubleEndedIterator for FlattenCompat<I, U>
 where
     I: DoubleEndedIterator<Item: IntoIterator<IntoIter = U, Item = U::Item>>,
@@ -946,7 +938,7 @@ where
         if let Some(n) = NonZero::new(n) {
             self.iter.try_rfold(n, advance_by_one).map_or(Ok(()), Err)
         } else {
-            // Just advance the outer iterator
+            // 只推进外层迭代器。
             self.iter.advance_back_by(0)
         }
     }

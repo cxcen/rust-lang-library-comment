@@ -23,7 +23,7 @@ use crate::{mem, ptr};
 /// let mut boxed = Box::new(0_u32);
 /// let ptr = Box::as_mut_ptr(&mut boxed);
 ///
-/// // Safety: 该指针来自一个 box，因此之前已被分配；`box` 之后不再被使用
+/// // SAFETY: 该指针来自一个 box，因此之前已被分配；`box` 之后不再被使用
 /// unsafe { dealloc(ptr.cast(), Layout::new::<u32>()) };
 ///
 /// mem::forget(boxed); // <-- 这里是 UB！
@@ -46,7 +46,7 @@ use crate::{mem, ptr};
 /// let mut boxed = MaybeDangling::new(Box::new(0_u32));
 /// let ptr = Box::as_mut_ptr(boxed.as_mut());
 ///
-/// // Safety: 该指针来自一个 box，因此之前已被分配；`box` 之后不再被使用
+/// // SAFETY: 该指针来自一个 box，因此之前已被分配；`box` 之后不再被使用
 /// unsafe { dealloc(ptr.cast(), Layout::new::<u32>()) };
 ///
 /// mem::forget(boxed); // <-- 这里就 OK 了！

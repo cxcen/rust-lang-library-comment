@@ -48,7 +48,7 @@ pub mod type_info;
 /// * 如果你想获取指向这块内存的裸指针，参见 [`Box::into_raw`]。
 /// * 如果你想恰当地处置一个值并运行它的析构逻辑，参见 [`mem::drop`]。
 ///
-/// # 安全性（Safety）
+/// # 安全性(Safety）
 ///
 /// `forget` 并未被标记为 `unsafe`，因为 Rust 的安全保证并不包含“析构逻辑一定会运行”这一保证。
 /// 例如，程序可以用 [`Rc`][rc] 创建一个引用环（reference cycle），或调用
@@ -355,7 +355,7 @@ pub const fn size_of_val<T: ?Sized>(val: &T) -> usize {
 /// [`[T]`][slice] 或 [trait 对象][trait object]），就可以用 `size_of_val_raw` 来获取其动态
 /// 已知的大小。
 ///
-/// # 安全性（Safety）
+/// # 安全性(Safety）
 ///
 /// 此函数只有在满足以下条件时调用才是安全的：
 ///
@@ -495,7 +495,7 @@ pub const fn align_of_val<T: ?Sized>(val: &T) -> usize {
 ///
 /// [ABI]: https://en.wikipedia.org/wiki/Application_binary_interface
 ///
-/// # 安全性（Safety）
+/// # 安全性(Safety）
 ///
 /// 此函数只有在满足以下条件时调用才是安全的：
 ///
@@ -1129,7 +1129,7 @@ impl<T> fmt::Debug for Discriminant<T> {
 #[stable(feature = "discriminant_value", since = "1.21.0")]
 #[rustc_const_stable(feature = "const_discriminant", since = "1.75.0")]
 #[rustc_diagnostic_item = "mem_discriminant"]
-#[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+#[cfg_attr(miri, track_caller)] // 即使没有 panic，这也有助于 Miri 回溯。
 pub const fn discriminant<T>(v: &T) -> Discriminant<T> {
     Discriminant(intrinsics::discriminant_value(v))
 }
@@ -1265,8 +1265,8 @@ impl<T> SizedTypeProperties for T {}
 /// #[repr(C, align(4))]
 /// struct Align4(u32);
 ///
-/// assert_eq!(mem::offset_of!(Struct<dyn Debug>, a), 0); // OK —— Sized 字段
-/// assert_eq!(mem::offset_of!(Struct<Align4>, b), 4); // OK —— 不是 DST
+/// assert_eq!(mem::offset_of!(Struct<dyn Debug>, a), 0); // 可行 —— Sized 字段
+/// assert_eq!(mem::offset_of!(Struct<Align4>, b), 4); // 可行 —— 不是 DST
 ///
 /// // assert_eq!(mem::offset_of!(Struct<dyn Debug>, b), 1);
 /// // ^^^ error[E0277]: ... 无法在编译期得知
@@ -1373,7 +1373,7 @@ pub macro offset_of($Container:ty, $($fields:expr)+ $(,)?) {
 ///
 /// 当 `size_of::<T>() != 0` 时。
 ///
-/// # 安全性（Safety）
+/// # 安全性(Safety）
 ///
 /// - `T` 必须是*[有人居住的][inhabited]*，即可以被构造出来。这意味着像零变体枚举（zero-variant
 ///   enum）和 [`!`] 这样的类型，凭空造出（conjure）它们是不健全的。

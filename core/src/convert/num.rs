@@ -460,7 +460,7 @@ macro_rules! impl_nonzero_int_from_nonzero_int {
             #[doc = concat!("to <code>[NonZero]\\<[", stringify!($Large), "]></code> losslessly.")]
             #[inline]
             fn from(small: NonZero<$Small>) -> Self {
-                // SAFETY: input type guarantees the value is non-zero
+                // SAFETY: 输入类型保证该值非零。
                 unsafe { Self::new_unchecked(From::from(small.get())) }
             }
         }
@@ -554,7 +554,7 @@ macro_rules! impl_nonzero_int_try_from_nonzero_int {
             #[doc = concat!("to <code>[NonZero]\\<[", stringify!($target), "]></code>.")]
             #[inline]
             fn try_from(value: NonZero<$source>) -> Result<Self, Self::Error> {
-                // SAFETY: Input is guaranteed to be non-zero.
+                // SAFETY: 输入值已经保证非零。
                 Ok(unsafe { Self::new_unchecked(<$target>::try_from(value.get())?) })
             }
         }

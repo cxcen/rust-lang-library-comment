@@ -1,9 +1,9 @@
-//! Helper module for exporting the `pattern_type` macro
+//! 导出 `pattern_type` 宏所需的辅助模块。
 
 use crate::marker::{Freeze, PointeeSized, Unsize};
 use crate::ops::{CoerceUnsized, DispatchFromDyn};
 
-/// Creates a pattern type.
+/// 创建一个 pattern type。
 /// ```ignore (cannot test this from within core yet)
 /// type Positive = std::pat::pattern_type!(i32 is 1..);
 /// ```
@@ -16,9 +16,8 @@ macro_rules! pattern_type {
     };
 }
 
-/// A trait implemented for integer types and `char`.
-/// Useful in the future for generic pattern types, but
-/// used right now to simplify ast lowering of pattern type ranges.
+/// 由整数类型和 `char` 实现的 trait。
+/// 未来可用于泛型 pattern type；目前则用于简化 pattern type range 的 AST lowering。
 #[unstable(feature = "pattern_type_range_trait", issue = "123646")]
 #[rustc_const_unstable(feature = "pattern_type_range_trait", issue = "123646")]
 #[diagnostic::on_unimplemented(
@@ -26,15 +25,15 @@ macro_rules! pattern_type {
     label = "only integer types and `char` are supported"
 )]
 pub const trait RangePattern {
-    /// Trait version of the inherent `MIN` assoc const.
+    /// inherent `MIN` 关联常量的 trait 版本。
     #[lang = "RangeMin"]
     const MIN: Self;
 
-    /// Trait version of the inherent `MIN` assoc const.
+    /// inherent `MAX` 关联常量的 trait 版本。
     #[lang = "RangeMax"]
     const MAX: Self;
 
-    /// A compile-time helper to subtract 1 for exclusive ranges.
+    /// 为排除式 range 减 1 的编译期辅助函数。
     #[lang = "RangeSub"]
     #[track_caller]
     fn sub_one(self) -> Self;

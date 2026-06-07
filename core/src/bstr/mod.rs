@@ -1,4 +1,7 @@
-//! The `ByteStr` type and trait implementations.
+//! `ByteStr` 类型及其 trait 实现。
+//!
+//! `ByteStr` 是面向“可读字节串”的借用类型：它通常承载 UTF-8，但不把 UTF-8
+//! 有效性作为类型不变量，因此可用于用户输入、平台文件名或其他需要原样往返字节的数据。
 
 mod traits;
 
@@ -9,47 +12,45 @@ use crate::borrow::{Borrow, BorrowMut};
 use crate::fmt;
 use crate::ops::{Deref, DerefMut, DerefPure};
 
-/// A wrapper for `&[u8]` representing a human-readable string that's conventionally, but not
-/// always, UTF-8.
+/// 对 `&[u8]` 的包装，表示按惯例通常是 UTF-8、但不强制要求 UTF-8 有效的人类可读字符串。
 ///
-/// Unlike `&str`, this type permits non-UTF-8 contents, making it suitable for user input,
-/// non-native filenames (as `Path` only supports native filenames), and other applications that
-/// need to round-trip whatever data the user provides.
+/// 与 `&str` 不同，`ByteStr` 允许非 UTF-8 内容；因此它适合保存用户输入、
+/// 非本机编码文件名（`Path` 只支持本机文件名）以及任何必须把用户提供的字节无损往返的数据。
+/// 这也意味着它不能提供 `str` 那类按 Unicode 标量值解释的索引保证。
 ///
-/// For an owned, growable byte string buffer, use
+/// 如果需要拥有所有权且可增长的字节字符串缓冲区，请使用
 /// [`ByteString`](../../std/bstr/struct.ByteString.html).
 ///
-/// `ByteStr` implements `Deref` to `[u8]`, so all methods available on `[u8]` are available on
-/// `ByteStr`.
+/// `ByteStr` 实现了到 `[u8]` 的 `Deref`，因此 `[u8]` 上可用的方法也可用于 `ByteStr`。
 ///
-/// # Representation
+/// # 表示
 ///
-/// A `&ByteStr` has the same representation as a `&str`. That is, a `&ByteStr` is a wide pointer
-/// which includes a pointer to some bytes and a length.
+/// `&ByteStr` 与 `&str` 一样是宽指针表示：包含指向字节序列的指针和长度。
+/// 不同之处在于 `&str` 还承诺字节是合法 UTF-8，而 `ByteStr` 只承诺底层是 `[u8]`。
 ///
-/// # Trait implementations
+/// # Trait 实现
 ///
-/// The `ByteStr` type has a number of trait implementations, and in particular, defines equality
-/// and comparisons between `&ByteStr`, `&str`, and `&[u8]`, for convenience.
+/// `ByteStr` 提供多种 trait 实现，特别是为了方便使用，定义了 `&ByteStr`、
+/// `&str` 与 `&[u8]` 之间的相等性和比较。比较语义基于原始字节，而不是 Unicode
+/// 规范化、大小写折叠或用户可感知字符。
 ///
-/// The `Debug` implementation for `ByteStr` shows its bytes as a normal string, with invalid UTF-8
-/// presented as hex escape sequences.
+/// `Debug` 实现把字节尽量显示为普通字符串；无法作为 UTF-8 解码的片段会显示为十六进制转义序列。
 ///
-/// The `Display` implementation behaves as if the `ByteStr` were first lossily converted to a
-/// `str`, with invalid UTF-8 presented as the Unicode replacement character (�).
+/// `Display` 实现的效果类似先把 `ByteStr` 有损转换为 `str`：非法 UTF-8 会显示为
+/// Unicode 替换字符（�）。
 #[unstable(feature = "bstr", issue = "134915")]
 #[repr(transparent)]
 #[doc(alias = "BStr")]
 pub struct ByteStr(pub [u8]);
 
 impl ByteStr {
-    /// Creates a `ByteStr` slice from anything that can be converted to a byte slice.
+    /// 从任何可转换为字节切片的值创建 `ByteStr` 切片。
     ///
-    /// This is a zero-cost conversion.
+    /// 这是零成本转换，只改变借用类型，不复制或验证字节。
     ///
-    /// # Example
+    /// # 示例
     ///
-    /// You can create a `ByteStr` from a byte array, a byte slice or a string slice:
+    /// 可以从字节数组、字节切片或字符串切片创建 `ByteStr`：
     ///
     /// ```
     /// # #![feature(bstr)]
@@ -68,11 +69,10 @@ impl ByteStr {
         ByteStr::from_bytes(bytes.as_ref())
     }
 
-    /// Returns the same string as `&ByteStr`.
+    /// 以 `&ByteStr` 形式返回同一段字节串。
     ///
-    /// This method is redundant when used directly on `&ByteStr`, but
-    /// it helps dereferencing other "container" types,
-    /// for example `Box<ByteStr>` or `Arc<ByteStr>`.
+    /// 直接在 `&ByteStr` 上调用时该方法是冗余的；它的作用是帮助 `Box<ByteStr>`、
+    /// `Arc<ByteStr>` 等容器类型在解引用后得到明确的 `&ByteStr`。
     #[inline]
     // #[unstable(feature = "str_as_str", issue = "130366")]
     #[unstable(feature = "bstr", issue = "134915")]
@@ -80,11 +80,10 @@ impl ByteStr {
         self
     }
 
-    /// Returns the same string as `&mut ByteStr`.
+    /// 以 `&mut ByteStr` 形式返回同一段可变字节串。
     ///
-    /// This method is redundant when used directly on `&mut ByteStr`, but
-    /// it helps dereferencing other "container" types,
-    /// for example `Box<ByteStr>` or `MutexGuard<ByteStr>`.
+    /// 直接在 `&mut ByteStr` 上调用时该方法是冗余的；它的作用是帮助 `Box<ByteStr>`、
+    /// `MutexGuard<ByteStr>` 等容器类型在解引用后得到明确的 `&mut ByteStr`。
     #[inline]
     // #[unstable(feature = "str_as_str", issue = "130366")]
     #[unstable(feature = "bstr", issue = "134915")]
@@ -97,8 +96,8 @@ impl ByteStr {
     #[inline]
     #[rustc_const_unstable(feature = "bstr_internals", issue = "none")]
     pub const fn from_bytes(slice: &[u8]) -> &Self {
-        // SAFETY: `ByteStr` is a transparent wrapper around `[u8]`, so we can turn a reference to
-        // the wrapped type into a reference to the wrapper type.
+        // SAFETY: `ByteStr` 是 `[u8]` 的透明包装，没有额外有效性不变量；
+        // 因此可以在保持地址、长度和生命周期不变的情况下把被包装类型引用转为包装类型引用。
         unsafe { &*(slice as *const [u8] as *const Self) }
     }
 
@@ -107,8 +106,8 @@ impl ByteStr {
     #[inline]
     #[rustc_const_unstable(feature = "bstr_internals", issue = "none")]
     pub const fn from_bytes_mut(slice: &mut [u8]) -> &mut Self {
-        // SAFETY: `ByteStr` is a transparent wrapper around `[u8]`, so we can turn a reference to
-        // the wrapped type into a reference to the wrapper type.
+        // SAFETY: `ByteStr` 是 `[u8]` 的透明包装，没有额外有效性不变量；
+        // 可变引用的独占性保持不变，因此可以把 `[u8]` 的可变引用转为 `ByteStr` 的可变引用。
         unsafe { &mut *(slice as *mut [u8] as *mut Self) }
     }
 
@@ -233,7 +232,7 @@ impl const AsRef<ByteStr> for ByteStr {
     }
 }
 
-// `impl AsRef<ByteStr> for [u8]` omitted to avoid widespread inference failures
+// 省略 `impl AsRef<ByteStr> for [u8]`，避免在泛型调用中造成大范围类型推断失败。
 
 #[unstable(feature = "bstr", issue = "134915")]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
@@ -253,11 +252,11 @@ impl const AsMut<[u8]> for ByteStr {
     }
 }
 
-// `impl AsMut<ByteStr> for [u8]` omitted to avoid widespread inference failures
+// 省略 `impl AsMut<ByteStr> for [u8]`，避免在泛型调用中造成大范围类型推断失败。
 
-// `impl Borrow<ByteStr> for [u8]` omitted to avoid widespread inference failures
+// 省略 `impl Borrow<ByteStr> for [u8]`，避免在泛型调用中造成大范围类型推断失败。
 
-// `impl Borrow<ByteStr> for str` omitted to avoid widespread inference failures
+// 省略 `impl Borrow<ByteStr> for str`，避免在泛型调用中造成大范围类型推断失败。
 
 #[unstable(feature = "bstr", issue = "134915")]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
@@ -268,7 +267,7 @@ impl const Borrow<[u8]> for ByteStr {
     }
 }
 
-// `impl BorrowMut<ByteStr> for [u8]` omitted to avoid widespread inference failures
+// 省略 `impl BorrowMut<ByteStr> for [u8]`，避免在泛型调用中造成大范围类型推断失败。
 
 #[unstable(feature = "bstr", issue = "134915")]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
@@ -293,7 +292,7 @@ impl<'a> Default for &'a mut ByteStr {
     }
 }
 
-// Omitted due to inference failures
+// 因类型推断失败风险而省略。
 //
 // #[unstable(feature = "bstr", issue = "134915")]
 // impl<'a, const N: usize> From<&'a [u8; N]> for &'a ByteStr {
@@ -311,7 +310,7 @@ impl<'a> Default for &'a mut ByteStr {
 //     }
 // }
 
-// Omitted due to slice-from-array-issue-113238:
+// 因 slice-from-array-issue-113238 而省略：
 //
 // #[unstable(feature = "bstr", issue = "134915")]
 // impl<'a> From<&'a ByteStr> for &'a [u8] {
@@ -329,7 +328,7 @@ impl<'a> Default for &'a mut ByteStr {
 //     }
 // }
 
-// Omitted due to inference failures
+// 因类型推断失败风险而省略。
 //
 // #[unstable(feature = "bstr", issue = "134915")]
 // impl<'a> From<&'a str> for &'a ByteStr {

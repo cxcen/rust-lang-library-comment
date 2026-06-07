@@ -321,41 +321,41 @@ fn panic_invalid_enum_construction(source: u128) -> ! {
     )
 }
 
-/// Panics because we cannot unwind out of a function.
+/// 因无法从该函数向外 unwind 而触发 panic。
 ///
-/// This is a separate function to avoid the codesize impact of each crate containing the string to
-/// pass to `panic_nounwind`.
+/// 这被拆成单独函数，是为了避免每个 crate 都内联包含要传给
+/// `panic_nounwind` 的字符串，从而增加代码体积。
 ///
-/// This function is called directly by the codegen backend, and must not have
-/// any extra arguments (including those synthesized by track_caller).
+/// 该函数由 codegen backend 直接调用，因此不能拥有任何额外参数
+/// （包括 `track_caller` 合成的参数）。
 #[cfg_attr(not(panic = "immediate-abort"), inline(never), cold, optimize(size))]
 #[cfg_attr(panic = "immediate-abort", inline)]
-#[lang = "panic_cannot_unwind"] // needed by codegen for panic in nounwind function
+#[lang = "panic_cannot_unwind"] // codegen 在 nounwind 函数中处理 panic 时需要
 #[rustc_nounwind]
 fn panic_cannot_unwind() -> ! {
-    // Keep the text in sync with `UnwindTerminateReason::as_str` in `rustc_middle`.
+    // 保持该文本与 `rustc_middle` 中的 `UnwindTerminateReason::as_str` 同步。
     panic_nounwind("panic in a function that cannot unwind")
 }
 
-/// Panics because we are unwinding out of a destructor during cleanup.
+/// 因清理期间正从析构函数向外 unwind 而触发 panic。
 ///
-/// This is a separate function to avoid the codesize impact of each crate containing the string to
-/// pass to `panic_nounwind`.
+/// 这被拆成单独函数，是为了避免每个 crate 都内联包含要传给
+/// `panic_nounwind` 的字符串，从而增加代码体积。
 ///
-/// This function is called directly by the codegen backend, and must not have
-/// any extra arguments (including those synthesized by track_caller).
+/// 该函数由 codegen backend 直接调用，因此不能拥有任何额外参数
+/// （包括 `track_caller` 合成的参数）。
 #[cfg_attr(not(panic = "immediate-abort"), inline(never), cold, optimize(size))]
 #[cfg_attr(panic = "immediate-abort", inline)]
-#[lang = "panic_in_cleanup"] // needed by codegen for panic in nounwind function
+#[lang = "panic_in_cleanup"] // codegen 在 nounwind 函数中处理 panic 时需要
 #[rustc_nounwind]
 fn panic_in_cleanup() -> ! {
-    // Keep the text in sync with `UnwindTerminateReason::as_str` in `rustc_middle`.
+    // 保持该文本与 `rustc_middle` 中的 `UnwindTerminateReason::as_str` 同步。
     panic_nounwind_nobacktrace("panic in a destructor during cleanup")
 }
 
-/// This function is used instead of panic_fmt in const eval.
-#[lang = "const_panic_fmt"] // needed by const-eval machine to replace calls to `panic_fmt` lang item
-#[rustc_const_stable_indirect] // must follow stable const rules since it is exposed to stable
+/// 该函数在 const eval 中替代 `panic_fmt` 使用。
+#[lang = "const_panic_fmt"] // const-eval 机器用它替换对 `panic_fmt` lang item 的调用
+#[rustc_const_stable_indirect] // 暴露给 stable，因此必须遵守 stable const 规则
 pub const fn const_panic_fmt(fmt: fmt::Arguments<'_>) -> ! {
     if let Some(msg) = fmt.as_str() {
         // The panic_display function is hooked by const eval.

@@ -65,7 +65,7 @@ impl Alignment {
 
     /// 从一个 2 的幂的 `usize` 创建 `Alignment`。
     ///
-    /// # 安全性(Safety)
+    /// # 安全性(Safety）
     ///
     /// 调用方必须保证:`align` 是 2 的幂。
     ///

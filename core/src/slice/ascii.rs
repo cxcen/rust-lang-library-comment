@@ -1,4 +1,4 @@
-//! Operations on ASCII `[u8]`.
+//! ASCII `[u8]` 上的操作。
 
 use core::ascii::EscapeDefault;
 
@@ -11,9 +11,9 @@ use crate::intrinsics::const_eval_select;
 use crate::{ascii, iter, ops};
 
 impl [u8] {
-    /// Checks if all bytes in this slice are within the ASCII range.
-    ///
-    /// An empty slice returns `true`.
+    /// 检查该切片中的所有字节是否都位于 ASCII 范围内。
+///
+    /// 空切片返回 `true`。
     #[stable(feature = "ascii_methods_on_intrinsics", since = "1.23.0")]
     #[rustc_const_stable(feature = "const_slice_is_ascii", since = "1.74.0")]
     #[must_use]
@@ -22,40 +22,39 @@ impl [u8] {
         is_ascii(self)
     }
 
-    /// If this slice [`is_ascii`](Self::is_ascii), returns it as a slice of
-    /// [ASCII characters](`ascii::Char`), otherwise returns `None`.
+    /// 如果该切片满足 [`is_ascii`](Self::is_ascii)，将其作为
+    /// [ASCII characters](`ascii::Char`) 切片返回；否则返回 `None`。
     #[unstable(feature = "ascii_char", issue = "110998")]
     #[must_use]
     #[inline]
     pub const fn as_ascii(&self) -> Option<&[ascii::Char]> {
         if self.is_ascii() {
-            // SAFETY: Just checked that it's ASCII
+            // SAFETY: 刚刚已经检查所有字节都是 ASCII。
             Some(unsafe { self.as_ascii_unchecked() })
         } else {
             None
         }
     }
 
-    /// Converts this slice of bytes into a slice of ASCII characters,
-    /// without checking whether they're valid.
+    /// 不检查有效性，直接把字节切片转换成 ASCII 字符切片。
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// Every byte in the slice must be in `0..=127`, or else this is UB.
+    /// 切片中的每个字节都必须位于 `0..=127`；否则本函数会产生 UB。
     #[unstable(feature = "ascii_char", issue = "110998")]
     #[must_use]
     #[inline]
     pub const unsafe fn as_ascii_unchecked(&self) -> &[ascii::Char] {
         let byte_ptr: *const [u8] = self;
         let ascii_ptr = byte_ptr as *const [ascii::Char];
-        // SAFETY: The caller promised all the bytes are ASCII
+        // SAFETY: 调用方承诺所有字节都是 ASCII。
         unsafe { &*ascii_ptr }
     }
 
-    /// Checks that two slices are an ASCII case-insensitive match.
-    ///
-    /// Same as `to_ascii_lowercase(a) == to_ascii_lowercase(b)`,
-    /// but without allocating and copying temporaries.
+    /// 检查两个切片按 ASCII 大小写无关规则是否匹配。
+///
+    /// 语义等同 `to_ascii_lowercase(a) == to_ascii_lowercase(b)`，
+    /// 但不会分配或复制临时值。
     #[stable(feature = "ascii_methods_on_intrinsics", since = "1.23.0")]
     #[rustc_const_stable(feature = "const_eq_ignore_ascii_case", since = "1.89.0")]
     #[must_use]
@@ -65,8 +64,7 @@ impl [u8] {
             return false;
         }
 
-        // FIXME(const-hack): This implementation can be reverted when
-        // `core::iter::zip` is allowed in const. The original implementation:
+        // FIXME(const-hack): 当 const 中允许 `core::iter::zip` 后，可以恢复原实现：
         //  self.len() == other.len() && iter::zip(self, other).all(|(a, b)| a.eq_ignore_ascii_case(b))
         let mut a = self;
         let mut b = other;
@@ -83,20 +81,18 @@ impl [u8] {
         true
     }
 
-    /// Converts this slice to its ASCII upper case equivalent in-place.
-    ///
-    /// ASCII letters 'a' to 'z' are mapped to 'A' to 'Z',
-    /// but non-ASCII letters are unchanged.
-    ///
-    /// To return a new uppercased value without modifying the existing one, use
-    /// [`to_ascii_uppercase`].
+    /// 原地把该切片转换成等价的 ASCII 大写形式。
+///
+    /// ASCII 字母 'a' 到 'z' 会映射为 'A' 到 'Z'；非 ASCII 字节保持不变。
+///
+    /// 如需返回新的大写值且不修改现有值，请使用 [`to_ascii_uppercase`]。
     ///
     /// [`to_ascii_uppercase`]: #method.to_ascii_uppercase
     #[stable(feature = "ascii_methods_on_intrinsics", since = "1.23.0")]
     #[rustc_const_stable(feature = "const_make_ascii", since = "1.84.0")]
     #[inline]
     pub const fn make_ascii_uppercase(&mut self) {
-        // FIXME(const-hack): We would like to simply iterate using `for` loops but this isn't currently allowed in constant expressions.
+        // FIXME(const-hack): 理想情况下可用 `for` 循环迭代，但当前常量表达式中还不允许。
         let mut i = 0;
         while i < self.len() {
             let byte = &mut self[i];
@@ -105,20 +101,18 @@ impl [u8] {
         }
     }
 
-    /// Converts this slice to its ASCII lower case equivalent in-place.
-    ///
-    /// ASCII letters 'A' to 'Z' are mapped to 'a' to 'z',
-    /// but non-ASCII letters are unchanged.
-    ///
-    /// To return a new lowercased value without modifying the existing one, use
-    /// [`to_ascii_lowercase`].
+    /// 原地把该切片转换成等价的 ASCII 小写形式。
+///
+    /// ASCII 字母 'A' 到 'Z' 会映射为 'a' 到 'z'；非 ASCII 字节保持不变。
+///
+    /// 如需返回新的小写值且不修改现有值，请使用 [`to_ascii_lowercase`]。
     ///
     /// [`to_ascii_lowercase`]: #method.to_ascii_lowercase
     #[stable(feature = "ascii_methods_on_intrinsics", since = "1.23.0")]
     #[rustc_const_stable(feature = "const_make_ascii", since = "1.84.0")]
     #[inline]
     pub const fn make_ascii_lowercase(&mut self) {
-        // FIXME(const-hack): We would like to simply iterate using `for` loops but this isn't currently allowed in constant expressions.
+        // FIXME(const-hack): 理想情况下可用 `for` 循环迭代，但当前常量表达式中还不允许。
         let mut i = 0;
         while i < self.len() {
             let byte = &mut self[i];
@@ -127,10 +121,9 @@ impl [u8] {
         }
     }
 
-    /// Returns an iterator that produces an escaped version of this slice,
-    /// treating it as an ASCII string.
+    /// 返回一个迭代器，把该切片当作 ASCII 字符串并产出转义后的字节。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let s = b"0\t\r\n'\"\\\x9d";
@@ -144,12 +137,11 @@ impl [u8] {
         EscapeAscii { inner: self.iter().flat_map(EscapeByte) }
     }
 
-    /// Returns a byte slice with leading ASCII whitespace bytes removed.
+    /// 返回去掉开头 ASCII 空白字节后的字节切片。
+///
+    /// “空白”采用 [`u8::is_ascii_whitespace`] 使用的定义。
     ///
-    /// 'Whitespace' refers to the definition used by
-    /// [`u8::is_ascii_whitespace`].
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// assert_eq!(b" \t hello world\n".trim_ascii_start(), b"hello world\n");
@@ -161,8 +153,7 @@ impl [u8] {
     #[inline]
     pub const fn trim_ascii_start(&self) -> &[u8] {
         let mut bytes = self;
-        // Note: A pattern matching based approach (instead of indexing) allows
-        // making the function const.
+        // Note: 使用基于模式匹配的写法（而不是索引）可让该函数成为 const。
         while let [first, rest @ ..] = bytes {
             if first.is_ascii_whitespace() {
                 bytes = rest;
@@ -173,12 +164,11 @@ impl [u8] {
         bytes
     }
 
-    /// Returns a byte slice with trailing ASCII whitespace bytes removed.
+    /// 返回去掉末尾 ASCII 空白字节后的字节切片。
+///
+    /// “空白”采用 [`u8::is_ascii_whitespace`] 使用的定义。
     ///
-    /// 'Whitespace' refers to the definition used by
-    /// [`u8::is_ascii_whitespace`].
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// assert_eq!(b"\r hello world\n ".trim_ascii_end(), b"\r hello world");
@@ -190,8 +180,7 @@ impl [u8] {
     #[inline]
     pub const fn trim_ascii_end(&self) -> &[u8] {
         let mut bytes = self;
-        // Note: A pattern matching based approach (instead of indexing) allows
-        // making the function const.
+        // Note: 使用基于模式匹配的写法（而不是索引）可让该函数成为 const。
         while let [rest @ .., last] = bytes {
             if last.is_ascii_whitespace() {
                 bytes = rest;
@@ -202,13 +191,11 @@ impl [u8] {
         bytes
     }
 
-    /// Returns a byte slice with leading and trailing ASCII whitespace bytes
-    /// removed.
+    /// 返回去掉开头和末尾 ASCII 空白字节后的字节切片。
+///
+    /// “空白”采用 [`u8::is_ascii_whitespace`] 使用的定义。
     ///
-    /// 'Whitespace' refers to the definition used by
-    /// [`u8::is_ascii_whitespace`].
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// assert_eq!(b"\r hello world\n ".trim_ascii(), b"hello world");
@@ -230,10 +217,9 @@ impl_fn_for_zst! {
     };
 }
 
-/// An iterator over the escaped version of a byte slice.
+/// 遍历字节切片转义后形式的迭代器。
 ///
-/// This `struct` is created by the [`slice::escape_ascii`] method. See its
-/// documentation for more information.
+/// 该 `struct` 由 [`slice::escape_ascii`] 方法创建；更多信息见该方法文档。
 #[stable(feature = "inherent_ascii_escape", since = "1.60.0")]
 #[derive(Clone)]
 #[must_use = "iterators are lazy and do nothing unless consumed"]
@@ -284,13 +270,13 @@ impl<'a> iter::FusedIterator for EscapeAscii<'a> {}
 #[stable(feature = "inherent_ascii_escape", since = "1.60.0")]
 impl<'a> fmt::Display for EscapeAscii<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // disassemble iterator, including front/back parts of flatmap in case it has been partially consumed
+        // 拆开迭代器，包括 flatmap 的前/后部分，以处理迭代器已经被部分消费的情况。
         let (front, slice, back) = self.clone().inner.into_parts();
         let front = front.unwrap_or(EscapeDefault::empty());
         let mut bytes = slice.unwrap_or_default().as_slice();
         let back = back.unwrap_or(EscapeDefault::empty());
 
-        // usually empty, so the formatter won't have to do any work
+        // 通常为空，因此 formatter 不需要做额外工作。
         for byte in front {
             f.write_char(byte as char)?;
         }
@@ -300,25 +286,25 @@ impl<'a> fmt::Display for EscapeAscii<'a> {
         }
 
         while bytes.len() > 0 {
-            // fast path for the printable, non-escaped subset of ascii
+            // 可打印且无需转义的 ASCII 子集 fast path。
             let prefix = bytes.iter().take_while(|&&b| !needs_escape(b)).count();
-            // SAFETY: prefix length was derived by counting bytes in the same splice, so it's in-bounds
+            // SAFETY: prefix 长度来自对同一切片中字节的计数，因此在边界内。
             let (prefix, remainder) = unsafe { bytes.split_at_unchecked(prefix) };
-            // SAFETY: prefix is a valid utf8 sequence, as it's a subset of ASCII
+            // SAFETY: prefix 是 ASCII 子集，因此是有效 UTF-8 序列。
             let prefix = unsafe { crate::str::from_utf8_unchecked(prefix) };
 
-            f.write_str(prefix)?; // the fast part
+            f.write_str(prefix)?; // fast path 部分。
 
             bytes = remainder;
 
             if let Some(&b) = bytes.first() {
-                // guaranteed to be non-empty, better to write it as a str
+                // 已保证非空；按 str 写入更好。
                 fmt::Display::fmt(&ascii::escape_default(b), f)?;
                 bytes = &bytes[1..];
             }
         }
 
-        // also usually empty
+        // 同样通常为空。
         for byte in back {
             f.write_char(byte as char)?;
         }
@@ -332,11 +318,10 @@ impl<'a> fmt::Debug for EscapeAscii<'a> {
     }
 }
 
-/// ASCII test *without* the chunk-at-a-time optimizations.
+/// *不使用* chunk-at-a-time 优化的 ASCII 检测。
 ///
-/// This is carefully structured to produce nice small code -- it's smaller in
-/// `-O` than what the "obvious" ways produces under `-C opt-level=s`.  If you
-/// touch it, be sure to run (and update if needed) the assembly test.
+/// 这里被仔细组织成能生成较小代码的形式：在 `-O` 下比“显而易见”的写法在
+/// `-C opt-level=s` 下还小。如果修改它，请务必运行汇编测试，并在需要时更新测试。
 #[unstable(feature = "str_internals", issue = "none")]
 #[doc(hidden)]
 #[inline]
@@ -350,34 +335,31 @@ pub const fn is_ascii_simple(mut bytes: &[u8]) -> bool {
     bytes.is_empty()
 }
 
-/// Optimized ASCII test that will use usize-at-a-time operations instead of
-/// byte-at-a-time operations (when possible).
+/// 优化版 ASCII 检测；可能时使用 usize-at-a-time 操作，而不是 byte-at-a-time 操作。
 ///
-/// The algorithm we use here is pretty simple. If `s` is too short, we just
-/// check each byte and be done with it. Otherwise:
+/// 这里使用的算法很简单。如果 `s` 太短，就逐字节检查。否则：
 ///
-/// - Read the first word with an unaligned load.
-/// - Align the pointer, read subsequent words until end with aligned loads.
-/// - Read the last `usize` from `s` with an unaligned load.
+/// - 用未对齐 load 读取第一个 word。
+/// - 对齐指针，然后用对齐 load 读取后续 word 直到末尾。
+/// - 用未对齐 load 读取 `s` 的最后一个 `usize`。
 ///
-/// If any of these loads produces something for which `contains_nonascii`
-/// (above) returns true, then we know the answer is false.
+/// 如果这些 load 中任意一个产生的值让上面的 `contains_nonascii` 返回 true，
+/// 就可确定答案为 false。
 #[cfg(not(any(
     all(target_arch = "x86_64", target_feature = "sse2"),
     all(target_arch = "loongarch64", target_feature = "lsx")
 )))]
 #[inline]
-#[rustc_allow_const_fn_unstable(const_eval_select)] // fallback impl has same behavior
+#[rustc_allow_const_fn_unstable(const_eval_select)] // fallback 实现具有相同行为
 const fn is_ascii(s: &[u8]) -> bool {
-    // The runtime version behaves the same as the compiletime version, it's
-    // just more optimized.
+    // 运行时版本与编译期版本行为相同，只是优化更多。
     const_eval_select!(
         @capture { s: &[u8] } -> bool:
         if const {
             is_ascii_simple(s)
         } else {
-            /// Returns `true` if any byte in the word `v` is nonascii (>= 128). Snarfed
-            /// from `../str/mod.rs`, which does something similar for utf8 validation.
+            /// 如果 word `v` 中任意字节不是 ASCII（>= 128），返回 `true`。这借鉴自
+            /// `../str/mod.rs`，那里用类似技巧做 UTF-8 校验。
             const fn contains_nonascii(v: usize) -> bool {
                 const NONASCII_MASK: usize = usize::repeat_u8(0x80);
                 (NONASCII_MASK & v) != 0
@@ -388,74 +370,66 @@ const fn is_ascii(s: &[u8]) -> bool {
             let len = s.len();
             let align_offset = s.as_ptr().align_offset(USIZE_SIZE);
 
-            // If we wouldn't gain anything from the word-at-a-time implementation, fall
-            // back to a scalar loop.
+            // 如果 word-at-a-time 实现没有收益，就退回标量循环。
             //
-            // We also do this for architectures where `size_of::<usize>()` isn't
-            // sufficient alignment for `usize`, because it's a weird edge case.
+            // 对 `size_of::<usize>()` 不足以作为 `usize` 对齐的架构，也走这条路径；
+            // 这是一个少见边界情况。
             if len < USIZE_SIZE || len < align_offset || USIZE_SIZE < align_of::<usize>() {
                 return is_ascii_simple(s);
             }
 
-            // We always read the first word unaligned, which means `align_offset` is
-            // 0, we'd read the same value again for the aligned read.
+            // 我们总是用未对齐方式读取第一个 word；如果 `align_offset` 为 0，
+            // 对齐读取会再次读到同一个值。
             let offset_to_aligned = if align_offset == 0 { USIZE_SIZE } else { align_offset };
 
             let start = s.as_ptr();
-            // SAFETY: We verify `len < USIZE_SIZE` above.
+            // SAFETY: 上面已经排除 `len < USIZE_SIZE` 的情况。
             let first_word = unsafe { (start as *const usize).read_unaligned() };
 
             if contains_nonascii(first_word) {
                 return false;
             }
-            // We checked this above, somewhat implicitly. Note that `offset_to_aligned`
-            // is either `align_offset` or `USIZE_SIZE`, both of are explicitly checked
-            // above.
+            // 上面已经隐式检查过这一点。注意 `offset_to_aligned` 要么是 `align_offset`，
+            // 要么是 `USIZE_SIZE`，两者都已在上面显式检查。
             debug_assert!(offset_to_aligned <= len);
 
-            // SAFETY: word_ptr is the (properly aligned) usize ptr we use to read the
-            // middle chunk of the slice.
+            // SAFETY: word_ptr 是正确对齐的 usize 指针，用来读取切片中间 chunk。
             let mut word_ptr = unsafe { start.add(offset_to_aligned) as *const usize };
 
-            // `byte_pos` is the byte index of `word_ptr`, used for loop end checks.
+            // `byte_pos` 是 `word_ptr` 的字节索引，用于循环结束检查。
             let mut byte_pos = offset_to_aligned;
 
-            // Paranoia check about alignment, since we're about to do a bunch of
-            // unaligned loads. In practice this should be impossible barring a bug in
-            // `align_offset` though.
-            // While this method is allowed to spuriously fail in CTFE, if it doesn't
-            // have alignment information it should have given a `usize::MAX` for
-            // `align_offset` earlier, sending things through the scalar path instead of
-            // this one, so this check should pass if it's reachable.
+            // 对齐的防御性检查，因为接下来要做多次 load。实践中除非 `align_offset` 有 bug，
+            // 否则这里不应失败。虽然该方法在 CTFE 中允许伪失败，但如果没有对齐信息，
+            // 它应当早先为 `align_offset` 返回 `usize::MAX`，从而走标量路径而不是这里；
+            // 因此只要到达这里，该检查就应通过。
             debug_assert!(word_ptr.is_aligned_to(align_of::<usize>()));
 
-            // Read subsequent words until the last aligned word, excluding the last
-            // aligned word by itself to be done in tail check later, to ensure that
-            // tail is always one `usize` at most to extra branch `byte_pos == len`.
+            // 读取后续 word，直到最后一个对齐 word 之前；最后一个对齐 word 留给后面的尾部检查，
+            // 以确保 tail 最多只有一个 `usize`，从而避免额外的 `byte_pos == len` 分支。
             while byte_pos < len - USIZE_SIZE {
-                // Sanity check that the read is in bounds
+                // 健全性检查：读取位于边界内。
                 debug_assert!(byte_pos + USIZE_SIZE <= len);
-                // And that our assumptions about `byte_pos` hold.
+                // 并检查我们关于 `byte_pos` 的假设成立。
                 debug_assert!(word_ptr.cast::<u8>() == start.wrapping_add(byte_pos));
 
-                // SAFETY: We know `word_ptr` is properly aligned (because of
-                // `align_offset`), and we know that we have enough bytes between `word_ptr` and the end
+                // SAFETY: 已知 `word_ptr` 正确对齐（由 `align_offset` 保证），且从
+                // `word_ptr` 到末尾有足够字节。
                 let word = unsafe { word_ptr.read() };
                 if contains_nonascii(word) {
                     return false;
                 }
 
                 byte_pos += USIZE_SIZE;
-                // SAFETY: We know that `byte_pos <= len - USIZE_SIZE`, which means that
-                // after this `add`, `word_ptr` will be at most one-past-the-end.
+                // SAFETY: 已知 `byte_pos <= len - USIZE_SIZE`，因此这次 `add` 后
+                // `word_ptr` 至多到达一过末尾位置。
                 word_ptr = unsafe { word_ptr.add(1) };
             }
 
-            // Sanity check to ensure there really is only one `usize` left. This should
-            // be guaranteed by our loop condition.
+            // 健全性检查：确认确实至多只剩一个 `usize`；这应由循环条件保证。
             debug_assert!(byte_pos <= len && len - byte_pos <= USIZE_SIZE);
 
-            // SAFETY: This relies on `len >= USIZE_SIZE`, which we check at the start.
+            // SAFETY: 依赖 `len >= USIZE_SIZE`，该条件已在开头检查。
             let last_word = unsafe { (start.add(len - USIZE_SIZE) as *const usize).read_unaligned() };
 
             !contains_nonascii(last_word)
@@ -463,21 +437,18 @@ const fn is_ascii(s: &[u8]) -> bool {
     )
 }
 
-/// ASCII test optimized to use the `pmovmskb` instruction on `x86-64` and the
-/// `vmskltz.b` instruction on `loongarch64`.
+/// 针对 `x86-64` 使用 `pmovmskb` 指令、针对 `loongarch64` 使用 `vmskltz.b` 指令优化的
+/// ASCII 检测。
 ///
-/// Other platforms are not likely to benefit from this code structure, so they
-/// use SWAR techniques to test for ASCII in `usize`-sized chunks.
+/// 其它平台不太可能从这种代码结构获益，因此会使用 SWAR 技巧按 `usize` 大小的 chunk 检测 ASCII。
 #[cfg(any(
     all(target_arch = "x86_64", target_feature = "sse2"),
     all(target_arch = "loongarch64", target_feature = "lsx")
 ))]
 #[inline]
 const fn is_ascii(bytes: &[u8]) -> bool {
-    // Process chunks of 32 bytes at a time in the fast path to enable
-    // auto-vectorization and use of `pmovmskb`. Two 128-bit vector registers
-    // can be OR'd together and then the resulting vector can be tested for
-    // non-ASCII bytes.
+    // fast path 每次处理 32 字节 chunk，以启用自动向量化并使用 `pmovmskb`。
+    // 两个 128-bit vector register 可以 OR 到一起，再检测结果 vector 中是否存在非 ASCII 字节。
     const CHUNK_SIZE: usize = 32;
 
     let mut i = 0;
@@ -485,23 +456,21 @@ const fn is_ascii(bytes: &[u8]) -> bool {
     while i + CHUNK_SIZE <= bytes.len() {
         let chunk_end = i + CHUNK_SIZE;
 
-        // Get LLVM to produce a `pmovmskb` instruction on x86-64 which
-        // creates a mask from the most significant bit of each byte.
-        // ASCII bytes are less than 128 (0x80), so their most significant
-        // bit is unset.
+        // 让 LLVM 在 x86-64 上生成 `pmovmskb` 指令，从每个字节的最高位
+        // 构造掩码。ASCII 字节小于 128 (0x80)，因此最高位不会被设置。
         let mut count = 0;
         while i < chunk_end {
             count += bytes[i].is_ascii() as u8;
             i += 1;
         }
 
-        // All bytes should be <= 127 so count is equal to chunk size.
+        // 所有字节都应 <= 127，因此计数应等于 chunk 大小。
         if count != CHUNK_SIZE as u8 {
             return false;
         }
     }
 
-    // Process the remaining `bytes.len() % N` bytes.
+    // 处理剩余的 `bytes.len() % N` 个字节。
     let mut is_ascii = true;
     while i < bytes.len() {
         is_ascii &= bytes[i].is_ascii();

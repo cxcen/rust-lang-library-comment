@@ -1,9 +1,9 @@
-// Contains the machinery necessary to print useful `assert!` messages. Not intended for public
-// usage, not even nightly use-cases.
+// 包含打印有用 `assert!` 消息所需的内部机制。它不面向公开使用，
+// 甚至也不面向 nightly 用户直接使用。
 //
-// Based on https://github.com/dtolnay/case-studies/tree/master/autoref-specialization. When
-// 'specialization' is robust enough (5 years? 10 years? Never?), `Capture` can be specialized
-// to [Printable].
+// 基于 https://github.com/dtolnay/case-studies/tree/master/autoref-specialization。
+// 当 'specialization' 足够健壮时（5 年？10 年？也许永远不会？），
+// `Capture` 就可以特化到 [Printable]。
 
 #![allow(missing_debug_implementations)]
 #![doc(hidden)]
@@ -14,14 +14,14 @@ use crate::marker::PhantomData;
 
 // ***** TryCapture - Generic *****
 
-/// Marker used by [Capture]
+/// [Capture] 使用的标记类型。
 #[unstable(feature = "generic_assert_internals", issue = "44838")]
 pub struct TryCaptureWithoutDebug;
 
-/// Catches an arbitrary `E` and modifies `to` accordingly
+/// 捕获任意 `E`，并据此修改 `to`。
 #[unstable(feature = "generic_assert_internals", issue = "44838")]
 pub trait TryCaptureGeneric<E, M> {
-    /// Similar to [TryCapturePrintable] but generic to any `E`.
+    /// 类似 [TryCapturePrintable]，但泛化到任意 `E`。
     fn try_capture(&self, to: &mut Capture<E, M>);
 }
 
@@ -38,14 +38,14 @@ impl<E> Debug for Capture<E, TryCaptureWithoutDebug> {
 
 // ***** TryCapture - Printable *****
 
-/// Marker used by [Capture]
+/// [Capture] 使用的标记类型。
 #[unstable(feature = "generic_assert_internals", issue = "44838")]
 pub struct TryCaptureWithDebug;
 
-/// Catches an arbitrary `E: Printable` and modifies `to` accordingly
+/// 捕获任意 `E: Printable`，并据此修改 `to`。
 #[unstable(feature = "generic_assert_internals", issue = "44838")]
 pub trait TryCapturePrintable<E, M> {
-    /// Similar as [TryCaptureGeneric] but specialized to any `E: Printable`.
+    /// 类似 [TryCaptureGeneric]，但特化到任意 `E: Printable`。
     fn try_capture(&self, to: &mut Capture<E, M>);
 }
 

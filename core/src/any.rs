@@ -417,7 +417,7 @@ impl dyn Any + Send {
     #[unstable(feature = "downcast_unchecked", issue = "90850")]
     #[inline]
     pub unsafe fn downcast_unchecked_ref<T: Any>(&self) -> &T {
-        // SAFETY: guaranteed by caller
+        // SAFETY: 调用方保证内部值确实是 `T` 类型。
         unsafe { <dyn Any>::downcast_unchecked_ref::<T>(self) }
     }
 
@@ -445,7 +445,7 @@ impl dyn Any + Send {
     #[unstable(feature = "downcast_unchecked", issue = "90850")]
     #[inline]
     pub unsafe fn downcast_unchecked_mut<T: Any>(&mut self) -> &mut T {
-        // SAFETY: guaranteed by caller
+        // SAFETY: 调用方保证内部值确实是 `T` 类型。
         unsafe { <dyn Any>::downcast_unchecked_mut::<T>(self) }
     }
 }
@@ -548,7 +548,7 @@ impl dyn Any + Send + Sync {
     #[unstable(feature = "downcast_unchecked", issue = "90850")]
     #[inline]
     pub unsafe fn downcast_unchecked_ref<T: Any>(&self) -> &T {
-        // SAFETY: guaranteed by caller
+        // SAFETY: 调用方保证内部值确实是 `T` 类型。
         unsafe { <dyn Any>::downcast_unchecked_ref::<T>(self) }
     }
 
@@ -575,7 +575,7 @@ impl dyn Any + Send + Sync {
     #[unstable(feature = "downcast_unchecked", issue = "90850")]
     #[inline]
     pub unsafe fn downcast_unchecked_mut<T: Any>(&mut self) -> &mut T {
-        // SAFETY: guaranteed by caller
+        // SAFETY: 调用方保证内部值确实是 `T` 类型。
         unsafe { <dyn Any>::downcast_unchecked_mut::<T>(self) }
     }
 }
@@ -596,7 +596,7 @@ impl dyn Any + Send + Sync {
 /// 虽然 `TypeId` 实现了 `Hash`、`PartialOrd` 和 `Ord`,但值得注意的是:
 /// 其哈希值和次序在不同 Rust 发行版之间会有所不同。切勿在你的代码中依赖它们!
 ///
-/// # Layout
+/// # 布局(Layout)
 ///
 /// 与其他[采用 `Rust` 表示][repr-rust]的类型一样,`TypeId` 的大小和布局是
 /// 不稳定的。特别地,这意味着你不能依赖 `TypeId` 的大小和布局在不同 Rust

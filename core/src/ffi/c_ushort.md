@@ -1,5 +1,5 @@
-Equivalent to C's `unsigned short` type.
+等价于 C 的 `unsigned short` 类型。
 
-This type will almost always be [`u16`], but may differ on some esoteric systems. The C standard technically only requires that this type be an unsigned integer with the same size as a [`short`].
+本类型几乎总是 [`u16`],但在少数特殊系统上可能不同。C 标准技术上只要求它是与 [`short`] 大小相同的无符号整数。
 
 [`short`]: c_short

@@ -1,10 +1,10 @@
-//! This module contains logic for performing a merge of two sorted sub-slices.
+//! 本模块包含合并两个已排序子切片的逻辑。
 
 use crate::mem::MaybeUninit;
 use crate::{cmp, ptr};
 
-/// Merges non-decreasing runs `v[..mid]` and `v[mid..]` using `scratch` as
-/// temporary storage, and stores the result into `v[..]`.
+/// 使用 `scratch` 作为临时存储，合并非递减 run `v[..mid]` 和 `v[mid..]`，
+/// 并把结果存回 `v[..]`。
 pub fn merge<T, F: FnMut(&T, &T) -> bool>(
     v: &mut [T],
     scratch: &mut [MaybeUninit<T>],
@@ -17,23 +17,21 @@ pub fn merge<T, F: FnMut(&T, &T) -> bool>(
         return;
     }
 
-    // SAFETY: We checked that the two slices are non-empty and `mid` is in-bounds.
-    // We checked that the buffer `scratch` has enough capacity to hold a copy of
-    // the shorter slice. `merge_up` and `merge_down` are written in such a way that
-    // they uphold the contract described in `MergeState::drop`.
+    // SAFETY: 已检查两个切片均非空且 `mid` 位于边界内。
+    // 也已检查 `scratch` 有足够容量容纳较短切片的副本。
+    // `merge_up` 和 `merge_down` 的实现方式会维护 `MergeState::drop`
+    // 中描述的契约。
     unsafe {
-        // The merge process first copies the shorter run into `buf`. Then it traces
-        // the newly copied run and the longer run forwards (or backwards), comparing
-        // their next unconsumed elements and copying the lesser (or greater) one into `v`.
+        // 合并过程先把较短 run 复制到 `buf`。随后沿正向（或反向）同时扫描
+        // 新复制的 run 和较长 run，比较二者尚未消耗的下一个元素，并把较小
+        // （或较大）的元素复制回 `v`。
         //
-        // As soon as the shorter run is fully consumed, the process is done. If the
-        // longer run gets consumed first, then we must copy whatever is left of the
-        // shorter run into the remaining gap in `v`.
+        // 一旦较短 run 被完全消耗，过程就结束。如果较长 run 先被消耗，
+        // 则必须把较短 run 中剩余的元素复制到 `v` 中留下的空洞。
         //
-        // Intermediate state of the process is always tracked by `gap`, which serves
-        // two purposes:
-        //  1. Protects integrity of `v` from panics in `is_less`.
-        //  2. Fills the remaining gap in `v` if the longer run gets consumed first.
+        // 过程中的中间状态始终由 `gap` 跟踪，它有两个作用：
+        //  1. 当 `is_less` panic 时保护 `v` 的完整性。
+        //  2. 如果较长 run 先被消耗，则填补 `v` 中剩余的空洞。
 
         let buf = scratch.as_mut_ptr().cast_init();
 
@@ -57,12 +55,12 @@ pub fn merge<T, F: FnMut(&T, &T) -> bool>(
         } else {
             merge_state.merge_down(v_base, buf, v_end, is_less);
         }
-        // Finally, `merge_state` gets dropped. If the shorter run was not fully
-        // consumed, whatever remains of it will now be copied into the hole in `v`.
+        // 最后 `merge_state` 会被 drop。如果较短 run 尚未完全消耗，
+        // 此时会把其剩余部分复制进 `v` 中的空洞。
     }
 }
 
-// When dropped, copies the range `start..end` into `dst..`.
+// drop 时把范围 `start..end` 复制到 `dst..`。
 struct MergeState<T> {
     start: *mut T,
     end: *mut T,
@@ -70,18 +68,17 @@ struct MergeState<T> {
 }
 
 impl<T> MergeState<T> {
-    /// # Safety
-    /// The caller MUST guarantee that `self` is initialized in a way where `start -> end` is
-    /// the longer sub-slice and so that `dst` can be written to at least the shorter sub-slice
-    /// length times. In addition `start -> end` and `right -> right_end` MUST be valid to be
-    /// read. This function MUST only be called once.
+    /// # 安全性(Safety）
+    /// 调用方必须保证 `self` 以如下方式初始化：`start -> end` 是较长子切片，
+    /// 并且 `dst` 至少能写入较短子切片长度那么多次。此外，`start -> end`
+    /// 和 `right -> right_end` 都必须可读。本函数必须只调用一次。
     unsafe fn merge_up<F: FnMut(&T, &T) -> bool>(
         &mut self,
         mut right: *const T,
         right_end: *const T,
         is_less: &mut F,
     ) {
-        // SAFETY: See function safety comment.
+        // SAFETY: 见函数安全性注释。
         unsafe {
             let left = &mut self.start;
             let out = &mut self.dst;
@@ -100,11 +97,10 @@ impl<T> MergeState<T> {
         }
     }
 
-    /// # Safety
-    /// The caller MUST guarantee that `self` is initialized in a way where `left_end <- dst` is
-    /// the shorter sub-slice and so that `out` can be written to at least the shorter sub-slice
-    /// length times. In addition `left_end <- dst` and `right_end <- end` MUST be valid to be
-    /// read. This function MUST only be called once.
+    /// # 安全性(Safety）
+    /// 调用方必须保证 `self` 以如下方式初始化：`left_end <- dst` 是较短子切片，
+    /// 并且 `out` 至少能写入较短子切片长度那么多次。此外，`left_end <- dst`
+    /// 和 `right_end <- end` 都必须可读。本函数必须只调用一次。
     unsafe fn merge_down<F: FnMut(&T, &T) -> bool>(
         &mut self,
         left_end: *const T,
@@ -112,7 +108,7 @@ impl<T> MergeState<T> {
         mut out: *mut T,
         is_less: &mut F,
     ) {
-        // SAFETY: See function safety comment.
+        // SAFETY: 见函数安全性注释。
         unsafe {
             loop {
                 let left = self.dst.sub(1);
@@ -137,11 +133,10 @@ impl<T> MergeState<T> {
 
 impl<T> Drop for MergeState<T> {
     fn drop(&mut self) {
-        // SAFETY: The user of MergeState MUST ensure, that at any point this drop
-        // impl MAY run, for example when the user provided `is_less` panics, that
-        // copying the contiguous region between `start` and `end` to `dst` will
-        // leave the input slice `v` with each original element and all possible
-        // modifications observed.
+        // SAFETY: MergeState 的使用者必须保证，在该 drop 实现可能运行的任何时刻
+        // （例如用户提供的 `is_less` panic 时），把 `start` 与 `end` 之间的
+        // 连续区域复制到 `dst` 后，输入切片 `v` 仍包含每个原始元素，并保留所有
+        // 已观察到的可能修改。
         unsafe {
             let len = self.end.offset_from_unsigned(self.start);
             ptr::copy_nonoverlapping(self.start, self.dst, len);

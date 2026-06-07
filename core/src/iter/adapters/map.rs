@@ -5,18 +5,16 @@ use crate::iter::{FusedIterator, InPlaceIterable, TrustedFused, TrustedLen, Unch
 use crate::num::NonZero;
 use crate::ops::Try;
 
-/// An iterator that maps the values of `iter` with `f`.
+/// 用 `f` 映射 `iter` 中值的迭代器。
 ///
-/// This `struct` is created by the [`map`] method on [`Iterator`]. See its
-/// documentation for more.
+/// 该 `struct` 由 [`Iterator`] 上的 [`map`] 方法创建。更多信息见该方法文档。
 ///
 /// [`map`]: Iterator::map
 /// [`Iterator`]: trait.Iterator.html
 ///
-/// # Notes about side effects
+/// # 关于副作用的说明
 ///
-/// The [`map`] iterator implements [`DoubleEndedIterator`], meaning that
-/// you can also [`map`] backwards:
+/// [`map`] 迭代器实现 [`DoubleEndedIterator`]，这意味着也可以反向执行 [`map`]:
 ///
 /// ```rust
 /// let v: Vec<i32> = [1, 2, 3].into_iter().map(|x| x + 1).rev().collect();
@@ -26,8 +24,7 @@ use crate::ops::Try;
 ///
 /// [`DoubleEndedIterator`]: trait.DoubleEndedIterator.html
 ///
-/// But if your closure has state, iterating backwards may act in a way you do
-/// not expect. Let's go through an example. First, in the forward direction:
+/// 但是，如果闭包带有状态，反向迭代可能产生并非预期的行为。先看正向例子:
 ///
 /// ```rust
 /// let mut c = 0;
@@ -38,13 +35,12 @@ use crate::ops::Try;
 /// }
 /// ```
 ///
-/// This will print `('a', 1), ('b', 2), ('c', 3)`.
+/// 这会打印 `('a', 1), ('b', 2), ('c', 3)`。
 ///
-/// Now consider this twist where we add a call to `rev`. This version will
-/// print `('c', 1), ('b', 2), ('a', 3)`. Note that the letters are reversed,
-/// but the values of the counter still go in order. This is because `map()` is
-/// still being called lazily on each item, but we are popping items off the
-/// back of the vector now, instead of shifting them from the front.
+/// 现在考虑加上 `rev` 的变体。这个版本会打印 `('c', 1), ('b', 2), ('a', 3)`。
+/// 注意，字母顺序被反转了，但计数器的值仍然按调用顺序递增。这是因为 `map()`
+/// 仍然在每个被实际取出的元素上惰性调用；只是现在元素从 vector 后端弹出，而不是
+/// 从前端取出。
 ///
 /// ```rust
 /// let mut c = 0;
@@ -59,7 +55,7 @@ use crate::ops::Try;
 #[stable(feature = "rust1", since = "1.0.0")]
 #[derive(Clone)]
 pub struct Map<I, F> {
-    // Used for `SplitWhitespace` and `SplitAsciiWhitespace` `as_str` methods
+    // 供 `SplitWhitespace` 和 `SplitAsciiWhitespace` 的 `as_str` 方法使用。
     pub(crate) iter: I,
     f: F,
 }
@@ -133,8 +129,7 @@ where
     where
         Self: TrustedRandomAccessNoCoerce,
     {
-        // SAFETY: the caller must uphold the contract for
-        // `Iterator::__iterator_get_unchecked`.
+        // SAFETY: 调用方必须维护 `Iterator::__iterator_get_unchecked` 的契约。
         unsafe { (self.f)(try_get_unchecked(&mut self.iter, idx)) }
     }
 }
@@ -200,8 +195,8 @@ where
     F: FnMut(I::Item) -> B,
 {
     unsafe fn next_unchecked(&mut self) -> B {
-        // SAFETY: `Map` is 1:1 with the inner iterator, so if the caller promised
-        // that there's an element left, the inner iterator has one too.
+        // SAFETY: `Map` 与内层迭代器是一对一关系，因此如果调用方承诺还剩一个元素，
+        // 内层迭代器也确实还剩一个元素。
         let item = unsafe { self.iter.next_unchecked() };
         (self.f)(item)
     }
@@ -229,7 +224,7 @@ where
 
     #[inline]
     unsafe fn as_inner(&mut self) -> &mut I::Source {
-        // SAFETY: unsafe function forwarding to unsafe function with the same requirements
+        // SAFETY: 转发到具有相同要求的 unsafe 函数。
         unsafe { SourceIter::as_inner(&mut self.iter) }
     }
 }

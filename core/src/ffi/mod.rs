@@ -1,10 +1,8 @@
-//! Platform-specific types, as defined by C.
+//! C 定义的平台相关类型。
 //!
-//! Code that interacts via FFI will almost certainly be using the
-//! base types provided by C, which aren't nearly as nicely defined
-//! as Rust's primitive types. This module provides types which will
-//! match those defined by C, so that code that interacts with C will
-//! refer to the correct types.
+//! 通过 FFI 交互的代码几乎一定会用到 C 提供的基本类型。与 Rust 基本类型不同,
+//! 这些 C 类型的大小和符号性往往取决于平台 ABI。本模块提供与 C 定义匹配的类型,
+//! 让同 C 交互的代码能引用正确的 ABI 类型。
 
 #![stable(feature = "core_ffi", since = "1.30.0")]
 #![allow(non_camel_case_types)]
@@ -46,14 +44,10 @@ pub use self::primitives::{
 #[unstable(feature = "c_size_t", issue = "88345")]
 pub use self::primitives::{c_ptrdiff_t, c_size_t, c_ssize_t};
 
-// N.B., for LLVM to recognize the void pointer type and by extension
-//     functions like malloc(), we need to have it represented as i8* in
-//     LLVM bitcode. The enum used here ensures this and prevents misuse
-//     of the "raw" type by only having private variants. We need two
-//     variants, because the compiler complains about the repr attribute
-//     otherwise and we need at least one variant as otherwise the enum
-//     would be uninhabited and at least dereferencing such pointers would
-//     be UB.
+// 注意:为了让 LLVM 识别 void 指针类型,进而识别 malloc() 这类函数,需要在 LLVM bitcode
+// 中把它表示为 i8*。这里使用 enum 可保证这一点,并通过只有私有变体来防止误用“原始”类型。
+// 需要两个变体,因为否则编译器会抱怨 repr 属性;同时也至少需要一个变体,否则 enum 会无人居留,
+// 至少解引用这类指针会成为 UB。
 #[doc = include_str!("c_void.md")]
 #[lang = "c_void"]
 #[repr(u8)]
@@ -82,7 +76,7 @@ impl fmt::Debug for c_void {
     }
 }
 
-// Link the MSVC default lib
+// 链接 MSVC 默认库。
 #[cfg(all(windows, target_env = "msvc"))]
 #[link(
     name = "/defaultlib:msvcrt",

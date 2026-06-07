@@ -11,14 +11,20 @@ enum State<T, F> {
 
 /// 一种在首次被访问时才进行初始化的值。
 ///
+/// `LazyCell` 把一个尚未运行的初始化闭包和最终的 `T` 存在同一个状态机中。第一次解引用或调用
+/// [`force()`] 时,它会通过内部的 `UnsafeCell` 暂时取得可变访问,执行闭包并把状态从 `Uninit`
+/// 改为 `Init`。之后所有访问都只返回已经初始化好的 `&T`,不会再次调用闭包。
+///
 /// 本结构体的线程安全版本,参见 [`std::sync::LazyLock`]。
 ///
 /// [`std::sync::LazyLock`]: ../../std/sync/struct.LazyLock.html
 ///
-/// # 中毒(Poisoning）
+/// # 中毒
 ///
 /// 如果传给 [`LazyCell::new`] 的初始化闭包发生 panic,该 cell 就会被“毒化(poisoned)”。
 /// 一旦 cell 被毒化,任何试图访问它的线程(无论是经由解引用,还是显式调用 [`force()`])都会 panic。
+/// 初始化期间若发生重入访问,也会观察到临时的毒化状态并 panic;这能阻止同一个 `LazyCell` 在闭包
+/// 尚未返回时被再次初始化,从而维护“闭包最多成功运行一次,并且成功后引用指向稳定值”的不变量。
 ///
 /// 这一概念类似于 [`std::sync::poison`] 模块中的中毒。但一个关键区别在于:`LazyCell` 中的中毒是
 /// _不可恢复_ 的。此后,所有来自其他线程对该 cell 的访问都会 panic;而 [`std::sync::poison`] 中
@@ -115,6 +121,8 @@ impl<T, F: FnOnce() -> T> LazyCell<T, F> {
     /// 如果初始化闭包(即传给 [`new()`] 方法的那个)发生 panic,该 panic 会被传播给调用者,
     /// 而该 cell 会变为已毒化状态。这将导致此后对该 cell 的所有访问(经由 [`force()`] 或解引用)
     /// 都 panic。
+    /// 如果初始化闭包重入式访问同一个 `LazyCell`,也会触发同样的毒化路径,因为此时外层初始化尚未
+    /// 建立可供共享引用长期指向的 `Init` 值。
     ///
     /// [`new()`]: LazyCell::new
     /// [`force()`]: LazyCell::force
@@ -153,6 +161,8 @@ impl<T, F: FnOnce() -> T> LazyCell<T, F> {
     /// 如果初始化闭包(即传给 [`new()`] 方法的那个)发生 panic,该 panic 会被传播给调用者,
     /// 而该 cell 会变为已毒化状态。这将导致此后对该 cell 的所有访问(经由 [`force()`] 或解引用)
     /// 都 panic。
+    /// 对可变访问版本而言,`&mut LazyCell` 保证外部没有其他别名;但初始化闭包本身 panic 时,
+    /// 状态仍会被改为毒化,以免后续访问误以为存在一个完整初始化的值。
     ///
     /// [`new()`]: LazyCell::new
     /// [`force()`]: LazyCell::force
@@ -305,6 +315,8 @@ impl<T, F: FnOnce() -> T> Deref for LazyCell<T, F> {
     /// 如果初始化闭包(即传给 [`new()`] 方法的那个)发生 panic,该 panic 会被传播给调用者,
     /// 而该 cell 会变为已毒化状态。这将导致此后对该 cell 的所有访问(经由 [`force()`] 或解引用)
     /// 都 panic。
+    /// 这与显式调用 [`force()`] 的 panic 行为相同:一旦初始化失败,该 `LazyCell` 不会恢复到
+    /// 可再次尝试的未初始化状态。
     ///
     /// [`new()`]: LazyCell::new
     /// [`force()`]: LazyCell::force
@@ -321,6 +333,8 @@ impl<T, F: FnOnce() -> T> DerefMut for LazyCell<T, F> {
     /// 如果初始化闭包(即传给 [`new()`] 方法的那个)发生 panic,该 panic 会被传播给调用者,
     /// 而该 cell 会变为已毒化状态。这将导致此后对该 cell 的所有访问(经由 [`force()`] 或解引用)
     /// 都 panic。
+    /// 这与显式调用 [`force_mut()`] 的 panic 行为相同:失败后的状态会永久毒化,后续可变解引用
+    /// 也不会再次尝试运行闭包。
     ///
     /// [`new()`]: LazyCell::new
     /// [`force()`]: LazyCell::force

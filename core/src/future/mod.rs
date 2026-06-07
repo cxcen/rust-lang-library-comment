@@ -4,18 +4,19 @@
 //!
 //! 这里定义的是异步的**协议/契约**而非运行时:`core` 只提供 [`Future`]、[`IntoFuture`]
 //! 等 trait 以及 [`pending`]/[`ready`]/[`poll_fn`] 这类极小的适配器,本身**不含任何
-//! executor / 运行时 / 反应器(reactor)**。真正驱动 future 前进、监听 I/O 事件、调度
-//! 唤醒的运行时由上层库提供(如 tokio、async-std,或 std 中的极简实现)。这些类型位于
-//! 异步程序的热路径上,设计目标是零成本抽象。
+//! 执行器 / 运行时 / 反应器**。真正驱动 future 前进、监听 I/O 事件、调度唤醒的运行时
+//! 由上层库提供(如 tokio、async-std,或 std 中的极简实现)。这些类型位于异步程序的热路径上,
+//! 设计目标是零成本抽象。
 //!
 //! future 的失败或完成都通过返回值 [`Poll<T>`](crate::task::Poll) 暴露,`poll` 本身不靠
-//! panic 传递正常的“尚未就绪”状态。
+//! panic 传递正常的“尚未就绪”状态。尚未完成的 future 被 drop 就表示取消;`core` 不提供
+//! 单独的取消回调,也不保证取消后还会发生任何 `poll`。
 //!
-//! 关于 [`async`] 和 [`await`] 关键字以及异步编程的更多内容,请参阅 [async book]。
+//! 关于 [`async`] 和 [`await`] 关键字以及异步编程的更多内容,请参阅 [异步编程书]。
 //!
 //! [`async`]: ../../std/keyword.async.html
 //! [`await`]: ../../std/keyword.await.html
-//! [async book]: https://rust-lang.github.io/async-book/
+//! [异步编程书]: https://rust-lang.github.io/async-book/
 
 use crate::ptr::NonNull;
 use crate::task::Context;
@@ -46,12 +47,14 @@ pub use self::join::join;
 
 /// 之所以需要这个类型,是因为:
 ///
-/// a) 协程(coroutine)无法实现 `for<'a, 'b> Coroutine<&'a mut Context<'b>>`,所以必须改为传递
+/// a) 协程无法实现 `for<'a, 'b> Coroutine<&'a mut Context<'b>>`,所以必须改为传递
 ///    一个裸指针(见 <https://github.com/rust-lang/rust/issues/68923>)。
 /// b) 裸指针和 `NonNull` 既不是 `Send` 也不是 `Sync`,若直接使用会让每一个 future 都丢掉
 ///    Send/Sync,这并非我们想要的结果。
 ///
-/// 同时它也简化了 `.await` 在 HIR 阶段的脱糖(lowering)。
+/// 同时它也简化了 `.await` 在 HIR 阶段的脱糖。`ResumeTy` 是编译器与 `core` 之间的 lang item
+/// 契约:编译器生成的 async 状态机会把当前 `Context` 装进这里,再在恢复协程时取回。这里保存的是
+/// 指向 `Context` 的裸指针,有效性只在一次 `poll` 调用的动态范围内成立。
 #[lang = "ResumeTy"]
 #[doc(hidden)]
 #[unstable(feature = "gen_future", issue = "none")]
@@ -59,9 +62,13 @@ pub use self::join::join;
 pub struct ResumeTy(NonNull<Context<'static>>);
 
 #[unstable(feature = "gen_future", issue = "none")]
+// SAFETY: `ResumeTy` 只是编译器内部传递 `Context` 指针的句柄。它自身不拥有任务状态,
+// 也不会在线程间解引用;真正的线程安全边界由执行器提供的 `Waker`/`Context` 协议维护。
 unsafe impl Send for ResumeTy {}
 
 #[unstable(feature = "gen_future", issue = "none")]
+// SAFETY: 同 `Send` 实现。共享 `ResumeTy` 不会共享可变 `Context` 引用;只有编译器生成的
+// `get_context` 路径会在一次 `poll` 中把它还原成可变引用。
 unsafe impl Sync for ResumeTy {}
 
 #[lang = "get_context"]

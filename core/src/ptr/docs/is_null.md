@@ -4,7 +4,7 @@
 数据指针(raw data pointer),而不考虑其长度、vtable 等元数据。因此,两个都为空的
 指针之间仍然可能比较为不相等。
 
-# Panics during const evaluation
+# Panics
 
 如果在 const 求值(const evaluation)期间使用本方法,而 `self` 是一个被偏移到其
 最初所指向内存边界之外的指针,那么可能没有足够的信息来判定该指针是否为空。这是

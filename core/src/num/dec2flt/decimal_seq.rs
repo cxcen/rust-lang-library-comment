@@ -1,26 +1,24 @@
-//! Arbitrary-precision decimal type used by fallback algorithms.
+//! fallback 算法使用的任意精度十进制类型。
 //!
-//! This is only used if the fast-path (native floats) and
-//! the Eisel-Lemire algorithm are unable to unambiguously
-//! determine the float.
+//! 只有当 fast path（原生浮点）和 Eisel-Lemire algorithm 都无法无歧义地确定最终浮点值时，
+//! 才会使用该表示。
 //!
-//! The technique used is "Simple Decimal Conversion", developed
-//! by Nigel Tao and Ken Thompson. A detailed description of the
-//! algorithm can be found in "ParseNumberF64 by Simple Decimal Conversion",
-//! available online: <https://nigeltao.github.io/blog/2020/parse-number-f64-simple.html>.
+//! 这里采用 Nigel Tao 和 Ken Thompson 开发的 "Simple Decimal Conversion" 技术。
+//! 算法细节见 "ParseNumberF64 by Simple Decimal Conversion"：
+//! <https://nigeltao.github.io/blog/2020/parse-number-f64-simple.html>。
 
 use crate::num::dec2flt::common::{ByteSlice, is_8digits};
 
-/// A decimal floating-point number, represented as a sequence of decimal digits.
+/// 以十进制数字序列表示的十进制浮点数。
 #[derive(Clone, Debug, PartialEq)]
 pub struct DecimalSeq {
-    /// The number of significant digits in the decimal.
+    /// 当前保存的有效十进制数字数量。
     pub num_digits: usize,
-    /// The offset of the decimal point in the significant digits.
+    /// 小数点相对有效数字序列的偏移。
     pub decimal_point: i32,
-    /// If the number of significant digits stored in the decimal is truncated.
+    /// 保存的有效数字是否被截断。
     pub truncated: bool,
-    /// Buffer of the raw digits, in the range [0, 9].
+    /// 原始十进制数字缓冲区，每个元素都在 `[0, 9]` 范围内。
     pub digits: [u8; Self::MAX_DIGITS],
 }
 
@@ -31,40 +29,37 @@ impl Default for DecimalSeq {
 }
 
 impl DecimalSeq {
-    /// The maximum number of digits required to unambiguously round up to a 64-bit float.
+    /// 为了无歧义地舍入到 64 位浮点数所需的最大十进制数字数量。
     ///
-    /// For an IEEE 754 binary64 float, this required 767 digits. So we store the max digits + 1.
+    /// 对 IEEE 754 binary64，这需要 767 位数字。因此这里保存最大位数再加 1。
     ///
-    /// We can exactly represent a float in radix `b` from radix 2 if
-    /// `b` is divisible by 2. This function calculates the exact number of
-    /// digits required to exactly represent that float.
+    /// 如果基数 `b` 能被 2 整除，就可以把 radix 2 的浮点数精确表示到 radix `b`。
+    /// 这里的公式计算精确表示该浮点数所需的数字位数。
     ///
-    /// According to the "Handbook of Floating Point Arithmetic",
-    /// for IEEE754, with `emin` being the min exponent, `p2` being the
-    /// precision, and `b` being the radix, the number of digits follows as:
+    /// 根据 "Handbook of Floating Point Arithmetic"，对 IEEE 754，设 `emin` 为最小 exponent，
+    /// `p2` 为精度，`b` 为 radix，所需位数为：
     ///
     /// `−emin + p2 + ⌊(emin + 1) log(2, b) − log(1 − 2^(−p2), b)⌋`
     ///
-    /// For f32, this follows as:
+    /// 对 f32：
     ///     emin = -126
     ///     p2 = 24
     ///
-    /// For f64, this follows as:
+    /// 对 f64：
     ///     emin = -1022
     ///     p2 = 53
     ///
-    /// In Python:
+    /// Python 表达式为：
     ///     `-emin + p2 + math.floor((emin+ 1)*math.log(2, b)-math.log(1-2**(-p2), b))`
     pub const MAX_DIGITS: usize = 768;
 
-    /// The max decimal digits that can be exactly represented in a 64-bit integer.
+    /// 64 位整数能精确表示的最大十进制数字位数。
     pub(super) const MAX_DIGITS_WITHOUT_OVERFLOW: usize = 19;
     pub(super) const DECIMAL_POINT_RANGE: i32 = 2047;
 
-    /// Append a digit to the buffer if it fits.
-    // FIXME(tgross35): it may be better for this to return an option
-    // FIXME(tgross35): incrementing the digit counter even if we don't push anything
-    // seems incorrect.
+    /// 如果缓冲区还能容纳，则追加一个十进制数字。
+    // FIXME(tgross35): 这里返回 Option 可能更合适。
+    // FIXME(tgross35): 即使没有真正写入也递增 digit 计数，看起来并不正确。
     pub(super) fn try_add_digit(&mut self, digit: u8) {
         if self.num_digits < Self::MAX_DIGITS {
             self.digits[self.num_digits] = digit;
@@ -72,16 +67,16 @@ impl DecimalSeq {
         self.num_digits += 1;
     }
 
-    /// Trim trailing zeros from the buffer.
-    // FIXME(tgross35): this could be `.rev().position()` if perf is okay
+    /// 从缓冲区末尾移除尾随零。
+    // FIXME(tgross35): 如果性能允许，这里可以改成 `.rev().position()`。
     pub fn trim(&mut self) {
-        // All of the following calls to `DecimalSeq::trim` can't panic because:
+        // 以下所有 `DecimalSeq::trim` 调用都不会 panic，原因是：
         //
-        //  1. `parse_decimal` sets `num_digits` to a max of `DecimalSeq::MAX_DIGITS`.
-        //  2. `right_shift` sets `num_digits` to `write_index`, which is bounded by `num_digits`.
-        //  3. `left_shift` `num_digits` to a max of `DecimalSeq::MAX_DIGITS`.
+        //  1. `parse_decimal` 会把 `num_digits` 限制在 `DecimalSeq::MAX_DIGITS` 以内。
+        //  2. `right_shift` 把 `num_digits` 设为 `write_index`，而它受原 `num_digits` 约束。
+        //  3. `left_shift` 会把 `num_digits` 限制在 `DecimalSeq::MAX_DIGITS` 以内。
         //
-        // Trim is only called in `right_shift` and `left_shift`.
+        // Trim 只会在 `right_shift` 和 `left_shift` 中调用。
         debug_assert!(self.num_digits <= Self::MAX_DIGITS);
         while self.num_digits != 0 && self.digits[self.num_digits - 1] == 0 {
             self.num_digits -= 1;
@@ -120,7 +115,7 @@ impl DecimalSeq {
         n
     }
 
-    /// Computes decimal * 2^shift.
+    /// 计算 `decimal * 2^shift`。
     pub(super) fn left_shift(&mut self, shift: usize) {
         if self.num_digits == 0 {
             return;
@@ -166,7 +161,7 @@ impl DecimalSeq {
         self.trim();
     }
 
-    /// Computes decimal * 2^-shift.
+    /// 计算 `decimal * 2^-shift`。
     pub(super) fn right_shift(&mut self, shift: usize) {
         let mut read_index = 0;
         let mut write_index = 0;
@@ -187,7 +182,7 @@ impl DecimalSeq {
         }
         self.decimal_point -= read_index as i32 - 1;
         if self.decimal_point < -Self::DECIMAL_POINT_RANGE {
-            // `self = Self::Default()`, but without the overhead of clearing `digits`.
+            // 等价于 `self = Self::Default()`，但避免清空 `digits` 的开销。
             self.num_digits = 0;
             self.decimal_point = 0;
             self.truncated = false;
@@ -216,7 +211,7 @@ impl DecimalSeq {
     }
 }
 
-/// Parse a big integer representation of the float as a decimal.
+/// 把浮点字面量解析成大整数风格的十进制表示。
 pub fn parse_decimal_seq(mut s: &[u8]) -> DecimalSeq {
     let mut d = DecimalSeq::default();
     let start = s;
@@ -230,7 +225,7 @@ pub fn parse_decimal_seq(mut s: &[u8]) -> DecimalSeq {
     if let Some((b'.', s_next)) = s.split_first() {
         s = s_next;
         let first = s;
-        // Skip leading zeros.
+        // 跳过前导零。
         if d.num_digits == 0 {
             while let Some((&b'0', s_next)) = s.split_first() {
                 s = s_next;
@@ -250,7 +245,7 @@ pub fn parse_decimal_seq(mut s: &[u8]) -> DecimalSeq {
     }
 
     if d.num_digits != 0 {
-        // Ignore the trailing zeros if there are any
+        // 如果存在尾随零，忽略它们。
         let mut n_trailing_zeros = 0;
         for &c in start[..(start.len() - s.len())].iter().rev() {
             if c == b'0' {

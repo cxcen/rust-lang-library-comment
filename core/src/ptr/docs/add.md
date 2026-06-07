@@ -6,7 +6,7 @@
 `count` 以 T 为单位;例如 `count` 为 3 表示一个 `3 * size_of::<T>()` 字节的指针
 偏移。
 
-# Safety
+# 安全性(Safety）
 
 如果违反以下任一条件,结果即为未定义行为(Undefined Behavior):
 

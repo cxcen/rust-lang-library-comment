@@ -2,13 +2,13 @@
 引用(shared reference)。如果该值可能未初始化(uninitialized),则必须改用
 [`as_uninit_ref`]。
 
-# Safety
+# 安全性(Safety）
 
 调用此方法时,你必须确保:**要么**指针为空,**要么**该指针
 [可转换为引用](crate::ptr#pointer-to-reference-conversion)(即:非空、已对齐、
 指向一个已初始化的有效 `T`,并且在所选生命周期内遵守 Rust 的别名规则)。
 
-# Panics during const evaluation
+# Panics
 
 如果在 const 求值(const evaluation)期间无法确定指针是否为空,本方法将在该期间
 panic。更多信息见 [`is_null`]。

@@ -7,7 +7,7 @@ use crate::net::{Ipv4Addr, Ipv6Addr};
 use crate::num::NonZero;
 use crate::ops::{self, Try};
 
-// Safety: All invariants are upheld.
+// SAFETY: 这些基本标量类型的 `Step` 实现维护了全部不变量。
 macro_rules! unsafe_impl_trusted_step {
     ($($type:ty)*) => {$(
         #[unstable(feature = "trusted_step", issue = "85731")]
@@ -16,10 +16,15 @@ macro_rules! unsafe_impl_trusted_step {
 }
 unsafe_impl_trusted_step![AsciiChar char i8 i16 i32 i64 i128 isize u8 u16 u32 u64 u128 usize Ipv4Addr Ipv6Addr];
 
-/// Objects that have a notion of *successor* and *predecessor* operations.
+/// 具有“后继”和“前驱”操作概念的对象。
 ///
-/// The *successor* operation moves towards values that compare greater.
-/// The *predecessor* operation moves towards values that compare lesser.
+/// `Step` 是 range 迭代的基础协议: 它定义如何从一个值向比较结果更大的方向前进，
+/// 以及如何向比较结果更小的方向后退。整数、`char`、IP 地址等类型可以用它描述
+/// 半开或闭合 range 中相邻元素之间的步进关系。
+///
+/// *后继*操作朝更大的值移动。*前驱*操作朝更小的值移动。所有方法的不变量共同保证
+/// range 的 `Iterator::size_hint`、`ExactSizeIterator`、`TrustedLen` 以及
+/// `DoubleEndedIterator` 实现可以把“步数”当作剩余长度来使用。
 #[rustc_diagnostic_item = "range_step"]
 #[rustc_on_unimplemented(
     message = "`std::ops::Range<{Self}>` is not an iterator",
@@ -30,176 +35,164 @@ unsafe_impl_trusted_step![AsciiChar char i8 i16 i32 i64 i128 isize u8 u16 u32 u6
 )]
 #[unstable(feature = "step_trait", issue = "42168")]
 pub trait Step: Clone + PartialOrd + Sized {
-    /// Returns the bounds on the number of *successor* steps required to get from `start` to `end`
-    /// like [`Iterator::size_hint()`][Iterator::size_hint()].
+    /// 返回从 `start` 到 `end` 所需*后继*步数的上下界，形式类似
+    /// [`Iterator::size_hint()`][Iterator::size_hint()]。
     ///
-    /// Returns `(usize::MAX, None)` if the number of steps would overflow `usize`, or is infinite.
+    /// 如果步数会溢出 `usize`，或步数是无限的，则返回 `(usize::MAX, None)`。
     ///
-    /// # Invariants
+    /// # 不变量
     ///
-    /// For any `a`, `b`, and `n`:
+    /// 对任意 `a`、`b` 和 `n`:
     ///
-    /// * `steps_between(&a, &b) == (n, Some(n))` if and only if `Step::forward_checked(&a, n) == Some(b)`
-    /// * `steps_between(&a, &b) == (n, Some(n))` if and only if `Step::backward_checked(&b, n) == Some(a)`
-    /// * `steps_between(&a, &b) == (n, Some(n))` only if `a <= b`
-    ///   * Corollary: `steps_between(&a, &b) == (0, Some(0))` if and only if `a == b`
-    /// * `steps_between(&a, &b) == (0, None)` if `a > b`
+    /// * `steps_between(&a, &b) == (n, Some(n))` 当且仅当 `Step::forward_checked(&a, n) == Some(b)`
+    /// * `steps_between(&a, &b) == (n, Some(n))` 当且仅当 `Step::backward_checked(&b, n) == Some(a)`
+    /// * 只有在 `a <= b` 时，才有 `steps_between(&a, &b) == (n, Some(n))`
+    ///   * 推论: `steps_between(&a, &b) == (0, Some(0))` 当且仅当 `a == b`
+    /// * 如果 `a > b`，则 `steps_between(&a, &b) == (0, None)`
     fn steps_between(start: &Self, end: &Self) -> (usize, Option<usize>);
 
-    /// Returns the value that would be obtained by taking the *successor*
-    /// of `self` `count` times.
+    /// 返回对 `start` 连续执行 `count` 次*后继*操作后得到的值。
     ///
-    /// If this would overflow the range of values supported by `Self`, returns `None`.
+    /// 如果这会溢出 `Self` 支持的取值范围，则返回 `None`。
     ///
-    /// # Invariants
+    /// # 不变量
     ///
-    /// For any `a`, `n`, and `m`:
+    /// 对任意 `a`、`n` 和 `m`:
     ///
     /// * `Step::forward_checked(a, n).and_then(|x| Step::forward_checked(x, m)) == Step::forward_checked(a, m).and_then(|x| Step::forward_checked(x, n))`
     /// * `Step::forward_checked(a, n).and_then(|x| Step::forward_checked(x, m)) == try { Step::forward_checked(a, n.checked_add(m)) }`
     ///
-    /// For any `a` and `n`:
+    /// 对任意 `a` 和 `n`:
     ///
     /// * `Step::forward_checked(a, n) == (0..n).try_fold(a, |x, _| Step::forward_checked(&x, 1))`
-    ///   * Corollary: `Step::forward_checked(a, 0) == Some(a)`
+    ///   * 推论: `Step::forward_checked(a, 0) == Some(a)`
     fn forward_checked(start: Self, count: usize) -> Option<Self>;
 
-    /// Returns the value that would be obtained by taking the *successor*
-    /// of `self` `count` times.
+    /// 返回对 `start` 连续执行 `count` 次*后继*操作后得到的值。
     ///
-    /// If this would overflow the range of values supported by `Self`,
-    /// this function is allowed to panic, wrap, or saturate.
-    /// The suggested behavior is to panic when debug assertions are enabled,
-    /// and to wrap or saturate otherwise.
+    /// 如果这会溢出 `Self` 支持的取值范围，本函数允许 panic、回绕或饱和。
+    /// 建议行为是在启用 debug assertion 时 panic，在其他构建中回绕或饱和。
     ///
-    /// Unsafe code should not rely on the correctness of behavior after overflow.
+    /// unsafe 代码不能依赖溢出后的具体行为是否正确。
     ///
-    /// # Invariants
+    /// # 不变量
     ///
-    /// For any `a`, `n`, and `m`, where no overflow occurs:
+    /// 对任意不会发生溢出的 `a`、`n` 和 `m`:
     ///
     /// * `Step::forward(Step::forward(a, n), m) == Step::forward(a, n + m)`
     ///
-    /// For any `a` and `n`, where no overflow occurs:
+    /// 对任意不会发生溢出的 `a` 和 `n`:
     ///
     /// * `Step::forward_checked(a, n) == Some(Step::forward(a, n))`
     /// * `Step::forward(a, n) == (0..n).fold(a, |x, _| Step::forward(x, 1))`
-    ///   * Corollary: `Step::forward(a, 0) == a`
+    ///   * 推论: `Step::forward(a, 0) == a`
     /// * `Step::forward(a, n) >= a`
     /// * `Step::backward(Step::forward(a, n), n) == a`
     fn forward(start: Self, count: usize) -> Self {
         Step::forward_checked(start, count).expect("overflow in `Step::forward`")
     }
 
-    /// Returns the value that would be obtained by taking the *successor*
-    /// of `self` `count` times.
+    /// 返回对 `start` 连续执行 `count` 次*后继*操作后得到的值，不做溢出检查。
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// It is undefined behavior for this operation to overflow the
-    /// range of values supported by `Self`. If you cannot guarantee that this
-    /// will not overflow, use `forward` or `forward_checked` instead.
+    /// 调用方必须保证该操作不会溢出 `Self` 支持的取值范围。若发生溢出，本操作会
+    /// 造成未定义行为。无法证明不溢出时，应改用 `forward` 或 `forward_checked`。
     ///
-    /// # Invariants
+    /// # 不变量
     ///
-    /// For any `a`:
+    /// 对任意 `a`:
     ///
-    /// * if there exists `b` such that `b > a`, it is safe to call `Step::forward_unchecked(a, 1)`
-    /// * if there exists `b`, `n` such that `steps_between(&a, &b) == Some(n)`,
-    ///   it is safe to call `Step::forward_unchecked(a, m)` for any `m <= n`.
-    ///   * Corollary: `Step::forward_unchecked(a, 0)` is always safe.
+    /// * 如果存在 `b` 使得 `b > a`，则调用 `Step::forward_unchecked(a, 1)` 是安全的。
+    /// * 如果存在 `b`、`n` 使得 `steps_between(&a, &b) == Some(n)`，
+    ///   则对任意 `m <= n` 调用 `Step::forward_unchecked(a, m)` 都是安全的。
+    ///   * 推论: `Step::forward_unchecked(a, 0)` 始终安全。
     ///
-    /// For any `a` and `n`, where no overflow occurs:
+    /// 对任意不会发生溢出的 `a` 和 `n`:
     ///
-    /// * `Step::forward_unchecked(a, n)` is equivalent to `Step::forward(a, n)`
+    /// * `Step::forward_unchecked(a, n)` 等价于 `Step::forward(a, n)`
     unsafe fn forward_unchecked(start: Self, count: usize) -> Self {
         Step::forward(start, count)
     }
 
-    /// Returns the value that would be obtained by taking the *predecessor*
-    /// of `self` `count` times.
+    /// 返回对 `start` 连续执行 `count` 次*前驱*操作后得到的值。
     ///
-    /// If this would overflow the range of values supported by `Self`, returns `None`.
+    /// 如果这会溢出 `Self` 支持的取值范围，则返回 `None`。
     ///
-    /// # Invariants
+    /// # 不变量
     ///
-    /// For any `a`, `n`, and `m`:
+    /// 对任意 `a`、`n` 和 `m`:
     ///
     /// * `Step::backward_checked(a, n).and_then(|x| Step::backward_checked(x, m)) == n.checked_add(m).and_then(|x| Step::backward_checked(a, x))`
     /// * `Step::backward_checked(a, n).and_then(|x| Step::backward_checked(x, m)) == try { Step::backward_checked(a, n.checked_add(m)?) }`
     ///
-    /// For any `a` and `n`:
+    /// 对任意 `a` 和 `n`:
     ///
     /// * `Step::backward_checked(a, n) == (0..n).try_fold(a, |x, _| Step::backward_checked(x, 1))`
-    ///   * Corollary: `Step::backward_checked(a, 0) == Some(a)`
+    ///   * 推论: `Step::backward_checked(a, 0) == Some(a)`
     fn backward_checked(start: Self, count: usize) -> Option<Self>;
 
-    /// Returns the value that would be obtained by taking the *predecessor*
-    /// of `self` `count` times.
+    /// 返回对 `start` 连续执行 `count` 次*前驱*操作后得到的值。
     ///
-    /// If this would overflow the range of values supported by `Self`,
-    /// this function is allowed to panic, wrap, or saturate.
-    /// The suggested behavior is to panic when debug assertions are enabled,
-    /// and to wrap or saturate otherwise.
+    /// 如果这会溢出 `Self` 支持的取值范围，本函数允许 panic、回绕或饱和。
+    /// 建议行为是在启用 debug assertion 时 panic，在其他构建中回绕或饱和。
     ///
-    /// Unsafe code should not rely on the correctness of behavior after overflow.
+    /// unsafe 代码不能依赖溢出后的具体行为是否正确。
     ///
-    /// # Invariants
+    /// # 不变量
     ///
-    /// For any `a`, `n`, and `m`, where no overflow occurs:
+    /// 对任意不会发生溢出的 `a`、`n` 和 `m`:
     ///
     /// * `Step::backward(Step::backward(a, n), m) == Step::backward(a, n + m)`
     ///
-    /// For any `a` and `n`, where no overflow occurs:
+    /// 对任意不会发生溢出的 `a` 和 `n`:
     ///
     /// * `Step::backward_checked(a, n) == Some(Step::backward(a, n))`
     /// * `Step::backward(a, n) == (0..n).fold(a, |x, _| Step::backward(x, 1))`
-    ///   * Corollary: `Step::backward(a, 0) == a`
+    ///   * 推论: `Step::backward(a, 0) == a`
     /// * `Step::backward(a, n) <= a`
     /// * `Step::forward(Step::backward(a, n), n) == a`
     fn backward(start: Self, count: usize) -> Self {
         Step::backward_checked(start, count).expect("overflow in `Step::backward`")
     }
 
-    /// Returns the value that would be obtained by taking the *predecessor*
-    /// of `self` `count` times.
+    /// 返回对 `start` 连续执行 `count` 次*前驱*操作后得到的值，不做溢出检查。
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// It is undefined behavior for this operation to overflow the
-    /// range of values supported by `Self`. If you cannot guarantee that this
-    /// will not overflow, use `backward` or `backward_checked` instead.
+    /// 调用方必须保证该操作不会溢出 `Self` 支持的取值范围。若发生溢出，本操作会
+    /// 造成未定义行为。无法证明不溢出时，应改用 `backward` 或 `backward_checked`。
     ///
-    /// # Invariants
+    /// # 不变量
     ///
-    /// For any `a`:
+    /// 对任意 `a`:
     ///
-    /// * if there exists `b` such that `b < a`, it is safe to call `Step::backward_unchecked(a, 1)`
-    /// * if there exists `b`, `n` such that `steps_between(&b, &a) == (n, Some(n))`,
-    ///   it is safe to call `Step::backward_unchecked(a, m)` for any `m <= n`.
-    ///   * Corollary: `Step::backward_unchecked(a, 0)` is always safe.
+    /// * 如果存在 `b` 使得 `b < a`，则调用 `Step::backward_unchecked(a, 1)` 是安全的。
+    /// * 如果存在 `b`、`n` 使得 `steps_between(&b, &a) == (n, Some(n))`，
+    ///   则对任意 `m <= n` 调用 `Step::backward_unchecked(a, m)` 都是安全的。
+    ///   * 推论: `Step::backward_unchecked(a, 0)` 始终安全。
     ///
-    /// For any `a` and `n`, where no overflow occurs:
+    /// 对任意不会发生溢出的 `a` 和 `n`:
     ///
-    /// * `Step::backward_unchecked(a, n)` is equivalent to `Step::backward(a, n)`
+    /// * `Step::backward_unchecked(a, n)` 等价于 `Step::backward(a, n)`
     unsafe fn backward_unchecked(start: Self, count: usize) -> Self {
         Step::backward(start, count)
     }
 }
 
-// Separate impls for signed ranges because the distance within a signed range can be larger
-// than the signed::MAX value. Therefore `as` casting to the signed type would be incorrect.
+// 有符号 range 使用单独实现，因为有符号范围内的距离可能大于 signed::MAX。
+// 因此直接用 `as` 转成有符号类型是不正确的。
 macro_rules! step_signed_methods {
     ($unsigned: ty) => {
         #[inline]
         unsafe fn forward_unchecked(start: Self, n: usize) -> Self {
-            // SAFETY: the caller has to guarantee that `start + n` doesn't overflow.
+            // SAFETY: 调用方必须保证 `start + n` 不溢出。
             unsafe { start.checked_add_unsigned(n as $unsigned).unwrap_unchecked() }
         }
 
         #[inline]
         unsafe fn backward_unchecked(start: Self, n: usize) -> Self {
-            // SAFETY: the caller has to guarantee that `start - n` doesn't overflow.
+            // SAFETY: 调用方必须保证 `start - n` 不溢出。
             unsafe { start.checked_sub_unsigned(n as $unsigned).unwrap_unchecked() }
         }
     };
@@ -209,31 +202,31 @@ macro_rules! step_unsigned_methods {
     () => {
         #[inline]
         unsafe fn forward_unchecked(start: Self, n: usize) -> Self {
-            // SAFETY: the caller has to guarantee that `start + n` doesn't overflow.
+            // SAFETY: 调用方必须保证 `start + n` 不溢出。
             unsafe { start.unchecked_add(n as Self) }
         }
 
         #[inline]
         unsafe fn backward_unchecked(start: Self, n: usize) -> Self {
-            // SAFETY: the caller has to guarantee that `start - n` doesn't overflow.
+            // SAFETY: 调用方必须保证 `start - n` 不溢出。
             unsafe { start.unchecked_sub(n as Self) }
         }
     };
 }
 
-// These are still macro-generated because the integer literals resolve to different types.
+// 这些方法仍由宏生成，因为整数字面量会解析为不同类型。
 macro_rules! step_identical_methods {
     () => {
         #[inline]
         #[allow(arithmetic_overflow)]
         #[rustc_inherit_overflow_checks]
         fn forward(start: Self, n: usize) -> Self {
-            // In debug builds, trigger a panic on overflow.
-            // This should optimize completely out in release builds.
+            // 在 debug 构建中，溢出时触发 panic。
+            // 在 release 构建中，这应当会被完全优化掉。
             if Self::forward_checked(start, n).is_none() {
                 let _ = Self::MAX + 1;
             }
-            // Do wrapping math to allow e.g. `Step::forward(-128i8, 255)`.
+            // 使用 wrapping 运算以允许例如 `Step::forward(-128i8, 255)`。
             start.wrapping_add(n as Self)
         }
 
@@ -241,12 +234,12 @@ macro_rules! step_identical_methods {
         #[allow(arithmetic_overflow)]
         #[rustc_inherit_overflow_checks]
         fn backward(start: Self, n: usize) -> Self {
-            // In debug builds, trigger a panic on overflow.
-            // This should optimize completely out in release builds.
+            // 在 debug 构建中，溢出时触发 panic。
+            // 在 release 构建中，这应当会被完全优化掉。
             if Self::backward_checked(start, n).is_none() {
                 let _ = Self::MIN - 1;
             }
-            // Do wrapping math to allow e.g. `Step::backward(127i8, 255)`.
+            // 使用 wrapping 运算以允许例如 `Step::backward(127i8, 255)`。
             start.wrapping_sub(n as Self)
         }
     };
@@ -269,7 +262,7 @@ macro_rules! step_integer_impls {
                 #[inline]
                 fn steps_between(start: &Self, end: &Self) -> (usize, Option<usize>) {
                     if *start <= *end {
-                        // This relies on $u_narrower <= usize
+                        // 这里依赖 $u_narrower <= usize。
                         let steps = (*end - *start) as usize;
                         (steps, Some(steps))
                     } else {
@@ -281,7 +274,7 @@ macro_rules! step_integer_impls {
                 fn forward_checked(start: Self, n: usize) -> Option<Self> {
                     match Self::try_from(n) {
                         Ok(n) => start.checked_add(n),
-                        Err(_) => None, // if n is out of range, `unsigned_start + n` is too
+                        Err(_) => None, // 如果 n 超出范围，`unsigned_start + n` 也会超出
                     }
                 }
 
@@ -289,7 +282,7 @@ macro_rules! step_integer_impls {
                 fn backward_checked(start: Self, n: usize) -> Option<Self> {
                     match Self::try_from(n) {
                         Ok(n) => start.checked_sub(n),
-                        Err(_) => None, // if n is out of range, `unsigned_start - n` is too
+                        Err(_) => None, // 如果 n 超出范围，`unsigned_start - n` 也会超出
                     }
                 }
             }
@@ -303,11 +296,11 @@ macro_rules! step_integer_impls {
                 #[inline]
                 fn steps_between(start: &Self, end: &Self) -> (usize, Option<usize>) {
                     if *start <= *end {
-                        // This relies on $i_narrower <= usize
+                        // 这里依赖 $i_narrower <= usize。
                         //
-                        // Casting to isize extends the width but preserves the sign.
-                        // Use wrapping_sub in isize space and cast to usize to compute
-                        // the difference that might not fit inside the range of isize.
+                        // 转换为 isize 会扩展宽度但保留符号。
+                        // 在 isize 空间中使用 wrapping_sub，再转换为 usize，以计算可能
+                        // 无法放入 isize 取值范围的差值。
                         let steps = (*end as isize).wrapping_sub(*start as isize) as usize;
                         (steps, Some(steps))
                     } else {
@@ -319,19 +312,19 @@ macro_rules! step_integer_impls {
                 fn forward_checked(start: Self, n: usize) -> Option<Self> {
                     match $u_narrower::try_from(n) {
                         Ok(n) => {
-                            // Wrapping handles cases like
+                            // Wrapping 可处理类似这样的情况:
                             // `Step::forward(-120_i8, 200) == Some(80_i8)`,
-                            // even though 200 is out of range for i8.
+                            // 即使 200 超出了 i8 的范围。
                             let wrapped = start.wrapping_add(n as Self);
                             if wrapped >= start {
                                 Some(wrapped)
                             } else {
-                                None // Addition overflowed
+                                None // 加法溢出
                             }
                         }
-                        // If n is out of range of e.g. u8,
-                        // then it is bigger than the entire range for i8 is wide
-                        // so `any_i8 + n` necessarily overflows i8.
+                        // 如果 n 超出了例如 u8 的范围，
+                        // 那它就大于 i8 整个取值范围的宽度，
+                        // 因此 `any_i8 + n` 必然使 i8 溢出。
                         Err(_) => None,
                     }
                 }
@@ -340,19 +333,19 @@ macro_rules! step_integer_impls {
                 fn backward_checked(start: Self, n: usize) -> Option<Self> {
                     match $u_narrower::try_from(n) {
                         Ok(n) => {
-                            // Wrapping handles cases like
+                            // Wrapping 可处理类似这样的情况:
                             // `Step::forward(-120_i8, 200) == Some(80_i8)`,
-                            // even though 200 is out of range for i8.
+                            // 即使 200 超出了 i8 的范围。
                             let wrapped = start.wrapping_sub(n as Self);
                             if wrapped <= start {
                                 Some(wrapped)
                             } else {
-                                None // Subtraction overflowed
+                                None // 减法溢出
                             }
                         }
-                        // If n is out of range of e.g. u8,
-                        // then it is bigger than the entire range for i8 is wide
-                        // so `any_i8 - n` necessarily overflows i8.
+                        // 如果 n 超出了例如 u8 的范围，
+                        // 那它就大于 i8 整个取值范围的宽度，
+                        // 因此 `any_i8 - n` 必然使 i8 溢出。
                         Err(_) => None,
                     }
                 }
@@ -407,8 +400,8 @@ macro_rules! step_integer_impls {
                                     (usize::MAX, None)
                                 }
                             }
-                            // If the difference is too big for e.g. i128,
-                            // it's also gonna be too big for usize with fewer bits.
+                            // 如果差值大到例如 i128 都放不下，那么位数更少的 usize
+                            // 也一定放不下。
                             None => (usize::MAX, None),
                         }
                     } else {
@@ -482,8 +475,8 @@ impl Step for char {
             res = Step::forward_checked(res, 0x800)?;
         }
         if res <= char::MAX as u32 {
-            // SAFETY: res is a valid unicode scalar
-            // (below 0x110000 and not in 0xD800..0xE000)
+            // SAFETY: res 是有效 Unicode 标量值
+            // (小于 0x110000 且不在 0xD800..0xE000 内)
             Some(unsafe { char::from_u32_unchecked(res) })
         } else {
             None
@@ -497,40 +490,34 @@ impl Step for char {
         if start >= 0xE000 && 0xE000 > res {
             res = Step::backward_checked(res, 0x800)?;
         }
-        // SAFETY: res is a valid unicode scalar
-        // (below 0x110000 and not in 0xD800..0xE000)
+        // SAFETY: res 是有效 Unicode 标量值
+        // (小于 0x110000 且不在 0xD800..0xE000 内)。
         Some(unsafe { char::from_u32_unchecked(res) })
     }
 
     #[inline]
     unsafe fn forward_unchecked(start: char, count: usize) -> char {
         let start = start as u32;
-        // SAFETY: the caller must guarantee that this doesn't overflow
-        // the range of values for a char.
+        // SAFETY: 调用方必须保证这不会溢出 char 的取值范围。
         let mut res = unsafe { Step::forward_unchecked(start, count) };
         if start < 0xD800 && 0xD800 <= res {
-            // SAFETY: the caller must guarantee that this doesn't overflow
-            // the range of values for a char.
+            // SAFETY: 调用方必须保证这不会溢出 char 的取值范围。
             res = unsafe { Step::forward_unchecked(res, 0x800) };
         }
-        // SAFETY: because of the previous contract, this is guaranteed
-        // by the caller to be a valid char.
+        // SAFETY: 根据前面的契约，调用方保证结果是有效 char。
         unsafe { char::from_u32_unchecked(res) }
     }
 
     #[inline]
     unsafe fn backward_unchecked(start: char, count: usize) -> char {
         let start = start as u32;
-        // SAFETY: the caller must guarantee that this doesn't overflow
-        // the range of values for a char.
+        // SAFETY: 调用方必须保证这不会溢出 char 的取值范围。
         let mut res = unsafe { Step::backward_unchecked(start, count) };
         if start >= 0xE000 && 0xE000 > res {
-            // SAFETY: the caller must guarantee that this doesn't overflow
-            // the range of values for a char.
+            // SAFETY: 调用方必须保证这不会溢出 char 的取值范围。
             res = unsafe { Step::backward_unchecked(res, 0x800) };
         }
-        // SAFETY: because of the previous contract, this is guaranteed
-        // by the caller to be a valid char.
+        // SAFETY: 根据前面的契约，调用方保证结果是有效 char。
         unsafe { char::from_u32_unchecked(res) }
     }
 }
@@ -552,27 +539,25 @@ impl Step for AsciiChar {
     fn backward_checked(start: AsciiChar, count: usize) -> Option<AsciiChar> {
         let end = Step::backward_checked(start.to_u8(), count)?;
 
-        // SAFETY: Values below that of a valid ASCII character are also valid ASCII
+        // SAFETY: 低于有效 ASCII 字符上界的值同样是有效 ASCII。
         Some(unsafe { AsciiChar::from_u8_unchecked(end) })
     }
 
     #[inline]
     unsafe fn forward_unchecked(start: AsciiChar, count: usize) -> AsciiChar {
-        // SAFETY: Caller asserts that result is a valid ASCII character,
-        // and therefore it is a valid u8.
+        // SAFETY: 调用者断言结果是有效 ASCII 字符，因此它也是有效 u8。
         let end = unsafe { Step::forward_unchecked(start.to_u8(), count) };
 
-        // SAFETY: Caller asserts that result is a valid ASCII character.
+        // SAFETY: 调用者断言结果是有效 ASCII 字符。
         unsafe { AsciiChar::from_u8_unchecked(end) }
     }
 
     #[inline]
     unsafe fn backward_unchecked(start: AsciiChar, count: usize) -> AsciiChar {
-        // SAFETY: Caller asserts that result is a valid ASCII character,
-        // and therefore it is a valid u8.
+        // SAFETY: 调用者断言结果是有效 ASCII 字符，因此它也是有效 u8。
         let end = unsafe { Step::backward_unchecked(start.to_u8(), count) };
 
-        // SAFETY: Caller asserts that result is a valid ASCII character.
+        // SAFETY: 调用者断言结果是有效 ASCII 字符。
         unsafe { AsciiChar::from_u8_unchecked(end) }
     }
 }
@@ -596,15 +581,15 @@ impl Step for Ipv4Addr {
 
     #[inline]
     unsafe fn forward_unchecked(start: Ipv4Addr, count: usize) -> Ipv4Addr {
-        // SAFETY: Since u32 and Ipv4Addr are losslessly convertible,
-        //   this is as safe as the u32 version.
+        // SAFETY: 由于 u32 和 Ipv4Addr 可无损互相转换，
+        //   这里与 u32 版本同样安全。
         Ipv4Addr::from_bits(unsafe { u32::forward_unchecked(start.to_bits(), count) })
     }
 
     #[inline]
     unsafe fn backward_unchecked(start: Ipv4Addr, count: usize) -> Ipv4Addr {
-        // SAFETY: Since u32 and Ipv4Addr are losslessly convertible,
-        //   this is as safe as the u32 version.
+        // SAFETY: 由于 u32 和 Ipv4Addr 可无损互相转换，
+        //   这里与 u32 版本同样安全。
         Ipv4Addr::from_bits(unsafe { u32::backward_unchecked(start.to_bits(), count) })
     }
 }
@@ -628,15 +613,15 @@ impl Step for Ipv6Addr {
 
     #[inline]
     unsafe fn forward_unchecked(start: Ipv6Addr, count: usize) -> Ipv6Addr {
-        // SAFETY: Since u128 and Ipv6Addr are losslessly convertible,
-        //   this is as safe as the u128 version.
+        // SAFETY: 由于 u128 和 Ipv6Addr 可无损互相转换，
+        //   这里与 u128 版本同样安全。
         Ipv6Addr::from_bits(unsafe { u128::forward_unchecked(start.to_bits(), count) })
     }
 
     #[inline]
     unsafe fn backward_unchecked(start: Ipv6Addr, count: usize) -> Ipv6Addr {
-        // SAFETY: Since u128 and Ipv6Addr are losslessly convertible,
-        //   this is as safe as the u128 version.
+        // SAFETY: 由于 u128 和 Ipv6Addr 可无损互相转换，
+        //   这里与 u128 版本同样安全。
         Ipv6Addr::from_bits(unsafe { u128::backward_unchecked(start.to_bits(), count) })
     }
 }
@@ -648,8 +633,8 @@ macro_rules! range_exact_iter_impl {
     )*)
 }
 
-/// Safety: This macro must only be used on types that are `Copy` and result in ranges
-/// which have an exact `size_hint()` where the upper bound must not be `None`.
+/// 安全性: 该宏只能用于 `Copy` 类型，并且生成的 range 必须具有精确 `size_hint()`，
+/// 其中上界不得为 `None`。
 macro_rules! unsafe_range_trusted_random_access_impl {
     ($($t:ty)*) => ($(
         #[doc(hidden)]
@@ -671,16 +656,16 @@ macro_rules! range_incl_exact_iter_impl {
     )*)
 }
 
-/// Specialization implementations for `Range`.
+/// `Range` 的 specialization 实现。
 trait RangeIteratorImpl {
     type Item;
 
-    // Iterator
+    // Iterator 相关方法
     fn spec_next(&mut self) -> Option<Self::Item>;
     fn spec_nth(&mut self, n: usize) -> Option<Self::Item>;
     fn spec_advance_by(&mut self, n: usize) -> Result<(), NonZero<usize>>;
 
-    // DoubleEndedIterator
+    // DoubleEndedIterator 相关方法
     fn spec_next_back(&mut self) -> Option<Self::Item>;
     fn spec_nth_back(&mut self, n: usize) -> Option<Self::Item>;
     fn spec_advance_back_by(&mut self, n: usize) -> Result<(), NonZero<usize>>;
@@ -771,7 +756,7 @@ impl<T: TrustedStep> RangeIteratorImpl for ops::Range<T> {
     fn spec_next(&mut self) -> Option<T> {
         if self.start < self.end {
             let old = self.start;
-            // SAFETY: just checked precondition
+            // SAFETY: 刚刚检查了前置条件。
             self.start = unsafe { Step::forward_unchecked(old, 1) };
             Some(old)
         } else {
@@ -783,7 +768,7 @@ impl<T: TrustedStep> RangeIteratorImpl for ops::Range<T> {
     fn spec_nth(&mut self, n: usize) -> Option<T> {
         if let Some(plus_n) = Step::forward_checked(self.start, n) {
             if plus_n < self.end {
-                // SAFETY: just checked precondition
+                // SAFETY: 刚刚检查了前置条件。
                 self.start = unsafe { Step::forward_unchecked(plus_n, 1) };
                 return Some(plus_n);
             }
@@ -800,10 +785,9 @@ impl<T: TrustedStep> RangeIteratorImpl for ops::Range<T> {
 
         let taken = available.min(n);
 
-        // SAFETY: the conditions above ensure that the count is in bounds. If start <= end
-        // then steps_between either returns a bound to which we clamp or returns None which
-        // together with the initial inequality implies more than usize::MAX steps.
-        // Otherwise 0 is returned which always safe to use.
+        // SAFETY: 上述条件保证 count 在边界内。如果 start <= end，则 steps_between
+        // 要么返回一个可用于截断的边界，要么返回 None；后者结合初始不等式表示步数
+        // 超过 usize::MAX。否则返回 0，而 0 始终可安全使用。
         self.start = unsafe { Step::forward_unchecked(self.start, taken) };
 
         NonZero::new(n - taken).map_or(Ok(()), Err)
@@ -812,7 +796,7 @@ impl<T: TrustedStep> RangeIteratorImpl for ops::Range<T> {
     #[inline]
     fn spec_next_back(&mut self) -> Option<T> {
         if self.start < self.end {
-            // SAFETY: just checked precondition
+            // SAFETY: 刚刚检查了前置条件。
             self.end = unsafe { Step::backward_unchecked(self.end, 1) };
             Some(self.end)
         } else {
@@ -824,7 +808,7 @@ impl<T: TrustedStep> RangeIteratorImpl for ops::Range<T> {
     fn spec_nth_back(&mut self, n: usize) -> Option<T> {
         if let Some(minus_n) = Step::backward_checked(self.end, n) {
             if minus_n > self.start {
-                // SAFETY: just checked precondition
+                // SAFETY: 刚刚检查了前置条件。
                 self.end = unsafe { Step::backward_unchecked(minus_n, 1) };
                 return Some(self.end);
             }
@@ -841,7 +825,7 @@ impl<T: TrustedStep> RangeIteratorImpl for ops::Range<T> {
 
         let taken = available.min(n);
 
-        // SAFETY: same as the spec_advance_by() implementation
+        // SAFETY: 与 spec_advance_by() 实现的理由相同。
         self.end = unsafe { Step::backward_unchecked(self.end, taken) };
 
         NonZero::new(n - taken).map_or(Ok(()), Err)
@@ -916,30 +900,27 @@ impl<A: Step> Iterator for ops::Range<A> {
     where
         Self: TrustedRandomAccessNoCoerce,
     {
-        // SAFETY: The TrustedRandomAccess contract requires that callers only pass an index
-        // that is in bounds.
-        // Additionally Self: TrustedRandomAccess is only implemented for Copy types
-        // which means even repeated reads of the same index would be safe.
+        // SAFETY: TrustedRandomAccess 契约要求调用方只传入边界内索引。
+        // 此外，Self: TrustedRandomAccess 只为 Copy 类型实现，因此即使重复读取同一索引
+        // 也是安全的。
         unsafe { Step::forward_unchecked(self.start.clone(), idx) }
     }
 }
 
-// These macros generate `ExactSizeIterator` impls for various range types.
+// 这些宏为多种 range 类型生成 `ExactSizeIterator` 实现。
 //
-// * `ExactSizeIterator::len` is required to always return an exact `usize`,
-//   so no range can be longer than `usize::MAX`.
-// * For integer types in `Range<_>` this is the case for types narrower than or as wide as `usize`.
-//   For integer types in `RangeInclusive<_>`
-//   this is the case for types *strictly narrower* than `usize`
-//   since e.g. `(0..=u64::MAX).len()` would be `u64::MAX + 1`.
+// * `ExactSizeIterator::len` 要求始终返回精确的 `usize`，
+//   因此任何 range 都不能长于 `usize::MAX`。
+// * 对 `Range<_>` 中的整数类型，窄于或等宽于 `usize` 的类型满足这一点。
+//   对 `RangeInclusive<_>` 中的整数类型，只有*严格窄于* `usize` 的类型满足这一点，
+//   因为例如 `(0..=u64::MAX).len()` 会是 `u64::MAX + 1`。
 range_exact_iter_impl! {
     usize u8 u16
     isize i8 i16
 
-    // These are incorrect per the reasoning above,
-    // but removing them would be a breaking change as they were stabilized in Rust 1.0.0.
-    // So e.g. `(0..66_000_u32).len()` for example will compile without error or warnings
-    // on 16-bit platforms, but continue to give a wrong result.
+    // 按照上面的推理，这些实现并不正确；但它们已在 Rust 1.0.0 稳定，移除会造成
+    // 破坏性变更。因此例如 `(0..66_000_u32).len()` 在 16 位平台上仍会无错误、无警告
+    // 地编译，但继续给出错误结果。
     u32
     i32
 }
@@ -964,10 +945,9 @@ range_incl_exact_iter_impl! {
     u8
     i8
 
-    // These are incorrect per the reasoning above,
-    // but removing them would be a breaking change as they were stabilized in Rust 1.26.0.
-    // So e.g. `(0..=u16::MAX).len()` for example will compile without error or warnings
-    // on 16-bit platforms, but continue to give a wrong result.
+    // 按照上面的推理，这些实现并不正确；但它们已在 Rust 1.26.0 稳定，移除会造成
+    // 破坏性变更。因此例如 `(0..=u16::MAX).len()` 在 16 位平台上仍会无错误、无警告
+    // 地编译，但继续给出错误结果。
     u16
     i16
 }
@@ -990,25 +970,22 @@ impl<A: Step> DoubleEndedIterator for ops::Range<A> {
     }
 }
 
-// Safety:
-// The following invariants for `Step::steps_between` exist:
+// SAFETY:
+// `Step::steps_between` 具有以下不变量:
 //
-// > * `steps_between(&a, &b) == (n, Some(n))` only if `a <= b`
-// >   * Note that `a <= b` does _not_ imply `steps_between(&a, &b) != (n, None)`;
-// >     this is the case when it would require more than `usize::MAX` steps to
-// >     get to `b`
-// > * `steps_between(&a, &b) == (0, None)` if `a > b`
+// > * `steps_between(&a, &b) == (n, Some(n))` 仅当 `a <= b`
+// >   * 注意，`a <= b` 并不推出 `steps_between(&a, &b) != (n, None)`；
+// >     如果到达 `b` 需要超过 `usize::MAX` 步，就会出现这种情况。
+// > * 如果 `a > b`，则 `steps_between(&a, &b) == (0, None)`
 //
-// The first invariant is what is generally required for `TrustedLen` to be
-// sound. The note addendum satisfies an additional `TrustedLen` invariant.
+// 第一个不变量是 `TrustedLen` sound 通常所需的条件。附加说明满足了 `TrustedLen`
+// 的另一条不变量。
 //
-// > The upper bound must only be `None` if the actual iterator length is larger
-// > than `usize::MAX`
+// > 只有当实际迭代器长度大于 `usize::MAX` 时，上界才允许为 `None`。
 //
-// The second invariant logically follows the first so long as the `PartialOrd`
-// implementation is correct; regardless it is explicitly stated. If `a < b`
-// then `(0, Some(0))` is returned by `ops::Range<A: Step>::size_hint`. As such
-// the second invariant is upheld.
+// 只要 `PartialOrd` 实现正确，第二个不变量在逻辑上可由第一个推出；无论如何这里都
+// 明确写出。如果 `a < b`，`ops::Range<A: Step>::size_hint` 会返回 `(0, Some(0))`。
+// 因此第二个不变量也被维护。
 #[unstable(feature = "trusted_len", issue = "37572")]
 unsafe impl<A: TrustedStep> TrustedLen for ops::Range<A> {}
 
@@ -1038,7 +1015,7 @@ impl<A: Step> Iterator for ops::RangeFrom<A> {
     }
 }
 
-// Safety: See above implementation for `ops::Range<A>`
+// SAFETY: 见上面对 `ops::Range<A>` 的实现。
 #[unstable(feature = "trusted_len", issue = "37572")]
 unsafe impl<A: TrustedStep> TrustedLen for ops::RangeFrom<A> {}
 
@@ -1048,7 +1025,7 @@ impl<A: Step> FusedIterator for ops::RangeFrom<A> {}
 trait RangeInclusiveIteratorImpl {
     type Item;
 
-    // Iterator
+    // Iterator 相关方法
     fn spec_next(&mut self) -> Option<Self::Item>;
     fn spec_try_fold<B, F, R>(&mut self, init: B, f: F) -> R
     where
@@ -1056,7 +1033,7 @@ trait RangeInclusiveIteratorImpl {
         F: FnMut(B, Self::Item) -> R,
         R: Try<Output = B>;
 
-    // DoubleEndedIterator
+    // DoubleEndedIterator 相关方法
     fn spec_next_back(&mut self) -> Option<Self::Item>;
     fn spec_try_rfold<B, F, R>(&mut self, init: B, f: F) -> R
     where
@@ -1167,7 +1144,7 @@ impl<T: TrustedStep> RangeInclusiveIteratorImpl for ops::RangeInclusive<T> {
         }
         let is_iterating = self.start < self.end;
         Some(if is_iterating {
-            // SAFETY: just checked precondition
+            // SAFETY: 刚刚检查了前置条件。
             let n = unsafe { Step::forward_unchecked(self.start, 1) };
             mem::replace(&mut self.start, n)
         } else {
@@ -1190,7 +1167,7 @@ impl<T: TrustedStep> RangeInclusiveIteratorImpl for ops::RangeInclusive<T> {
         let mut accum = init;
 
         while self.start < self.end {
-            // SAFETY: just checked precondition
+            // SAFETY: 刚刚检查了前置条件。
             let n = unsafe { Step::forward_unchecked(self.start, 1) };
             let n = mem::replace(&mut self.start, n);
             accum = f(accum, n)?;
@@ -1212,7 +1189,7 @@ impl<T: TrustedStep> RangeInclusiveIteratorImpl for ops::RangeInclusive<T> {
         }
         let is_iterating = self.start < self.end;
         Some(if is_iterating {
-            // SAFETY: just checked precondition
+            // SAFETY: 刚刚检查了前置条件。
             let n = unsafe { Step::backward_unchecked(self.end, 1) };
             mem::replace(&mut self.end, n)
         } else {
@@ -1235,7 +1212,7 @@ impl<T: TrustedStep> RangeInclusiveIteratorImpl for ops::RangeInclusive<T> {
         let mut accum = init;
 
         while self.start < self.end {
-            // SAFETY: just checked precondition
+            // SAFETY: 刚刚检查了前置条件。
             let n = unsafe { Step::backward_unchecked(self.end, 1) };
             let n = mem::replace(&mut self.end, n);
             accum = f(accum, n)?;
@@ -1397,7 +1374,7 @@ impl<A: Step> DoubleEndedIterator for ops::RangeInclusive<A> {
     impl_fold_via_try_fold! { rfold -> try_rfold }
 }
 
-// Safety: See above implementation for `ops::Range<A>`
+// SAFETY: 见上面对 `ops::Range<A>` 的实现。
 #[unstable(feature = "trusted_len", issue = "37572")]
 unsafe impl<A: TrustedStep> TrustedLen for ops::RangeInclusive<A> {}
 

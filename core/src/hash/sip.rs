@@ -1,16 +1,17 @@
-//! An implementation of SipHash.
+//! SipHash 的实现。
 
-#![allow(deprecated)] // the types in this module are deprecated
+#![allow(deprecated)] // 本模块中的类型已经弃用
 
 use crate::marker::PhantomData;
 use crate::{cmp, ptr};
 
-/// An implementation of SipHash 1-3.
+/// SipHash 1-3 的实现。
 ///
-/// This is currently the default hashing function used by standard library
-/// (e.g., `collections::HashMap` uses it by default).
+/// 这是标准库当前使用的默认哈希函数之一，例如 `collections::HashMap` 默认会通过
+/// `DefaultHasher` 使用它。`SipHasher13` 使用较少的压缩轮数，在性能和抗 Hash-DoS
+/// 能力之间做了标准库内部使用所需的折中。
 ///
-/// See: <https://github.com/veorq/SipHash>
+/// 参见：<https://github.com/veorq/SipHash>
 #[unstable(feature = "hashmap_internals", issue = "none")]
 #[deprecated(since = "1.13.0", note = "use `std::hash::DefaultHasher` instead")]
 #[derive(Debug, Clone, Default)]
@@ -19,9 +20,9 @@ pub struct SipHasher13 {
     hasher: Hasher<Sip13Rounds>,
 }
 
-/// An implementation of SipHash 2-4.
+/// SipHash 2-4 的实现。
 ///
-/// See: <https://github.com/veorq/SipHash>
+/// 参见：<https://github.com/veorq/SipHash>
 #[unstable(feature = "hashmap_internals", issue = "none")]
 #[deprecated(since = "1.13.0", note = "use `std::hash::DefaultHasher` instead")]
 #[derive(Debug, Clone, Default)]
@@ -29,18 +30,18 @@ struct SipHasher24 {
     hasher: Hasher<Sip24Rounds>,
 }
 
-/// An implementation of SipHash 2-4.
+/// SipHash 2-4 的实现。
 ///
-/// See: <https://github.com/veorq/SipHash>
+/// 参见：<https://github.com/veorq/SipHash>
 ///
-/// SipHash is a general-purpose hashing function: it runs at a good
-/// speed (competitive with Spooky and City) and permits strong _keyed_
-/// hashing. This lets you key your hash tables from a strong RNG, such as
-/// [`rand::os::OsRng`](https://docs.rs/rand/latest/rand/rngs/struct.OsRng.html).
+/// SipHash 是通用哈希函数：它有不错的运行速度，可以和 Spooky、City 这类哈希算法竞争，
+/// 同时支持强 _keyed_ hashing。keyed hashing 意味着同一输入在不同密钥下会得到不同输出，
+/// 因而哈希表可以从强随机数生成器，例如
+/// [`rand::os::OsRng`](https://docs.rs/rand/latest/rand/rngs/struct.OsRng.html)，
+/// 取得密钥，降低攻击者提前构造大量碰撞键的可行性。
 ///
-/// Although the SipHash algorithm is considered to be generally strong,
-/// it is not intended for cryptographic purposes. As such, all
-/// cryptographic uses of this implementation are _strongly discouraged_.
+/// 虽然 SipHash 通常被认为强度较好，但这个实现面向哈希表防碰撞和通用 keyed hashing，
+/// 并不以密码学用途为目标。因此，_强烈不建议_ 把此实现用于任何密码学场景。
 #[stable(feature = "rust1", since = "1.0.0")]
 #[deprecated(since = "1.13.0", note = "use `std::hash::DefaultHasher` instead")]
 #[derive(Debug, Clone, Default)]
@@ -50,20 +51,19 @@ pub struct SipHasher(SipHasher24);
 struct Hasher<S: Sip> {
     k0: u64,
     k1: u64,
-    length: usize, // how many bytes we've processed
-    state: State,  // hash State
-    tail: u64,     // unprocessed bytes le
-    ntail: usize,  // how many bytes in tail are valid
+    length: usize, // 已处理的字节数
+    state: State,  // hash 的 `State`
+    tail: u64,     // 尚未处理的尾部字节，按小端(little-endian)组装
+    ntail: usize,  // `tail` 中有效字节的数量
     _marker: PhantomData<S>,
 }
 
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
 struct State {
-    // v0, v2 and v1, v3 show up in pairs in the algorithm,
-    // and simd implementations of SipHash will use vectors
-    // of v02 and v13. By placing them in this order in the struct,
-    // the compiler can pick up on just a few simd optimizations by itself.
+    // 在 SipHash 算法中，v0/v2 与 v1/v3 会成对出现；SipHash 的 simd 实现也会使用
+    // v02 和 v13 这样的向量。把字段按这个顺序放在结构体里，编译器可以自行识别出少量
+    // simd 优化机会。
     v0: u64,
     v2: u64,
     v1: u64,
@@ -91,12 +91,14 @@ macro_rules! compress {
     }};
 }
 
-/// Loads an integer of the desired type from a byte stream, in LE order. Uses
-/// `copy_nonoverlapping` to let the compiler generate the most efficient way
-/// to load it from a possibly unaligned address.
+/// 从字节流中按小端(little-endian)顺序加载指定整数类型。这里使用 `copy_nonoverlapping`，
+/// 让编译器为可能未对齐的地址生成高效加载代码，而不是把未对齐指针直接转成整数指针。
 ///
-/// Safety: this performs unchecked indexing of `$buf` at
-/// `$i..$i+size_of::<$int_ty>()`, so that must be in-bounds.
+/// # 安全性(Safety）
+///
+/// 此宏会对 `$buf` 的 `$i..$i+size_of::<$int_ty>()` 范围执行未检查索引，因此调用方必须
+/// 保证该范围完全位于 `$buf` 之内。目标整数是局部变量，写入目标的字节数正好等于该类型
+/// 大小，因此额外要求集中在源切片边界，而不是对齐。
 macro_rules! load_int_le {
     ($buf:expr, $i:expr, $int_ty:ident) => {{
         debug_assert!($i + size_of::<$int_ty>() <= $buf.len());
@@ -110,40 +112,42 @@ macro_rules! load_int_le {
     }};
 }
 
-/// Loads a u64 using up to 7 bytes of a byte slice. It looks clumsy but the
-/// `copy_nonoverlapping` calls that occur (via `load_int_le!`) all have fixed
-/// sizes and avoid calling `memcpy`, which is good for speed.
+/// 使用字节切片中最多 7 个字节加载一个 `u64`。写法看起来笨重，但经由 `load_int_le!`
+/// 产生的 `copy_nonoverlapping` 调用大小都是固定的，可以避免调用 `memcpy`，对性能更有利。
 ///
-/// Safety: this performs unchecked indexing of `buf` at `start..start+len`, so
-/// that must be in-bounds.
+/// # 安全性(Safety）
+///
+/// 此函数会对 `buf` 的 `start..start+len` 范围执行未检查索引，因此调用方必须保证该范围
+/// 完全位于 `buf` 之内。`len` 还必须小于 8；函数体用 `debug_assert!` 检查这一点，但
+/// unsafe 前置条件不能只依赖调试断言。
 #[inline]
 unsafe fn u8to64_le(buf: &[u8], start: usize, len: usize) -> u64 {
     debug_assert!(len < 8);
-    let mut i = 0; // current byte index (from LSB) in the output u64
+    let mut i = 0; // 输出 `u64` 中当前字节索引，从低位字节开始
     let mut out = 0;
     if i + 3 < len {
-        // SAFETY: `i` cannot be greater than `len`, and the caller must guarantee
-        // that the index start..start+len is in bounds.
+        // SAFETY: `i` 不可能大于 `len`，并且调用方必须保证索引范围
+        // `start..start+len` 在边界内。
         out = unsafe { load_int_le!(buf, start + i, u32) } as u64;
         i += 4;
     }
     if i + 1 < len {
-        // SAFETY: same as above.
+        // SAFETY: 理由同上。
         out |= (unsafe { load_int_le!(buf, start + i, u16) } as u64) << (i * 8);
         i += 2
     }
     if i < len {
-        // SAFETY: same as above.
+        // SAFETY: 理由同上。
         out |= (unsafe { *buf.get_unchecked(start + i) } as u64) << (i * 8);
         i += 1;
     }
-    //FIXME(fee1-dead): use debug_assert_eq
+    //FIXME(fee1-dead): 使用 debug_assert_eq
     debug_assert!(i == len);
     out
 }
 
 impl SipHasher {
-    /// Creates a new `SipHasher` with the two initial keys set to 0.
+    /// 创建新的 `SipHasher`，两个初始密钥都设为 0。
     #[inline]
     #[stable(feature = "rust1", since = "1.0.0")]
     #[deprecated(since = "1.13.0", note = "use `std::hash::DefaultHasher` instead")]
@@ -152,7 +156,7 @@ impl SipHasher {
         SipHasher::new_with_keys(0, 0)
     }
 
-    /// Creates a `SipHasher` that is keyed off the provided keys.
+    /// 创建使用给定密钥的 `SipHasher`。
     #[inline]
     #[stable(feature = "rust1", since = "1.0.0")]
     #[deprecated(since = "1.13.0", note = "use `std::hash::DefaultHasher` instead")]
@@ -163,7 +167,7 @@ impl SipHasher {
 }
 
 impl SipHasher13 {
-    /// Creates a new `SipHasher13` with the two initial keys set to 0.
+    /// 创建新的 `SipHasher13`，两个初始密钥都设为 0。
     #[inline]
     #[unstable(feature = "hashmap_internals", issue = "none")]
     #[rustc_const_unstable(feature = "const_default", issue = "143894")]
@@ -172,7 +176,7 @@ impl SipHasher13 {
         SipHasher13::new_with_keys(0, 0)
     }
 
-    /// Creates a `SipHasher13` that is keyed off the provided keys.
+    /// 创建使用给定密钥的 `SipHasher13`。
     #[inline]
     #[unstable(feature = "hashmap_internals", issue = "none")]
     #[rustc_const_unstable(feature = "const_default", issue = "143894")]
@@ -246,13 +250,11 @@ impl super::Hasher for SipHasher13 {
 }
 
 impl<S: Sip> super::Hasher for Hasher<S> {
-    // Note: no integer hashing methods (`write_u*`, `write_i*`) are defined
-    // for this type. We could add them, copy the `short_write` implementation
-    // in librustc_data_structures/sip128.rs, and add `write_u*`/`write_i*`
-    // methods to `SipHasher`, `SipHasher13`, and `DefaultHasher`. This would
-    // greatly speed up integer hashing by those hashers, at the cost of
-    // slightly slowing down compile speeds on some benchmarks. See #69152 for
-    // details.
+    // 注意：此类型没有定义整数专用哈希方法(`write_u*`、`write_i*`)。可以添加这些方法，
+    // 复制 librustc_data_structures/sip128.rs 中的 `short_write` 实现，并为
+    // `SipHasher`、`SipHasher13` 和 `DefaultHasher` 添加 `write_u*`/`write_i*` 方法。
+    // 这样会显著加快这些 hasher 的整数哈希速度，但代价是在某些基准测试中略微拖慢编译速度。
+    // 细节见 #69152。
     #[inline]
     fn write(&mut self, msg: &[u8]) {
         let length = msg.len();
@@ -262,7 +264,7 @@ impl<S: Sip> super::Hasher for Hasher<S> {
 
         if self.ntail != 0 {
             needed = 8 - self.ntail;
-            // SAFETY: `cmp::min(length, needed)` is guaranteed to not be over `length`
+            // SAFETY: `cmp::min(length, needed)` 保证不会超过 `length`。
             self.tail |= unsafe { u8to64_le(msg, 0, cmp::min(length, needed)) } << (8 * self.ntail);
             if length < needed {
                 self.ntail += length;
@@ -275,15 +277,14 @@ impl<S: Sip> super::Hasher for Hasher<S> {
             }
         }
 
-        // Buffered tail is now flushed, process new input.
+        // 已缓冲的尾部现在已经刷新，开始处理新的输入。
         let len = length - needed;
         let left = len & 0x7; // len % 8
 
         let mut i = needed;
         while i < len - left {
-            // SAFETY: because `len - left` is the biggest multiple of 8 under
-            // `len`, and because `i` starts at `needed` where `len` is `length - needed`,
-            // `i + 8` is guaranteed to be less than or equal to `length`.
+            // SAFETY: `len - left` 是不超过 `len` 的最大 8 的倍数；`i` 从 `needed` 开始，
+            // 且 `len` 等于 `length - needed`，因此 `i + 8` 保证小于等于 `length`。
             let mi = unsafe { load_int_le!(msg, i, u64) };
 
             self.state.v3 ^= mi;
@@ -293,17 +294,16 @@ impl<S: Sip> super::Hasher for Hasher<S> {
             i += 8;
         }
 
-        // SAFETY: `i` is now `needed + len.div_euclid(8) * 8`,
-        // so `i + left` = `needed + len` = `length`, which is by
-        // definition equal to `msg.len()`.
+        // SAFETY: 此时 `i` 等于 `needed + len.div_euclid(8) * 8`，所以
+        // `i + left` = `needed + len` = `length`，而 `length` 按定义等于 `msg.len()`。
         self.tail = unsafe { u8to64_le(msg, i, left) };
         self.ntail = left;
     }
 
     #[inline]
     fn write_str(&mut self, s: &str) {
-        // This hasher works byte-wise, and `0xFF` cannot show up in a `str`,
-        // so just hashing the one extra byte is enough to be prefix-free.
+        // 此 hasher 按字节工作，而 `str` 中不会出现 `0xFF`，因此只额外写入这个字节就足以
+        // 维持 prefix-free。
         self.write(s.as_bytes());
         self.write_u8(0xFF);
     }
@@ -342,7 +342,7 @@ impl<S: Sip> Clone for Hasher<S> {
 
 #[rustc_const_unstable(feature = "const_default", issue = "143894")]
 impl<S: Sip> const Default for Hasher<S> {
-    /// Creates a `Hasher<S>` with the two initial keys set to 0.
+    /// 创建 `Hasher<S>`，两个初始密钥都设为 0。
     #[inline]
     fn default() -> Hasher<S> {
         Hasher::new_with_keys(0, 0)

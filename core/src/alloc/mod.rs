@@ -1,4 +1,4 @@
-//! Memory allocation APIs
+//! 内存分配 API
 
 #![stable(feature = "alloc_module", since = "1.28.0")]
 
@@ -23,10 +23,8 @@ use crate::error::Error;
 use crate::fmt;
 use crate::ptr::{self, NonNull};
 
-/// The `AllocError` error indicates an allocation failure
-/// that may be due to resource exhaustion or to
-/// something wrong when combining the given input arguments with this
-/// allocator.
+/// `AllocError` 错误表示分配失败；失败原因可能是资源耗尽，
+/// 也可能是给定输入参数与此 allocator 的组合存在问题。
 #[unstable(feature = "allocator_api", issue = "32838")]
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub struct AllocError;
@@ -38,7 +36,7 @@ pub struct AllocError;
 )]
 impl Error for AllocError {}
 
-// (we need this for downstream impl of trait Error)
+// （下游的 trait Error impl 需要这个）
 #[unstable(feature = "allocator_api", issue = "32838")]
 impl fmt::Display for AllocError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -46,161 +44,146 @@ impl fmt::Display for AllocError {
     }
 }
 
-/// An implementation of `Allocator` can allocate, grow, shrink, and deallocate arbitrary blocks of
-/// data described via [`Layout`][].
+/// `Allocator` 的实现可以分配、扩展、收缩和释放由 [`Layout`][] 描述的任意数据块。
 ///
-/// `Allocator` is designed to be implemented on ZSTs, references, or smart pointers.
-/// An allocator for `MyAlloc([u8; N])` cannot be moved, without updating the pointers to the
-/// allocated memory.
+/// `Allocator` 设计为可在 ZST、引用或智能指针上实现。
+/// `MyAlloc([u8; N])` 这类 allocator 不能在不更新已分配内存指针的情况下被移动。
 ///
-/// In contrast to [`GlobalAlloc`][], `Allocator` allows zero-sized allocations. If an underlying
-/// allocator does not support this (like jemalloc) or responds by returning a null pointer
-/// (such as `libc::malloc`), this must be caught by the implementation.
+/// 与 [`GlobalAlloc`][] 不同，`Allocator` 允许零大小分配。如果底层 allocator
+/// 不支持零大小分配（如 jemalloc），或通过返回空指针响应（如 `libc::malloc`），
+/// 实现必须捕获并处理这种情况。
 ///
-/// ### Currently allocated memory
+/// ### 当前已分配的内存 {#currently-allocated-memory}
 ///
-/// Some of the methods require that a memory block is *currently allocated* by an allocator.
-/// This means that:
-///  * the starting address for that memory block was previously
-///    returned by [`allocate`], [`grow`], or [`shrink`], and
-///  * the memory block has not subsequently been deallocated.
+/// 某些方法要求内存块由 allocator *当前分配*。这意味着：
+///  * 该内存块的起始地址先前由 [`allocate`]、[`grow`] 或 [`shrink`] 返回，并且
+///  * 该内存块随后尚未被释放。
 ///
-/// A memory block is deallocated by a call to [`deallocate`],
-/// or by a call to [`grow`] or [`shrink`] that returns `Ok`.
-/// A call to `grow` or `shrink` that returns `Err`,
-/// does not deallocate the memory block passed to it.
+/// 调用 [`deallocate`] 会释放内存块；调用 [`grow`] 或 [`shrink`] 且返回 `Ok`
+/// 也会释放原内存块。返回 `Err` 的 `grow` 或 `shrink` 调用不会释放传入的内存块。
 ///
 /// [`allocate`]: Allocator::allocate
 /// [`grow`]: Allocator::grow
 /// [`shrink`]: Allocator::shrink
 /// [`deallocate`]: Allocator::deallocate
 ///
-/// ### Memory fitting
+/// ### 内存匹配 {#memory-fitting}
 ///
-/// Some of the methods require that a `layout` *fit* a memory block or vice versa. This means that the
-/// following conditions must hold:
-///  * the memory block must be *currently allocated* with alignment of [`layout.align()`], and
-///  * [`layout.size()`] must fall in the range `min ..= max`, where:
-///    - `min` is the size of the layout used to allocate the block, and
-///    - `max` is the actual size returned from [`allocate`], [`grow`], or [`shrink`].
+/// 某些方法要求 `layout` 与内存块*匹配*，或反过来要求内存块与 `layout` 匹配。
+/// 这表示必须满足以下条件：
+///  * 内存块必须以 [`layout.align()`] 的对齐值*当前分配*，并且
+///  * [`layout.size()`] 必须落在 `min ..= max` 范围内，其中：
+///    - `min` 是用于分配该块的 layout 的大小，
+///    - `max` 是 [`allocate`]、[`grow`] 或 [`shrink`] 返回的实际大小。
 ///
 /// [`layout.align()`]: Layout::align
 /// [`layout.size()`]: Layout::size
 ///
-/// # Safety
+/// # 安全性(Safety）
 ///
-/// Memory blocks that are [*currently allocated*] by an allocator,
-/// must point to valid memory, and retain their validity until either:
-///  - the memory block is deallocated, or
-///  - the allocator is dropped.
+/// allocator [*当前分配*]的内存块必须指向有效内存，并且在以下任一事件发生前保持有效：
+///  - 该内存块被释放，或
+///  - 该 allocator 被 drop。
 ///
-/// Copying, cloning, or moving the allocator must not invalidate memory blocks returned from it.
-/// A copied or cloned allocator must behave like the original allocator.
+/// 复制、克隆或移动 allocator 不得使它返回过的内存块失效。
+/// 复制或克隆出的 allocator 必须表现得像原 allocator 一样。
 ///
-/// A memory block which is [*currently allocated*] may be passed to
-/// any method of the allocator that accepts such an argument.
+/// [*当前分配*]的内存块可以传给该 allocator 中任何接受此类参数的方法。
 ///
-/// [*currently allocated*]: #currently-allocated-memory
+/// [*当前分配*]: #currently-allocated-memory
 #[unstable(feature = "allocator_api", issue = "32838")]
 #[rustc_const_unstable(feature = "const_heap", issue = "79597")]
 pub const unsafe trait Allocator {
-    /// Attempts to allocate a block of memory.
+    /// 尝试分配一块内存。
     ///
-    /// On success, returns a [`NonNull<[u8]>`][NonNull] meeting the size and alignment guarantees of `layout`.
+    /// 成功时返回满足 `layout` 大小和对齐保证的 [`NonNull<[u8]>`][NonNull]。
     ///
-    /// The returned block may have a larger size than specified by `layout.size()`, and may or may
-    /// not have its contents initialized.
+    /// 返回的内存块大小可能大于 `layout.size()` 指定的大小，其内容可能已初始化，也可能未初始化。
     ///
-    /// The returned block of memory remains valid as long as it is [*currently allocated*] and the shorter of:
-    ///   - the borrow-checker lifetime of the allocator type itself.
-    ///   - as long as the allocator and all its clones have not been dropped.
+    /// 返回的内存块只要仍[*当前分配*]，且未超过以下两者中较短者，就保持有效：
+    ///   - allocator 类型自身的 borrow-checker 生命周期。
+    ///   - allocator 及其所有 clone 尚未被 drop 的时间。
     ///
-    /// [*currently allocated*]: #currently-allocated-memory
+    /// [*当前分配*]: #currently-allocated-memory
     ///
-    /// # Errors
+    /// # 错误
     ///
-    /// Returning `Err` indicates that either memory is exhausted or `layout` does not meet
-    /// allocator's size or alignment constraints.
+    /// 返回 `Err` 表示内存耗尽，或 `layout` 不满足 allocator 的大小或对齐约束。
     ///
-    /// Implementations are encouraged to return `Err` on memory exhaustion rather than panicking or
-    /// aborting, but this is not a strict requirement. (Specifically: it is *legal* to implement
-    /// this trait atop an underlying native allocation library that aborts on memory exhaustion.)
+    /// 鼓励实现方在内存耗尽时返回 `Err`，而不是 panic 或 abort，但这不是严格要求。
+    /// （具体而言，在内存耗尽时会 abort 的底层原生分配库之上实现此 trait 是*合法的*。）
     ///
-    /// Clients wishing to abort computation in response to an allocation error are encouraged to
-    /// call the [`handle_alloc_error`] function, rather than directly invoking `panic!` or similar.
+    /// 希望在分配错误时终止计算的客户端应调用 [`handle_alloc_error`] 函数，
+    /// 而不是直接调用 `panic!` 或类似机制。
     ///
     /// [`handle_alloc_error`]: ../../alloc/alloc/fn.handle_alloc_error.html
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError>;
 
-    /// Behaves like `allocate`, but also ensures that the returned memory is zero-initialized.
+    /// 行为类似 `allocate`，但还会确保返回的内存被零初始化。
     ///
-    /// # Errors
+    /// # 错误
     ///
-    /// Returning `Err` indicates that either memory is exhausted or `layout` does not meet
-    /// allocator's size or alignment constraints.
+    /// 返回 `Err` 表示内存耗尽，或 `layout` 不满足 allocator 的大小或对齐约束。
     ///
-    /// Implementations are encouraged to return `Err` on memory exhaustion rather than panicking or
-    /// aborting, but this is not a strict requirement. (Specifically: it is *legal* to implement
-    /// this trait atop an underlying native allocation library that aborts on memory exhaustion.)
+    /// 鼓励实现方在内存耗尽时返回 `Err`，而不是 panic 或 abort，但这不是严格要求。
+    /// （具体而言，在内存耗尽时会 abort 的底层原生分配库之上实现此 trait 是*合法的*。）
     ///
-    /// Clients wishing to abort computation in response to an allocation error are encouraged to
-    /// call the [`handle_alloc_error`] function, rather than directly invoking `panic!` or similar.
+    /// 希望在分配错误时终止计算的客户端应调用 [`handle_alloc_error`] 函数，
+    /// 而不是直接调用 `panic!` 或类似机制。
     ///
     /// [`handle_alloc_error`]: ../../alloc/alloc/fn.handle_alloc_error.html
     fn allocate_zeroed(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
         let ptr = self.allocate(layout)?;
-        // SAFETY: `alloc` returns a valid memory block
+        // SAFETY: `allocate` 返回的内存块对 `ptr.len()` 个字节写入有效。
         unsafe { ptr.as_non_null_ptr().as_ptr().write_bytes(0, ptr.len()) }
         Ok(ptr)
     }
 
-    /// Deallocates the memory referenced by `ptr`.
+    /// 释放 `ptr` 引用的内存。
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// * `ptr` must denote a block of memory [*currently allocated*] via this allocator, and
-    /// * `layout` must [*fit*] that block of memory.
+    /// * `ptr` 必须表示通过此 allocator [*当前分配*]的一块内存，并且
+    /// * `layout` 必须与该内存块[*匹配*]。
     ///
-    /// [*currently allocated*]: #currently-allocated-memory
-    /// [*fit*]: #memory-fitting
+    /// [*当前分配*]: #currently-allocated-memory
+    /// [*匹配*]: #memory-fitting
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout);
 
-    /// Attempts to extend the memory block.
+    /// 尝试扩展内存块。
     ///
-    /// Returns a new [`NonNull<[u8]>`][NonNull] containing a pointer and the actual size of the allocated
-    /// memory. The pointer is suitable for holding data described by `new_layout`. To accomplish
-    /// this, the allocator may extend the allocation referenced by `ptr` to fit the new layout.
+    /// 返回新的 [`NonNull<[u8]>`][NonNull]，其中包含指针和已分配内存的实际大小。
+    /// 该指针适合保存 `new_layout` 描述的数据。为此，allocator 可以扩展 `ptr`
+    /// 引用的分配，使其匹配新 layout。
     ///
-    /// If this returns `Ok`, then ownership of the memory block referenced by `ptr` has been
-    /// transferred to this allocator. Any access to the old `ptr` is Undefined Behavior, even if the
-    /// allocation was grown in-place. The newly returned pointer is the only valid pointer
-    /// for accessing this memory now.
+    /// 如果此方法返回 `Ok`，则 `ptr` 引用的内存块所有权已经转移给此 allocator。
+    /// 任何对旧 `ptr` 的访问都是未定义行为(Undefined Behavior)，即使该分配是在原地扩展的。
+    /// 新返回的指针现在是访问这块内存的唯一有效指针。
     ///
-    /// If this method returns `Err`, then ownership of the memory block has not been transferred to
-    /// this allocator, and the contents of the memory block are unaltered.
+    /// 如果此方法返回 `Err`，则内存块所有权没有转移给此 allocator，
+    /// 且该内存块的内容保持不变。
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// * `ptr` must denote a block of memory [*currently allocated*] via this allocator.
-    /// * `old_layout` must [*fit*] that block of memory (The `new_layout` argument need not fit it.).
-    /// * `new_layout.size()` must be greater than or equal to `old_layout.size()`.
+    /// * `ptr` 必须表示通过此 allocator [*当前分配*]的一块内存。
+    /// * `old_layout` 必须与该内存块[*匹配*]（`new_layout` 参数不需要匹配它）。
+    /// * `new_layout.size()` 必须大于或等于 `old_layout.size()`。
     ///
-    /// Note that `new_layout.align()` need not be the same as `old_layout.align()`.
+    /// 注意，`new_layout.align()` 不必与 `old_layout.align()` 相同。
     ///
-    /// [*currently allocated*]: #currently-allocated-memory
-    /// [*fit*]: #memory-fitting
+    /// [*当前分配*]: #currently-allocated-memory
+    /// [*匹配*]: #memory-fitting
     ///
-    /// # Errors
+    /// # 错误
     ///
-    /// Returns `Err` if the new layout does not meet the allocator's size and alignment
-    /// constraints of the allocator, or if growing otherwise fails.
+    /// 如果新 layout 不满足 allocator 的大小和对齐约束，或扩展因其他原因失败，
+    /// 则返回 `Err`。
     ///
-    /// Implementations are encouraged to return `Err` on memory exhaustion rather than panicking or
-    /// aborting, but this is not a strict requirement. (Specifically: it is *legal* to implement
-    /// this trait atop an underlying native allocation library that aborts on memory exhaustion.)
+    /// 鼓励实现方在内存耗尽时返回 `Err`，而不是 panic 或 abort，但这不是严格要求。
+    /// （具体而言，在内存耗尽时会 abort 的底层原生分配库之上实现此 trait 是*合法的*。）
     ///
-    /// Clients wishing to abort computation in response to an allocation error are encouraged to
-    /// call the [`handle_alloc_error`] function, rather than directly invoking `panic!` or similar.
+    /// 希望在分配错误时终止计算的客户端应调用 [`handle_alloc_error`] 函数，
+    /// 而不是直接调用 `panic!` 或类似机制。
     ///
     /// [`handle_alloc_error`]: ../../alloc/alloc/fn.handle_alloc_error.html
     unsafe fn grow(
@@ -216,11 +199,10 @@ pub const unsafe trait Allocator {
 
         let new_ptr = self.allocate(new_layout)?;
 
-        // SAFETY: because `new_layout.size()` must be greater than or equal to
-        // `old_layout.size()`, both the old and new memory allocation are valid for reads and
-        // writes for `old_layout.size()` bytes. Also, because the old allocation wasn't yet
-        // deallocated, it cannot overlap `new_ptr`. Thus, the call to `copy_nonoverlapping` is
-        // safe. The safety contract for `dealloc` must be upheld by the caller.
+        // SAFETY: 因为 `new_layout.size()` 必须大于或等于 `old_layout.size()`，
+        // 所以旧分配和新分配都可对 `old_layout.size()` 个字节进行读写。
+        // 另外，旧分配尚未释放，因此不能与 `new_ptr` 重叠。所以调用
+        // `copy_nonoverlapping` 是安全的。`deallocate` 的安全契约由调用者保证。
         unsafe {
             ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_mut_ptr(), old_layout.size());
             self.deallocate(ptr, old_layout);
@@ -229,41 +211,35 @@ pub const unsafe trait Allocator {
         Ok(new_ptr)
     }
 
-    /// Behaves like `grow`, but also ensures that the new contents are set to zero before being
-    /// returned.
+    /// 行为类似 `grow`，但还会确保返回前新内容被设置为零。
     ///
-    /// The memory block will contain the following contents after a successful call to
-    /// `grow_zeroed`:
-    ///   * Bytes `0..old_layout.size()` are preserved from the original allocation.
-    ///   * Bytes `old_layout.size()..old_size` will either be preserved or zeroed, depending on
-    ///     the allocator implementation. `old_size` refers to the size of the memory block prior
-    ///     to the `grow_zeroed` call, which may be larger than the size that was originally
-    ///     requested when it was allocated.
-    ///   * Bytes `old_size..new_size` are zeroed. `new_size` refers to the size of the memory
-    ///     block returned by the `grow_zeroed` call.
+    /// 成功调用 `grow_zeroed` 后，内存块将包含以下内容：
+    ///   * 字节 `0..old_layout.size()` 从原分配中保留。
+    ///   * 字节 `old_layout.size()..old_size` 会被保留或置零，取决于 allocator 实现。
+    ///     `old_size` 指 `grow_zeroed` 调用前内存块的大小，它可能大于分配时最初请求的大小。
+    ///   * 字节 `old_size..new_size` 被置零。`new_size` 指 `grow_zeroed` 调用返回的内存块大小。
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// * `ptr` must denote a block of memory [*currently allocated*] via this allocator.
-    /// * `old_layout` must [*fit*] that block of memory (The `new_layout` argument need not fit it.).
-    /// * `new_layout.size()` must be greater than or equal to `old_layout.size()`.
+    /// * `ptr` 必须表示通过此 allocator [*当前分配*]的一块内存。
+    /// * `old_layout` 必须与该内存块[*匹配*]（`new_layout` 参数不需要匹配它）。
+    /// * `new_layout.size()` 必须大于或等于 `old_layout.size()`。
     ///
-    /// Note that `new_layout.align()` need not be the same as `old_layout.align()`.
+    /// 注意，`new_layout.align()` 不必与 `old_layout.align()` 相同。
     ///
-    /// [*currently allocated*]: #currently-allocated-memory
-    /// [*fit*]: #memory-fitting
+    /// [*当前分配*]: #currently-allocated-memory
+    /// [*匹配*]: #memory-fitting
     ///
-    /// # Errors
+    /// # 错误
     ///
-    /// Returns `Err` if the new layout does not meet the allocator's size and alignment
-    /// constraints of the allocator, or if growing otherwise fails.
+    /// 如果新 layout 不满足 allocator 的大小和对齐约束，或扩展因其他原因失败，
+    /// 则返回 `Err`。
     ///
-    /// Implementations are encouraged to return `Err` on memory exhaustion rather than panicking or
-    /// aborting, but this is not a strict requirement. (Specifically: it is *legal* to implement
-    /// this trait atop an underlying native allocation library that aborts on memory exhaustion.)
+    /// 鼓励实现方在内存耗尽时返回 `Err`，而不是 panic 或 abort，但这不是严格要求。
+    /// （具体而言，在内存耗尽时会 abort 的底层原生分配库之上实现此 trait 是*合法的*。）
     ///
-    /// Clients wishing to abort computation in response to an allocation error are encouraged to
-    /// call the [`handle_alloc_error`] function, rather than directly invoking `panic!` or similar.
+    /// 希望在分配错误时终止计算的客户端应调用 [`handle_alloc_error`] 函数，
+    /// 而不是直接调用 `panic!` 或类似机制。
     ///
     /// [`handle_alloc_error`]: ../../alloc/alloc/fn.handle_alloc_error.html
     unsafe fn grow_zeroed(
@@ -279,11 +255,10 @@ pub const unsafe trait Allocator {
 
         let new_ptr = self.allocate_zeroed(new_layout)?;
 
-        // SAFETY: because `new_layout.size()` must be greater than or equal to
-        // `old_layout.size()`, both the old and new memory allocation are valid for reads and
-        // writes for `old_layout.size()` bytes. Also, because the old allocation wasn't yet
-        // deallocated, it cannot overlap `new_ptr`. Thus, the call to `copy_nonoverlapping` is
-        // safe. The safety contract for `dealloc` must be upheld by the caller.
+        // SAFETY: 因为 `new_layout.size()` 必须大于或等于 `old_layout.size()`，
+        // 所以旧分配和新分配都可对 `old_layout.size()` 个字节进行读写。
+        // 另外，旧分配尚未释放，因此不能与 `new_ptr` 重叠。所以调用
+        // `copy_nonoverlapping` 是安全的。`deallocate` 的安全契约由调用者保证。
         unsafe {
             ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_mut_ptr(), old_layout.size());
             self.deallocate(ptr, old_layout);
@@ -292,42 +267,40 @@ pub const unsafe trait Allocator {
         Ok(new_ptr)
     }
 
-    /// Attempts to shrink the memory block.
+    /// 尝试收缩内存块。
     ///
-    /// Returns a new [`NonNull<[u8]>`][NonNull] containing a pointer and the actual size of the allocated
-    /// memory. The pointer is suitable for holding data described by `new_layout`. To accomplish
-    /// this, the allocator may shrink the allocation referenced by `ptr` to fit the new layout.
+    /// 返回新的 [`NonNull<[u8]>`][NonNull]，其中包含指针和已分配内存的实际大小。
+    /// 该指针适合保存 `new_layout` 描述的数据。为此，allocator 可以收缩 `ptr`
+    /// 引用的分配，使其匹配新 layout。
     ///
-    /// If this returns `Ok`, then ownership of the memory block referenced by `ptr` has been
-    /// transferred to this allocator. Any access to the old `ptr` is Undefined Behavior, even if the
-    /// allocation was shrunk in-place. The newly returned pointer is the only valid pointer
-    /// for accessing this memory now.
+    /// 如果此方法返回 `Ok`，则 `ptr` 引用的内存块所有权已经转移给此 allocator。
+    /// 任何对旧 `ptr` 的访问都是未定义行为(Undefined Behavior)，即使该分配是在原地收缩的。
+    /// 新返回的指针现在是访问这块内存的唯一有效指针。
     ///
-    /// If this method returns `Err`, then ownership of the memory block has not been transferred to
-    /// this allocator, and the contents of the memory block are unaltered.
+    /// 如果此方法返回 `Err`，则内存块所有权没有转移给此 allocator，
+    /// 且该内存块的内容保持不变。
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// * `ptr` must denote a block of memory [*currently allocated*] via this allocator.
-    /// * `old_layout` must [*fit*] that block of memory (The `new_layout` argument need not fit it.).
-    /// * `new_layout.size()` must be smaller than or equal to `old_layout.size()`.
+    /// * `ptr` 必须表示通过此 allocator [*当前分配*]的一块内存。
+    /// * `old_layout` 必须与该内存块[*匹配*]（`new_layout` 参数不需要匹配它）。
+    /// * `new_layout.size()` 必须小于或等于 `old_layout.size()`。
     ///
-    /// Note that `new_layout.align()` need not be the same as `old_layout.align()`.
+    /// 注意，`new_layout.align()` 不必与 `old_layout.align()` 相同。
     ///
-    /// [*currently allocated*]: #currently-allocated-memory
-    /// [*fit*]: #memory-fitting
+    /// [*当前分配*]: #currently-allocated-memory
+    /// [*匹配*]: #memory-fitting
     ///
-    /// # Errors
+    /// # 错误
     ///
-    /// Returns `Err` if the new layout does not meet the allocator's size and alignment
-    /// constraints of the allocator, or if shrinking otherwise fails.
+    /// 如果新 layout 不满足 allocator 的大小和对齐约束，或收缩因其他原因失败，
+    /// 则返回 `Err`。
     ///
-    /// Implementations are encouraged to return `Err` on memory exhaustion rather than panicking or
-    /// aborting, but this is not a strict requirement. (Specifically: it is *legal* to implement
-    /// this trait atop an underlying native allocation library that aborts on memory exhaustion.)
+    /// 鼓励实现方在内存耗尽时返回 `Err`，而不是 panic 或 abort，但这不是严格要求。
+    /// （具体而言，在内存耗尽时会 abort 的底层原生分配库之上实现此 trait 是*合法的*。）
     ///
-    /// Clients wishing to abort computation in response to an allocation error are encouraged to
-    /// call the [`handle_alloc_error`] function, rather than directly invoking `panic!` or similar.
+    /// 希望在分配错误时终止计算的客户端应调用 [`handle_alloc_error`] 函数，
+    /// 而不是直接调用 `panic!` 或类似机制。
     ///
     /// [`handle_alloc_error`]: ../../alloc/alloc/fn.handle_alloc_error.html
     unsafe fn shrink(
@@ -343,11 +316,10 @@ pub const unsafe trait Allocator {
 
         let new_ptr = self.allocate(new_layout)?;
 
-        // SAFETY: because `new_layout.size()` must be lower than or equal to
-        // `old_layout.size()`, both the old and new memory allocation are valid for reads and
-        // writes for `new_layout.size()` bytes. Also, because the old allocation wasn't yet
-        // deallocated, it cannot overlap `new_ptr`. Thus, the call to `copy_nonoverlapping` is
-        // safe. The safety contract for `dealloc` must be upheld by the caller.
+        // SAFETY: 因为 `new_layout.size()` 必须小于或等于 `old_layout.size()`，
+        // 所以旧分配和新分配都可对 `new_layout.size()` 个字节进行读写。
+        // 另外，旧分配尚未释放，因此不能与 `new_ptr` 重叠。所以调用
+        // `copy_nonoverlapping` 是安全的。`deallocate` 的安全契约由调用者保证。
         unsafe {
             ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_mut_ptr(), new_layout.size());
             self.deallocate(ptr, old_layout);
@@ -356,9 +328,9 @@ pub const unsafe trait Allocator {
         Ok(new_ptr)
     }
 
-    /// Creates a "by reference" adapter for this instance of `Allocator`.
+    /// 为此 `Allocator` 实例创建“按引用”适配器。
     ///
-    /// The returned adapter also implements `Allocator` and will simply borrow this.
+    /// 返回的适配器也实现 `Allocator`，并且只会借用此实例。
     #[inline(always)]
     fn by_ref(&self) -> &Self
     where
@@ -386,7 +358,7 @@ where
 
     #[inline]
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
-        // SAFETY: the safety contract must be upheld by the caller
+        // SAFETY: 安全契约必须由调用者保证。
         unsafe { (**self).deallocate(ptr, layout) }
     }
 
@@ -397,7 +369,7 @@ where
         old_layout: Layout,
         new_layout: Layout,
     ) -> Result<NonNull<[u8]>, AllocError> {
-        // SAFETY: the safety contract must be upheld by the caller
+        // SAFETY: 安全契约必须由调用者保证。
         unsafe { (**self).grow(ptr, old_layout, new_layout) }
     }
 
@@ -408,7 +380,7 @@ where
         old_layout: Layout,
         new_layout: Layout,
     ) -> Result<NonNull<[u8]>, AllocError> {
-        // SAFETY: the safety contract must be upheld by the caller
+        // SAFETY: 安全契约必须由调用者保证。
         unsafe { (**self).grow_zeroed(ptr, old_layout, new_layout) }
     }
 
@@ -419,7 +391,7 @@ where
         old_layout: Layout,
         new_layout: Layout,
     ) -> Result<NonNull<[u8]>, AllocError> {
-        // SAFETY: the safety contract must be upheld by the caller
+        // SAFETY: 安全契约必须由调用者保证。
         unsafe { (**self).shrink(ptr, old_layout, new_layout) }
     }
 }
@@ -441,7 +413,7 @@ where
 
     #[inline]
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
-        // SAFETY: the safety contract must be upheld by the caller
+        // SAFETY: 安全契约必须由调用者保证。
         unsafe { (**self).deallocate(ptr, layout) }
     }
 
@@ -452,7 +424,7 @@ where
         old_layout: Layout,
         new_layout: Layout,
     ) -> Result<NonNull<[u8]>, AllocError> {
-        // SAFETY: the safety contract must be upheld by the caller
+        // SAFETY: 安全契约必须由调用者保证。
         unsafe { (**self).grow(ptr, old_layout, new_layout) }
     }
 
@@ -463,7 +435,7 @@ where
         old_layout: Layout,
         new_layout: Layout,
     ) -> Result<NonNull<[u8]>, AllocError> {
-        // SAFETY: the safety contract must be upheld by the caller
+        // SAFETY: 安全契约必须由调用者保证。
         unsafe { (**self).grow_zeroed(ptr, old_layout, new_layout) }
     }
 
@@ -474,7 +446,7 @@ where
         old_layout: Layout,
         new_layout: Layout,
     ) -> Result<NonNull<[u8]>, AllocError> {
-        // SAFETY: the safety contract must be upheld by the caller
+        // SAFETY: 安全契约必须由调用者保证。
         unsafe { (**self).shrink(ptr, old_layout, new_layout) }
     }
 }

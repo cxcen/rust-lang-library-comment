@@ -202,7 +202,7 @@ impl<T> ManuallyDrop<T> {
     /// 只要有可能，就更应该改用 [`into_inner`][`ManuallyDrop::into_inner`]，
     /// 它能避免重复（duplicate）`ManuallyDrop<T>` 的内容。
     ///
-    /// # 安全性（Safety）
+    /// # 安全性(Safety）
     ///
     /// 此函数在语义上把所含的值 move 出去，但并不阻止后续继续使用它，
     /// 并且会让此容器的状态保持不变。
@@ -227,7 +227,7 @@ impl<T: ?Sized> ManuallyDrop<T> {
     ///
     /// 如果你拥有该值的所有权，可以改用 [`ManuallyDrop::into_inner`]。
     ///
-    /// # 安全性（Safety）
+    /// # 安全性(Safety）
     ///
     /// 此函数会运行所含值的析构逻辑。除了析构逻辑自身造成的改动以外，内存保持不变，
     /// 因此在编译器看来，这块内存仍然持有一个对类型 `T` 有效的位模式（bit-pattern）。
