@@ -4,21 +4,18 @@ use crate::marker;
 use crate::pin::Pin;
 use crate::task::{Context, Poll};
 
-/// Creates a future which never resolves, representing a computation that never
-/// finishes.
+/// 创建一个永远不会解析(resolve)的 future,代表一个永远不会完成的计算。
 ///
-/// This `struct` is created by [`pending()`]. See its
-/// documentation for more.
+/// 该 `struct` 由 [`pending()`] 创建。更多信息请参阅其文档。
 #[stable(feature = "future_readiness_fns", since = "1.48.0")]
 #[must_use = "futures do nothing unless you `.await` or poll them"]
 pub struct Pending<T> {
     _data: marker::PhantomData<fn() -> T>,
 }
 
-/// Creates a future which never resolves, representing a computation that never
-/// finishes.
+/// 创建一个永远不会解析(resolve)的 future,代表一个永远不会完成的计算。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```no_run
 /// use std::future;

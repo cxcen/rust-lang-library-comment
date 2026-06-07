@@ -1,63 +1,60 @@
-//! Utilities for dynamic typing or type reflection.
+//! 用于动态类型识别(dynamic typing)或类型反射(type reflection)的工具。
 //!
-//! # `Any` and `TypeId`
+//! # `Any` 与 `TypeId`
 //!
-//! `Any` itself can be used to get a `TypeId`, and has more features when used
-//! as a trait object. As `&dyn Any` (a borrowed trait object), it has the `is`
-//! and `downcast_ref` methods, to test if the contained value is of a given type,
-//! and to get a reference to the inner value as a type. As `&mut dyn Any`, there
-//! is also the `downcast_mut` method, for getting a mutable reference to the
-//! inner value. `Box<dyn Any>` adds the `downcast` method, which attempts to
-//! convert to a `Box<T>`. See the [`Box`] documentation for the full details.
+//! `Any` 本身可以用来获取一个 `TypeId`,而当它作为 trait 对象使用时还有
+//! 更多功能。作为 `&dyn Any`(一个借用的 trait 对象),它具有 `is` 和
+//! `downcast_ref` 方法,用来检验所包含的值是否为给定类型,以及把内部值当作
+//! 某个类型来获取它的引用。作为 `&mut dyn Any`,还有 `downcast_mut` 方法,
+//! 用来获取内部值的可变引用。`Box<dyn Any>` 增加了 `downcast` 方法,它尝试
+//! 转换成 `Box<T>`。完整细节参见 [`Box`] 文档。
 //!
-//! Note that `&dyn Any` is limited to testing whether a value is of a specified
-//! concrete type, and cannot be used to test whether a type implements a trait.
+//! 注意,`&dyn Any` 仅限于检验一个值是否为某个指定的 *具体* 类型,而不能
+//! 用来检验一个类型是否实现了某个 trait。这正是基于 `TypeId` 的运行期类型
+//! 识别的局限之一:它只能反映精确的具体类型,无法反映 trait 实现关系或泛型
+//! 之间的关系。
 //!
 //! [`Box`]: ../../std/boxed/struct.Box.html
 //!
-//! # Smart pointers and `dyn Any`
+//! # 智能指针与 `dyn Any`
 //!
-//! One piece of behavior to keep in mind when using `Any` as a trait object,
-//! especially with types like `Box<dyn Any>` or `Arc<dyn Any>`, is that simply
-//! calling `.type_id()` on the value will produce the `TypeId` of the
-//! *container*, not the underlying trait object. This can be avoided by
-//! converting the smart pointer into a `&dyn Any` instead, which will return
-//! the object's `TypeId`. For example:
+//! 当把 `Any` 当作 trait 对象使用时(尤其是与 `Box<dyn Any>` 或
+//! `Arc<dyn Any>` 这类类型一起),有一点行为需要牢记:对值简单地调用
+//! `.type_id()`,得到的是 *容器* 的 `TypeId`,而不是底层 trait 对象的。
+//! 要避免这一点,可以改为把智能指针转换成 `&dyn Any`,这样就会返回该对象
+//! 的 `TypeId`。例如:
 //!
 //! ```
 //! use std::any::{Any, TypeId};
 //!
 //! let boxed: Box<dyn Any> = Box::new(3_i32);
 //!
-//! // You're more likely to want this:
+//! // 你更可能想要的是这个:
 //! let actual_id = (&*boxed).type_id();
-//! // ... than this:
+//! // ……而不是这个:
 //! let boxed_id = boxed.type_id();
 //!
 //! assert_eq!(actual_id, TypeId::of::<i32>());
 //! assert_eq!(boxed_id, TypeId::of::<Box<dyn Any>>());
 //! ```
 //!
-//! ## Examples
+//! ## 示例
 //!
-//! Consider a situation where we want to log a value passed to a function.
-//! We know the value we're working on implements `Debug`, but we don't know its
-//! concrete type. We want to give special treatment to certain types: in this
-//! case printing out the length of `String` values prior to their value.
-//! We don't know the concrete type of our value at compile time, so we need to
-//! use runtime reflection instead.
+//! 设想这样一种情形:我们想把传给某个函数的值记录到日志中。我们知道正在
+//! 处理的值实现了 `Debug`,但不知道它的具体类型。我们想对某些类型给予特殊
+//! 处理:在本例中,对 `String` 值,在打印其值之前先打印它的长度。我们在
+//! 编译期并不知道值的具体类型,因此需要改用运行期反射。
 //!
 //! ```rust
 //! use std::fmt::Debug;
 //! use std::any::Any;
 //!
-//! // Logger function for any type that implements `Debug`.
+//! // 面向任何实现了 `Debug` 的类型的日志函数。
 //! fn log<T: Any + Debug>(value: &T) {
 //!     let value_any = value as &dyn Any;
 //!
-//!     // Try to convert our value to a `String`. If successful, we want to
-//!     // output the `String`'s length as well as its value. If not, it's a
-//!     // different type: just print it out unadorned.
+//!     // 尝试把我们的值转换成 `String`。如果成功,我们想把 `String` 的长度
+//!     // 连同它的值一起输出。如果失败,说明它是另一种类型:直接原样打印出来。
 //!     match value_any.downcast_ref::<String>() {
 //!         Some(as_string) => {
 //!             println!("String ({}): {}", as_string.len(), as_string);
@@ -68,10 +65,10 @@
 //!     }
 //! }
 //!
-//! // This function wants to log its parameter out prior to doing work with it.
+//! // 这个函数想在对其参数做处理之前,先把参数记录到日志。
 //! fn do_work<T: Any + Debug>(value: &T) {
 //!     log(value);
-//!     // ...do some other work
+//!     // ……做些别的工作
 //! }
 //!
 //! fn main() {
@@ -92,33 +89,31 @@ use crate::{fmt, hash, intrinsics, ptr};
 // Any trait
 ///////////////////////////////////////////////////////////////////////////////
 
-/// A trait to emulate dynamic typing.
+/// 一个用来模拟动态类型识别的 trait。
 ///
-/// Most types implement `Any`. However, any type which contains a non-`'static` reference does not.
-/// See the [module-level documentation][mod] for more details.
+/// 大多数类型都实现了 `Any`。然而,任何含有非 `'static` 引用的类型都不实现它。
+/// 更多细节参见[模块级文档][mod]。这也是 `Any` 的一大局限:只有 `'static`
+/// 类型(即不借用任何短于 `'static` 生命周期的数据的类型)才能实现 `Any`。
 ///
 /// [mod]: crate::any
-// This trait is not unsafe, though we rely on the specifics of it's sole impl's
-// `type_id` function in unsafe code (e.g., `downcast`). Normally, that would be
-// a problem, but because the only impl of `Any` is a blanket implementation, no
-// other code can implement `Any`.
+// 本 trait 不是 unsafe 的,尽管我们在 unsafe 代码中(例如 `downcast`)依赖了
+// 它唯一那个 impl 的 `type_id` 函数的具体行为。通常这会是个问题,但由于 `Any`
+// 的唯一 impl 是一个覆盖性(blanket)实现,所以没有别的代码能实现 `Any`。
 //
-// We could plausibly make this trait unsafe -- it would not cause breakage,
-// since we control all the implementations -- but we choose not to as that's
-// both not really necessary and may confuse users about the distinction of
-// unsafe traits and unsafe methods (i.e., `type_id` would still be safe to call,
-// but we would likely want to indicate as such in documentation).
+// 我们其实大可以把本 trait 做成 unsafe 的——这不会造成破坏,因为我们掌控着
+// 所有实现——但我们选择不这么做,因为这既无甚必要,又可能让用户对 unsafe
+// trait 与 unsafe 方法之间的区别产生混淆(也就是说,`type_id` 调用起来仍然
+// 是安全的,但我们大概会想在文档中标明这一点)。
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_diagnostic_item = "Any"]
 pub trait Any: 'static {
-    /// Gets the `TypeId` of `self`.
+    /// 获取 `self` 的 `TypeId`。
     ///
-    /// If called on a `dyn Any` trait object
-    /// (or a trait object of a subtrait of `Any`),
-    /// this returns the `TypeId` of the underlying
-    /// concrete type, not that of `dyn Any` itself.
+    /// 如果在一个 `dyn Any` trait 对象(或 `Any` 的某个子 trait 的 trait
+    /// 对象)上调用,它返回的是底层 *具体* 类型的 `TypeId`,而不是
+    /// `dyn Any` 本身的。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::any::{Any, TypeId};
@@ -142,7 +137,7 @@ impl<T: 'static + ?Sized> Any for T {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// Extension methods for Any trait objects.
+// Any trait 对象的扩展方法。
 ///////////////////////////////////////////////////////////////////////////////
 
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -152,9 +147,8 @@ impl fmt::Debug for dyn Any {
     }
 }
 
-// Ensure that the result of e.g., joining a thread can be printed and
-// hence used with `unwrap`. May eventually no longer be needed if
-// dispatch works with upcasting.
+// 确保比如 join 一个线程所得的结果可以被打印,从而能配合 `unwrap` 使用。
+// 如果将来分发(dispatch)能配合 upcasting 工作,这最终也许就不再需要了。
 #[stable(feature = "rust1", since = "1.0.0")]
 impl fmt::Debug for dyn Any + Send {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

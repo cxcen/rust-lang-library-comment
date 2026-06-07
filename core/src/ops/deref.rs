@@ -1,99 +1,81 @@
 use crate::marker::PointeeSized;
 
-/// Used for immutable dereferencing operations, like `*v`.
+/// 用于不可变解引用操作,例如 `*v`。
 ///
-/// In addition to being used for explicit dereferencing operations with the
-/// (unary) `*` operator in immutable contexts, `Deref` is also used implicitly
-/// by the compiler in many circumstances. This mechanism is called
-/// ["`Deref` coercion"][coercion]. In mutable contexts, [`DerefMut`] is used and
-/// mutable deref coercion similarly occurs.
+/// 除了用于在不可变上下文中通过(一元)`*` 运算符进行显式解引用外,`Deref`
+/// 还会在许多场合被编译器隐式使用。这一机制被称为 ["`Deref` coercion"][coercion]
+/// (`Deref` 强制转换 / 自动解引用强转)。在可变上下文中使用的是 [`DerefMut`],
+/// 并会类似地发生可变 deref coercion。
 ///
-/// **Warning:** Deref coercion is a powerful language feature which has
-/// far-reaching implications for every type that implements `Deref`. The
-/// compiler will silently insert calls to `Deref::deref`. For this reason, one
-/// should be careful about implementing `Deref` and only do so when deref
-/// coercion is desirable. See [below][implementing] for advice on when this is
-/// typically desirable or undesirable.
+/// **警告:** deref coercion 是一项强大的语言特性,它对每一个实现了 `Deref`
+/// 的类型都有深远影响。编译器会悄无声息地插入对 `Deref::deref` 的调用。正因
+/// 如此,实现 `Deref` 时应当谨慎,只有在确实需要 deref coercion 时才去实现它。
+/// 关于何时通常合适、何时通常不合适,见 [下文][implementing]。
 ///
-/// Types that implement `Deref` or `DerefMut` are often called "smart
-/// pointers" and the mechanism of deref coercion has been specifically designed
-/// to facilitate the pointer-like behavior that name suggests. Often, the
-/// purpose of a "smart pointer" type is to change the ownership semantics
-/// of a contained value (for example, [`Rc`][rc] or [`Cow`][cow]) or the
-/// storage semantics of a contained value (for example, [`Box`][box]).
+/// 实现了 `Deref` 或 `DerefMut` 的类型常被称为“智能指针”(smart pointer),
+/// deref coercion 这一机制正是为了促成该名称所暗示的“类指针”行为而专门设计的。
+/// 通常,“智能指针”类型的目的是改变所含值的所有权语义(例如 [`Rc`][rc] 或
+/// [`Cow`][cow]),或者改变所含值的存储语义(例如 [`Box`][box])。
 ///
-/// # Deref coercion
+/// # Deref coercion(自动解引用强转)
 ///
-/// If `T` implements `Deref<Target = U>`, and `v` is a value of type `T`, then:
+/// 如果 `T` 实现了 `Deref<Target = U>`,而 `v` 是一个 `T` 类型的值,那么:
 ///
-/// * In immutable contexts, `*v` (where `T` is neither a reference nor a raw
-///   pointer) is equivalent to `*Deref::deref(&v)`.
-/// * Values of type `&T` are coerced to values of type `&U`
-/// * `T` implicitly implements all the methods of the type `U` which take the
-///   `&self` receiver.
+/// * 在不可变上下文中,`*v`(此处 `T` 既不是引用也不是裸指针)等价于
+///   `*Deref::deref(&v)`。
+/// * `&T` 类型的值会被强转为 `&U` 类型的值。
+/// * `T` 隐式拥有类型 `U` 的所有以 `&self` 为接收者的方法。
 ///
-/// For more details, visit [the chapter in *The Rust Programming Language*][book]
-/// as well as the reference sections on [the dereference operator][ref-deref-op],
-/// [method resolution], and [type coercions].
+/// 更多细节请参阅 [《Rust 程序设计语言》中的相应章节][book],以及 reference 中
+/// 关于 [解引用运算符][ref-deref-op]、[方法解析][method resolution] 和
+/// [类型强转][type coercions] 的章节。
 ///
-/// # When to implement `Deref` or `DerefMut`
+/// # 何时实现 `Deref` 或 `DerefMut`
 ///
-/// The same advice applies to both deref traits. In general, deref traits
-/// **should** be implemented if:
+/// 同样的建议适用于这两个 deref trait。一般而言,在以下情况下 **应当** 实现
+/// deref trait:
 ///
-/// 1. a value of the type transparently behaves like a value of the target
-///    type;
-/// 1. the implementation of the deref function is cheap; and
-/// 1. users of the type will not be surprised by any deref coercion behavior.
+/// 1. 该类型的值在行为上透明地表现得像目标类型的值;
+/// 1. deref 函数的实现是廉价的;并且
+/// 1. 该类型的使用者不会被任何 deref coercion 行为所惊讶。
 ///
-/// In general, deref traits **should not** be implemented if:
+/// 一般而言,在以下情况下 **不应当** 实现 deref trait:
 ///
-/// 1. the deref implementations could fail unexpectedly; or
-/// 1. the type has methods that are likely to collide with methods on the
-///    target type; or
-/// 1. committing to deref coercion as part of the public API is not desirable.
+/// 1. deref 实现可能出乎意料地失败;或者
+/// 1. 该类型拥有很可能与目标类型上的方法发生冲突的方法;或者
+/// 1. 把 deref coercion 作为公共 API 的一部分长期承诺并不可取。
 ///
-/// Note that there's a large difference between implementing deref traits
-/// generically over many target types, and doing so only for specific target
-/// types.
+/// 注意,在众多目标类型上泛型地实现 deref trait,与仅针对特定目标类型实现它,
+/// 二者之间存在巨大差异。
 ///
-/// Generic implementations, such as for [`Box<T>`][box] (which is generic over
-/// every type and dereferences to `T`) should be careful to provide few or no
-/// methods, since the target type is unknown and therefore every method could
-/// collide with one on the target type, causing confusion for users.
-/// `impl<T> Box<T>` has no methods (though several associated functions),
-/// partly for this reason.
+/// 泛型实现,比如 [`Box<T>`][box](它对每个类型都是泛型的,并解引用到 `T`),
+/// 应当谨慎,只提供很少或不提供方法,因为目标类型未知,因此每个方法都可能与
+/// 目标类型上的某个方法冲突,从而给使用者造成困惑。`impl<T> Box<T>` 没有任何
+/// 方法(尽管有若干关联函数),部分原因正在于此。
 ///
-/// Specific implementations, such as for [`String`][string] (whose `Deref`
-/// implementation has `Target = str`) can have many methods, since avoiding
-/// collision is much easier. `String` and `str` both have many methods, and
-/// `String` additionally behaves as if it has every method of `str` because of
-/// deref coercion. The implementing type may also be generic while the
-/// implementation is still specific in this sense; for example, [`Vec<T>`][vec]
-/// dereferences to `[T]`, so methods of `T` are not applicable.
+/// 特定实现,比如 [`String`][string](其 `Deref` 实现的 `Target = str`),则可以
+/// 拥有许多方法,因为避免冲突要容易得多。`String` 与 `str` 都有许多方法,而由于
+/// deref coercion,`String` 还额外表现得仿佛拥有 `str` 的每一个方法。在这种意义
+/// 下,实现该 trait 的类型本身可以是泛型的,而实现仍然是“特定”的;例如
+/// [`Vec<T>`][vec] 解引用到 `[T]`,因此 `T` 的方法并不适用于它。
 ///
-/// Consider also that deref coercion means that deref traits are a much larger
-/// part of a type's public API than any other trait as it is implicitly called
-/// by the compiler. Therefore, it is advisable to consider whether this is
-/// something you are comfortable supporting as a public API.
+/// 还要考虑到,deref coercion 意味着 deref trait 比任何其他 trait 都更大程度地
+/// 构成了类型公共 API 的一部分,因为它会被编译器隐式调用。因此,明智的做法是
+/// 先考虑清楚:你是否愿意把它作为公共 API 来长期支持。
 ///
-/// The [`AsRef`] and [`Borrow`][core::borrow::Borrow] traits have very similar
-/// signatures to `Deref`. It may be desirable to implement either or both of
-/// these, whether in addition to or rather than deref traits. See their
-/// documentation for details.
+/// [`AsRef`] 与 [`Borrow`][core::borrow::Borrow] 这两个 trait 的签名与 `Deref`
+/// 非常相似。无论是作为 deref trait 的补充还是替代,实现其中之一或两者都可能
+/// 是可取的。详情请参阅它们各自的文档。
 ///
-/// # Fallibility
+/// # 可失败性(Fallibility)
 ///
-/// **This trait's method should never unexpectedly fail**. Deref coercion means
-/// the compiler will often insert calls to `Deref::deref` implicitly. Failure
-/// during dereferencing can be extremely confusing when `Deref` is invoked
-/// implicitly. In the majority of uses it should be infallible, though it may
-/// be acceptable to panic if the type is misused through programmer error, for
-/// example.
+/// **本 trait 的方法绝不应当出乎意料地失败**。deref coercion 意味着编译器常常
+/// 会隐式插入对 `Deref::deref` 的调用。当 `Deref` 被隐式调用时,解引用过程中的
+/// 失败会极其令人困惑。在绝大多数用法中它应当是不会失败的(infallible),不过
+/// 例如当类型因程序员的错误而被误用时,panic 或许是可以接受的。
 ///
-/// However, infallibility is not enforced and therefore not guaranteed.
-/// As such, `unsafe` code should not rely on infallibility in general for
-/// soundness.
+/// 然而,不可失败性并未被强制要求,因此也得不到保证。正因如此,`unsafe` 代码
+/// 一般不应为了健全性(soundness)而依赖其不可失败这一点。
 ///
 /// [book]: ../../book/ch15-02-deref.html
 /// [coercion]: #deref-coercion
@@ -107,10 +89,9 @@ use crate::marker::PointeeSized;
 /// [rc]: ../../alloc/rc/struct.Rc.html
 /// [cow]: ../../alloc/borrow/enum.Cow.html
 ///
-/// # Examples
+/// # 示例
 ///
-/// A struct with a single field which is accessible by dereferencing the
-/// struct.
+/// 一个只有单个字段、可以通过解引用该结构体来访问该字段的结构体。
 ///
 /// ```
 /// use std::ops::Deref;
@@ -137,13 +118,13 @@ use crate::marker::PointeeSized;
 #[rustc_diagnostic_item = "Deref"]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
 pub const trait Deref: PointeeSized {
-    /// The resulting type after dereferencing.
+    /// 解引用之后得到的结果类型。
     #[stable(feature = "rust1", since = "1.0.0")]
     #[rustc_diagnostic_item = "deref_target"]
     #[lang = "deref_target"]
     type Target: ?Sized;
 
-    /// Dereferences the value.
+    /// 对该值进行解引用。
     #[must_use]
     #[stable(feature = "rust1", since = "1.0.0")]
     #[rustc_diagnostic_item = "deref_method"]
@@ -160,7 +141,6 @@ impl<T: ?Sized> const Deref for &T {
         self
     }
 }
-
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<T: ?Sized> !DerefMut for &T {}
 
@@ -174,53 +154,44 @@ impl<T: ?Sized> const Deref for &mut T {
     }
 }
 
-/// Used for mutable dereferencing operations, like in `*v = 1;`.
+/// 用于可变解引用操作,例如 `*v = 1;` 中那样。
 ///
-/// In addition to being used for explicit dereferencing operations with the
-/// (unary) `*` operator in mutable contexts, `DerefMut` is also used implicitly
-/// by the compiler in many circumstances. This mechanism is called
-/// ["mutable deref coercion"][coercion]. In immutable contexts, [`Deref`] is used.
+/// 除了用于在可变上下文中通过(一元)`*` 运算符进行显式解引用外,`DerefMut`
+/// 还会在许多场合被编译器隐式使用。这一机制被称为 ["可变 deref coercion"][coercion]
+/// (mutable deref coercion)。在不可变上下文中使用的是 [`Deref`]。
 ///
-/// **Warning:** Deref coercion is a powerful language feature which has
-/// far-reaching implications for every type that implements `DerefMut`. The
-/// compiler will silently insert calls to `DerefMut::deref_mut`. For this
-/// reason, one should be careful about implementing `DerefMut` and only do so
-/// when mutable deref coercion is desirable. See [the `Deref` docs][implementing]
-/// for advice on when this is typically desirable or undesirable.
+/// **警告:** deref coercion 是一项强大的语言特性,它对每一个实现了 `DerefMut`
+/// 的类型都有深远影响。编译器会悄无声息地插入对 `DerefMut::deref_mut` 的调用。
+/// 正因如此,实现 `DerefMut` 时应当谨慎,只有在确实需要可变 deref coercion 时
+/// 才去实现它。关于何时通常合适、何时通常不合适,见 [`Deref` 文档][implementing]。
 ///
-/// Types that implement `DerefMut` or `Deref` are often called "smart
-/// pointers" and the mechanism of deref coercion has been specifically designed
-/// to facilitate the pointer-like behavior that name suggests. Often, the
-/// purpose of a "smart pointer" type is to change the ownership semantics
-/// of a contained value (for example, [`Rc`][rc] or [`Cow`][cow]) or the
-/// storage semantics of a contained value (for example, [`Box`][box]).
+/// 实现了 `DerefMut` 或 `Deref` 的类型常被称为“智能指针”(smart pointer),
+/// deref coercion 这一机制正是为了促成该名称所暗示的“类指针”行为而专门设计的。
+/// 通常,“智能指针”类型的目的是改变所含值的所有权语义(例如 [`Rc`][rc] 或
+/// [`Cow`][cow]),或者改变所含值的存储语义(例如 [`Box`][box])。
 ///
-/// # Mutable deref coercion
+/// # 可变 deref coercion(Mutable deref coercion)
 ///
-/// If `T` implements `DerefMut<Target = U>`, and `v` is a value of type `T`,
-/// then:
+/// 如果 `T` 实现了 `DerefMut<Target = U>`,而 `v` 是一个 `T` 类型的值,那么:
 ///
-/// * In mutable contexts, `*v` (where `T` is neither a reference nor a raw pointer)
-///   is equivalent to `*DerefMut::deref_mut(&mut v)`.
-/// * Values of type `&mut T` are coerced to values of type `&mut U`
-/// * `T` implicitly implements all the (mutable) methods of the type `U`.
+/// * 在可变上下文中,`*v`(此处 `T` 既不是引用也不是裸指针)等价于
+///   `*DerefMut::deref_mut(&mut v)`。
+/// * `&mut T` 类型的值会被强转为 `&mut U` 类型的值。
+/// * `T` 隐式拥有类型 `U` 的所有(可变)方法。
 ///
-/// For more details, visit [the chapter in *The Rust Programming Language*][book]
-/// as well as the reference sections on [the dereference operator][ref-deref-op],
-/// [method resolution] and [type coercions].
+/// 更多细节请参阅 [《Rust 程序设计语言》中的相应章节][book],以及 reference 中
+/// 关于 [解引用运算符][ref-deref-op]、[方法解析][method resolution] 和
+/// [类型强转][type coercions] 的章节。
 ///
-/// # Fallibility
+/// # 可失败性(Fallibility)
 ///
-/// **This trait's method should never unexpectedly fail**. Deref coercion means
-/// the compiler will often insert calls to `DerefMut::deref_mut` implicitly.
-/// Failure during dereferencing can be extremely confusing when `DerefMut` is
-/// invoked implicitly. In the majority of uses it should be infallible, though
-/// it may be acceptable to panic if the type is misused through programmer
-/// error, for example.
+/// **本 trait 的方法绝不应当出乎意料地失败**。deref coercion 意味着编译器常常
+/// 会隐式插入对 `DerefMut::deref_mut` 的调用。当 `DerefMut` 被隐式调用时,解
+/// 引用过程中的失败会极其令人困惑。在绝大多数用法中它应当是不会失败的,不过
+/// 例如当类型因程序员的错误而被误用时,panic 或许是可以接受的。
 ///
-/// However, infallibility is not enforced and therefore not guaranteed.
-/// As such, `unsafe` code should not rely on infallibility in general for
-/// soundness.
+/// 然而,不可失败性并未被强制要求,因此也得不到保证。正因如此,`unsafe` 代码
+/// 一般不应为了健全性(soundness)而依赖其不可失败这一点。
 ///
 /// [book]: ../../book/ch15-02-deref.html
 /// [coercion]: #mutable-deref-coercion
@@ -233,10 +204,9 @@ impl<T: ?Sized> const Deref for &mut T {
 /// [rc]: ../../alloc/rc/struct.Rc.html
 /// [cow]: ../../alloc/borrow/enum.Cow.html
 ///
-/// # Examples
+/// # 示例
 ///
-/// A struct with a single field which is modifiable by dereferencing the
-/// struct.
+/// 一个只有单个字段、可以通过解引用该结构体来修改该字段的结构体。
 ///
 /// ```
 /// use std::ops::{Deref, DerefMut};
@@ -268,7 +238,7 @@ impl<T: ?Sized> const Deref for &mut T {
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
 pub const trait DerefMut: [const] Deref + PointeeSized {
-    /// Mutably dereferences the value.
+    /// 以可变方式对该值进行解引用。
     #[stable(feature = "rust1", since = "1.0.0")]
     #[rustc_diagnostic_item = "deref_mut_method"]
     fn deref_mut(&mut self) -> &mut Self::Target;
@@ -282,15 +252,12 @@ impl<T: ?Sized> const DerefMut for &mut T {
     }
 }
 
-/// Perma-unstable marker trait. Indicates that the type has a well-behaved [`Deref`]
-/// (and, if applicable, [`DerefMut`]) implementation. This is relied on for soundness
-/// of deref patterns.
+/// 永久不稳定的标记 trait。表明该类型拥有一个“行为良好”的 [`Deref`](以及
+/// 在适用时的 [`DerefMut`])实现。deref 模式(deref pattern)的健全性依赖于这一点。
 ///
-/// FIXME(deref_patterns): The precise semantics are undecided; the rough idea is that
-/// successive calls to `deref`/`deref_mut` without intermediate mutation should be
-/// idempotent, in the sense that they return the same value as far as pattern-matching
-/// is concerned. Calls to `deref`/`deref_mut` must leave the pointer itself likewise
-/// unchanged.
+/// FIXME(deref_patterns): 精确语义尚未确定;粗略的想法是:在没有中间修改的情况下
+/// 连续调用 `deref`/`deref_mut` 应当是幂等的,也就是说,就模式匹配而言它们返回
+/// 相同的值。调用 `deref`/`deref_mut` 同样必须保持指针本身不变。
 #[unstable(feature = "deref_pure_trait", issue = "87121")]
 #[lang = "deref_pure"]
 pub unsafe trait DerefPure: PointeeSized {}
@@ -301,11 +268,11 @@ unsafe impl<T: ?Sized> DerefPure for &T {}
 #[unstable(feature = "deref_pure_trait", issue = "87121")]
 unsafe impl<T: ?Sized> DerefPure for &mut T {}
 
-/// Indicates that a struct can be used as a method receiver.
-/// That is, a type can use this type as a type of `self`, like this:
+/// 表明一个结构体可以被用作方法接收者(method receiver)。也就是说,某类型可以
+/// 把这个类型用作 `self` 的类型,就像这样:
 /// ```compile_fail
-/// # // This is currently compile_fail because the compiler-side parts
-/// # // of arbitrary_self_types are not implemented
+/// # // 目前这里是 compile_fail,因为 arbitrary_self_types 在编译器一侧的部分
+/// # // 尚未实现
 /// use std::ops::Receiver;
 ///
 /// struct SmartPointer<T>(T);
@@ -327,21 +294,19 @@ unsafe impl<T: ?Sized> DerefPure for &mut T {}
 ///   ptr.method();
 /// }
 /// ```
-/// This trait is blanket implemented for any type which implements
-/// [`Deref`], which includes stdlib pointer types like `Box<T>`,`Rc<T>`, `&T`,
-/// and `Pin<P>`. For that reason, it's relatively rare to need to
-/// implement this directly. You'll typically do this only if you need
-/// to implement a smart pointer type which can't implement [`Deref`]; perhaps
-/// because you're interfacing with another programming language and can't
-/// guarantee that references comply with Rust's aliasing rules.
+/// 这个 trait 对任何实现了 [`Deref`] 的类型都有一揽子实现(blanket impl),这其中
+/// 包括标准库的指针类型,如 `Box<T>`、`Rc<T>`、`&T` 和 `Pin<P>`。正因如此,很少
+/// 需要直接实现它。通常只有当你需要实现一种无法实现 [`Deref`] 的智能指针类型时
+/// 才会这么做;也许是因为你在与另一门编程语言交互,无法保证引用遵守 Rust 的别名
+/// (aliasing)规则。
 ///
-/// When looking for method candidates, Rust will explore a chain of possible
-/// `Receiver`s, so for example each of the following methods work:
+/// 在查找方法候选项时,Rust 会沿着一条可能的 `Receiver` 链去探索,因此下面这些
+/// 方法都能正常工作:
 /// ```
 /// use std::boxed::Box;
 /// use std::rc::Rc;
 ///
-/// // Both `Box` and `Rc` (indirectly) implement Receiver
+/// // `Box` 和 `Rc` 都(间接地)实现了 Receiver
 ///
 /// struct MyContainedType;
 ///
@@ -367,7 +332,7 @@ unsafe impl<T: ?Sized> DerefPure for &mut T {}
 #[lang = "receiver"]
 #[unstable(feature = "arbitrary_self_types", issue = "44874")]
 pub trait Receiver: PointeeSized {
-    /// The target type on which the method may be called.
+    /// 可以在其上调用方法的目标类型。
     #[rustc_diagnostic_item = "receiver_target"]
     #[lang = "receiver_target"]
     #[unstable(feature = "arbitrary_self_types", issue = "44874")]
@@ -382,19 +347,17 @@ where
     type Target = T;
 }
 
-/// Indicates that a struct can be used as a method receiver, without the
-/// `arbitrary_self_types` feature. This is implemented by stdlib pointer types like `Box<T>`,
-/// `Rc<T>`, `&T`, and `Pin<P>`.
+/// 表明一个结构体可以被用作方法接收者,且无需 `arbitrary_self_types` 特性。
+/// 它由标准库的指针类型实现,如 `Box<T>`、`Rc<T>`、`&T` 和 `Pin<P>`。
 ///
-/// This trait will shortly be removed and replaced with a more generic
-/// facility based around the current "arbitrary self types" unstable feature.
-/// That new facility will use the replacement trait above called `Receiver`
-/// which is why this is now named `LegacyReceiver`.
+/// 这个 trait 不久后将被移除,并由一套基于当前“arbitrary self types”不稳定特性、
+/// 更为通用的设施取代。那套新设施将使用上面那个名为 `Receiver` 的替代 trait,
+/// 这正是它如今被命名为 `LegacyReceiver`(旧版接收者)的原因。
 #[lang = "legacy_receiver"]
 #[unstable(feature = "legacy_receiver_trait", issue = "none")]
 #[doc(hidden)]
 pub trait LegacyReceiver: PointeeSized {
-    // Empty.
+    // 空。
 }
 
 #[unstable(feature = "legacy_receiver_trait", issue = "none")]

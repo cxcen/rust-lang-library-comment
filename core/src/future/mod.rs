@@ -1,9 +1,17 @@
 #![stable(feature = "futures_api", since = "1.36.0")]
 
-//! Asynchronous basic functionality.
+//! 异步编程的基础设施。
 //!
-//! Please see the fundamental [`async`] and [`await`] keywords and the [async book]
-//! for more information on asynchronous programming in Rust.
+//! 这里定义的是异步的**协议/契约**而非运行时:`core` 只提供 [`Future`]、[`IntoFuture`]
+//! 等 trait 以及 [`pending`]/[`ready`]/[`poll_fn`] 这类极小的适配器,本身**不含任何
+//! executor / 运行时 / 反应器(reactor)**。真正驱动 future 前进、监听 I/O 事件、调度
+//! 唤醒的运行时由上层库提供(如 tokio、async-std,或 std 中的极简实现)。这些类型位于
+//! 异步程序的热路径上,设计目标是零成本抽象。
+//!
+//! future 的失败或完成都通过返回值 [`Poll<T>`](crate::task::Poll) 暴露,`poll` 本身不靠
+//! panic 传递正常的“尚未就绪”状态。
+//!
+//! 关于 [`async`] 和 [`await`] 关键字以及异步编程的更多内容,请参阅 [async book]。
 //!
 //! [`async`]: ../../std/keyword.async.html
 //! [`await`]: ../../std/keyword.await.html
@@ -36,14 +44,14 @@ pub use self::future::Future;
 #[unstable(feature = "future_join", issue = "91642")]
 pub use self::join::join;
 
-/// This type is needed because:
+/// 之所以需要这个类型,是因为:
 ///
-/// a) Coroutines cannot implement `for<'a, 'b> Coroutine<&'a mut Context<'b>>`, so we need to pass
-///    a raw pointer (see <https://github.com/rust-lang/rust/issues/68923>).
-/// b) Raw pointers and `NonNull` aren't `Send` or `Sync`, so that would make every single future
-///    non-Send/Sync as well, and we don't want that.
+/// a) 协程(coroutine)无法实现 `for<'a, 'b> Coroutine<&'a mut Context<'b>>`,所以必须改为传递
+///    一个裸指针(见 <https://github.com/rust-lang/rust/issues/68923>)。
+/// b) 裸指针和 `NonNull` 既不是 `Send` 也不是 `Sync`,若直接使用会让每一个 future 都丢掉
+///    Send/Sync,这并非我们想要的结果。
 ///
-/// It also simplifies the HIR lowering of `.await`.
+/// 同时它也简化了 `.await` 在 HIR 阶段的脱糖(lowering)。
 #[lang = "ResumeTy"]
 #[doc(hidden)]
 #[unstable(feature = "gen_future", issue = "none")]
@@ -62,7 +70,7 @@ unsafe impl Sync for ResumeTy {}
 #[must_use]
 #[inline]
 pub unsafe fn get_context<'a, 'b>(cx: ResumeTy) -> &'a mut Context<'b> {
-    // SAFETY: the caller must guarantee that `cx.0` is a valid pointer
-    // that fulfills all the requirements for a mutable reference.
+    // SAFETY: 调用者必须保证 `cx.0` 是一个有效指针,且满足构造可变引用的全部要求
+    // (对齐、非空、指向有效且未被别名借用的 `Context`)。
     unsafe { &mut *cx.0.as_ptr().cast() }
 }

@@ -9,29 +9,27 @@ enum State<T, F> {
     Poisoned,
 }
 
-/// A value which is initialized on the first access.
+/// 一种在首次被访问时才进行初始化的值。
 ///
-/// For a thread-safe version of this struct, see [`std::sync::LazyLock`].
+/// 本结构体的线程安全版本,参见 [`std::sync::LazyLock`]。
 ///
 /// [`std::sync::LazyLock`]: ../../std/sync/struct.LazyLock.html
 ///
-/// # Poisoning
+/// # 中毒(Poisoning）
 ///
-/// If the initialization closure passed to [`LazyCell::new`] panics, the cell will be poisoned.
-/// Once the cell is poisoned, any threads that attempt to access this cell (via a dereference
-/// or via an explicit call to [`force()`]) will panic.
+/// 如果传给 [`LazyCell::new`] 的初始化闭包发生 panic,该 cell 就会被“毒化(poisoned)”。
+/// 一旦 cell 被毒化,任何试图访问它的线程(无论是经由解引用,还是显式调用 [`force()`])都会 panic。
 ///
-/// This concept is similar to that of poisoning in the [`std::sync::poison`] module. A key
-/// difference, however, is that poisoning in `LazyCell` is _unrecoverable_. All future accesses of
-/// the cell from other threads will panic, whereas a type in [`std::sync::poison`] like
-/// [`std::sync::poison::Mutex`] allows recovery via [`PoisonError::into_inner()`].
+/// 这一概念类似于 [`std::sync::poison`] 模块中的中毒。但一个关键区别在于:`LazyCell` 中的中毒是
+/// _不可恢复_ 的。此后,所有来自其他线程对该 cell 的访问都会 panic;而 [`std::sync::poison`] 中
+/// 像 [`std::sync::poison::Mutex`] 这样的类型,则允许通过 [`PoisonError::into_inner()`] 进行恢复。
 ///
 /// [`force()`]: LazyCell::force
 /// [`std::sync::poison`]: ../../std/sync/poison/index.html
 /// [`std::sync::poison::Mutex`]: ../../std/sync/poison/struct.Mutex.html
 /// [`PoisonError::into_inner()`]: ../../std/sync/poison/struct.PoisonError.html#method.into_inner
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use std::cell::LazyCell;
@@ -44,7 +42,7 @@ enum State<T, F> {
 /// println!("{}", *lazy);
 /// println!("{}", *lazy);
 ///
-/// // Prints:
+/// // 打印结果:
 /// //   ready
 /// //   initializing
 /// //   92
@@ -56,9 +54,9 @@ pub struct LazyCell<T, F = fn() -> T> {
 }
 
 impl<T, F: FnOnce() -> T> LazyCell<T, F> {
-    /// Creates a new lazy value with the given initializing function.
+    /// 用给定的初始化函数创建一个新的惰性值。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::cell::LazyCell;
@@ -76,15 +74,15 @@ impl<T, F: FnOnce() -> T> LazyCell<T, F> {
         LazyCell { state: UnsafeCell::new(State::Uninit(f)) }
     }
 
-    /// Consumes this `LazyCell` returning the stored value.
+    /// 消耗该 `LazyCell`,返回其所存储的值。
     ///
-    /// Returns `Ok(value)` if `Lazy` is initialized and `Err(f)` otherwise.
+    /// 如果 `Lazy` 已初始化,则返回 `Ok(value)`;否则返回 `Err(f)`。
     ///
     /// # Panics
     ///
-    /// Panics if the cell is poisoned.
+    /// 如果该 cell 已被毒化,则 panic。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(lazy_cell_into_inner)]
@@ -108,21 +106,20 @@ impl<T, F: FnOnce() -> T> LazyCell<T, F> {
         }
     }
 
-    /// Forces the evaluation of this lazy value and returns a reference to
-    /// the result.
+    /// 强制求值这个惰性值,并返回一个指向求值结果的引用。
     ///
-    /// This is equivalent to the `Deref` impl, but is explicit.
+    /// 它等价于 `Deref` 的实现,只不过是显式的。
     ///
     /// # Panics
     ///
-    /// If the initialization closure panics (the one that is passed to the [`new()`] method), the
-    /// panic is propagated to the caller, and the cell becomes poisoned. This will cause all future
-    /// accesses of the cell (via [`force()`] or a dereference) to panic.
+    /// 如果初始化闭包(即传给 [`new()`] 方法的那个)发生 panic,该 panic 会被传播给调用者,
+    /// 而该 cell 会变为已毒化状态。这将导致此后对该 cell 的所有访问(经由 [`force()`] 或解引用)
+    /// 都 panic。
     ///
     /// [`new()`]: LazyCell::new
     /// [`force()`]: LazyCell::force
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::cell::LazyCell;
@@ -137,32 +134,30 @@ impl<T, F: FnOnce() -> T> LazyCell<T, F> {
     #[rustc_should_not_be_called_on_const_items]
     pub fn force(this: &LazyCell<T, F>) -> &T {
         // SAFETY:
-        // This invalidates any mutable references to the data. The resulting
-        // reference lives either until the end of the borrow of `this` (in the
-        // initialized case) or is invalidated in `really_init` (in the
-        // uninitialized case; `really_init` will create and return a fresh reference).
+        // 这会使任何指向该数据的可变引用失效。所得到的引用要么一直存活到对 `this` 的借用结束
+        // (在已初始化的情形下),要么会在 `really_init` 中被失效(在未初始化的情形下;
+        // `really_init` 会创建并返回一个全新的引用)。
         let state = unsafe { &*this.state.get() };
         match state {
             State::Init(data) => data,
-            // SAFETY: The state is uninitialized.
+            // SAFETY:此时状态是未初始化的。
             State::Uninit(_) => unsafe { LazyCell::really_init(this) },
             State::Poisoned => panic_poisoned(),
         }
     }
 
-    /// Forces the evaluation of this lazy value and returns a mutable reference to
-    /// the result.
+    /// 强制求值这个惰性值,并返回一个指向求值结果的可变引用。
     ///
     /// # Panics
     ///
-    /// If the initialization closure panics (the one that is passed to the [`new()`] method), the
-    /// panic is propagated to the caller, and the cell becomes poisoned. This will cause all future
-    /// accesses of the cell (via [`force()`] or a dereference) to panic.
+    /// 如果初始化闭包(即传给 [`new()`] 方法的那个)发生 panic,该 panic 会被传播给调用者,
+    /// 而该 cell 会变为已毒化状态。这将导致此后对该 cell 的所有访问(经由 [`force()`] 或解引用)
+    /// 都 panic。
     ///
     /// [`new()`]: LazyCell::new
     /// [`force()`]: LazyCell::force
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::cell::LazyCell;
@@ -178,15 +173,15 @@ impl<T, F: FnOnce() -> T> LazyCell<T, F> {
     #[stable(feature = "lazy_get", since = "1.94.0")]
     pub fn force_mut(this: &mut LazyCell<T, F>) -> &mut T {
         #[cold]
-        /// # Safety
-        /// May only be called when the state is `Uninit`.
+        /// # 安全性(Safety）
+        /// 只能在状态为 `Uninit` 时调用。
         unsafe fn really_init_mut<T, F: FnOnce() -> T>(state: &mut State<T, F>) -> &mut T {
-            // INVARIANT: Always valid, but the value may not be dropped.
+            // 不变量:始终有效,但其中的值可能不会被 drop。
             struct PoisonOnPanic<T, F>(*mut State<T, F>);
             impl<T, F> Drop for PoisonOnPanic<T, F> {
                 #[inline]
                 fn drop(&mut self) {
-                    // SAFETY: Invariant states it is valid, and we don't drop the old value.
+                    // SAFETY:不变量声明它是有效的,而且我们不会 drop 掉旧值。
                     unsafe {
                         self.0.write(State::Poisoned);
                     }
@@ -194,18 +189,17 @@ impl<T, F: FnOnce() -> T> LazyCell<T, F> {
             }
 
             let State::Uninit(f) = state else {
-                // `unreachable!()` here won't optimize out because the function is cold.
-                // SAFETY: Precondition.
+                // 这里的 `unreachable!()` 不会被优化掉,因为本函数是 cold 的。
+                // SAFETY:前置条件。
                 unsafe { unreachable_unchecked() };
             };
-            // SAFETY: We never drop the state after we read `f`, and we write a valid value back
-            // in any case, panic or success. `f` can't access the `LazyCell` because it is mutably
-            // borrowed.
+            // SAFETY:在读取 `f` 之后我们绝不会 drop 该状态,而且无论 panic 还是成功,我们都会
+            // 写回一个有效的值。`f` 无法访问该 `LazyCell`,因为它正被可变借用。
             let f = unsafe { core::ptr::read(f) };
-            // INVARIANT: Initiated from mutable reference, don't drop because we read it.
+            // 不变量:由可变引用发起,不要 drop,因为我们已经把它读取出来了。
             let guard = PoisonOnPanic(state);
             let data = f();
-            // SAFETY: `PoisonOnPanic` invariant, and we don't drop the old value.
+            // SAFETY:依据 `PoisonOnPanic` 的不变量,而且我们不会 drop 掉旧值。
             unsafe {
                 core::ptr::write(guard.0, State::Init(data));
             }
@@ -217,39 +211,33 @@ impl<T, F: FnOnce() -> T> LazyCell<T, F> {
         let state = this.state.get_mut();
         match state {
             State::Init(data) => data,
-            // SAFETY: `state` is `Uninit`.
+            // SAFETY:`state` 是 `Uninit`。
             State::Uninit(_) => unsafe { really_init_mut(state) },
             State::Poisoned => panic_poisoned(),
         }
     }
 
-    /// # Safety
-    /// May only be called when the state is `Uninit`.
+    /// # 安全性(Safety）
+    /// 只能在状态为 `Uninit` 时调用。
     #[cold]
     unsafe fn really_init(this: &LazyCell<T, F>) -> &T {
         // SAFETY:
-        // This function is only called when the state is uninitialized,
-        // so no references to `state` can exist except for the reference
-        // in `force`, which is invalidated here and not accessed again.
+        // 本函数只会在状态为未初始化时被调用,因此除了 `force` 中的那个引用之外,不存在任何
+        // 指向 `state` 的引用;而那个引用在此处会被失效,且之后不会再被访问。
         let state = unsafe { &mut *this.state.get() };
-        // Temporarily mark the state as poisoned. This prevents reentrant
-        // accesses and correctly poisons the cell if the closure panicked.
+        // 暂时把状态标记为已毒化。这既能阻止重入式访问,又能在闭包 panic 时正确地把该 cell 毒化。
         let State::Uninit(f) = mem::replace(state, State::Poisoned) else { unreachable!() };
 
         let data = f();
 
         // SAFETY:
-        // If the closure accessed the cell through something like a reentrant
-        // mutex, but caught the panic resulting from the state being poisoned,
-        // the mutable borrow for `state` will be invalidated, so we need to
-        // go through the `UnsafeCell` pointer here. The state can only be
-        // poisoned at this point, so using `write` to skip the destructor
-        // of `State` should help the optimizer.
+        // 如果闭包通过类似可重入互斥锁的东西访问了该 cell,但捕获了因状态被毒化而产生的 panic,
+        // 那么对 `state` 的可变借用就会被失效,所以这里我们需要改走 `UnsafeCell` 指针。此时状态
+        // 只可能是已毒化的,因此用 `write` 来跳过 `State` 的析构函数应当有助于优化器。
         unsafe { this.state.get().write(State::Init(data)) };
 
         // SAFETY:
-        // The previous references were invalidated by the `write` call above,
-        // so do a new shared borrow of the state instead.
+        // 之前那些引用已被上面的 `write` 调用失效,所以这里改为对该状态做一次新的共享借用。
         let state = unsafe { &*this.state.get() };
         let State::Init(data) = state else { unreachable!() };
         data
@@ -257,10 +245,9 @@ impl<T, F: FnOnce() -> T> LazyCell<T, F> {
 }
 
 impl<T, F> LazyCell<T, F> {
-    /// Returns a mutable reference to the value if initialized. Otherwise (if uninitialized or
-    /// poisoned), returns `None`.
+    /// 如果已初始化,则返回一个指向该值的可变引用。否则(未初始化或已毒化)返回 `None`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::cell::LazyCell;
@@ -282,10 +269,9 @@ impl<T, F> LazyCell<T, F> {
         }
     }
 
-    /// Returns a reference to the value if initialized. Otherwise (if uninitialized or poisoned),
-    /// returns `None`.
+    /// 如果已初始化,则返回一个指向该值的引用。否则(未初始化或已毒化)返回 `None`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::cell::LazyCell;
@@ -300,9 +286,8 @@ impl<T, F> LazyCell<T, F> {
     #[stable(feature = "lazy_get", since = "1.94.0")]
     pub fn get(this: &LazyCell<T, F>) -> Option<&T> {
         // SAFETY:
-        // This is sound for the same reason as in `force`: once the state is
-        // initialized, it will not be mutably accessed again, so this reference
-        // will stay valid for the duration of the borrow to `self`.
+        // 此处之所以健全,与 `force` 中的理由相同:状态一旦初始化,就不会再被可变地访问,所以
+        // 这个引用在对 `self` 的整个借用期间都会保持有效。
         let state = unsafe { &*this.state.get() };
         match state {
             State::Init(data) => Some(data),
@@ -317,9 +302,9 @@ impl<T, F: FnOnce() -> T> Deref for LazyCell<T, F> {
 
     /// # Panics
     ///
-    /// If the initialization closure panics (the one that is passed to the [`new()`] method), the
-    /// panic is propagated to the caller, and the cell becomes poisoned. This will cause all future
-    /// accesses of the cell (via [`force()`] or a dereference) to panic.
+    /// 如果初始化闭包(即传给 [`new()`] 方法的那个)发生 panic,该 panic 会被传播给调用者,
+    /// 而该 cell 会变为已毒化状态。这将导致此后对该 cell 的所有访问(经由 [`force()`] 或解引用)
+    /// 都 panic。
     ///
     /// [`new()`]: LazyCell::new
     /// [`force()`]: LazyCell::force
@@ -333,9 +318,9 @@ impl<T, F: FnOnce() -> T> Deref for LazyCell<T, F> {
 impl<T, F: FnOnce() -> T> DerefMut for LazyCell<T, F> {
     /// # Panics
     ///
-    /// If the initialization closure panics (the one that is passed to the [`new()`] method), the
-    /// panic is propagated to the caller, and the cell becomes poisoned. This will cause all future
-    /// accesses of the cell (via [`force()`] or a dereference) to panic.
+    /// 如果初始化闭包(即传给 [`new()`] 方法的那个)发生 panic,该 panic 会被传播给调用者,
+    /// 而该 cell 会变为已毒化状态。这将导致此后对该 cell 的所有访问(经由 [`force()`] 或解引用)
+    /// 都 panic。
     ///
     /// [`new()`]: LazyCell::new
     /// [`force()`]: LazyCell::force
@@ -347,7 +332,7 @@ impl<T, F: FnOnce() -> T> DerefMut for LazyCell<T, F> {
 
 #[stable(feature = "lazy_cell", since = "1.80.0")]
 impl<T: Default> Default for LazyCell<T> {
-    /// Creates a new lazy value using `Default` as the initializing function.
+    /// 用 `Default` 作为初始化函数,创建一个新的惰性值。
     #[inline]
     fn default() -> LazyCell<T> {
         LazyCell::new(T::default)

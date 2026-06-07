@@ -1,3 +1,11 @@
+//! 部分 intrinsic 的“回退实现”（fallback）。
+//!
+//! 设计背景：intrinsic 是编译器内建操作，是 core 与编译器（rustc/LLVM）之间的契约层。
+//! 对某些 intrinsic，编译器会用一段“回退 MIR”来实现：当目标后端没有对应的原生支持时，
+//! 就退化为调用这里用纯 Rust 写出的等价实现。这些 fallback 永远不会稳定（见下方 feature 说明），
+//! 它们存在的唯一目的就是被回退 MIR 调用；之所以 `pub` 导出，是为了能在那些实际不使用回退 MIR
+//! 的平台上对它们做测试。
+
 #![unstable(
     feature = "core_intrinsics_fallbacks",
     reason = "The fallbacks will never be stable, as they exist only to be called \
@@ -112,8 +120,8 @@ impl const CarryingMulAdd for i128 {
 
 #[rustc_const_unstable(feature = "core_intrinsics_fallbacks", issue = "none")]
 pub const trait DisjointBitOr: Copy + 'static {
-    /// See [`super::disjoint_bitor`]; we just need the trait indirection to handle
-    /// different types since calling intrinsics with generics doesn't work.
+    /// 参见 [`super::disjoint_bitor`]；这里需要借助 trait 做一层间接，
+    /// 因为带泛型地直接调用 intrinsic 行不通，只能为不同具体类型分别实现。
     unsafe fn disjoint_bitor(self, other: Self) -> Self;
 }
 macro_rules! zero {
@@ -131,10 +139,10 @@ macro_rules! impl_disjoint_bitor {
             #[cfg_attr(miri, track_caller)]
             #[inline]
             unsafe fn disjoint_bitor(self, other: Self) -> Self {
-                // Note that the assume here is required for UB detection in Miri!
+                // 注意：这里的 assume 是 Miri 进行 UB 检测所必需的！
 
-                // SAFETY: our precondition is that there are no bits in common,
-                // so this is just telling that to the backend.
+                // SAFETY: 前置条件要求两个操作数没有任何公共置位的 bit，
+                // 所以这里只是把这个事实告知后端（让其据此做位或的优化）。
                 unsafe { super::assume((self & other) == zero!($t)) };
                 self | other
             }
@@ -149,12 +157,12 @@ impl_disjoint_bitor! {
 
 #[rustc_const_unstable(feature = "core_intrinsics_fallbacks", issue = "none")]
 pub const trait FunnelShift: Copy + 'static {
-    /// See [`super::unchecked_funnel_shl`]; we just need the trait indirection to handle
-    /// different types since calling intrinsics with generics doesn't work.
+    /// 参见 [`super::unchecked_funnel_shl`]；这里需要借助 trait 做一层间接，
+    /// 因为带泛型地直接调用 intrinsic 行不通，只能为不同具体类型分别实现。
     unsafe fn unchecked_funnel_shl(self, rhs: Self, shift: u32) -> Self;
 
-    /// See [`super::unchecked_funnel_shr`]; we just need the trait indirection to handle
-    /// different types since calling intrinsics with generics doesn't work.
+    /// 参见 [`super::unchecked_funnel_shr`]；这里需要借助 trait 做一层间接，
+    /// 因为带泛型地直接调用 intrinsic 行不通，只能为不同具体类型分别实现。
     unsafe fn unchecked_funnel_shr(self, rhs: Self, shift: u32) -> Self;
 }
 
@@ -165,19 +173,18 @@ macro_rules! impl_funnel_shifts {
             #[cfg_attr(miri, track_caller)]
             #[inline]
             unsafe fn unchecked_funnel_shl(self, rhs: Self, shift: u32) -> Self {
-                // This implementation is also used by Miri so we have to check the precondition.
-                // SAFETY: this is guaranteed by the caller
+                // 该实现同样被 Miri 使用，所以这里必须检查前置条件。
+                // SAFETY: 这一点由调用方保证（即 shift < 该类型位宽）。
                 unsafe { super::assume(shift < $type::BITS) };
                 if shift == 0 {
                     self
                 } else {
                     // SAFETY:
-                    //  - `shift < T::BITS`, which satisfies `unchecked_shl`
-                    //  - this also ensures that `T::BITS - shift < T::BITS` (shift = 0 is checked
-                    //    above), which satisfies `unchecked_shr`
-                    //  - because the types are unsigned, the combination are disjoint bits (this is
-                    //    not true if they're signed, since SHR will fill in the empty space with a
-                    //    sign bit, not zero)
+                    //  - `shift < T::BITS`，满足 `unchecked_shl` 的前置；
+                    //  - 这同时保证了 `T::BITS - shift < T::BITS`（shift == 0 已在上面排除），
+                    //    满足 `unchecked_shr` 的前置；
+                    //  - 因为是无符号类型，两部分拼接时所占的 bit 互不重叠（即 disjoint）。
+                    //    若是有符号类型则不成立，因为 SHR 会用符号位而非 0 来填补空出的高位。
                     unsafe {
                         super::disjoint_bitor(
                             super::unchecked_shl(self, shift),
@@ -190,19 +197,18 @@ macro_rules! impl_funnel_shifts {
             #[cfg_attr(miri, track_caller)]
             #[inline]
             unsafe fn unchecked_funnel_shr(self, rhs: Self, shift: u32) -> Self {
-                // This implementation is also used by Miri so we have to check the precondition.
-                // SAFETY: this is guaranteed by the caller
+                // 该实现同样被 Miri 使用，所以这里必须检查前置条件。
+                // SAFETY: 这一点由调用方保证（即 shift < 该类型位宽）。
                 unsafe { super::assume(shift < $type::BITS) };
                 if shift == 0 {
                     rhs
                 } else {
                     // SAFETY:
-                    //  - `shift < T::BITS`, which satisfies `unchecked_shr`
-                    //  - this also ensures that `T::BITS - shift < T::BITS` (shift = 0 is checked
-                    //    above), which satisfies `unchecked_shl`
-                    //  - because the types are unsigned, the combination are disjoint bits (this is
-                    //    not true if they're signed, since SHR will fill in the empty space with a
-                    //    sign bit, not zero)
+                    //  - `shift < T::BITS`，满足 `unchecked_shr` 的前置；
+                    //  - 这同时保证了 `T::BITS - shift < T::BITS`（shift == 0 已在上面排除），
+                    //    满足 `unchecked_shl` 的前置；
+                    //  - 因为是无符号类型，两部分拼接时所占的 bit 互不重叠（即 disjoint）。
+                    //    若是有符号类型则不成立，因为 SHR 会用符号位而非 0 来填补空出的高位。
                     unsafe {
                         super::disjoint_bitor(
                             super::unchecked_shl(self, $type::BITS - shift),

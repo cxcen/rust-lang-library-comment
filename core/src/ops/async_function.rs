@@ -1,58 +1,58 @@
 use crate::future::Future;
 use crate::marker::Tuple;
 
-/// An async-aware version of the [`Fn`](crate::ops::Fn) trait.
+/// [`Fn`](crate::ops::Fn) trait 的异步感知(async-aware)版本。
 ///
-/// All `async fn` and functions returning futures implement this trait.
+/// 所有 `async fn` 以及返回 future 的函数都实现这个 trait。
 #[stable(feature = "async_closure", since = "1.85.0")]
 #[rustc_paren_sugar]
 #[must_use = "async closures are lazy and do nothing unless called"]
 #[lang = "async_fn"]
 pub trait AsyncFn<Args: Tuple>: AsyncFnMut<Args> {
-    /// Call the [`AsyncFn`], returning a future which may borrow from the called closure.
+    /// 调用该 [`AsyncFn`],返回一个可能借用了被调用闭包的 future。
     #[unstable(feature = "async_fn_traits", issue = "none")]
     extern "rust-call" fn async_call(&self, args: Args) -> Self::CallRefFuture<'_>;
 }
 
-/// An async-aware version of the [`FnMut`](crate::ops::FnMut) trait.
+/// [`FnMut`](crate::ops::FnMut) trait 的异步感知版本。
 ///
-/// All `async fn` and functions returning futures implement this trait.
+/// 所有 `async fn` 以及返回 future 的函数都实现这个 trait。
 #[stable(feature = "async_closure", since = "1.85.0")]
 #[rustc_paren_sugar]
 #[must_use = "async closures are lazy and do nothing unless called"]
 #[lang = "async_fn_mut"]
 pub trait AsyncFnMut<Args: Tuple>: AsyncFnOnce<Args> {
-    /// Future returned by [`AsyncFnMut::async_call_mut`] and [`AsyncFn::async_call`].
+    /// 由 [`AsyncFnMut::async_call_mut`] 和 [`AsyncFn::async_call`] 返回的 future。
     #[unstable(feature = "async_fn_traits", issue = "none")]
     #[lang = "call_ref_future"]
     type CallRefFuture<'a>: Future<Output = Self::Output>
     where
         Self: 'a;
 
-    /// Call the [`AsyncFnMut`], returning a future which may borrow from the called closure.
+    /// 调用该 [`AsyncFnMut`],返回一个可能借用了被调用闭包的 future。
     #[unstable(feature = "async_fn_traits", issue = "none")]
     extern "rust-call" fn async_call_mut(&mut self, args: Args) -> Self::CallRefFuture<'_>;
 }
 
-/// An async-aware version of the [`FnOnce`](crate::ops::FnOnce) trait.
+/// [`FnOnce`](crate::ops::FnOnce) trait 的异步感知版本。
 ///
-/// All `async fn` and functions returning futures implement this trait.
+/// 所有 `async fn` 以及返回 future 的函数都实现这个 trait。
 #[stable(feature = "async_closure", since = "1.85.0")]
 #[rustc_paren_sugar]
 #[must_use = "async closures are lazy and do nothing unless called"]
 #[lang = "async_fn_once"]
 pub trait AsyncFnOnce<Args: Tuple> {
-    /// Future returned by [`AsyncFnOnce::async_call_once`].
+    /// 由 [`AsyncFnOnce::async_call_once`] 返回的 future。
     #[unstable(feature = "async_fn_traits", issue = "none")]
     #[lang = "call_once_future"]
     type CallOnceFuture: Future<Output = Self::Output>;
 
-    /// Output type of the called closure's future.
+    /// 被调用闭包所返回 future 的输出类型。
     #[unstable(feature = "async_fn_traits", issue = "none")]
     #[lang = "async_fn_once_output"]
     type Output;
 
-    /// Call the [`AsyncFnOnce`], returning a future which may move out of the called closure.
+    /// 调用该 [`AsyncFnOnce`],返回一个可能从被调用闭包中移出值的 future。
     #[unstable(feature = "async_fn_traits", issue = "none")]
     extern "rust-call" fn async_call_once(self, args: Args) -> Self::CallOnceFuture;
 }
@@ -129,26 +129,23 @@ mod impls {
 }
 
 mod internal_implementation_detail {
-    /// A helper trait that is used to enforce that the `ClosureKind` of a goal
-    /// is within the capabilities of a `CoroutineClosure`, and which allows us
-    /// to delay the projection of the tupled upvar types until after upvar
-    /// analysis is complete.
+    /// 一个辅助 trait,用来强制保证某个目标的 `ClosureKind`(闭包种类)处于某个
+    /// `CoroutineClosure`(协程闭包)的能力范围之内;它还允许我们把对元组化的
+    /// upvar(被捕获变量)类型的投影(projection)推迟到 upvar 分析完成之后再进行。
     ///
-    /// The `Self` type is expected to be the `kind_ty` of the coroutine-closure,
-    /// and thus either `?0` or `i8`/`i16`/`i32` (see docs for `ClosureKind`
-    /// for an explanation of that). The `GoalKind` is also the same type, but
-    /// representing the kind of the trait that the closure is being called with.
+    /// `Self` 类型应当是该协程闭包的 `kind_ty`(种类类型),因此要么是 `?0`,要么
+    /// 是 `i8`/`i16`/`i32`(关于这一点的解释参见 `ClosureKind` 的文档)。`GoalKind`
+    /// 也是同样的类型,但它表示的是该闭包被以何种 trait 的种类来调用。
     #[lang = "async_fn_kind_helper"]
     trait AsyncFnKindHelper<GoalKind> {
-        // Projects a set of closure inputs (arguments), a region, and a set of upvars
-        // (by move and by ref) to the upvars that we expect the coroutine to have
-        // according to the `GoalKind` parameter above.
+        // 把一组闭包输入(参数)、一个区域(region)以及一组 upvar(按 move 和按
+        // ref 两种方式)投影为:根据上面的 `GoalKind` 参数,我们期望该协程所拥有的
+        // 那组 upvar。
         //
-        // The `Upvars` parameter should be the upvars of the parent coroutine-closure,
-        // and the `BorrowedUpvarsAsFnPtr` will be a function pointer that has the shape
-        // `for<'env> fn() -> (&'env T, ...)`. This allows us to represent the binder
-        // of the closure's self-capture, and these upvar types will be instantiated with
-        // the `'closure_env` region provided to the associated type.
+        // `Upvars` 参数应当是父协程闭包的 upvar,而 `BorrowedUpvarsAsFnPtr` 则是
+        // 一个形如 `for<'env> fn() -> (&'env T, ...)` 的函数指针。这让我们得以表示
+        // 该闭包自捕获(self-capture)的 binder,而这些 upvar 类型会用提供给该关联
+        // 类型的 `'closure_env` 区域来实例化。
         #[lang = "async_fn_kind_upvars"]
         type Upvars<'closure_env, Inputs, Upvars, BorrowedUpvarsAsFnPtr>;
     }

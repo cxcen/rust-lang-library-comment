@@ -1,43 +1,31 @@
-//! Overloadable operators.
+//! 可重载的运算符。
 //!
-//! Implementing these traits allows you to overload certain operators.
+//! 实现这些 trait 即可重载相应的运算符。
 //!
-//! Some of these traits are imported by the prelude, so they are available in
-//! every Rust program. Only operators backed by traits can be overloaded. For
-//! example, the addition operator (`+`) can be overloaded through the [`Add`]
-//! trait, but since the assignment operator (`=`) has no backing trait, there
-//! is no way of overloading its semantics. Additionally, this module does not
-//! provide any mechanism to create new operators. If traitless overloading or
-//! custom operators are required, you should look toward macros to extend
-//! Rust's syntax.
+//! 其中一部分 trait 由 prelude 导入,因此在每个 Rust 程序里都可直接使用。
+//! 只有背后有 trait 支撑的运算符才能被重载。例如加法运算符(`+`)可以通过
+//! [`Add`] trait 重载,但赋值运算符(`=`)没有对应的 trait,因此无法重载它
+//! 的语义。此外,本模块也不提供任何创建新运算符的机制。如果需要无 trait 支撑
+//! 的重载或自定义运算符,应当借助宏来扩展 Rust 的语法。
 //!
-//! Implementations of operator traits should be unsurprising in their
-//! respective contexts, keeping in mind their usual meanings and
-//! [operator precedence]. For example, when implementing [`Mul`], the operation
-//! should have some resemblance to multiplication (and share expected
-//! properties like associativity).
+//! 运算符 trait 的实现应当在各自的上下文中符合直觉,牢记它们通常的含义以及
+//! [运算符优先级][operator precedence]。例如实现 [`Mul`] 时,该运算应当与乘法
+//! 有某种相似性(并具备人们期望的性质,如结合律)。
 //!
-//! Note that the `&&` and `||` operators are currently not supported for
-//! overloading. Due to their short circuiting nature, they require a different
-//! design from traits for other operators like [`BitAnd`]. Designs for them are
-//! under discussion.
+//! 注意:`&&` 与 `||` 运算符目前不支持重载。由于它们具有短路求值的特性,需要
+//! 与 [`BitAnd`] 等其他运算符 trait 不同的设计。针对它们的设计方案仍在讨论中。
 //!
-//! Many of the operators take their operands by value. In non-generic
-//! contexts involving built-in types, this is usually not a problem.
-//! However, using these operators in generic code, requires some
-//! attention if values have to be reused as opposed to letting the operators
-//! consume them. One option is to occasionally use [`clone`].
-//! Another option is to rely on the types involved providing additional
-//! operator implementations for references. For example, for a user-defined
-//! type `T` which is supposed to support addition, it is probably a good
-//! idea to have both `T` and `&T` implement the traits [`Add<T>`][`Add`] and
-//! [`Add<&T>`][`Add`] so that generic code can be written without unnecessary
-//! cloning.
+//! 许多运算符按值(by value)接收其操作数。在涉及内置类型的非泛型上下文中,
+//! 这通常不成问题。但在泛型代码中使用这些运算符时,如果需要复用值而非让运算符
+//! 消耗它们,就需要留意。一种办法是在必要时使用 [`clone`]。另一种办法是依赖相关
+//! 类型为引用额外提供运算符实现。例如对于一个应当支持加法的用户自定义类型 `T`,
+//! 让 `T` 与 `&T` 都实现 [`Add<T>`][`Add`] 和 [`Add<&T>`][`Add`] 通常是个好主意,
+//! 这样就能写出无需多余克隆的泛型代码。
 //!
-//! # Examples
+//! # 示例
 //!
-//! This example creates a `Point` struct that implements [`Add`] and [`Sub`],
-//! and then demonstrates adding and subtracting two `Point`s.
+//! 下面这个示例创建了一个实现了 [`Add`] 和 [`Sub`] 的 `Point` 结构体,然后
+//! 演示对两个 `Point` 做加法和减法。
 //!
 //! ```rust
 //! use std::ops::{Add, Sub};
@@ -68,17 +56,15 @@
 //! assert_eq!(Point {x: -1, y: -3}, Point {x: 1, y: 0} - Point {x: 2, y: 3});
 //! ```
 //!
-//! See the documentation for each trait for an example implementation.
+//! 每个 trait 的实现示例请参阅各自的文档。
 //!
-//! The [`Fn`], [`FnMut`], and [`FnOnce`] traits are implemented by types that can be
-//! invoked like functions. Note that [`Fn`] takes `&self`, [`FnMut`] takes `&mut
-//! self` and [`FnOnce`] takes `self`. These correspond to the three kinds of
-//! methods that can be invoked on an instance: call-by-reference,
-//! call-by-mutable-reference, and call-by-value. The most common use of these
-//! traits is to act as bounds to higher-level functions that take functions or
-//! closures as arguments.
+//! [`Fn`]、[`FnMut`] 和 [`FnOnce`] 这三个 trait 由可以像函数那样被调用的类型
+//! 实现。注意 [`Fn`] 接收 `&self`,[`FnMut`] 接收 `&mut self`,而 [`FnOnce`]
+//! 接收 `self`。它们对应于可以在实例上调用的三种方法:按引用调用、按可变引用
+//! 调用、按值调用。这些 trait 最常见的用途是作为约束(bound),用在那些以函数
+//! 或闭包作为参数的高阶函数上。
 //!
-//! Taking a [`Fn`] as a parameter:
+//! 以 [`Fn`] 作为参数:
 //!
 //! ```rust
 //! fn call_with_one<F>(func: F) -> usize
@@ -91,7 +77,7 @@
 //! assert_eq!(call_with_one(double), 2);
 //! ```
 //!
-//! Taking a [`FnMut`] as a parameter:
+//! 以 [`FnMut`] 作为参数:
 //!
 //! ```rust
 //! fn do_twice<F>(mut func: F)
@@ -110,20 +96,19 @@
 //! assert_eq!(x, 5);
 //! ```
 //!
-//! Taking a [`FnOnce`] as a parameter:
+//! 以 [`FnOnce`] 作为参数:
 //!
 //! ```rust
 //! fn consume_with_relish<F>(func: F)
 //!     where F: FnOnce() -> String
 //! {
-//!     // `func` consumes its captured variables, so it cannot be run more
-//!     // than once
+//!     // `func` 会消耗它所捕获的变量,因此它不能被运行超过一次
 //!     println!("Consumed: {}", func());
 //!
 //!     println!("Delicious!");
 //!
-//!     // Attempting to invoke `func()` again will throw a `use of moved
-//!     // value` error for `func`
+//!     // 再次尝试调用 `func()` 会针对 `func` 抛出 “use of moved
+//!     // value”(使用了已移动的值)错误
 //! }
 //!
 //! let x = String::from("x");

@@ -1,14 +1,13 @@
-//! The `Default` trait for types with a default value.
+//! 面向具有默认值的类型的 `Default` trait。
 
 #![stable(feature = "rust1", since = "1.0.0")]
 
 use crate::ascii::Char as AsciiChar;
 
-/// A trait for giving a type a useful default value.
+/// 一个为类型赋予有用默认值的 trait。
 ///
-/// Sometimes, you want to fall back to some kind of default value, and
-/// don't particularly care what it is. This comes up often with `struct`s
-/// that define a set of options:
+/// 有时,你想回退到某种默认值,而并不特别在意它具体是什么。这种情况在定义
+/// 一组选项的 `struct` 上经常出现:
 ///
 /// ```
 /// # #[allow(dead_code)]
@@ -18,7 +17,7 @@ use crate::ascii::Char as AsciiChar;
 /// }
 /// ```
 ///
-/// How can we define some default values? You can use `Default`:
+/// 我们怎样才能定义一些默认值呢?你可以使用 `Default`:
 ///
 /// ```
 /// # #[allow(dead_code)]
@@ -33,9 +32,9 @@ use crate::ascii::Char as AsciiChar;
 /// }
 /// ```
 ///
-/// Now, you get all of the default values. Rust implements `Default` for various primitive types.
+/// 现在,你就拿到了所有的默认值。Rust 为各种原始类型实现了 `Default`。
 ///
-/// If you want to override a particular option, but still retain the other defaults:
+/// 如果你想覆盖某个特定选项,同时仍然保留其余的默认值:
 ///
 /// ```
 /// # #[allow(dead_code)]
@@ -49,15 +48,15 @@ use crate::ascii::Char as AsciiChar;
 /// }
 /// ```
 ///
-/// ## Derivable
+/// ## 可派生(Derivable)
 ///
-/// This trait can be used with `#[derive]` if all of the type's fields implement
-/// `Default`. When `derive`d, it will use the default value for each field's type.
+/// 如果该类型的所有字段都实现了 `Default`,本 trait 就可以配合 `#[derive]`
+/// 使用。`derive` 出来的实现会为每个字段的类型使用其默认值。
 ///
-/// ### `enum`s
+/// ### `enum`
 ///
-/// When using `#[derive(Default)]` on an `enum`, you need to choose which unit variant will be
-/// default. You do this by placing the `#[default]` attribute on the variant.
+/// 在 `enum` 上使用 `#[derive(Default)]` 时,你需要选择哪一个单元变体
+/// (unit variant)作为默认。做法是把 `#[default]` 属性放在该变体上。
 ///
 /// ```
 /// #[derive(Default)]
@@ -69,14 +68,13 @@ use crate::ascii::Char as AsciiChar;
 /// }
 /// ```
 ///
-/// You cannot use the `#[default]` attribute on non-unit or non-exhaustive variants.
+/// 你不能在非单元变体或 non-exhaustive 变体上使用 `#[default]` 属性。
 ///
-/// The `#[default]` attribute was stabilized in Rust 1.62.0.
+/// `#[default]` 属性在 Rust 1.62.0 中被稳定化。
 ///
-/// ## How can I implement `Default`?
+/// ## 如何实现 `Default`?
 ///
-/// Provide an implementation for the `default()` method that returns the value of
-/// your type that should be the default:
+/// 为 `default()` 方法提供一个实现,让它返回你的类型中应当作为默认的那个值:
 ///
 /// ```
 /// # #![allow(dead_code)]
@@ -91,7 +89,7 @@ use crate::ascii::Char as AsciiChar;
 /// }
 /// ```
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// # #[allow(dead_code)]
@@ -105,14 +103,14 @@ use crate::ascii::Char as AsciiChar;
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_const_unstable(feature = "const_default", issue = "143894")]
 pub const trait Default: Sized {
-    /// Returns the "default value" for a type.
+    /// 返回一个类型的“默认值”。
     ///
-    /// Default values are often some kind of initial value, identity value, or anything else that
-    /// may make sense as a default.
+    /// 默认值通常是某种初始值、单位元(identity value),或者其他任何作为
+    /// 默认讲得通的东西。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Using built-in default values:
+    /// 使用内建的默认值:
     ///
     /// ```
     /// let i: i8 = Default::default();
@@ -120,7 +118,7 @@ pub const trait Default: Sized {
     /// let (a, b, (c, d)): (i32, u32, (bool, bool)) = Default::default();
     /// ```
     ///
-    /// Making your own:
+    /// 自定义你自己的默认值:
     ///
     /// ```
     /// # #[allow(dead_code)]
@@ -139,12 +137,12 @@ pub const trait Default: Sized {
     fn default() -> Self;
 }
 
-/// Derive macro generating an impl of the trait `Default`.
+/// 生成 `Default` trait 实现的派生宏。
 #[rustc_builtin_macro(Default, attributes(default))]
 #[stable(feature = "builtin_macro_prelude", since = "1.38.0")]
 #[allow_internal_unstable(core_intrinsics)]
 pub macro Default($item:item) {
-    /* compiler built-in */
+    /* 编译器内建 */
 }
 
 macro_rules! default_impl {
@@ -161,26 +159,26 @@ macro_rules! default_impl {
     };
 }
 
-default_impl! { (), (), "Returns the default value of `()`" }
-default_impl! { bool, false, "Returns the default value of `false`" }
-default_impl! { char, '\x00', "Returns the default value of `\\x00`" }
-default_impl! { AsciiChar, AsciiChar::Null, "Returns the default value of `Null`" }
+default_impl! { (), (), "返回 `()` 的默认值" }
+default_impl! { bool, false, "返回默认值 `false`" }
+default_impl! { char, '\x00', "返回默认值 `\\x00`" }
+default_impl! { AsciiChar, AsciiChar::Null, "返回默认值 `Null`" }
 
-default_impl! { usize, 0, "Returns the default value of `0`" }
-default_impl! { u8, 0, "Returns the default value of `0`" }
-default_impl! { u16, 0, "Returns the default value of `0`" }
-default_impl! { u32, 0, "Returns the default value of `0`" }
-default_impl! { u64, 0, "Returns the default value of `0`" }
-default_impl! { u128, 0, "Returns the default value of `0`" }
+default_impl! { usize, 0, "返回默认值 `0`" }
+default_impl! { u8, 0, "返回默认值 `0`" }
+default_impl! { u16, 0, "返回默认值 `0`" }
+default_impl! { u32, 0, "返回默认值 `0`" }
+default_impl! { u64, 0, "返回默认值 `0`" }
+default_impl! { u128, 0, "返回默认值 `0`" }
 
-default_impl! { isize, 0, "Returns the default value of `0`" }
-default_impl! { i8, 0, "Returns the default value of `0`" }
-default_impl! { i16, 0, "Returns the default value of `0`" }
-default_impl! { i32, 0, "Returns the default value of `0`" }
-default_impl! { i64, 0, "Returns the default value of `0`" }
-default_impl! { i128, 0, "Returns the default value of `0`" }
+default_impl! { isize, 0, "返回默认值 `0`" }
+default_impl! { i8, 0, "返回默认值 `0`" }
+default_impl! { i16, 0, "返回默认值 `0`" }
+default_impl! { i32, 0, "返回默认值 `0`" }
+default_impl! { i64, 0, "返回默认值 `0`" }
+default_impl! { i128, 0, "返回默认值 `0`" }
 
-default_impl! { f16, 0.0f16, "Returns the default value of `0.0`" }
-default_impl! { f32, 0.0f32, "Returns the default value of `0.0`" }
-default_impl! { f64, 0.0f64, "Returns the default value of `0.0`" }
-default_impl! { f128, 0.0f128, "Returns the default value of `0.0`" }
+default_impl! { f16, 0.0f16, "返回默认值 `0.0`" }
+default_impl! { f32, 0.0f32, "返回默认值 `0.0`" }
+default_impl! { f64, 0.0f64, "返回默认值 `0.0`" }
+default_impl! { f128, 0.0f128, "返回默认值 `0.0`" }

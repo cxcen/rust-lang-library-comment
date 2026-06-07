@@ -6,13 +6,13 @@ use crate::mem;
 use crate::pin::Pin;
 use crate::task::{Context, Poll, ready};
 
-/// Polls multiple futures simultaneously, returning a tuple
-/// of all results once complete.
+/// 同时轮询多个 future,在它们全部完成后返回一个包含所有结果的元组。
 ///
-/// While `join!(a, b).await` is similar to `(a.await, b.await)`,
-/// `join!` polls both futures concurrently and is therefore more efficient.
+/// 虽然 `join!(a, b).await` 与 `(a.await, b.await)` 相似,但 `join!` 会**并发地**轮询两个
+/// future,因此更高效:`(a.await, b.await)` 必须先等 `a` 完成才会开始 `b`,而 `join!` 一开始
+/// 就同时推进二者,从而把各自的等待时间重叠起来。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// #![feature(future_join)]
@@ -28,7 +28,7 @@ use crate::task::{Context, Poll, ready};
 /// # };
 /// ```
 ///
-/// `join!` is variadic, so you can pass any number of futures:
+/// `join!` 是变长的,可以传入任意数量的 future:
 ///
 /// ```
 /// #![feature(future_join)]
@@ -46,7 +46,7 @@ use crate::task::{Context, Poll, ready};
 /// ```
 #[unstable(feature = "future_join", issue = "91642")]
 pub macro join( $($fut:expr),+ $(,)? ) {
-    // Funnel through an internal macro not to leak implementation details.
+    // 通过一个内部宏来漏斗式处理,以免泄露实现细节。
     join_internal! {
         current_position: []
         futures_and_positions: []
@@ -56,22 +56,21 @@ pub macro join( $($fut:expr),+ $(,)? ) {
 
 // FIXME(danielhenrymantilla): a private macro should need no stability guarantee.
 #[unstable(feature = "future_join", issue = "91642")]
-/// To be able to *name* the i-th future in the tuple (say we want the .4-th),
-/// the following trick will be used: `let (_, _, _, _, it, ..) = tuple;`
-/// In order to do that, we need to generate a `i`-long repetition of `_`,
-/// for each i-th fut. Hence the recursive muncher approach.
+/// 为了能够*命名*元组中第 i 个 future(比如想取第 .4 个),用了如下技巧:
+/// `let (_, _, _, _, it, ..) = tuple;`。要做到这一点,需要为第 i 个 future 生成一段
+/// 长度为 `i` 的 `_` 重复序列。因此采用递归“蚕食”(muncher)式的宏展开方式。
 macro join_internal {
-    // Recursion step: map each future with its "position" (underscore count).
+    // 递归步骤:把每个 future 映射到它的“位置”(下划线的个数)。
     (
-        // Accumulate a token for each future that has been expanded: "_ _ _".
+        // 为每个已展开的 future 累积一个 token:"_ _ _"。
         current_position: [
             $($underscores:tt)*
         ]
-        // Accumulate Futures and their positions in the tuple: `_0th ()   _1st ( _ ) …`.
+        // 累积 future 及其在元组中的位置:`_0th ()   _1st ( _ ) …`。
         futures_and_positions: [
             $($acc:tt)*
         ]
-        // Munch one future.
+        // 蚕食(取出)一个 future。
         munching: [
             $current:tt
             $($rest:tt)*
@@ -92,7 +91,7 @@ macro join_internal {
         }
     ),
 
-    // End of recursion: generate the output future.
+    // 递归终点:生成最终的输出 future。
     (
         current_position: $_:tt
         futures_and_positions: [
@@ -100,35 +99,37 @@ macro join_internal {
                 $fut_expr:tt ( $($pos:tt)* )
             )*
         ]
-        // Nothing left to munch.
+        // 没有要蚕食的内容了。
         munching: []
     ) => (
         match ( $( MaybeDone::Future($fut_expr), )* ) { futures => async {
             let mut futures = futures;
-            // SAFETY: this is `pin_mut!`.
+            // SAFETY: 这等价于 `pin_mut!`:`futures` 是局部变量,此后不会再被移动,
+            // 因此对它栈上的位置做固定(pin)是合法的。
             let mut futures = unsafe { Pin::new_unchecked(&mut futures) };
             poll_fn(move |cx| {
                 let mut done = true;
-                // For each `fut`, pin-project to it, and poll it.
+                // 对每个 `fut`,做 pin 投影后轮询它。
                 $(
-                    // SAFETY: pinning projection
+                    // SAFETY: pin 投影——把对元组的固定结构性地投影到其中的字段 `fut`,
+                    // 字段不会被移动,因而固定不变量得以保持。
                     let fut = unsafe {
                         futures.as_mut().map_unchecked_mut(|it| {
                             let ( $($pos,)* fut, .. ) = it;
                             fut
                         })
                     };
-                    // Despite how tempting it may be to `let () = ready!(fut.poll(cx));`
-                    // doing so would defeat the point of `join!`: to start polling eagerly all
-                    // of the futures, to allow parallelizing the waits.
+                    // 尽管写成 `let () = ready!(fut.poll(cx));` 看上去很诱人,但那样会破坏
+                    // `join!` 的初衷:对所有 future 急切地开始轮询,从而让各自的等待并行起来。
                     done &= fut.poll(cx).is_ready();
                 )*
                 if !done {
                     return Poll::Pending;
                 }
-                // All ready; time to extract all the outputs.
+                // 全部就绪;现在该把所有输出取出来了。
 
-                // SAFETY: `.take_output()` does not break the `Pin` invariants for that `fut`.
+                // SAFETY: `.take_output()` 不会破坏对应 `fut` 的 `Pin` 不变量
+                // (只是把已完成的输出取走,不移动尚处于固定状态的 future)。
                 let futures = unsafe {
                     futures.as_mut().get_unchecked_mut()
                 };
@@ -138,17 +139,17 @@ macro join_internal {
                             let ( $($pos,)* fut, .. ) = &mut *futures;
                             fut.take_output().unwrap()
                         }
-                    ),*) // <- no trailing comma since we don't want 1-tuples.
+                    ),*) // <- 不加尾随逗号,因为我们不希望得到 1 元组。
                 )
             }).await
         }}
     ),
 }
 
-/// Future used by `join!` that stores it's output to
-/// be later taken and doesn't panic when polled after ready.
+/// 供 `join!` 使用的 future:它会把自身的输出存下来以便之后取走,并且在 ready 之后被再次
+/// 轮询也不会 panic。
 ///
-/// This type is public in a private module for use by the macro.
+/// 该类型放在私有模块中但声明为 public,仅供上面的宏使用。
 #[allow(missing_debug_implementations)]
 #[unstable(feature = "future_join", issue = "91642")]
 pub enum MaybeDone<F: Future> {
@@ -175,9 +176,11 @@ impl<F: Future> Future for MaybeDone<F> {
     type Output = ();
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        // SAFETY: pinning in structural for `f`
+        // SAFETY: 对 `f` 做结构性固定(structural pinning):`self` 已被固定,这里只是把
+        // 固定向内投影到 `Future` 变体中的 `f`,并通过 `Pin::new_unchecked` 轮询它,
+        // 全程不移动 `f`。
         unsafe {
-            // Do not mix match ergonomics with unsafe.
+            // 不要把匹配人体工学(match ergonomics)与 unsafe 混用。
             match *self.as_mut().get_unchecked_mut() {
                 MaybeDone::Future(ref mut f) => {
                     let val = ready!(Pin::new_unchecked(f).poll(cx));

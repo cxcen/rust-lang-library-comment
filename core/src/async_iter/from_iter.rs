@@ -2,10 +2,9 @@ use crate::async_iter::AsyncIterator;
 use crate::pin::Pin;
 use crate::task::{Context, Poll};
 
-/// An async iterator that was created from iterator.
+/// 一个从普通迭代器创建出来的异步迭代器。
 ///
-/// This async iterator is created by the [`from_iter`] function.
-/// See it documentation for more.
+/// 该异步迭代器由 [`from_iter`] 函数创建。更多信息请参阅其文档。
 ///
 /// [`from_iter`]: fn.from_iter.html
 #[unstable(feature = "async_iter_from_iter", issue = "81798")]
@@ -17,7 +16,7 @@ pub struct FromIter<I> {
 #[unstable(feature = "async_iter_from_iter", issue = "81798")]
 impl<I> Unpin for FromIter<I> {}
 
-/// Converts an iterator into an async iterator.
+/// 把一个普通迭代器转换为异步迭代器。
 #[unstable(feature = "async_iter_from_iter", issue = "81798")]
 pub fn from_iter<I: IntoIterator>(iter: I) -> FromIter<I::IntoIter> {
     FromIter { iter: iter.into_iter() }

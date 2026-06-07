@@ -1,61 +1,47 @@
-//! Atomic types
+//! 原子类型(atomic types)。
 //!
-//! Atomic types provide primitive shared-memory communication between
-//! threads, and are the building blocks of other concurrent
-//! types.
+//! 原子类型提供线程间最底层的共享内存通信手段,是其他一切并发类型的构造基石
+//! (`Mutex`、`RwLock`、`Arc` 的引用计数都建立在它们之上)。
 //!
-//! This module defines atomic versions of a select number of primitive
-//! types, including [`AtomicBool`], [`AtomicIsize`], [`AtomicUsize`],
-//! [`AtomicI8`], [`AtomicU16`], etc.
-//! Atomic types present operations that, when used correctly, synchronize
-//! updates between threads.
+//! 本模块为若干基本类型定义了原子版本,包括 [`AtomicBool`]、[`AtomicIsize`]、
+//! [`AtomicUsize`]、[`AtomicI8`]、[`AtomicU16`] 等。只要使用得当,这些原子操作
+//! 能在线程之间同步更新。
 //!
-//! Atomic variables are safe to share between threads (they implement [`Sync`])
-//! but they do not themselves provide the mechanism for sharing and follow the
-//! [threading model](../../../std/thread/index.html#the-threading-model) of Rust.
-//! The most common way to share an atomic variable is to put it into an [`Arc`][arc] (an
-//! atomically-reference-counted shared pointer).
+//! 原子变量本身可以安全地在线程间共享(它们实现了 [`Sync`]),但它们**不**自带
+//! 共享机制,而是遵循 Rust 的[线程模型](../../../std/thread/index.html#the-threading-model)。
+//! 共享一个原子变量最常见的方式是把它放进 [`Arc`][arc](一个原子引用计数的共享指针)。
 //!
 //! [arc]: ../../../std/sync/struct.Arc.html
 //!
-//! Atomic types may be stored in static variables, initialized using
-//! the constant initializers like [`AtomicBool::new`]. Atomic statics
-//! are often used for lazy global initialization.
+//! 原子类型可存放于 `static` 变量中,用 [`AtomicBool::new`] 这类常量构造器初始化。
+//! 原子静态量常用于全局的惰性初始化。
 //!
-//! ## Memory model for atomic accesses
+//! ## 原子访问的内存模型
 //!
-//! Rust atomics currently follow the same rules as [C++20 atomics][cpp], specifically the rules
-//! from the [`intro.races`][cpp-intro.races] section, without the "consume" memory ordering. Since
-//! C++ uses an object-based memory model whereas Rust is access-based, a bit of translation work
-//! has to be done to apply the C++ rules to Rust: whenever C++ talks about "the value of an
-//! object", we understand that to mean the resulting bytes obtained when doing a read. When the C++
-//! standard talks about "the value of an atomic object", this refers to the result of doing an
-//! atomic load (via the operations provided in this module). A "modification of an atomic object"
-//! refers to an atomic store.
+//! Rust 原子目前遵循与 [C++20 原子][cpp]相同的规则,具体是 [`intro.races`][cpp-intro.races]
+//! 一节的规则,但**不含** "consume" 内存序。由于 C++ 采用基于对象(object-based)的内存
+//! 模型,而 Rust 是基于访问(access-based)的,需要做一点翻译:凡 C++ 说“某对象的值”,
+//! 在 Rust 中理解为“一次读取所得到的字节”;C++ 说“某原子对象的值”,指的是一次原子加载
+//! (本模块提供的 load 操作)的结果;“对原子对象的修改”指一次原子存储(store)。
 //!
-//! The end result is *almost* equivalent to saying that creating a *shared reference* to one of the
-//! Rust atomic types corresponds to creating an `atomic_ref` in C++, with the `atomic_ref` being
-//! destroyed when the lifetime of the shared reference ends. The main difference is that Rust
-//! permits concurrent atomic and non-atomic reads to the same memory as those cause no issue in the
-//! C++ memory model, they are just forbidden in C++ because memory is partitioned into "atomic
-//! objects" and "non-atomic objects" (with `atomic_ref` temporarily converting a non-atomic object
-//! into an atomic object).
+//! 最终效果**几乎**等价于:为某个 Rust 原子类型创建一个**共享引用**,对应在 C++ 中
+//! 创建一个 `atomic_ref`,该 `atomic_ref` 在共享引用的生命周期结束时销毁。主要差别在于:
+//! Rust 允许对同一块内存并发地进行原子读与非原子读——这在 C++ 内存模型里没有任何问题,
+//! C++ 之所以禁止,只是因为它把内存划分为“原子对象”和“非原子对象”(`atomic_ref` 临时把
+//! 非原子对象转成原子对象)。
 //!
-//! The most important aspect of this model is that *data races* are undefined behavior. A data race
-//! is defined as conflicting non-synchronized accesses where at least one of the accesses is
-//! non-atomic. Here, accesses are *conflicting* if they affect overlapping regions of memory and at
-//! least one of them is a write. (A `compare_exchange` or `compare_exchange_weak` that does not
-//! succeed is not considered a write.) They are *non-synchronized* if neither of them
-//! *happens-before* the other, according to the happens-before order of the memory model.
+//! 本模型最关键的一点是:**数据竞争(data race)是未定义行为(UB)**。数据竞争定义为:
+//! 相互**冲突**且**未同步**的访问,且其中至少一个是非原子访问。这里,两个访问**冲突**
+//! 指它们触及重叠的内存区域且至少一个是写(一个**未成功**的 `compare_exchange` /
+//! `compare_exchange_weak` 不算写)。它们**未同步**指按内存模型的 happens-before 序,
+//! 二者互不 *happens-before*。
 //!
-//! The other possible cause of undefined behavior in the memory model are mixed-size accesses: Rust
-//! inherits the C++ limitation that non-synchronized conflicting atomic accesses may not partially
-//! overlap. In other words, every pair of non-synchronized atomic accesses must be either disjoint,
-//! access the exact same memory (including using the same access size), or both be reads.
+//! 内存模型中另一种 UB 来源是**混合尺寸访问**:Rust 继承了 C++ 的限制——未同步且冲突的
+//! 原子访问不得**部分**重叠。换言之,任意一对未同步的原子访问,要么互不相交,要么访问
+//! 完全相同的内存(包括访问尺寸相同),要么二者都是读。
 //!
-//! Each atomic access takes an [`Ordering`] which defines how the operation interacts with the
-//! happens-before order. These orderings behave the same as the corresponding [C++20 atomic
-//! orderings][cpp_memory_order]. For more information, see the [nomicon].
+//! 每个原子访问都接受一个 [`Ordering`] 参数,用于规定该操作如何与 happens-before 序交互。
+//! 这些内存序的行为与对应的 [C++20 原子内存序][cpp_memory_order]一致。更多说明见 [nomicon]。
 //!
 //! [cpp]: https://en.cppreference.com/w/cpp/atomic
 //! [cpp-intro.races]: https://timsong-cpp.github.io/cppwp/n4868/intro.multithread#intro.races
@@ -70,29 +56,27 @@
 //! let atomic = AtomicU16::new(0);
 //!
 //! thread::scope(|s| {
-//!     // This is UB: conflicting non-synchronized accesses, at least one of which is non-atomic.
-//!     s.spawn(|| atomic.store(1, Ordering::Relaxed)); // atomic store
-//!     s.spawn(|| unsafe { atomic.as_ptr().write(2) }); // non-atomic write
+//!     // UB:相互冲突且未同步的访问,其中至少一个(这里是 write)是非原子的。
+//!     s.spawn(|| atomic.store(1, Ordering::Relaxed)); // 原子存储
+//!     s.spawn(|| unsafe { atomic.as_ptr().write(2) }); // 非原子写
 //! });
 //!
 //! thread::scope(|s| {
-//!     // This is fine: the accesses do not conflict (as none of them performs any modification).
-//!     // In C++ this would be disallowed since creating an `atomic_ref` precludes
-//!     // further non-atomic accesses, but Rust does not have that limitation.
-//!     s.spawn(|| atomic.load(Ordering::Relaxed)); // atomic load
-//!     s.spawn(|| unsafe { atomic.as_ptr().read() }); // non-atomic read
+//!     // 没问题:两个访问不冲突(都没有做修改)。在 C++ 中这是禁止的,因为创建
+//!     // `atomic_ref` 后就不允许再做非原子访问;Rust 没有这个限制。
+//!     s.spawn(|| atomic.load(Ordering::Relaxed)); // 原子加载
+//!     s.spawn(|| unsafe { atomic.as_ptr().read() }); // 非原子读
 //! });
 //!
 //! thread::scope(|s| {
-//!     // This is fine: `join` synchronizes the code in a way such that the atomic
-//!     // store happens-before the non-atomic write.
-//!     let handle = s.spawn(|| atomic.store(1, Ordering::Relaxed)); // atomic store
-//!     handle.join().expect("thread won't panic"); // synchronize
-//!     s.spawn(|| unsafe { atomic.as_ptr().write(2) }); // non-atomic write
+//!     // 没问题:`join` 建立了同步,使原子存储 happens-before 那次非原子写。
+//!     let handle = s.spawn(|| atomic.store(1, Ordering::Relaxed)); // 原子存储
+//!     handle.join().expect("thread won't panic"); // 同步点
+//!     s.spawn(|| unsafe { atomic.as_ptr().write(2) }); // 非原子写
 //! });
 //!
 //! thread::scope(|s| {
-//!     // This is UB: non-synchronized conflicting differently-sized atomic accesses.
+//!     // UB:未同步、相互冲突、尺寸不同的原子访问。
 //!     s.spawn(|| atomic.store(1, Ordering::Relaxed));
 //!     s.spawn(|| unsafe {
 //!         let differently_sized = transmute::<&AtomicU16, &AtomicU8>(&atomic);
@@ -101,8 +85,7 @@
 //! });
 //!
 //! thread::scope(|s| {
-//!     // This is fine: `join` synchronizes the code in a way such that
-//!     // the 1-byte store happens-before the 2-byte store.
+//!     // 没问题:`join` 建立同步,使 1 字节存储 happens-before 那次 2 字节存储。
 //!     let handle = s.spawn(|| atomic.store(1, Ordering::Relaxed));
 //!     handle.join().expect("thread won't panic");
 //!     s.spawn(|| unsafe {
@@ -112,88 +95,64 @@
 //! });
 //! ```
 //!
-//! # Portability
+//! # 可移植性(Portability)
 //!
-//! All atomic types in this module are guaranteed to be [lock-free] if they're
-//! available. This means they don't internally acquire a global mutex. Atomic
-//! types and operations are not guaranteed to be wait-free. This means that
-//! operations like `fetch_or` may be implemented with a compare-and-swap loop.
+//! 本模块所有原子类型,只要在目标平台上可用,都保证是[无锁(lock-free)][lock-free]的——
+//! 即内部不会获取全局互斥锁。但原子类型与操作**不**保证无等待(wait-free):像 `fetch_or`
+//! 这样的操作可能用 compare-and-swap 循环实现。
 //!
-//! Atomic operations may be implemented at the instruction layer with
-//! larger-size atomics. For example some platforms use 4-byte atomic
-//! instructions to implement `AtomicI8`. Note that this emulation should not
-//! have an impact on correctness of code, it's just something to be aware of.
+//! 在指令层面,原子操作可能借助更大尺寸的原子来实现。例如某些平台用 4 字节原子指令实现
+//! `AtomicI8`。注意这种模拟不影响代码的正确性,只是需要知道有这回事。
 //!
-//! The atomic types in this module might not be available on all platforms. The
-//! atomic types here are all widely available, however, and can generally be
-//! relied upon existing. Some notable exceptions are:
+//! 本模块的原子类型未必在所有平台上都可用。这里列出的原子类型都很普遍、一般可依赖其存在,
+//! 但有几个值得注意的例外:
 //!
-//! * PowerPC and MIPS platforms with 32-bit pointers do not have `AtomicU64` or
-//!   `AtomicI64` types.
-//! * Legacy ARM platforms like ARMv4T and ARMv5TE have very limited hardware
-//!   support for atomics. The bare-metal targets disable this module
-//!   entirely, but the Linux targets [use the kernel] to assist (which comes
-//!   with a performance penalty). It's not until ARMv6K onwards that ARM CPUs
-//!   have support for load/store and Compare and Swap (CAS) atomics in hardware.
-//! * ARMv6-M and ARMv8-M baseline targets (`thumbv6m-*` and
-//!   `thumbv8m.base-*`) only provide `load` and `store` operations, and do
-//!   not support Compare and Swap (CAS) operations, such as `swap`,
-//!   `fetch_add`, etc. Full CAS support is available on ARMv7-M and ARMv8-M
-//!   Mainline (`thumbv7m-*`, `thumbv7em*` and `thumbv8m.main-*`).
+//! * 指针为 32 位的 PowerPC 与 MIPS 平台没有 `AtomicU64` 或 `AtomicI64` 类型。
+//! * ARMv4T、ARMv5TE 等老旧 ARM 平台对原子的硬件支持非常有限。裸机目标会完全禁用本模块,
+//!   而 Linux 目标[借助内核][use the kernel]来辅助实现(伴随性能损失)。要到 ARMv6K 之后,
+//!   ARM CPU 才在硬件上支持 load/store 与 Compare-and-Swap(CAS)原子。
+//! * ARMv6-M 与 ARMv8-M baseline 目标(`thumbv6m-*` 和 `thumbv8m.base-*`)只提供 `load`
+//!   和 `store`,不支持 `swap`、`fetch_add` 等 CAS 操作。完整 CAS 支持见于 ARMv7-M 与
+//!   ARMv8-M Mainline(`thumbv7m-*`、`thumbv7em*` 和 `thumbv8m.main-*`)。
 //!
 //! [use the kernel]: https://www.kernel.org/doc/Documentation/arm/kernel_user_helpers.txt
 //!
-//! Note that future platforms may be added that also do not have support for
-//! some atomic operations. Maximally portable code will want to be careful
-//! about which atomic types are used. `AtomicUsize` and `AtomicIsize` are
-//! generally the most portable, but even then they're not available everywhere.
-//! For reference, the `std` library requires `AtomicBool`s and pointer-sized atomics, although
-//! `core` does not.
+//! 注意未来还可能加入同样缺少某些原子操作的平台。追求最大可移植性的代码应谨慎选择使用
+//! 哪些原子类型。`AtomicUsize` 与 `AtomicIsize` 通常最可移植,但即便它们也并非处处可用。
+//! 作为参考,`std` 库要求存在 `AtomicBool` 和指针大小的原子,而 `core` 不作此要求。
 //!
-//! The `#[cfg(target_has_atomic)]` attribute can be used to conditionally
-//! compile based on the target's supported bit widths. It is a key-value
-//! option set for each supported size, with values "8", "16", "32", "64",
-//! "128", and "ptr" for pointer-sized atomics.
+//! 可用 `#[cfg(target_has_atomic)]` 属性,根据目标支持的位宽做条件编译。它是一组键值选项,
+//! 为每个受支持的尺寸设置,取值有 "8"、"16"、"32"、"64"、"128" 以及表示指针大小原子的 "ptr"。
 //!
 //! [lock-free]: https://en.wikipedia.org/wiki/Non-blocking_algorithm
 //!
-//! # Atomic accesses to read-only memory
+//! # 对只读内存的原子访问
 //!
-//! In general, *all* atomic accesses on read-only memory are undefined behavior. For instance, attempting
-//! to do a `compare_exchange` that will definitely fail (making it conceptually a read-only
-//! operation) can still cause a segmentation fault if the underlying memory page is mapped read-only. Since
-//! atomic `load`s might be implemented using compare-exchange operations, even a `load` can fault
-//! on read-only memory.
+//! 一般而言,对只读内存的**所有**原子访问都是 UB。例如,执行一个注定失败(因而概念上是
+//! 只读操作)的 `compare_exchange`,如果底层内存页被映射为只读,仍可能触发段错误。由于原子
+//! `load` 可能借助 compare-exchange 实现,即使是 `load` 也可能在只读内存上出错。
 //!
-//! For the purpose of this section, "read-only memory" is defined as memory that is read-only in
-//! the underlying target, i.e., the pages are mapped with a read-only flag and any attempt to write
-//! will cause a page fault. In particular, an `&u128` reference that points to memory that is
-//! read-write mapped is *not* considered to point to "read-only memory". In Rust, almost all memory
-//! is read-write; the only exceptions are memory created by `const` items or `static` items without
-//! interior mutability, and memory that was specifically marked as read-only by the operating
-//! system via platform-specific APIs.
+//! 本节中,“只读内存”指在底层目标上即为只读的内存,即页面带只读标志、任何写入都会触发缺页。
+//! 特别地,一个指向**读写**映射内存的 `&u128` 引用**不**被视为指向“只读内存”。在 Rust 中,
+//! 几乎所有内存都是读写的;唯一的例外是 `const` 项、或不含内部可变性的 `static` 项所创建的
+//! 内存,以及由操作系统通过平台特定 API 明确标记为只读的内存。
 //!
-//! As an exception from the general rule stated above, "sufficiently small" atomic loads with
-//! `Ordering::Relaxed` are implemented in a way that works on read-only memory, and are hence not
-//! undefined behavior. The exact size limit for what makes a load "sufficiently small" varies
-//! depending on the target:
+//! 作为上述通则的例外:“足够小”的、使用 `Ordering::Relaxed` 的原子加载,其实现方式能在只读
+//! 内存上工作,因而不是 UB。判定加载“足够小”的确切尺寸上限随目标而异:
 //!
-//! | `target_arch` | Size limit |
+//! | `target_arch` | 尺寸上限 |
 //! |---------------|---------|
-//! | `x86`, `arm`, `loongarch32`, `mips`, `mips32r6`, `powerpc`, `riscv32`, `sparc`, `hexagon` | 4 bytes |
-//! | `x86_64`, `aarch64`, `loongarch64`, `mips64`, `mips64r6`, `powerpc64`, `riscv64`, `sparc64`, `s390x` | 8 bytes |
+//! | `x86`、`arm`、`loongarch32`、`mips`、`mips32r6`、`powerpc`、`riscv32`、`sparc`、`hexagon` | 4 字节 |
+//! | `x86_64`、`aarch64`、`loongarch64`、`mips64`、`mips64r6`、`powerpc64`、`riscv64`、`sparc64`、`s390x` | 8 字节 |
 //!
-//! Atomics loads that are larger than this limit as well as atomic loads with ordering other
-//! than `Relaxed`, as well as *all* atomic loads on targets not listed in the table, might still be
-//! read-only under certain conditions, but that is not a stable guarantee and should not be relied
-//! upon.
+//! 超过此上限的原子加载、使用 `Relaxed` 以外内存序的原子加载,以及在表中未列出目标上的**所有**
+//! 原子加载,在特定条件下也可能可用于只读内存,但这不是稳定保证,不应依赖。
 //!
-//! If you need to do an acquire load on read-only memory, you can do a relaxed load followed by an
-//! acquire fence instead.
+//! 如果需要在只读内存上做 acquire 加载,可改用“relaxed 加载 + acquire 栅栏(fence)”的组合。
 //!
-//! # Examples
+//! # 示例
 //!
-//! A simple spinlock:
+//! 一个简单的自旋锁(spinlock):
 //!
 //! ```ignore-wasm
 //! use std::sync::Arc;
@@ -209,7 +168,7 @@
 //!         spinlock_clone.store(0, Ordering::Release);
 //!     });
 //!
-//!     // Wait for the other thread to release the lock
+//!     // 等待另一个线程释放锁
 //!     while spinlock.load(Ordering::Acquire) != 0 {
 //!         hint::spin_loop();
 //!     }
@@ -220,14 +179,14 @@
 //! }
 //! ```
 //!
-//! Keep a global count of live threads:
+//! 维护一个全局存活线程计数:
 //!
 //! ```
 //! use std::sync::atomic::{AtomicUsize, Ordering};
 //!
 //! static GLOBAL_THREAD_COUNT: AtomicUsize = AtomicUsize::new(0);
 //!
-//! // Note that Relaxed ordering doesn't synchronize anything
+//! // 注意:Relaxed 内存序不同步任何
 //! // except the global thread counter itself.
 //! let old_thread_count = GLOBAL_THREAD_COUNT.fetch_add(1, Ordering::Relaxed);
 //! // Note that this number may not be true at the moment of printing
@@ -272,7 +231,7 @@ trait Sealed {}
 )]
 #[expect(private_bounds)]
 pub unsafe trait AtomicPrimitive: Sized + Copy + Sealed {
-    /// Temporary implementation detail.
+    /// 临时实现细节。
     type AtomicInner: Sized;
 }
 
@@ -327,30 +286,25 @@ impl_atomic_primitive!(AtomicPtr<T>(*mut T), size("ptr"), align(4));
 #[cfg(target_pointer_width = "64")]
 impl_atomic_primitive!(AtomicPtr<T>(*mut T), size("ptr"), align(8));
 
-/// A memory location which can be safely modified from multiple threads.
+/// 一块可以从多个线程安全修改的内存位置。
 ///
-/// This has the same size and bit validity as the underlying type `T`. However,
-/// the alignment of this type is always equal to its size, even on targets where
-/// `T` has alignment less than its size.
+/// 它与底层类型 `T` 具有相同的大小与位有效性(bit validity)。但本类型的对齐
+/// **始终等于其大小**,即使在 `T` 的对齐小于其大小的目标平台上也是如此。
 ///
-/// For more about the differences between atomic types and non-atomic types as
-/// well as information about the portability of this type, please see the
-/// [module-level documentation].
+/// 关于原子类型与非原子类型的区别、以及本类型的可移植性,详见[模块级文档]。
 ///
-/// **Note:** This type is only available on platforms that support atomic loads
-/// and stores of `T`.
+/// **注意:** 本类型仅在支持对 `T` 进行原子加载/存储的平台上可用。
 ///
-/// [module-level documentation]: crate::sync::atomic
+/// [模块级文档]: crate::sync::atomic
 #[unstable(feature = "generic_atomic", issue = "130539")]
 pub type Atomic<T> = <T as AtomicPrimitive>::AtomicInner;
 
-// Some architectures don't have byte-sized atomics, which results in LLVM
-// emulating them using a LL/SC loop. However for AtomicBool we can take
-// advantage of the fact that it only ever contains 0 or 1 and use atomic OR/AND
-// instead, which LLVM can emulate using a larger atomic OR/AND operation.
+// 有些架构没有字节大小的原子,LLVM 会用 LL/SC(load-linked/store-conditional)循环
+// 来模拟。但对 AtomicBool,可以利用它只可能是 0 或 1 这一事实,改用原子 OR/AND——
+// LLVM 能用一个更大尺寸的原子 OR/AND 操作来模拟,效率更高。
 //
-// This list should only contain architectures which have word-sized atomic-or/
-// atomic-and instructions but don't natively support byte-sized atomics.
+// 此列表只应包含那些“有字大小的 atomic-or/atomic-and 指令、但原生不支持字节大小原子”
+// 的架构。
 #[cfg(target_has_atomic = "8")]
 const EMULATE_ATOMIC_BOOL: bool = cfg!(any(
     target_arch = "riscv32",
@@ -359,12 +313,11 @@ const EMULATE_ATOMIC_BOOL: bool = cfg!(any(
     target_arch = "loongarch64"
 ));
 
-/// A boolean type which can be safely shared between threads.
+/// 一个可在线程间安全共享的布尔类型。
 ///
-/// This type has the same size, alignment, and bit validity as a [`bool`].
+/// 它与 [`bool`] 具有相同的大小、对齐和位有效性。
 ///
-/// **Note**: This type is only available on platforms that support atomic
-/// loads and stores of `u8`.
+/// **注意**:本类型仅在支持对 `u8` 进行原子加载/存储的平台上可用。
 #[cfg(target_has_atomic_load_store = "8")]
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_diagnostic_item = "AtomicBool"]
@@ -376,24 +329,26 @@ pub struct AtomicBool {
 #[cfg(target_has_atomic_load_store = "8")]
 #[stable(feature = "rust1", since = "1.0.0")]
 impl Default for AtomicBool {
-    /// Creates an `AtomicBool` initialized to `false`.
+    /// 创建一个初始化为 `false` 的 `AtomicBool`。
     #[inline]
     fn default() -> Self {
         Self::new(false)
     }
 }
 
-// Send is implicitly implemented for AtomicBool.
+// AtomicBool 的 Send 由编译器隐式实现。
+// SAFETY:原子操作保证对内部 `u8` 的并发访问不构成数据竞争,故跨线程共享 `&AtomicBool`
+// 是健全的。
 #[cfg(target_has_atomic_load_store = "8")]
 #[stable(feature = "rust1", since = "1.0.0")]
 unsafe impl Sync for AtomicBool {}
 
-/// A raw pointer type which can be safely shared between threads.
+/// 一个可在线程间安全共享的裸指针类型。
 ///
-/// This type has the same size and bit validity as a `*mut T`.
+/// 它与 `*mut T` 具有相同的大小和位有效性。
 ///
-/// **Note**: This type is only available on platforms that support atomic
-/// loads and stores of pointers. Its size depends on the target pointer's size.
+/// **注意**:本类型仅在支持对指针进行原子加载/存储的平台上可用。其大小取决于目标平台
+/// 的指针大小。
 #[cfg(target_has_atomic_load_store = "ptr")]
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_diagnostic_item = "AtomicPtr"]
@@ -407,12 +362,14 @@ pub struct AtomicPtr<T> {
 #[cfg(target_has_atomic_load_store = "ptr")]
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<T> Default for AtomicPtr<T> {
-    /// Creates a null `AtomicPtr<T>`.
+    /// 创建一个空(null)的 `AtomicPtr<T>`。
     fn default() -> AtomicPtr<T> {
         AtomicPtr::new(crate::ptr::null_mut())
     }
 }
 
+// SAFETY:原子操作保证对内部指针的并发读写不构成数据竞争。注意 `AtomicPtr` 只原子地
+// 搬运指针的“地址位”,解引用该指针仍需调用方自行保证其有效性与同步。
 #[cfg(target_has_atomic_load_store = "ptr")]
 #[stable(feature = "rust1", since = "1.0.0")]
 unsafe impl<T> Send for AtomicPtr<T> {}
@@ -420,18 +377,15 @@ unsafe impl<T> Send for AtomicPtr<T> {}
 #[stable(feature = "rust1", since = "1.0.0")]
 unsafe impl<T> Sync for AtomicPtr<T> {}
 
-/// Atomic memory orderings
+/// 原子内存序(atomic memory orderings)。
 ///
-/// Memory orderings specify the way atomic operations synchronize memory.
-/// In its weakest [`Ordering::Relaxed`], only the memory directly touched by the
-/// operation is synchronized. On the other hand, a store-load pair of [`Ordering::SeqCst`]
-/// operations synchronize other memory while additionally preserving a total order of such
-/// operations across all threads.
+/// 内存序规定原子操作如何同步内存。最弱的 [`Ordering::Relaxed`] 只同步操作直接触及的
+/// 那块内存;而一对 [`Ordering::SeqCst`] 的 store-load,除了同步其他内存,还额外保证
+/// 所有此类操作在所有线程间存在一个**全序**(total order)。
 ///
-/// Rust's memory orderings are [the same as those of
-/// C++20](https://en.cppreference.com/w/cpp/atomic/memory_order).
+/// Rust 的内存序[与 C++20 的完全一致](https://en.cppreference.com/w/cpp/atomic/memory_order)。
 ///
-/// For more information see the [nomicon].
+/// 更多信息见 [nomicon]。
 ///
 /// [nomicon]: ../../../nomicon/atomics.html
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -439,35 +393,33 @@ unsafe impl<T> Sync for AtomicPtr<T> {}
 #[non_exhaustive]
 #[rustc_diagnostic_item = "Ordering"]
 pub enum Ordering {
-    /// No ordering constraints, only atomic operations.
+    /// 无任何顺序约束,仅保证操作本身的原子性。
     ///
-    /// Corresponds to [`memory_order_relaxed`] in C++20.
+    /// 对应 C++20 的 [`memory_order_relaxed`]。
     ///
     /// [`memory_order_relaxed`]: https://en.cppreference.com/w/cpp/atomic/memory_order#Relaxed_ordering
     #[stable(feature = "rust1", since = "1.0.0")]
     Relaxed,
-    /// When coupled with a store, all previous operations become ordered
-    /// before any load of this value with [`Acquire`] (or stronger) ordering.
-    /// In particular, all previous writes become visible to all threads
-    /// that perform an [`Acquire`] (or stronger) load of this value.
+    /// 与一次 store 搭配时:本次 store 之前的所有操作,都被排到“任何以 [`Acquire`]
+    /// (或更强)序加载本值的操作”之前。特别地,本次 store 之前的所有写,对所有以
+    /// [`Acquire`](或更强)序加载本值的线程都变为可见。
     ///
-    /// Notice that using this ordering for an operation that combines loads
-    /// and stores leads to a [`Relaxed`] load operation!
+    /// 注意:若把本序用于一个同时含 load 与 store 的操作(如 fetch 系列),其 load
+    /// 部分会退化为 [`Relaxed`] 加载!
     ///
-    /// This ordering is only applicable for operations that can perform a store.
+    /// 本序只适用于能执行 store 的操作。
     ///
-    /// Corresponds to [`memory_order_release`] in C++20.
+    /// 对应 C++20 的 [`memory_order_release`]。
     ///
     /// [`memory_order_release`]: https://en.cppreference.com/w/cpp/atomic/memory_order#Release-Acquire_ordering
     #[stable(feature = "rust1", since = "1.0.0")]
     Release,
-    /// When coupled with a load, if the loaded value was written by a store operation with
-    /// [`Release`] (or stronger) ordering, then all subsequent operations
-    /// become ordered after that store. In particular, all subsequent loads will see data
-    /// written before the store.
+    /// 与一次 load 搭配时:若所加载的值是由某次带 [`Release`](或更强)序的 store 写入的,
+    /// 则本次 load 之后的所有操作都被排到那次 store 之后。特别地,本次 load 之后的所有
+    /// load 都会看到那次 store 之前写入的数据。
     ///
-    /// Notice that using this ordering for an operation that combines loads
-    /// and stores leads to a [`Relaxed`] store operation!
+    /// 注意:若把本序用于一个同时含 load 与 store 的操作,其 store 部分会退化为 [`Relaxed`]
+    /// 存储!
     ///
     /// This ordering is only applicable for operations that can perform a load.
     ///
@@ -483,25 +435,25 @@ pub enum Ordering {
     /// not performing any store and hence it has just [`Acquire`] ordering. However,
     /// `AcqRel` will never perform [`Relaxed`] accesses.
     ///
-    /// This ordering is only applicable for operations that combine both loads and stores.
+    /// 本序只适用于同时含 load 与 store 的操作。
     ///
-    /// Corresponds to [`memory_order_acq_rel`] in C++20.
+    /// 对应 C++20 的 [`memory_order_acq_rel`]。
     ///
     /// [`memory_order_acq_rel`]: https://en.cppreference.com/w/cpp/atomic/memory_order#Release-Acquire_ordering
     #[stable(feature = "rust1", since = "1.0.0")]
     AcqRel,
-    /// Like [`Acquire`]/[`Release`]/[`AcqRel`] (for load, store, and load-with-store
-    /// operations, respectively) with the additional guarantee that all threads see all
-    /// sequentially consistent operations in the same order.
+    /// 行为如同 [`Acquire`]/[`Release`]/[`AcqRel`](分别用于 load、store、含 store 的 load),
+    /// 但额外保证:所有线程都以**相同的顺序**看到所有顺序一致(sequentially consistent)操作。
+    /// 这是最强的内存序,也是唯一能在多个原子变量间建立全局全序的选项。
     ///
-    /// Corresponds to [`memory_order_seq_cst`] in C++20.
+    /// 对应 C++20 的 [`memory_order_seq_cst`]。
     ///
     /// [`memory_order_seq_cst`]: https://en.cppreference.com/w/cpp/atomic/memory_order#Sequentially-consistent_ordering
     #[stable(feature = "rust1", since = "1.0.0")]
     SeqCst,
 }
 
-/// An [`AtomicBool`] initialized to `false`.
+/// 一个初始化为 `false` 的 [`AtomicBool`]。
 #[cfg(target_has_atomic_load_store = "8")]
 #[stable(feature = "rust1", since = "1.0.0")]
 #[deprecated(
@@ -513,9 +465,9 @@ pub const ATOMIC_BOOL_INIT: AtomicBool = AtomicBool::new(false);
 
 #[cfg(target_has_atomic_load_store = "8")]
 impl AtomicBool {
-    /// Creates a new `AtomicBool`.
+    /// 创建一个新的 `AtomicBool`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::sync::atomic::AtomicBool;
@@ -531,59 +483,58 @@ impl AtomicBool {
         AtomicBool { v: UnsafeCell::new(v as u8) }
     }
 
-    /// Creates a new `AtomicBool` from a pointer.
+    /// 从一个指针创建 `AtomicBool` 视图。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::sync::atomic::{self, AtomicBool};
     ///
-    /// // Get a pointer to an allocated value
+    /// // 取得一个已分配值的指针
     /// let ptr: *mut bool = Box::into_raw(Box::new(false));
     ///
     /// assert!(ptr.cast::<AtomicBool>().is_aligned());
     ///
     /// {
-    ///     // Create an atomic view of the allocated value
+    ///     // 为这块已分配的值创建一个原子视图
     ///     let atomic = unsafe { AtomicBool::from_ptr(ptr) };
     ///
-    ///     // Use `atomic` for atomic operations, possibly share it with other threads
+    ///     // 用 `atomic` 做原子操作,也可与其他线程共享
     ///     atomic.store(true, atomic::Ordering::Relaxed);
     /// }
     ///
-    /// // It's ok to non-atomically access the value behind `ptr`,
-    /// // since the reference to the atomic ended its lifetime in the block above
+    /// // 此时再非原子地访问 `ptr` 背后的值是 OK 的,
+    /// // 因为对该原子的引用已在上面的代码块中结束生命周期
     /// assert_eq!(unsafe { *ptr }, true);
     ///
-    /// // Deallocate the value
+    /// // 释放该值
     /// unsafe { drop(Box::from_raw(ptr)) }
     /// ```
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// * `ptr` must be aligned to `align_of::<AtomicBool>()` (note that this is always true, since
-    ///   `align_of::<AtomicBool>() == 1`).
-    /// * `ptr` must be [valid] for both reads and writes for the whole lifetime `'a`.
-    /// * You must adhere to the [Memory model for atomic accesses]. In particular, it is not
-    ///   allowed to mix conflicting atomic and non-atomic accesses, or atomic accesses of different
-    ///   sizes, without synchronization.
+    /// 调用方必须保证以下前置条件,否则即为未定义行为:
+    /// * `ptr` 必须对齐到 `align_of::<AtomicBool>()`(注:这总是成立,因为该对齐恒为 1)。
+    /// * 在整个生命周期 `'a` 内,`ptr` 对读和写都必须[有效][valid]。
+    /// * 必须遵守[原子访问的内存模型]。特别地,未经同步时,不得混用相互冲突的原子与非原子
+    ///   访问,也不得混用不同尺寸的原子访问。
     ///
     /// [valid]: crate::ptr#safety
-    /// [Memory model for atomic accesses]: self#memory-model-for-atomic-accesses
+    /// [原子访问的内存模型]: self#memory-model-for-atomic-accesses
     #[inline]
     #[stable(feature = "atomic_from_ptr", since = "1.75.0")]
     #[rustc_const_stable(feature = "const_atomic_from_ptr", since = "1.84.0")]
     pub const unsafe fn from_ptr<'a>(ptr: *mut bool) -> &'a AtomicBool {
-        // SAFETY: guaranteed by the caller
+        // SAFETY: 由调用方保证(见上面的安全性契约)。
         unsafe { &*ptr.cast() }
     }
 
-    /// Returns a mutable reference to the underlying [`bool`].
+    /// 返回对底层 [`bool`] 的可变引用。
     ///
-    /// This is safe because the mutable reference guarantees that no other threads are
-    /// concurrently accessing the atomic data.
+    /// 之所以安全,是因为这个可变引用本身就保证了没有其他线程正在并发访问该原子数据
+    /// (`&mut self` 即独占访问,无需任何原子操作)。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::sync::atomic::{AtomicBool, Ordering};
@@ -596,13 +547,13 @@ impl AtomicBool {
     #[inline]
     #[stable(feature = "atomic_access", since = "1.15.0")]
     pub fn get_mut(&mut self) -> &mut bool {
-        // SAFETY: the mutable reference guarantees unique ownership.
+        // SAFETY: 可变引用保证了独占所有权,故可安全转成 `&mut bool`。
         unsafe { &mut *(self.v.get() as *mut bool) }
     }
 
-    /// Gets atomic access to a `&mut bool`.
+    /// 为一个 `&mut bool` 取得原子访问视图。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(atomic_from_mut)]
@@ -617,15 +568,13 @@ impl AtomicBool {
     #[cfg(target_has_atomic_equal_alignment = "8")]
     #[unstable(feature = "atomic_from_mut", issue = "76314")]
     pub fn from_mut(v: &mut bool) -> &mut Self {
-        // SAFETY: the mutable reference guarantees unique ownership, and
-        // alignment of both `bool` and `Self` is 1.
+        // SAFETY: 可变引用保证独占所有权,且 `bool` 与 `Self` 的对齐都是 1,布局相容。
         unsafe { &mut *(v as *mut bool as *mut Self) }
     }
 
-    /// Gets non-atomic access to a `&mut [AtomicBool]` slice.
+    /// 为一个 `&mut [AtomicBool]` 切片取得**非原子**访问视图。
     ///
-    /// This is safe because the mutable reference guarantees that no other threads are
-    /// concurrently accessing the atomic data.
+    /// 之所以安全,是因为这个可变引用保证了没有其他线程正在并发访问这些原子数据。
     ///
     /// # Examples
     ///
@@ -652,13 +601,13 @@ impl AtomicBool {
     #[inline]
     #[unstable(feature = "atomic_from_mut", issue = "76314")]
     pub fn get_mut_slice(this: &mut [Self]) -> &mut [bool] {
-        // SAFETY: the mutable reference guarantees unique ownership.
+        // SAFETY: 可变引用保证独占所有权,故无需原子操作即可重解释为 `&mut [bool]`。
         unsafe { &mut *(this as *mut [Self] as *mut [bool]) }
     }
 
-    /// Gets atomic access to a `&mut [bool]` slice.
+    /// 为一个 `&mut [bool]` 切片取得原子访问视图。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```rust,ignore-wasm
     /// #![feature(atomic_from_mut)]
@@ -677,17 +626,15 @@ impl AtomicBool {
     #[cfg(target_has_atomic_equal_alignment = "8")]
     #[unstable(feature = "atomic_from_mut", issue = "76314")]
     pub fn from_mut_slice(v: &mut [bool]) -> &mut [Self] {
-        // SAFETY: the mutable reference guarantees unique ownership, and
-        // alignment of both `bool` and `Self` is 1.
+        // SAFETY: 可变引用保证独占所有权,且 `bool` 与 `Self` 的对齐都是 1,布局相容。
         unsafe { &mut *(v as *mut [bool] as *mut [Self]) }
     }
 
-    /// Consumes the atomic and returns the contained value.
+    /// 消费该原子,返回其中持有的值。
     ///
-    /// This is safe because passing `self` by value guarantees that no other threads are
-    /// concurrently accessing the atomic data.
+    /// 之所以安全,是因为按值传入 `self` 保证了没有其他线程正在并发访问该原子数据。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::sync::atomic::AtomicBool;
@@ -702,16 +649,16 @@ impl AtomicBool {
         self.v.into_inner() != 0
     }
 
-    /// Loads a value from the bool.
+    /// 从该 bool 中加载一个值。
     ///
-    /// `load` takes an [`Ordering`] argument which describes the memory ordering
-    /// of this operation. Possible values are [`SeqCst`], [`Acquire`] and [`Relaxed`].
+    /// `load` 接受一个 [`Ordering`] 参数描述本操作的内存序。可取值为 [`SeqCst`]、
+    /// [`Acquire`] 和 [`Relaxed`]。
     ///
     /// # Panics
     ///
-    /// Panics if `order` is [`Release`] or [`AcqRel`].
+    /// 当 `order` 为 [`Release`] 或 [`AcqRel`] 时 panic(load 不能带 release 语义)。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::sync::atomic::{AtomicBool, Ordering};
@@ -722,23 +669,22 @@ impl AtomicBool {
     /// ```
     #[inline]
     #[stable(feature = "rust1", since = "1.0.0")]
-    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+    #[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
     pub fn load(&self, order: Ordering) -> bool {
-        // SAFETY: any data races are prevented by atomic intrinsics and the raw
-        // pointer passed in is valid because we got it from a reference.
+        // SAFETY: 数据竞争由原子 intrinsic 防止;传入的裸指针来自一个引用,故必然有效。
         unsafe { atomic_load(self.v.get(), order) != 0 }
     }
 
-    /// Stores a value into the bool.
+    /// 向该 bool 存入一个值。
     ///
-    /// `store` takes an [`Ordering`] argument which describes the memory ordering
-    /// of this operation. Possible values are [`SeqCst`], [`Release`] and [`Relaxed`].
+    /// `store` 接受一个 [`Ordering`] 参数描述本操作的内存序。可取值为 [`SeqCst`]、
+    /// [`Release`] 和 [`Relaxed`]。
     ///
     /// # Panics
     ///
-    /// Panics if `order` is [`Acquire`] or [`AcqRel`].
+    /// 当 `order` 为 [`Acquire`] 或 [`AcqRel`] 时 panic(store 不能带 acquire 语义)。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::sync::atomic::{AtomicBool, Ordering};
@@ -750,27 +696,24 @@ impl AtomicBool {
     /// ```
     #[inline]
     #[stable(feature = "rust1", since = "1.0.0")]
-    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+    #[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
     #[rustc_should_not_be_called_on_const_items]
     pub fn store(&self, val: bool, order: Ordering) {
-        // SAFETY: any data races are prevented by atomic intrinsics and the raw
-        // pointer passed in is valid because we got it from a reference.
+        // SAFETY: 数据竞争由原子 intrinsic 防止;传入的裸指针来自一个引用,故必然有效。
         unsafe {
             atomic_store(self.v.get(), val as u8, order);
         }
     }
 
-    /// Stores a value into the bool, returning the previous value.
+    /// 向该 bool 存入一个值,并返回此前的旧值。
     ///
-    /// `swap` takes an [`Ordering`] argument which describes the memory ordering
-    /// of this operation. All ordering modes are possible. Note that using
-    /// [`Acquire`] makes the store part of this operation [`Relaxed`], and
-    /// using [`Release`] makes the load part [`Relaxed`].
+    /// `swap` 接受一个 [`Ordering`] 参数描述本操作的内存序。所有内存序模式都可用。注意:
+    /// 用 [`Acquire`] 会使本操作的 store 部分退化为 [`Relaxed`],用 [`Release`] 会使其
+    /// load 部分退化为 [`Relaxed`]。
     ///
-    /// **Note:** This method is only available on platforms that support atomic
-    /// operations on `u8`.
+    /// **注意:** 本方法仅在支持对 `u8` 进行原子操作的平台上可用。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::sync::atomic::{AtomicBool, Ordering};
@@ -783,37 +726,35 @@ impl AtomicBool {
     #[inline]
     #[stable(feature = "rust1", since = "1.0.0")]
     #[cfg(target_has_atomic = "8")]
-    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+    #[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
     #[rustc_should_not_be_called_on_const_items]
     pub fn swap(&self, val: bool, order: Ordering) -> bool {
+        // 在缺少字节原子的架构上(见 EMULATE_ATOMIC_BOOL),用 OR/AND 模拟 swap:
+        // 写 true 等价于 OR true,写 false 等价于 AND false。
         if EMULATE_ATOMIC_BOOL {
             if val { self.fetch_or(true, order) } else { self.fetch_and(false, order) }
         } else {
-            // SAFETY: data races are prevented by atomic intrinsics.
+            // SAFETY: 数据竞争由原子 intrinsic 防止。
             unsafe { atomic_swap(self.v.get(), val as u8, order) != 0 }
         }
     }
 
-    /// Stores a value into the [`bool`] if the current value is the same as the `current` value.
+    /// 仅当当前值等于 `current` 时,才把新值存入该 [`bool`]。
     ///
-    /// The return value is always the previous value. If it is equal to `current`, then the value
-    /// was updated.
+    /// 返回值**始终**是此前的旧值。若它等于 `current`,说明更新已发生。
     ///
-    /// `compare_and_swap` also takes an [`Ordering`] argument which describes the memory
-    /// ordering of this operation. Notice that even when using [`AcqRel`], the operation
-    /// might fail and hence just perform an `Acquire` load, but not have `Release` semantics.
-    /// Using [`Acquire`] makes the store part of this operation [`Relaxed`] if it
-    /// happens, and using [`Release`] makes the load part [`Relaxed`].
+    /// `compare_and_swap` 也接受一个 [`Ordering`] 参数描述本操作的内存序。注意:即便使用
+    /// [`AcqRel`],操作也可能失败,此时只执行一次 `Acquire` 加载、不具备 `Release` 语义。
+    /// 用 [`Acquire`] 会让(若发生的)store 部分退化为 [`Relaxed`],用 [`Release`] 会让
+    /// load 部分退化为 [`Relaxed`]。
     ///
-    /// **Note:** This method is only available on platforms that support atomic
-    /// operations on `u8`.
+    /// **注意:** 本方法仅在支持对 `u8` 进行原子操作的平台上可用。
     ///
-    /// # Migrating to `compare_exchange` and `compare_exchange_weak`
+    /// # 迁移到 `compare_exchange` 与 `compare_exchange_weak`
     ///
-    /// `compare_and_swap` is equivalent to `compare_exchange` with the following mapping for
-    /// memory orderings:
+    /// `compare_and_swap` 等价于按下表映射内存序的 `compare_exchange`:
     ///
-    /// Original | Success | Failure
+    /// 原内存序 | 成功时 | 失败时
     /// -------- | ------- | -------
     /// Relaxed  | Relaxed | Relaxed
     /// Acquire  | Acquire | Acquire
@@ -821,17 +762,14 @@ impl AtomicBool {
     /// AcqRel   | AcqRel  | Acquire
     /// SeqCst   | SeqCst  | SeqCst
     ///
-    /// `compare_and_swap` and `compare_exchange` also differ in their return type. You can use
-    /// `compare_exchange(...).unwrap_or_else(|x| x)` to recover the behavior of `compare_and_swap`,
-    /// but in most cases it is more idiomatic to check whether the return value is `Ok` or `Err`
-    /// rather than to infer success vs failure based on the value that was read.
+    /// 两者返回类型也不同。可用 `compare_exchange(...).unwrap_or_else(|x| x)` 复现
+    /// `compare_and_swap` 的行为,但多数情况下更地道的做法是检查返回值是 `Ok` 还是 `Err`,
+    /// 而非根据读到的值去推断成功与否。
     ///
-    /// During migration, consider whether it makes sense to use `compare_exchange_weak` instead.
-    /// `compare_exchange_weak` is allowed to fail spuriously even when the comparison succeeds,
-    /// which allows the compiler to generate better assembly code when the compare and swap
-    /// is used in a loop.
+    /// 迁移时还应考虑改用 `compare_exchange_weak`:它**允许在比较成功时仍偶发失败**
+    /// (spurious failure),从而让编译器在“CAS 放在循环里”的场景下生成更优的汇编。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::sync::atomic::{AtomicBool, Ordering};
@@ -851,7 +789,7 @@ impl AtomicBool {
         note = "Use `compare_exchange` or `compare_exchange_weak` instead"
     )]
     #[cfg(target_has_atomic = "8")]
-    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+    #[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
     #[rustc_should_not_be_called_on_const_items]
     pub fn compare_and_swap(&self, current: bool, new: bool, order: Ordering) -> bool {
         match self.compare_exchange(current, new, order, strongest_failure_ordering(order)) {
@@ -860,23 +798,22 @@ impl AtomicBool {
         }
     }
 
-    /// Stores a value into the [`bool`] if the current value is the same as the `current` value.
+    /// 当且仅当当前值与 `current` 相同时,把 `new` 写入这个 [`bool`]。
     ///
-    /// The return value is a result indicating whether the new value was written and containing
-    /// the previous value. On success this value is guaranteed to be equal to `current`.
+    /// 返回值是一个 `Result`,指示新值是否被写入,并携带操作前的旧值。
+    /// 成功时该值保证等于 `current`。
     ///
-    /// `compare_exchange` takes two [`Ordering`] arguments to describe the memory
-    /// ordering of this operation. `success` describes the required ordering for the
-    /// read-modify-write operation that takes place if the comparison with `current` succeeds.
-    /// `failure` describes the required ordering for the load operation that takes place when
-    /// the comparison fails. Using [`Acquire`] as success ordering makes the store part
-    /// of this operation [`Relaxed`], and using [`Release`] makes the successful load
-    /// [`Relaxed`]. The failure ordering can only be [`SeqCst`], [`Acquire`] or [`Relaxed`].
+    /// `compare_exchange` 接受两个 [`Ordering`] 参数来描述本操作的内存顺序。
+    /// `success` 描述比较成功时所执行的“读-改-写”操作所需的顺序;
+    /// `failure` 描述比较失败时所执行的 load 操作所需的顺序。
+    /// 把 `success` 设为 [`Acquire`] 会让本操作的 store 部分退化为 [`Relaxed`],
+    /// 设为 [`Release`] 会让成功路径上的 load 部分退化为 [`Relaxed`]。
+    /// `failure` 顺序只能是 [`SeqCst`]、[`Acquire`] 或 [`Relaxed`];
+    /// 传入 [`Release`] 或 [`AcqRel`] 会触发 panic。
     ///
-    /// **Note:** This method is only available on platforms that support atomic
-    /// operations on `u8`.
+    /// **注意:** 本方法只在支持 `u8` 原子操作的平台上可用。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::sync::atomic::{AtomicBool, Ordering};
@@ -897,15 +834,13 @@ impl AtomicBool {
     /// assert_eq!(some_bool.load(Ordering::Relaxed), false);
     /// ```
     ///
-    /// # Considerations
+    /// # 注意事项
     ///
-    /// `compare_exchange` is a [compare-and-swap operation] and thus exhibits the usual downsides
-    /// of CAS operations. In particular, a load of the value followed by a successful
-    /// `compare_exchange` with the previous load *does not ensure* that other threads have not
-    /// changed the value in the interim. This is usually important when the *equality* check in
-    /// the `compare_exchange` is being used to check the *identity* of a value, but equality
-    /// does not necessarily imply identity. In this case, `compare_exchange` can lead to the
-    /// [ABA problem].
+    /// `compare_exchange` 是一个 [compare-and-swap operation],因此带有 CAS 操作惯有的缺陷。
+    /// 特别地,“先 load 出一个值,再用这个旧值做一次成功的 `compare_exchange`” *并不能保证*
+    /// 在这两步之间其他线程没有改动过该值。这一点在用 `compare_exchange` 里的*相等性*检查
+    /// 来判断值的*同一性*时尤其重要 —— 相等并不必然意味着同一。在这种场景下,
+    /// `compare_exchange` 可能导致 [ABA problem](即值被改成别的再改回原值,CAS 仍判定相等而通过)。
     ///
     /// [ABA Problem]: https://en.wikipedia.org/wiki/ABA_problem
     /// [compare-and-swap operation]: https://en.wikipedia.org/wiki/Compare-and-swap
@@ -913,7 +848,7 @@ impl AtomicBool {
     #[stable(feature = "extended_compare_and_swap", since = "1.10.0")]
     #[doc(alias = "compare_and_swap")]
     #[cfg(target_has_atomic = "8")]
-    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+    #[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
     #[rustc_should_not_be_called_on_const_items]
     pub fn compare_exchange(
         &self,
@@ -923,7 +858,7 @@ impl AtomicBool {
         failure: Ordering,
     ) -> Result<bool, bool> {
         if EMULATE_ATOMIC_BOOL {
-            // Pick the strongest ordering from success and failure.
+            // 从 success 与 failure 中取较强的那个顺序。
             let order = match (success, failure) {
                 (SeqCst, _) => SeqCst,
                 (_, SeqCst) => SeqCst,
@@ -939,16 +874,15 @@ impl AtomicBool {
                 (Relaxed, Relaxed) => Relaxed,
             };
             let old = if current == new {
-                // This is a no-op, but we still need to perform the operation
-                // for memory ordering reasons.
+                // 这其实是个空操作,但为了内存顺序的正确性,我们仍然要执行这个操作。
                 self.fetch_or(false, order)
             } else {
-                // This sets the value to the new one and returns the old one.
+                // 把值设为新值,并返回旧值。
                 self.swap(new, order)
             };
             if old == current { Ok(old) } else { Err(old) }
         } else {
-            // SAFETY: data races are prevented by atomic intrinsics.
+            // SAFETY: 数据竞争由原子 intrinsic 防止。
             match unsafe {
                 atomic_compare_exchange(self.v.get(), current as u8, new as u8, success, failure)
             } {
@@ -958,25 +892,27 @@ impl AtomicBool {
         }
     }
 
-    /// Stores a value into the [`bool`] if the current value is the same as the `current` value.
+    /// 当且仅当当前值与 `current` 相同时,把 `new` 写入这个 [`bool`]。
     ///
-    /// Unlike [`AtomicBool::compare_exchange`], this function is allowed to spuriously fail even when the
-    /// comparison succeeds, which can result in more efficient code on some platforms. The
-    /// return value is a result indicating whether the new value was written and containing the
-    /// previous value.
+    /// 与 [`AtomicBool::compare_exchange`] 不同,本函数 **允许在比较成功时仍偶发失败
+    /// (spurious failure)**,这能让某些平台生成更高效的代码。返回值是一个 `Result`,
+    /// 指示新值是否被写入,并携带操作前的旧值。
     ///
-    /// `compare_exchange_weak` takes two [`Ordering`] arguments to describe the memory
-    /// ordering of this operation. `success` describes the required ordering for the
-    /// read-modify-write operation that takes place if the comparison with `current` succeeds.
-    /// `failure` describes the required ordering for the load operation that takes place when
-    /// the comparison fails. Using [`Acquire`] as success ordering makes the store part
-    /// of this operation [`Relaxed`], and using [`Release`] makes the successful load
-    /// [`Relaxed`]. The failure ordering can only be [`SeqCst`], [`Acquire`] or [`Relaxed`].
+    /// 之所以允许偶发失败:在 LL/SC(load-linked / store-conditional)架构上,
+    /// 强 CAS 在底层往往需要一个重试循环;而 `compare_exchange_weak` 把单次 LL/SC 尝试
+    /// 暴露出来,调用方通常本来就在循环里使用它,因此无需为强 CAS 内部那层重试付出代价。
     ///
-    /// **Note:** This method is only available on platforms that support atomic
-    /// operations on `u8`.
+    /// `compare_exchange_weak` 接受两个 [`Ordering`] 参数来描述本操作的内存顺序。
+    /// `success` 描述比较成功时所执行的“读-改-写”操作所需的顺序;
+    /// `failure` 描述比较失败时所执行的 load 操作所需的顺序。
+    /// 把 `success` 设为 [`Acquire`] 会让本操作的 store 部分退化为 [`Relaxed`],
+    /// 设为 [`Release`] 会让成功路径上的 load 部分退化为 [`Relaxed`]。
+    /// `failure` 顺序只能是 [`SeqCst`]、[`Acquire`] 或 [`Relaxed`];
+    /// 传入 [`Release`] 或 [`AcqRel`] 会触发 panic。
     ///
-    /// # Examples
+    /// **注意:** 本方法只在支持 `u8` 原子操作的平台上可用。
+    ///
+    /// # 示例
     ///
     /// ```
     /// use std::sync::atomic::{AtomicBool, Ordering};
@@ -993,15 +929,13 @@ impl AtomicBool {
     /// }
     /// ```
     ///
-    /// # Considerations
+    /// # 注意事项
     ///
-    /// `compare_exchange` is a [compare-and-swap operation] and thus exhibits the usual downsides
-    /// of CAS operations. In particular, a load of the value followed by a successful
-    /// `compare_exchange` with the previous load *does not ensure* that other threads have not
-    /// changed the value in the interim. This is usually important when the *equality* check in
-    /// the `compare_exchange` is being used to check the *identity* of a value, but equality
-    /// does not necessarily imply identity. In this case, `compare_exchange` can lead to the
-    /// [ABA problem].
+    /// `compare_exchange` 是一个 [compare-and-swap operation],因此带有 CAS 操作惯有的缺陷。
+    /// 特别地,“先 load 出一个值,再用这个旧值做一次成功的 `compare_exchange`” *并不能保证*
+    /// 在这两步之间其他线程没有改动过该值。这一点在用 `compare_exchange` 里的*相等性*检查
+    /// 来判断值的*同一性*时尤其重要 —— 相等并不必然意味着同一。在这种场景下,
+    /// `compare_exchange` 可能导致 [ABA problem](即值被改成别的再改回原值,CAS 仍判定相等而通过)。
     ///
     /// [ABA Problem]: https://en.wikipedia.org/wiki/ABA_problem
     /// [compare-and-swap operation]: https://en.wikipedia.org/wiki/Compare-and-swap
@@ -1009,7 +943,7 @@ impl AtomicBool {
     #[stable(feature = "extended_compare_and_swap", since = "1.10.0")]
     #[doc(alias = "compare_and_swap")]
     #[cfg(target_has_atomic = "8")]
-    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+    #[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
     #[rustc_should_not_be_called_on_const_items]
     pub fn compare_exchange_weak(
         &self,
@@ -1022,7 +956,7 @@ impl AtomicBool {
             return self.compare_exchange(current, new, success, failure);
         }
 
-        // SAFETY: data races are prevented by atomic intrinsics.
+        // SAFETY: 数据竞争由原子 intrinsic 防止。
         match unsafe {
             atomic_compare_exchange_weak(self.v.get(), current as u8, new as u8, success, failure)
         } {
@@ -1031,22 +965,19 @@ impl AtomicBool {
         }
     }
 
-    /// Logical "and" with a boolean value.
+    /// 对一个布尔值做逻辑“与”(and)。
     ///
-    /// Performs a logical "and" operation on the current value and the argument `val`, and sets
-    /// the new value to the result.
+    /// 对当前值与参数 `val` 执行逻辑“与”操作,并把结果设为新值。
     ///
-    /// Returns the previous value.
+    /// 返回操作前的旧值。
     ///
-    /// `fetch_and` takes an [`Ordering`] argument which describes the memory ordering
-    /// of this operation. All ordering modes are possible. Note that using
-    /// [`Acquire`] makes the store part of this operation [`Relaxed`], and
-    /// using [`Release`] makes the load part [`Relaxed`].
+    /// `fetch_and` 接受一个 [`Ordering`] 参数来描述本操作的内存顺序。
+    /// 所有顺序模式都允许。注意:用 [`Acquire`] 会让本操作的 store 部分退化为 [`Relaxed`],
+    /// 用 [`Release`] 会让 load 部分退化为 [`Relaxed`];只有 [`AcqRel`] 或 [`SeqCst`] 才同时具备两端语义。
     ///
-    /// **Note:** This method is only available on platforms that support atomic
-    /// operations on `u8`.
+    /// **注意:** 本方法只在支持 `u8` 原子操作的平台上可用。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::sync::atomic::{AtomicBool, Ordering};
@@ -1066,29 +997,26 @@ impl AtomicBool {
     #[inline]
     #[stable(feature = "rust1", since = "1.0.0")]
     #[cfg(target_has_atomic = "8")]
-    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+    #[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
     #[rustc_should_not_be_called_on_const_items]
     pub fn fetch_and(&self, val: bool, order: Ordering) -> bool {
-        // SAFETY: data races are prevented by atomic intrinsics.
+        // SAFETY: 数据竞争由原子 intrinsic 防止。
         unsafe { atomic_and(self.v.get(), val as u8, order) != 0 }
     }
 
-    /// Logical "nand" with a boolean value.
+    /// 对一个布尔值做逻辑“与非”(nand)。
     ///
-    /// Performs a logical "nand" operation on the current value and the argument `val`, and sets
-    /// the new value to the result.
+    /// 对当前值与参数 `val` 执行逻辑“与非”操作,并把结果设为新值。
     ///
-    /// Returns the previous value.
+    /// 返回操作前的旧值。
     ///
-    /// `fetch_nand` takes an [`Ordering`] argument which describes the memory ordering
-    /// of this operation. All ordering modes are possible. Note that using
-    /// [`Acquire`] makes the store part of this operation [`Relaxed`], and
-    /// using [`Release`] makes the load part [`Relaxed`].
+    /// `fetch_nand` 接受一个 [`Ordering`] 参数来描述本操作的内存顺序。
+    /// 所有顺序模式都允许。注意:用 [`Acquire`] 会让本操作的 store 部分退化为 [`Relaxed`],
+    /// 用 [`Release`] 会让 load 部分退化为 [`Relaxed`];只有 [`AcqRel`] 或 [`SeqCst`] 才同时具备两端语义。
     ///
-    /// **Note:** This method is only available on platforms that support atomic
-    /// operations on `u8`.
+    /// **注意:** 本方法只在支持 `u8` 原子操作的平台上可用。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::sync::atomic::{AtomicBool, Ordering};
@@ -1109,40 +1037,36 @@ impl AtomicBool {
     #[inline]
     #[stable(feature = "rust1", since = "1.0.0")]
     #[cfg(target_has_atomic = "8")]
-    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+    #[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
     #[rustc_should_not_be_called_on_const_items]
     pub fn fetch_nand(&self, val: bool, order: Ordering) -> bool {
-        // We can't use atomic_nand here because it can result in a bool with
-        // an invalid value. This happens because the atomic operation is done
-        // with an 8-bit integer internally, which would set the upper 7 bits.
-        // So we just use fetch_xor or swap instead.
+        // 这里不能用 atomic_nand,因为它可能产生一个值非法的 bool。
+        // 原因是底层是用一个 8 位整数来做原子操作的,与非运算会把高 7 位也置 1。
+        // 所以我们改用 fetch_xor 或 swap 来实现。
         if val {
             // !(x & true) == !x
-            // We must invert the bool.
+            // 必须把这个 bool 取反。
             self.fetch_xor(true, order)
         } else {
             // !(x & false) == true
-            // We must set the bool to true.
+            // 必须把这个 bool 设为 true。
             self.swap(true, order)
         }
     }
 
-    /// Logical "or" with a boolean value.
+    /// 对一个布尔值做逻辑“或”(or)。
     ///
-    /// Performs a logical "or" operation on the current value and the argument `val`, and sets the
-    /// new value to the result.
+    /// 对当前值与参数 `val` 执行逻辑“或”操作,并把结果设为新值。
     ///
-    /// Returns the previous value.
+    /// 返回操作前的旧值。
     ///
-    /// `fetch_or` takes an [`Ordering`] argument which describes the memory ordering
-    /// of this operation. All ordering modes are possible. Note that using
-    /// [`Acquire`] makes the store part of this operation [`Relaxed`], and
-    /// using [`Release`] makes the load part [`Relaxed`].
+    /// `fetch_or` 接受一个 [`Ordering`] 参数来描述本操作的内存顺序。
+    /// 所有顺序模式都允许。注意:用 [`Acquire`] 会让本操作的 store 部分退化为 [`Relaxed`],
+    /// 用 [`Release`] 会让 load 部分退化为 [`Relaxed`];只有 [`AcqRel`] 或 [`SeqCst`] 才同时具备两端语义。
     ///
-    /// **Note:** This method is only available on platforms that support atomic
-    /// operations on `u8`.
+    /// **注意:** 本方法只在支持 `u8` 原子操作的平台上可用。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::sync::atomic::{AtomicBool, Ordering};
@@ -1162,29 +1086,26 @@ impl AtomicBool {
     #[inline]
     #[stable(feature = "rust1", since = "1.0.0")]
     #[cfg(target_has_atomic = "8")]
-    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+    #[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
     #[rustc_should_not_be_called_on_const_items]
     pub fn fetch_or(&self, val: bool, order: Ordering) -> bool {
-        // SAFETY: data races are prevented by atomic intrinsics.
+        // SAFETY: 数据竞争由原子 intrinsic 防止。
         unsafe { atomic_or(self.v.get(), val as u8, order) != 0 }
     }
 
-    /// Logical "xor" with a boolean value.
+    /// 对一个布尔值做逻辑“异或”(xor)。
     ///
-    /// Performs a logical "xor" operation on the current value and the argument `val`, and sets
-    /// the new value to the result.
+    /// 对当前值与参数 `val` 执行逻辑“异或”操作,并把结果设为新值。
     ///
-    /// Returns the previous value.
+    /// 返回操作前的旧值。
     ///
-    /// `fetch_xor` takes an [`Ordering`] argument which describes the memory ordering
-    /// of this operation. All ordering modes are possible. Note that using
-    /// [`Acquire`] makes the store part of this operation [`Relaxed`], and
-    /// using [`Release`] makes the load part [`Relaxed`].
+    /// `fetch_xor` 接受一个 [`Ordering`] 参数来描述本操作的内存顺序。
+    /// 所有顺序模式都允许。注意:用 [`Acquire`] 会让本操作的 store 部分退化为 [`Relaxed`],
+    /// 用 [`Release`] 会让 load 部分退化为 [`Relaxed`];只有 [`AcqRel`] 或 [`SeqCst`] 才同时具备两端语义。
     ///
-    /// **Note:** This method is only available on platforms that support atomic
-    /// operations on `u8`.
+    /// **注意:** 本方法只在支持 `u8` 原子操作的平台上可用。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::sync::atomic::{AtomicBool, Ordering};
@@ -1204,29 +1125,26 @@ impl AtomicBool {
     #[inline]
     #[stable(feature = "rust1", since = "1.0.0")]
     #[cfg(target_has_atomic = "8")]
-    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+    #[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
     #[rustc_should_not_be_called_on_const_items]
     pub fn fetch_xor(&self, val: bool, order: Ordering) -> bool {
-        // SAFETY: data races are prevented by atomic intrinsics.
+        // SAFETY: 数据竞争由原子 intrinsic 防止。
         unsafe { atomic_xor(self.v.get(), val as u8, order) != 0 }
     }
 
-    /// Logical "not" with a boolean value.
+    /// 对一个布尔值做逻辑“非”(not)。
     ///
-    /// Performs a logical "not" operation on the current value, and sets
-    /// the new value to the result.
+    /// 对当前值执行逻辑“非”操作,并把结果设为新值。
     ///
-    /// Returns the previous value.
+    /// 返回操作前的旧值。
     ///
-    /// `fetch_not` takes an [`Ordering`] argument which describes the memory ordering
-    /// of this operation. All ordering modes are possible. Note that using
-    /// [`Acquire`] makes the store part of this operation [`Relaxed`], and
-    /// using [`Release`] makes the load part [`Relaxed`].
+    /// `fetch_not` 接受一个 [`Ordering`] 参数来描述本操作的内存顺序。
+    /// 所有顺序模式都允许。注意:用 [`Acquire`] 会让本操作的 store 部分退化为 [`Relaxed`],
+    /// 用 [`Release`] 会让 load 部分退化为 [`Relaxed`];只有 [`AcqRel`] 或 [`SeqCst`] 才同时具备两端语义。
     ///
-    /// **Note:** This method is only available on platforms that support atomic
-    /// operations on `u8`.
+    /// **注意:** 本方法只在支持 `u8` 原子操作的平台上可用。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::sync::atomic::{AtomicBool, Ordering};
@@ -1242,25 +1160,22 @@ impl AtomicBool {
     #[inline]
     #[stable(feature = "atomic_bool_fetch_not", since = "1.81.0")]
     #[cfg(target_has_atomic = "8")]
-    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+    #[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
     #[rustc_should_not_be_called_on_const_items]
     pub fn fetch_not(&self, order: Ordering) -> bool {
         self.fetch_xor(true, order)
     }
 
-    /// Returns a mutable pointer to the underlying [`bool`].
+    /// 返回指向底层 [`bool`] 的裸可变指针。
     ///
-    /// Doing non-atomic reads and writes on the resulting boolean can be a data race.
-    /// This method is mostly useful for FFI, where the function signature may use
-    /// `*mut bool` instead of `&AtomicBool`.
+    /// 对返回的这个布尔值做非原子的读写可能造成数据竞争。
+    /// 本方法主要用于 FFI 场景 —— 那里函数签名往往用 `*mut bool` 而非 `&AtomicBool`。
     ///
-    /// Returning an `*mut` pointer from a shared reference to this atomic is safe because the
-    /// atomic types work with interior mutability. All modifications of an atomic change the value
-    /// through a shared reference, and can do so safely as long as they use atomic operations. Any
-    /// use of the returned raw pointer requires an `unsafe` block and still has to uphold the
-    /// requirements of the [memory model].
+    /// 从对该原子的共享引用返回 `*mut` 指针是安全的,因为原子类型基于内部可变性工作:
+    /// 对原子的所有修改都是通过共享引用进行的,而只要它们使用原子操作就能安全地这样做。
+    /// 对返回的裸指针的任何使用都需要 `unsafe` 块,并且仍然必须满足 [memory model] 的要求。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```ignore (extern-declaration)
     /// # fn main() {
@@ -1287,41 +1202,33 @@ impl AtomicBool {
         self.v.get().cast()
     }
 
-    /// Fetches the value, and applies a function to it that returns an optional
-    /// new value. Returns a `Result` of `Ok(previous_value)` if the function
-    /// returned `Some(_)`, else `Err(previous_value)`.
+    /// 取出当前值,并对它应用一个返回 `Option<新值>` 的函数。
+    /// 若该函数返回 `Some(_)`,则返回 `Ok(previous_value)`(操作前的旧值);否则返回 `Err(previous_value)`。
     ///
-    /// Note: This may call the function multiple times if the value has been
-    /// changed from other threads in the meantime, as long as the function
-    /// returns `Some(_)`, but the function will have been applied only once to
-    /// the stored value.
+    /// 注意:只要该函数持续返回 `Some(_)`,当期间该值被其他线程改动时,本方法可能会
+    /// 多次调用该函数;但该函数最终只会对一个已存储的值生效一次。
     ///
-    /// `fetch_update` takes two [`Ordering`] arguments to describe the memory
-    /// ordering of this operation. The first describes the required ordering for
-    /// when the operation finally succeeds while the second describes the
-    /// required ordering for loads. These correspond to the success and failure
-    /// orderings of [`AtomicBool::compare_exchange`] respectively.
+    /// `fetch_update` 接受两个 [`Ordering`] 参数来描述本操作的内存顺序。
+    /// 第一个描述操作最终成功时所需的顺序,第二个描述 load 所需的顺序。
+    /// 它们分别对应 [`AtomicBool::compare_exchange`] 的 success 与 failure 顺序。
     ///
-    /// Using [`Acquire`] as success ordering makes the store part of this
-    /// operation [`Relaxed`], and using [`Release`] makes the final successful
-    /// load [`Relaxed`]. The (failed) load ordering can only be [`SeqCst`],
-    /// [`Acquire`] or [`Relaxed`].
+    /// 把成功顺序设为 [`Acquire`] 会让本操作的 store 部分退化为 [`Relaxed`],
+    /// 设为 [`Release`] 会让最终成功路径上的 load 退化为 [`Relaxed`]。
+    /// (失败的)load 顺序只能是 [`SeqCst`]、[`Acquire`] 或 [`Relaxed`]。
     ///
-    /// **Note:** This method is only available on platforms that support atomic
-    /// operations on `u8`.
+    /// **注意:** 本方法只在支持 `u8` 原子操作的平台上可用。
     ///
-    /// # Considerations
+    /// # 注意事项
     ///
-    /// This method is not magic; it is not provided by the hardware, and does not act like a
-    /// critical section or mutex.
+    /// 本方法并不神奇:它不是硬件直接提供的,也不像临界区或互斥锁那样工作。
     ///
-    /// It is implemented on top of an atomic [compare-and-swap operation], and thus is subject to
-    /// the usual drawbacks of CAS operations. In particular, be careful of the [ABA problem].
+    /// 它是在原子 [compare-and-swap operation] 之上实现的,因此带有 CAS 操作惯有的缺陷。
+    /// 特别地,要当心 [ABA problem]。
     ///
     /// [ABA Problem]: https://en.wikipedia.org/wiki/ABA_problem
     /// [compare-and-swap operation]: https://en.wikipedia.org/wiki/Compare-and-swap
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```rust
     /// use std::sync::atomic::{AtomicBool, Ordering};
@@ -1335,7 +1242,7 @@ impl AtomicBool {
     #[inline]
     #[stable(feature = "atomic_fetch_update", since = "1.53.0")]
     #[cfg(target_has_atomic = "8")]
-    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+    #[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
     #[rustc_should_not_be_called_on_const_items]
     pub fn fetch_update<F>(
         &self,
@@ -1356,43 +1263,35 @@ impl AtomicBool {
         Err(prev)
     }
 
-    /// Fetches the value, and applies a function to it that returns an optional
-    /// new value. Returns a `Result` of `Ok(previous_value)` if the function
-    /// returned `Some(_)`, else `Err(previous_value)`.
+    /// 取出当前值,并对它应用一个返回 `Option<新值>` 的函数。
+    /// 若该函数返回 `Some(_)`,则返回 `Ok(previous_value)`(操作前的旧值);否则返回 `Err(previous_value)`。
     ///
-    /// See also: [`update`](`AtomicBool::update`).
+    /// 另见:[`update`](`AtomicBool::update`)。
     ///
-    /// Note: This may call the function multiple times if the value has been
-    /// changed from other threads in the meantime, as long as the function
-    /// returns `Some(_)`, but the function will have been applied only once to
-    /// the stored value.
+    /// 注意:只要该函数持续返回 `Some(_)`,当期间该值被其他线程改动时,本方法可能会
+    /// 多次调用该函数;但该函数最终只会对一个已存储的值生效一次。
     ///
-    /// `try_update` takes two [`Ordering`] arguments to describe the memory
-    /// ordering of this operation. The first describes the required ordering for
-    /// when the operation finally succeeds while the second describes the
-    /// required ordering for loads. These correspond to the success and failure
-    /// orderings of [`AtomicBool::compare_exchange`] respectively.
+    /// `try_update` 接受两个 [`Ordering`] 参数来描述本操作的内存顺序。
+    /// 第一个描述操作最终成功时所需的顺序,第二个描述 load 所需的顺序。
+    /// 它们分别对应 [`AtomicBool::compare_exchange`] 的 success 与 failure 顺序。
     ///
-    /// Using [`Acquire`] as success ordering makes the store part of this
-    /// operation [`Relaxed`], and using [`Release`] makes the final successful
-    /// load [`Relaxed`]. The (failed) load ordering can only be [`SeqCst`],
-    /// [`Acquire`] or [`Relaxed`].
+    /// 把成功顺序设为 [`Acquire`] 会让本操作的 store 部分退化为 [`Relaxed`],
+    /// 设为 [`Release`] 会让最终成功路径上的 load 退化为 [`Relaxed`]。
+    /// (失败的)load 顺序只能是 [`SeqCst`]、[`Acquire`] 或 [`Relaxed`]。
     ///
-    /// **Note:** This method is only available on platforms that support atomic
-    /// operations on `u8`.
+    /// **注意:** 本方法只在支持 `u8` 原子操作的平台上可用。
     ///
-    /// # Considerations
+    /// # 注意事项
     ///
-    /// This method is not magic; it is not provided by the hardware, and does not act like a
-    /// critical section or mutex.
+    /// 本方法并不神奇:它不是硬件直接提供的,也不像临界区或互斥锁那样工作。
     ///
-    /// It is implemented on top of an atomic [compare-and-swap operation], and thus is subject to
-    /// the usual drawbacks of CAS operations. In particular, be careful of the [ABA problem].
+    /// 它是在原子 [compare-and-swap operation] 之上实现的,因此带有 CAS 操作惯有的缺陷。
+    /// 特别地,要当心 [ABA problem]。
     ///
     /// [ABA Problem]: https://en.wikipedia.org/wiki/ABA_problem
     /// [compare-and-swap operation]: https://en.wikipedia.org/wiki/Compare-and-swap
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```rust
     /// #![feature(atomic_try_update)]
@@ -1407,7 +1306,7 @@ impl AtomicBool {
     #[inline]
     #[unstable(feature = "atomic_try_update", issue = "135894")]
     #[cfg(target_has_atomic = "8")]
-    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+    #[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
     #[rustc_should_not_be_called_on_const_items]
     pub fn try_update(
         &self,
@@ -1415,43 +1314,39 @@ impl AtomicBool {
         fetch_order: Ordering,
         f: impl FnMut(bool) -> Option<bool>,
     ) -> Result<bool, bool> {
-        // FIXME(atomic_try_update): this is currently an unstable alias to `fetch_update`;
-        //      when stabilizing, turn `fetch_update` into a deprecated alias to `try_update`.
+        // FIXME(atomic_try_update): 目前这是 `fetch_update` 的一个 unstable 别名;
+        //      稳定化时,应把 `fetch_update` 改成 `try_update` 的 deprecated 别名。
         self.fetch_update(set_order, fetch_order, f)
     }
 
-    /// Fetches the value, applies a function to it that it return a new value.
-    /// The new value is stored and the old value is returned.
+    /// 取出当前值,对它应用一个返回新值的函数。新值被存入,旧值被返回。
     ///
-    /// See also: [`try_update`](`AtomicBool::try_update`).
+    /// 另见:[`try_update`](`AtomicBool::try_update`)。
     ///
-    /// Note: This may call the function multiple times if the value has been changed from other threads in
-    /// the meantime, but the function will have been applied only once to the stored value.
+    /// 注意:当期间该值被其他线程改动时,本方法可能会多次调用该函数;
+    /// 但该函数最终只会对一个已存储的值生效一次。
     ///
-    /// `update` takes two [`Ordering`] arguments to describe the memory
-    /// ordering of this operation. The first describes the required ordering for
-    /// when the operation finally succeeds while the second describes the
-    /// required ordering for loads. These correspond to the success and failure
-    /// orderings of [`AtomicBool::compare_exchange`] respectively.
+    /// `update` 接受两个 [`Ordering`] 参数来描述本操作的内存顺序。
+    /// 第一个描述操作最终成功时所需的顺序,第二个描述 load 所需的顺序。
+    /// 它们分别对应 [`AtomicBool::compare_exchange`] 的 success 与 failure 顺序。
     ///
-    /// Using [`Acquire`] as success ordering makes the store part
-    /// of this operation [`Relaxed`], and using [`Release`] makes the final successful load
-    /// [`Relaxed`]. The (failed) load ordering can only be [`SeqCst`], [`Acquire`] or [`Relaxed`].
+    /// 把成功顺序设为 [`Acquire`] 会让本操作的 store 部分退化为 [`Relaxed`],
+    /// 设为 [`Release`] 会让最终成功路径上的 load 退化为 [`Relaxed`]。
+    /// (失败的)load 顺序只能是 [`SeqCst`]、[`Acquire`] 或 [`Relaxed`]。
     ///
-    /// **Note:** This method is only available on platforms that support atomic operations on `u8`.
+    /// **注意:** 本方法只在支持 `u8` 原子操作的平台上可用。
     ///
-    /// # Considerations
+    /// # 注意事项
     ///
-    /// This method is not magic; it is not provided by the hardware, and does not act like a
-    /// critical section or mutex.
+    /// 本方法并不神奇:它不是硬件直接提供的,也不像临界区或互斥锁那样工作。
     ///
-    /// It is implemented on top of an atomic [compare-and-swap operation], and thus is subject to
-    /// the usual drawbacks of CAS operations. In particular, be careful of the [ABA problem].
+    /// 它是在原子 [compare-and-swap operation] 之上实现的,因此带有 CAS 操作惯有的缺陷。
+    /// 特别地,要当心 [ABA problem]。
     ///
     /// [ABA Problem]: https://en.wikipedia.org/wiki/ABA_problem
     /// [compare-and-swap operation]: https://en.wikipedia.org/wiki/Compare-and-swap
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```rust
     /// #![feature(atomic_try_update)]
@@ -1466,7 +1361,7 @@ impl AtomicBool {
     #[inline]
     #[unstable(feature = "atomic_try_update", issue = "135894")]
     #[cfg(target_has_atomic = "8")]
-    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+    #[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
     #[rustc_should_not_be_called_on_const_items]
     pub fn update(
         &self,
@@ -1486,9 +1381,9 @@ impl AtomicBool {
 
 #[cfg(target_has_atomic_load_store = "ptr")]
 impl<T> AtomicPtr<T> {
-    /// Creates a new `AtomicPtr`.
+    /// 创建一个新的 `AtomicPtr`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::sync::atomic::AtomicPtr;
@@ -1503,42 +1398,41 @@ impl<T> AtomicPtr<T> {
         AtomicPtr { p: UnsafeCell::new(p) }
     }
 
-    /// Creates a new `AtomicPtr` from a pointer.
+    /// 从一个指针创建一个新的 `AtomicPtr`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::sync::atomic::{self, AtomicPtr};
     ///
-    /// // Get a pointer to an allocated value
+    /// // 取得指向一块已分配值的指针
     /// let ptr: *mut *mut u8 = Box::into_raw(Box::new(std::ptr::null_mut()));
     ///
     /// assert!(ptr.cast::<AtomicPtr<u8>>().is_aligned());
     ///
     /// {
-    ///     // Create an atomic view of the allocated value
+    ///     // 为这块已分配的值创建一个原子视图
     ///     let atomic = unsafe { AtomicPtr::from_ptr(ptr) };
     ///
-    ///     // Use `atomic` for atomic operations, possibly share it with other threads
+    ///     // 用 `atomic` 做原子操作,也可以把它分享给其他线程
     ///     atomic.store(std::ptr::NonNull::dangling().as_ptr(), atomic::Ordering::Relaxed);
     /// }
     ///
-    /// // It's ok to non-atomically access the value behind `ptr`,
-    /// // since the reference to the atomic ended its lifetime in the block above
+    /// // 此时非原子地访问 `ptr` 背后的值是可以的,
+    /// // 因为指向该原子的引用已在上面的代码块中结束了生命周期
     /// assert!(!unsafe { *ptr }.is_null());
     ///
-    /// // Deallocate the value
+    /// // 释放该值
     /// unsafe { drop(Box::from_raw(ptr)) }
     /// ```
     ///
-    /// # Safety
+    /// # 安全性(Safety)
     ///
-    /// * `ptr` must be aligned to `align_of::<AtomicPtr<T>>()` (note that on some platforms this
-    ///   can be bigger than `align_of::<*mut T>()`).
-    /// * `ptr` must be [valid] for both reads and writes for the whole lifetime `'a`.
-    /// * You must adhere to the [Memory model for atomic accesses]. In particular, it is not
-    ///   allowed to mix conflicting atomic and non-atomic accesses, or atomic accesses of different
-    ///   sizes, without synchronization.
+    /// * `ptr` 必须按 `align_of::<AtomicPtr<T>>()` 对齐(注意:在某些平台上这可能比
+    ///   `align_of::<*mut T>()` 更大)。
+    /// * `ptr` 在整个生命周期 `'a` 内必须对读和写都 [valid]。
+    /// * 你必须遵守 [Memory model for atomic accesses]。特别地,不允许在没有同步的情况下
+    ///   混用冲突的原子访问与非原子访问,也不允许混用不同大小的原子访问。
     ///
     /// [valid]: crate::ptr#safety
     /// [Memory model for atomic accesses]: self#memory-model-for-atomic-accesses
@@ -1546,13 +1440,13 @@ impl<T> AtomicPtr<T> {
     #[stable(feature = "atomic_from_ptr", since = "1.75.0")]
     #[rustc_const_stable(feature = "const_atomic_from_ptr", since = "1.84.0")]
     pub const unsafe fn from_ptr<'a>(ptr: *mut *mut T) -> &'a AtomicPtr<T> {
-        // SAFETY: guaranteed by the caller
+        // SAFETY: 由调用方保证。
         unsafe { &*ptr.cast() }
     }
 
-    /// Creates a new `AtomicPtr` initialized with a null pointer.
+    /// 创建一个以空指针初始化的新 `AtomicPtr`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(atomic_ptr_null)]
@@ -1568,12 +1462,11 @@ impl<T> AtomicPtr<T> {
         AtomicPtr::new(crate::ptr::null_mut())
     }
 
-    /// Returns a mutable reference to the underlying pointer.
+    /// 返回指向底层指针的可变引用。
     ///
-    /// This is safe because the mutable reference guarantees that no other threads are
-    /// concurrently accessing the atomic data.
+    /// 这是安全的,因为可变引用保证了没有其他线程在并发访问这块原子数据。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::sync::atomic::{AtomicPtr, Ordering};
@@ -1590,11 +1483,11 @@ impl<T> AtomicPtr<T> {
         self.p.get_mut()
     }
 
-    /// Gets atomic access to a pointer.
+    /// 取得对一个指针的原子访问。
     ///
-    /// **Note:** This function is only available on targets where `AtomicPtr<T>` has the same alignment as `*const T`
+    /// **注意:** 本函数只在 `AtomicPtr<T>` 与 `*const T` 对齐相同的目标平台上可用。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(atomic_from_mut)]
@@ -1613,18 +1506,16 @@ impl<T> AtomicPtr<T> {
     pub fn from_mut(v: &mut *mut T) -> &mut Self {
         let [] = [(); align_of::<AtomicPtr<()>>() - align_of::<*mut ()>()];
         // SAFETY:
-        //  - the mutable reference guarantees unique ownership.
-        //  - the alignment of `*mut T` and `Self` is the same on all platforms
-        //    supported by rust, as verified above.
+        //  - 可变引用保证了独占所有权。
+        //  - 在 rust 支持的所有平台上,`*mut T` 与 `Self` 的对齐都相同,如上面所验证。
         unsafe { &mut *(v as *mut *mut T as *mut Self) }
     }
 
-    /// Gets non-atomic access to a `&mut [AtomicPtr]` slice.
+    /// 取得对一个 `&mut [AtomicPtr]` 切片的非原子访问。
     ///
-    /// This is safe because the mutable reference guarantees that no other threads are
-    /// concurrently accessing the atomic data.
+    /// 这是安全的,因为可变引用保证了没有其他线程在并发访问这块原子数据。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```ignore-wasm
     /// #![feature(atomic_from_mut)]
@@ -1655,15 +1546,15 @@ impl<T> AtomicPtr<T> {
     #[inline]
     #[unstable(feature = "atomic_from_mut", issue = "76314")]
     pub fn get_mut_slice(this: &mut [Self]) -> &mut [*mut T] {
-        // SAFETY: the mutable reference guarantees unique ownership.
+        // SAFETY: 可变引用保证了独占所有权。
         unsafe { &mut *(this as *mut [Self] as *mut [*mut T]) }
     }
 
-    /// Gets atomic access to a slice of pointers.
+    /// 取得对一个指针切片的原子访问。
     ///
-    /// **Note:** This function is only available on targets where `AtomicPtr<T>` has the same alignment as `*const T`
+    /// **注意:** 本函数只在 `AtomicPtr<T>` 与 `*const T` 对齐相同的目标平台上可用。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```ignore-wasm
     /// #![feature(atomic_from_mut)]
@@ -1691,18 +1582,16 @@ impl<T> AtomicPtr<T> {
     #[unstable(feature = "atomic_from_mut", issue = "76314")]
     pub fn from_mut_slice(v: &mut [*mut T]) -> &mut [Self] {
         // SAFETY:
-        //  - the mutable reference guarantees unique ownership.
-        //  - the alignment of `*mut T` and `Self` is the same on all platforms
-        //    supported by rust, as verified above.
+        //  - 可变引用保证了独占所有权。
+        //  - 在 rust 支持的所有平台上,`*mut T` 与 `Self` 的对齐都相同,如上面所验证。
         unsafe { &mut *(v as *mut [*mut T] as *mut [Self]) }
     }
 
-    /// Consumes the atomic and returns the contained value.
+    /// 消耗这个原子,返回它所包含的值。
     ///
-    /// This is safe because passing `self` by value guarantees that no other threads are
-    /// concurrently accessing the atomic data.
+    /// 这是安全的,因为按值传入 `self` 保证了没有其他线程在并发访问这块原子数据。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::sync::atomic::AtomicPtr;
@@ -1718,16 +1607,16 @@ impl<T> AtomicPtr<T> {
         self.p.into_inner()
     }
 
-    /// Loads a value from the pointer.
+    /// 从指针中 load 出一个值。
     ///
-    /// `load` takes an [`Ordering`] argument which describes the memory ordering
-    /// of this operation. Possible values are [`SeqCst`], [`Acquire`] and [`Relaxed`].
+    /// `load` 接受一个 [`Ordering`] 参数来描述本操作的内存顺序。
+    /// 可用的取值有 [`SeqCst`]、[`Acquire`] 和 [`Relaxed`]。
     ///
     /// # Panics
     ///
-    /// Panics if `order` is [`Release`] or [`AcqRel`].
+    /// 当 `order` 为 [`Release`] 或 [`AcqRel`] 时会 panic。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::sync::atomic::{AtomicPtr, Ordering};
@@ -1739,22 +1628,22 @@ impl<T> AtomicPtr<T> {
     /// ```
     #[inline]
     #[stable(feature = "rust1", since = "1.0.0")]
-    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+    #[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
     pub fn load(&self, order: Ordering) -> *mut T {
-        // SAFETY: data races are prevented by atomic intrinsics.
+        // SAFETY: 数据竞争由原子 intrinsic 防止。
         unsafe { atomic_load(self.p.get(), order) }
     }
 
-    /// Stores a value into the pointer.
+    /// 把一个值 store 进指针。
     ///
-    /// `store` takes an [`Ordering`] argument which describes the memory ordering
-    /// of this operation. Possible values are [`SeqCst`], [`Release`] and [`Relaxed`].
+    /// `store` 接受一个 [`Ordering`] 参数来描述本操作的内存顺序。
+    /// 可用的取值有 [`SeqCst`]、[`Release`] 和 [`Relaxed`]。
     ///
     /// # Panics
     ///
-    /// Panics if `order` is [`Acquire`] or [`AcqRel`].
+    /// 当 `order` 为 [`Acquire`] 或 [`AcqRel`] 时会 panic。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::sync::atomic::{AtomicPtr, Ordering};
@@ -1768,26 +1657,24 @@ impl<T> AtomicPtr<T> {
     /// ```
     #[inline]
     #[stable(feature = "rust1", since = "1.0.0")]
-    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+    #[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
     #[rustc_should_not_be_called_on_const_items]
     pub fn store(&self, ptr: *mut T, order: Ordering) {
-        // SAFETY: data races are prevented by atomic intrinsics.
+        // SAFETY: 数据竞争由原子 intrinsic 防止。
         unsafe {
             atomic_store(self.p.get(), ptr, order);
         }
     }
 
-    /// Stores a value into the pointer, returning the previous value.
+    /// 把一个值 store 进指针,并返回操作前的旧值。
     ///
-    /// `swap` takes an [`Ordering`] argument which describes the memory ordering
-    /// of this operation. All ordering modes are possible. Note that using
-    /// [`Acquire`] makes the store part of this operation [`Relaxed`], and
-    /// using [`Release`] makes the load part [`Relaxed`].
+    /// `swap` 接受一个 [`Ordering`] 参数来描述本操作的内存顺序。
+    /// 所有顺序模式都允许。注意:用 [`Acquire`] 会让本操作的 store 部分退化为 [`Relaxed`],
+    /// 用 [`Release`] 会让 load 部分退化为 [`Relaxed`];只有 [`AcqRel`] 或 [`SeqCst`] 才同时具备两端语义。
     ///
-    /// **Note:** This method is only available on platforms that support atomic
-    /// operations on pointers.
+    /// **注意:** 本方法只在支持指针原子操作的平台上可用。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::sync::atomic::{AtomicPtr, Ordering};
@@ -1802,33 +1689,29 @@ impl<T> AtomicPtr<T> {
     #[inline]
     #[stable(feature = "rust1", since = "1.0.0")]
     #[cfg(target_has_atomic = "ptr")]
-    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+    #[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
     #[rustc_should_not_be_called_on_const_items]
     pub fn swap(&self, ptr: *mut T, order: Ordering) -> *mut T {
-        // SAFETY: data races are prevented by atomic intrinsics.
+        // SAFETY: 数据竞争由原子 intrinsic 防止。
         unsafe { atomic_swap(self.p.get(), ptr, order) }
     }
 
-    /// Stores a value into the pointer if the current value is the same as the `current` value.
+    /// 当且仅当当前值与 `current` 相同时,把 `new` 写入指针。
     ///
-    /// The return value is always the previous value. If it is equal to `current`, then the value
-    /// was updated.
+    /// 返回值始终是操作前的旧值。如果它等于 `current`,说明值已被更新。
     ///
-    /// `compare_and_swap` also takes an [`Ordering`] argument which describes the memory
-    /// ordering of this operation. Notice that even when using [`AcqRel`], the operation
-    /// might fail and hence just perform an `Acquire` load, but not have `Release` semantics.
-    /// Using [`Acquire`] makes the store part of this operation [`Relaxed`] if it
-    /// happens, and using [`Release`] makes the load part [`Relaxed`].
+    /// `compare_and_swap` 也接受一个 [`Ordering`] 参数来描述本操作的内存顺序。
+    /// 注意:即便使用 [`AcqRel`],操作仍可能失败,此时它只执行一次 `Acquire` load,而不具备 `Release` 语义。
+    /// 用 [`Acquire`] 会让本操作(若真的发生)的 store 部分退化为 [`Relaxed`],
+    /// 用 [`Release`] 会让 load 部分退化为 [`Relaxed`]。
     ///
-    /// **Note:** This method is only available on platforms that support atomic
-    /// operations on pointers.
+    /// **注意:** 本方法只在支持指针原子操作的平台上可用。
     ///
-    /// # Migrating to `compare_exchange` and `compare_exchange_weak`
+    /// # 迁移到 `compare_exchange` 和 `compare_exchange_weak`
     ///
-    /// `compare_and_swap` is equivalent to `compare_exchange` with the following mapping for
-    /// memory orderings:
+    /// `compare_and_swap` 等价于按下表映射内存顺序的 `compare_exchange`:
     ///
-    /// Original | Success | Failure
+    /// 原顺序   | Success | Failure
     /// -------- | ------- | -------
     /// Relaxed  | Relaxed | Relaxed
     /// Acquire  | Acquire | Acquire
@@ -1836,17 +1719,16 @@ impl<T> AtomicPtr<T> {
     /// AcqRel   | AcqRel  | Acquire
     /// SeqCst   | SeqCst  | SeqCst
     ///
-    /// `compare_and_swap` and `compare_exchange` also differ in their return type. You can use
-    /// `compare_exchange(...).unwrap_or_else(|x| x)` to recover the behavior of `compare_and_swap`,
-    /// but in most cases it is more idiomatic to check whether the return value is `Ok` or `Err`
-    /// rather than to infer success vs failure based on the value that was read.
+    /// `compare_and_swap` 与 `compare_exchange` 的返回类型也不同。你可以用
+    /// `compare_exchange(...).unwrap_or_else(|x| x)` 来恢复 `compare_and_swap` 的行为,
+    /// 但大多数情况下,更地道的做法是检查返回值是 `Ok` 还是 `Err`,
+    /// 而不是根据读到的值去推断成功还是失败。
     ///
-    /// During migration, consider whether it makes sense to use `compare_exchange_weak` instead.
-    /// `compare_exchange_weak` is allowed to fail spuriously even when the comparison succeeds,
-    /// which allows the compiler to generate better assembly code when the compare and swap
-    /// is used in a loop.
+    /// 迁移期间,也可以考虑改用 `compare_exchange_weak` 是否更合适。
+    /// `compare_exchange_weak` 允许在比较成功时仍偶发失败,这能让编译器在“比较并交换”被用于
+    /// 循环中时生成更优的汇编代码。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::sync::atomic::{AtomicPtr, Ordering};
@@ -1865,7 +1747,7 @@ impl<T> AtomicPtr<T> {
         note = "Use `compare_exchange` or `compare_exchange_weak` instead"
     )]
     #[cfg(target_has_atomic = "ptr")]
-    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+    #[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
     #[rustc_should_not_be_called_on_const_items]
     pub fn compare_and_swap(&self, current: *mut T, new: *mut T, order: Ordering) -> *mut T {
         match self.compare_exchange(current, new, order, strongest_failure_ordering(order)) {
@@ -1874,23 +1756,22 @@ impl<T> AtomicPtr<T> {
         }
     }
 
-    /// Stores a value into the pointer if the current value is the same as the `current` value.
+    /// 当且仅当当前值与 `current` 相同时,把 `new` 写入指针。
     ///
-    /// The return value is a result indicating whether the new value was written and containing
-    /// the previous value. On success this value is guaranteed to be equal to `current`.
+    /// 返回值是一个 `Result`,指示新值是否被写入,并携带操作前的旧值。
+    /// 成功时该值保证等于 `current`。
     ///
-    /// `compare_exchange` takes two [`Ordering`] arguments to describe the memory
-    /// ordering of this operation. `success` describes the required ordering for the
-    /// read-modify-write operation that takes place if the comparison with `current` succeeds.
-    /// `failure` describes the required ordering for the load operation that takes place when
-    /// the comparison fails. Using [`Acquire`] as success ordering makes the store part
-    /// of this operation [`Relaxed`], and using [`Release`] makes the successful load
-    /// [`Relaxed`]. The failure ordering can only be [`SeqCst`], [`Acquire`] or [`Relaxed`].
+    /// `compare_exchange` 接受两个 [`Ordering`] 参数来描述本操作的内存顺序。
+    /// `success` 描述比较成功时所执行的“读-改-写”操作所需的顺序;
+    /// `failure` 描述比较失败时所执行的 load 操作所需的顺序。
+    /// 把 `success` 设为 [`Acquire`] 会让本操作的 store 部分退化为 [`Relaxed`],
+    /// 设为 [`Release`] 会让成功路径上的 load 部分退化为 [`Relaxed`]。
+    /// `failure` 顺序只能是 [`SeqCst`]、[`Acquire`] 或 [`Relaxed`];
+    /// 传入 [`Release`] 或 [`AcqRel`] 会触发 panic。
     ///
-    /// **Note:** This method is only available on platforms that support atomic
-    /// operations on pointers.
+    /// **注意:** 本方法只在支持指针原子操作的平台上可用。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::sync::atomic::{AtomicPtr, Ordering};
@@ -1904,23 +1785,21 @@ impl<T> AtomicPtr<T> {
     ///                                       Ordering::SeqCst, Ordering::Relaxed);
     /// ```
     ///
-    /// # Considerations
+    /// # 注意事项
     ///
-    /// `compare_exchange` is a [compare-and-swap operation] and thus exhibits the usual downsides
-    /// of CAS operations. In particular, a load of the value followed by a successful
-    /// `compare_exchange` with the previous load *does not ensure* that other threads have not
-    /// changed the value in the interim. This is usually important when the *equality* check in
-    /// the `compare_exchange` is being used to check the *identity* of a value, but equality
-    /// does not necessarily imply identity. This is a particularly common case for pointers, as
-    /// a pointer holding the same address does not imply that the same object exists at that
-    /// address! In this case, `compare_exchange` can lead to the [ABA problem].
+    /// `compare_exchange` 是一个 [compare-and-swap operation],因此带有 CAS 操作惯有的缺陷。
+    /// 特别地,“先 load 出一个值,再用这个旧值做一次成功的 `compare_exchange`” *并不能保证*
+    /// 在这两步之间其他线程没有改动过该值。这一点在用 `compare_exchange` 里的*相等性*检查
+    /// 来判断值的*同一性*时尤其重要 —— 相等并不必然意味着同一。对指针来说这尤其常见:
+    /// 一个指针持有相同的地址,并不意味着该地址上还存在同一个对象!在这种场景下,
+    /// `compare_exchange` 可能导致 [ABA problem](即值被改成别的再改回原值,CAS 仍判定相等而通过)。
     ///
     /// [ABA Problem]: https://en.wikipedia.org/wiki/ABA_problem
     /// [compare-and-swap operation]: https://en.wikipedia.org/wiki/Compare-and-swap
     #[inline]
     #[stable(feature = "extended_compare_and_swap", since = "1.10.0")]
     #[cfg(target_has_atomic = "ptr")]
-    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+    #[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
     #[rustc_should_not_be_called_on_const_items]
     pub fn compare_exchange(
         &self,
@@ -1929,29 +1808,27 @@ impl<T> AtomicPtr<T> {
         success: Ordering,
         failure: Ordering,
     ) -> Result<*mut T, *mut T> {
-        // SAFETY: data races are prevented by atomic intrinsics.
+        // SAFETY: 数据竞争由原子 intrinsic 防止。
         unsafe { atomic_compare_exchange(self.p.get(), current, new, success, failure) }
     }
 
-    /// Stores a value into the pointer if the current value is the same as the `current` value.
+    /// 当且仅当当前值与 `current` 相同时,把 `new` 写入指针。
     ///
-    /// Unlike [`AtomicPtr::compare_exchange`], this function is allowed to spuriously fail even when the
-    /// comparison succeeds, which can result in more efficient code on some platforms. The
-    /// return value is a result indicating whether the new value was written and containing the
-    /// previous value.
+    /// 与 [`AtomicPtr::compare_exchange`] 不同,本函数 **允许在比较成功时仍偶发失败
+    /// (spurious failure)**,这能让某些平台生成更高效的代码。返回值是一个 `Result`,
+    /// 指示新值是否被写入,并携带操作前的旧值。
     ///
-    /// `compare_exchange_weak` takes two [`Ordering`] arguments to describe the memory
-    /// ordering of this operation. `success` describes the required ordering for the
-    /// read-modify-write operation that takes place if the comparison with `current` succeeds.
-    /// `failure` describes the required ordering for the load operation that takes place when
-    /// the comparison fails. Using [`Acquire`] as success ordering makes the store part
-    /// of this operation [`Relaxed`], and using [`Release`] makes the successful load
-    /// [`Relaxed`]. The failure ordering can only be [`SeqCst`], [`Acquire`] or [`Relaxed`].
+    /// `compare_exchange_weak` 接受两个 [`Ordering`] 参数来描述本操作的内存顺序。
+    /// `success` 描述比较成功时所执行的“读-改-写”操作所需的顺序;
+    /// `failure` 描述比较失败时所执行的 load 操作所需的顺序。
+    /// 把 `success` 设为 [`Acquire`] 会让本操作的 store 部分退化为 [`Relaxed`],
+    /// 设为 [`Release`] 会让成功路径上的 load 部分退化为 [`Relaxed`]。
+    /// `failure` 顺序只能是 [`SeqCst`]、[`Acquire`] 或 [`Relaxed`];
+    /// 传入 [`Release`] 或 [`AcqRel`] 会触发 panic。
     ///
-    /// **Note:** This method is only available on platforms that support atomic
-    /// operations on pointers.
+    /// **注意:** 本方法只在支持指针原子操作的平台上可用。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::sync::atomic::{AtomicPtr, Ordering};
@@ -1968,23 +1845,21 @@ impl<T> AtomicPtr<T> {
     /// }
     /// ```
     ///
-    /// # Considerations
+    /// # 注意事项
     ///
-    /// `compare_exchange` is a [compare-and-swap operation] and thus exhibits the usual downsides
-    /// of CAS operations. In particular, a load of the value followed by a successful
-    /// `compare_exchange` with the previous load *does not ensure* that other threads have not
-    /// changed the value in the interim. This is usually important when the *equality* check in
-    /// the `compare_exchange` is being used to check the *identity* of a value, but equality
-    /// does not necessarily imply identity. This is a particularly common case for pointers, as
-    /// a pointer holding the same address does not imply that the same object exists at that
-    /// address! In this case, `compare_exchange` can lead to the [ABA problem].
+    /// `compare_exchange` 是一个 [compare-and-swap operation],因此带有 CAS 操作惯有的缺陷。
+    /// 特别地,“先 load 出一个值,再用这个旧值做一次成功的 `compare_exchange`” *并不能保证*
+    /// 在这两步之间其他线程没有改动过该值。这一点在用 `compare_exchange` 里的*相等性*检查
+    /// 来判断值的*同一性*时尤其重要 —— 相等并不必然意味着同一。对指针来说这尤其常见:
+    /// 一个指针持有相同的地址,并不意味着该地址上还存在同一个对象!在这种场景下,
+    /// `compare_exchange` 可能导致 [ABA problem](即值被改成别的再改回原值,CAS 仍判定相等而通过)。
     ///
     /// [ABA Problem]: https://en.wikipedia.org/wiki/ABA_problem
     /// [compare-and-swap operation]: https://en.wikipedia.org/wiki/Compare-and-swap
     #[inline]
     #[stable(feature = "extended_compare_and_swap", since = "1.10.0")]
     #[cfg(target_has_atomic = "ptr")]
-    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+    #[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
     #[rustc_should_not_be_called_on_const_items]
     pub fn compare_exchange_weak(
         &self,
@@ -1993,49 +1868,39 @@ impl<T> AtomicPtr<T> {
         success: Ordering,
         failure: Ordering,
     ) -> Result<*mut T, *mut T> {
-        // SAFETY: This intrinsic is unsafe because it operates on a raw pointer
-        // but we know for sure that the pointer is valid (we just got it from
-        // an `UnsafeCell` that we have by reference) and the atomic operation
-        // itself allows us to safely mutate the `UnsafeCell` contents.
+        // SAFETY: 这个 intrinsic 是 unsafe 的,因为它在裸指针上操作;
+        // 但我们确知该指针是有效的(它刚从一个我们按引用持有的 `UnsafeCell` 取得),
+        // 而原子操作本身允许我们安全地修改 `UnsafeCell` 的内容。
         unsafe { atomic_compare_exchange_weak(self.p.get(), current, new, success, failure) }
     }
 
-    /// Fetches the value, and applies a function to it that returns an optional
-    /// new value. Returns a `Result` of `Ok(previous_value)` if the function
-    /// returned `Some(_)`, else `Err(previous_value)`.
+    /// 取出当前值,并对它应用一个返回 `Option<新值>` 的函数。
+    /// 若该函数返回 `Some(_)`,则返回 `Ok(previous_value)`(操作前的旧值);否则返回 `Err(previous_value)`。
     ///
-    /// Note: This may call the function multiple times if the value has been
-    /// changed from other threads in the meantime, as long as the function
-    /// returns `Some(_)`, but the function will have been applied only once to
-    /// the stored value.
+    /// 注意:只要该函数持续返回 `Some(_)`,当期间该值被其他线程改动时,本方法可能会
+    /// 多次调用该函数;但该函数最终只会对一个已存储的值生效一次。
     ///
-    /// `fetch_update` takes two [`Ordering`] arguments to describe the memory
-    /// ordering of this operation. The first describes the required ordering for
-    /// when the operation finally succeeds while the second describes the
-    /// required ordering for loads. These correspond to the success and failure
-    /// orderings of [`AtomicPtr::compare_exchange`] respectively.
+    /// `fetch_update` 接受两个 [`Ordering`] 参数来描述本操作的内存顺序。
+    /// 第一个描述操作最终成功时所需的顺序,第二个描述 load 所需的顺序。
+    /// 它们分别对应 [`AtomicPtr::compare_exchange`] 的 success 与 failure 顺序。
     ///
-    /// Using [`Acquire`] as success ordering makes the store part of this
-    /// operation [`Relaxed`], and using [`Release`] makes the final successful
-    /// load [`Relaxed`]. The (failed) load ordering can only be [`SeqCst`],
-    /// [`Acquire`] or [`Relaxed`].
+    /// 把成功顺序设为 [`Acquire`] 会让本操作的 store 部分退化为 [`Relaxed`],
+    /// 设为 [`Release`] 会让最终成功路径上的 load 退化为 [`Relaxed`]。
+    /// (失败的)load 顺序只能是 [`SeqCst`]、[`Acquire`] 或 [`Relaxed`]。
     ///
-    /// **Note:** This method is only available on platforms that support atomic
-    /// operations on pointers.
+    /// **注意:** 本方法只在支持指针原子操作的平台上可用。
     ///
-    /// # Considerations
+    /// # 注意事项
     ///
-    /// This method is not magic; it is not provided by the hardware, and does not act like a
-    /// critical section or mutex.
+    /// 本方法并不神奇:它不是硬件直接提供的,也不像临界区或互斥锁那样工作。
     ///
-    /// It is implemented on top of an atomic [compare-and-swap operation], and thus is subject to
-    /// the usual drawbacks of CAS operations. In particular, be careful of the [ABA problem],
-    /// which is a particularly common pitfall for pointers!
+    /// 它是在原子 [compare-and-swap operation] 之上实现的,因此带有 CAS 操作惯有的缺陷。
+    /// 特别地,要当心 [ABA problem] —— 这对指针来说是一个尤其常见的陷阱!
     ///
     /// [ABA Problem]: https://en.wikipedia.org/wiki/ABA_problem
     /// [compare-and-swap operation]: https://en.wikipedia.org/wiki/Compare-and-swap
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```rust
     /// use std::sync::atomic::{AtomicPtr, Ordering};
@@ -2058,7 +1923,7 @@ impl<T> AtomicPtr<T> {
     #[inline]
     #[stable(feature = "atomic_fetch_update", since = "1.53.0")]
     #[cfg(target_has_atomic = "ptr")]
-    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+    #[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
     #[rustc_should_not_be_called_on_const_items]
     pub fn fetch_update<F>(
         &self,
@@ -2078,44 +1943,35 @@ impl<T> AtomicPtr<T> {
         }
         Err(prev)
     }
-    /// Fetches the value, and applies a function to it that returns an optional
-    /// new value. Returns a `Result` of `Ok(previous_value)` if the function
-    /// returned `Some(_)`, else `Err(previous_value)`.
+    /// 取出当前值,并对它应用一个返回 `Option<新值>` 的函数。
+    /// 若该函数返回 `Some(_)`,则返回 `Ok(previous_value)`(操作前的旧值);否则返回 `Err(previous_value)`。
     ///
-    /// See also: [`update`](`AtomicPtr::update`).
+    /// 另见:[`update`](`AtomicPtr::update`)。
     ///
-    /// Note: This may call the function multiple times if the value has been
-    /// changed from other threads in the meantime, as long as the function
-    /// returns `Some(_)`, but the function will have been applied only once to
-    /// the stored value.
+    /// 注意:只要该函数持续返回 `Some(_)`,当期间该值被其他线程改动时,本方法可能会
+    /// 多次调用该函数;但该函数最终只会对一个已存储的值生效一次。
     ///
-    /// `try_update` takes two [`Ordering`] arguments to describe the memory
-    /// ordering of this operation. The first describes the required ordering for
-    /// when the operation finally succeeds while the second describes the
-    /// required ordering for loads. These correspond to the success and failure
-    /// orderings of [`AtomicPtr::compare_exchange`] respectively.
+    /// `try_update` 接受两个 [`Ordering`] 参数来描述本操作的内存顺序。
+    /// 第一个描述操作最终成功时所需的顺序,第二个描述 load 所需的顺序。
+    /// 它们分别对应 [`AtomicPtr::compare_exchange`] 的 success 与 failure 顺序。
     ///
-    /// Using [`Acquire`] as success ordering makes the store part of this
-    /// operation [`Relaxed`], and using [`Release`] makes the final successful
-    /// load [`Relaxed`]. The (failed) load ordering can only be [`SeqCst`],
-    /// [`Acquire`] or [`Relaxed`].
+    /// 把成功顺序设为 [`Acquire`] 会让本操作的 store 部分退化为 [`Relaxed`],
+    /// 设为 [`Release`] 会让最终成功路径上的 load 退化为 [`Relaxed`]。
+    /// (失败的)load 顺序只能是 [`SeqCst`]、[`Acquire`] 或 [`Relaxed`]。
     ///
-    /// **Note:** This method is only available on platforms that support atomic
-    /// operations on pointers.
+    /// **注意:** 本方法只在支持指针原子操作的平台上可用。
     ///
-    /// # Considerations
+    /// # 注意事项
     ///
-    /// This method is not magic; it is not provided by the hardware, and does not act like a
-    /// critical section or mutex.
+    /// 本方法并不神奇:它不是硬件直接提供的,也不像临界区或互斥锁那样工作。
     ///
-    /// It is implemented on top of an atomic [compare-and-swap operation], and thus is subject to
-    /// the usual drawbacks of CAS operations. In particular, be careful of the [ABA problem],
-    /// which is a particularly common pitfall for pointers!
+    /// 它是在原子 [compare-and-swap operation] 之上实现的,因此带有 CAS 操作惯有的缺陷。
+    /// 特别地,要当心 [ABA problem] —— 这对指针来说是一个尤其常见的陷阱!
     ///
     /// [ABA Problem]: https://en.wikipedia.org/wiki/ABA_problem
     /// [compare-and-swap operation]: https://en.wikipedia.org/wiki/Compare-and-swap
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```rust
     /// #![feature(atomic_try_update)]
@@ -2139,7 +1995,7 @@ impl<T> AtomicPtr<T> {
     #[inline]
     #[unstable(feature = "atomic_try_update", issue = "135894")]
     #[cfg(target_has_atomic = "ptr")]
-    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+    #[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
     #[rustc_should_not_be_called_on_const_items]
     pub fn try_update(
         &self,
@@ -2147,45 +2003,39 @@ impl<T> AtomicPtr<T> {
         fetch_order: Ordering,
         f: impl FnMut(*mut T) -> Option<*mut T>,
     ) -> Result<*mut T, *mut T> {
-        // FIXME(atomic_try_update): this is currently an unstable alias to `fetch_update`;
-        //      when stabilizing, turn `fetch_update` into a deprecated alias to `try_update`.
+        // FIXME(atomic_try_update): 目前这是 `fetch_update` 的一个 unstable 别名;
+        //      稳定化时,应把 `fetch_update` 改成 `try_update` 的 deprecated 别名。
         self.fetch_update(set_order, fetch_order, f)
     }
 
-    /// Fetches the value, applies a function to it that it return a new value.
-    /// The new value is stored and the old value is returned.
+    /// 取出当前值,对它应用一个返回新值的函数。新值被存入,旧值被返回。
     ///
-    /// See also: [`try_update`](`AtomicPtr::try_update`).
+    /// 另见:[`try_update`](`AtomicPtr::try_update`)。
     ///
-    /// Note: This may call the function multiple times if the value has been changed from other threads in
-    /// the meantime, but the function will have been applied only once to the stored value.
+    /// 注意:当期间该值被其他线程改动时,本方法可能会多次调用该函数;
+    /// 但该函数最终只会对一个已存储的值生效一次。
     ///
-    /// `update` takes two [`Ordering`] arguments to describe the memory
-    /// ordering of this operation. The first describes the required ordering for
-    /// when the operation finally succeeds while the second describes the
-    /// required ordering for loads. These correspond to the success and failure
-    /// orderings of [`AtomicPtr::compare_exchange`] respectively.
+    /// `update` 接受两个 [`Ordering`] 参数来描述本操作的内存顺序。
+    /// 第一个描述操作最终成功时所需的顺序,第二个描述 load 所需的顺序。
+    /// 它们分别对应 [`AtomicPtr::compare_exchange`] 的 success 与 failure 顺序。
     ///
-    /// Using [`Acquire`] as success ordering makes the store part
-    /// of this operation [`Relaxed`], and using [`Release`] makes the final successful load
-    /// [`Relaxed`]. The (failed) load ordering can only be [`SeqCst`], [`Acquire`] or [`Relaxed`].
+    /// 把成功顺序设为 [`Acquire`] 会让本操作的 store 部分退化为 [`Relaxed`],
+    /// 设为 [`Release`] 会让最终成功路径上的 load 退化为 [`Relaxed`]。
+    /// (失败的)load 顺序只能是 [`SeqCst`]、[`Acquire`] 或 [`Relaxed`]。
     ///
-    /// **Note:** This method is only available on platforms that support atomic
-    /// operations on pointers.
+    /// **注意:** 本方法只在支持指针原子操作的平台上可用。
     ///
-    /// # Considerations
+    /// # 注意事项
     ///
-    /// This method is not magic; it is not provided by the hardware, and does not act like a
-    /// critical section or mutex.
+    /// 本方法并不神奇:它不是硬件直接提供的,也不像临界区或互斥锁那样工作。
     ///
-    /// It is implemented on top of an atomic [compare-and-swap operation], and thus is subject to
-    /// the usual drawbacks of CAS operations. In particular, be careful of the [ABA problem],
-    /// which is a particularly common pitfall for pointers!
+    /// 它是在原子 [compare-and-swap operation] 之上实现的,因此带有 CAS 操作惯有的缺陷。
+    /// 特别地,要当心 [ABA problem] —— 这对指针来说是一个尤其常见的陷阱!
     ///
     /// [ABA Problem]: https://en.wikipedia.org/wiki/ABA_problem
     /// [compare-and-swap operation]: https://en.wikipedia.org/wiki/Compare-and-swap
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```rust
     /// #![feature(atomic_try_update)]
@@ -2203,7 +2053,7 @@ impl<T> AtomicPtr<T> {
     #[inline]
     #[unstable(feature = "atomic_try_update", issue = "135894")]
     #[cfg(target_has_atomic = "8")]
-    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+    #[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
     #[rustc_should_not_be_called_on_const_items]
     pub fn update(
         &self,
@@ -2220,70 +2070,58 @@ impl<T> AtomicPtr<T> {
         }
     }
 
-    /// Offsets the pointer's address by adding `val` (in units of `T`),
-    /// returning the previous pointer.
+    /// 通过加上 `val`(以 `T` 为单位)来偏移指针的地址,并返回操作前的旧指针。
     ///
-    /// This is equivalent to using [`wrapping_add`] to atomically perform the
-    /// equivalent of `ptr = ptr.wrapping_add(val);`.
+    /// 这等价于用 [`wrapping_add`] 原子地执行 `ptr = ptr.wrapping_add(val);`。
     ///
-    /// This method operates in units of `T`, which means that it cannot be used
-    /// to offset the pointer by an amount which is not a multiple of
-    /// `size_of::<T>()`. This can sometimes be inconvenient, as you may want to
-    /// work with a deliberately misaligned pointer. In such cases, you may use
-    /// the [`fetch_byte_add`](Self::fetch_byte_add) method instead.
+    /// 本方法以 `T` 为单位操作,这意味着它无法把指针偏移一个不是 `size_of::<T>()`
+    /// 整数倍的量。有时这会带来不便 —— 比如你想刻意构造一个未对齐的指针。
+    /// 在那种情况下,可以改用 [`fetch_byte_add`](Self::fetch_byte_add) 方法。
     ///
-    /// `fetch_ptr_add` takes an [`Ordering`] argument which describes the
-    /// memory ordering of this operation. All ordering modes are possible. Note
-    /// that using [`Acquire`] makes the store part of this operation
-    /// [`Relaxed`], and using [`Release`] makes the load part [`Relaxed`].
+    /// `fetch_ptr_add` 接受一个 [`Ordering`] 参数来描述本操作的内存顺序。
+    /// 所有顺序模式都允许。注意:用 [`Acquire`] 会让本操作的 store 部分退化为 [`Relaxed`],
+    /// 用 [`Release`] 会让 load 部分退化为 [`Relaxed`];只有 [`AcqRel`] 或 [`SeqCst`] 才同时具备两端语义。
     ///
-    /// **Note**: This method is only available on platforms that support atomic
-    /// operations on [`AtomicPtr`].
+    /// **注意**:本方法只在支持 [`AtomicPtr`] 原子操作的平台上可用。
     ///
     /// [`wrapping_add`]: pointer::wrapping_add
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use core::sync::atomic::{AtomicPtr, Ordering};
     ///
     /// let atom = AtomicPtr::<i64>::new(core::ptr::null_mut());
     /// assert_eq!(atom.fetch_ptr_add(1, Ordering::Relaxed).addr(), 0);
-    /// // Note: units of `size_of::<i64>()`.
+    /// // 注意:这里的单位是 `size_of::<i64>()`。
     /// assert_eq!(atom.load(Ordering::Relaxed).addr(), 8);
     /// ```
     #[inline]
     #[cfg(target_has_atomic = "ptr")]
     #[stable(feature = "strict_provenance_atomic_ptr", since = "1.91.0")]
-    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+    #[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
     #[rustc_should_not_be_called_on_const_items]
     pub fn fetch_ptr_add(&self, val: usize, order: Ordering) -> *mut T {
         self.fetch_byte_add(val.wrapping_mul(size_of::<T>()), order)
     }
 
-    /// Offsets the pointer's address by subtracting `val` (in units of `T`),
-    /// returning the previous pointer.
+    /// 通过减去 `val`(以 `T` 为单位)来偏移指针的地址,并返回操作前的旧指针。
     ///
-    /// This is equivalent to using [`wrapping_sub`] to atomically perform the
-    /// equivalent of `ptr = ptr.wrapping_sub(val);`.
+    /// 这等价于用 [`wrapping_sub`] 原子地执行 `ptr = ptr.wrapping_sub(val);`。
     ///
-    /// This method operates in units of `T`, which means that it cannot be used
-    /// to offset the pointer by an amount which is not a multiple of
-    /// `size_of::<T>()`. This can sometimes be inconvenient, as you may want to
-    /// work with a deliberately misaligned pointer. In such cases, you may use
-    /// the [`fetch_byte_sub`](Self::fetch_byte_sub) method instead.
+    /// 本方法以 `T` 为单位操作,这意味着它无法把指针偏移一个不是 `size_of::<T>()`
+    /// 整数倍的量。有时这会带来不便 —— 比如你想刻意构造一个未对齐的指针。
+    /// 在那种情况下,可以改用 [`fetch_byte_sub`](Self::fetch_byte_sub) 方法。
     ///
-    /// `fetch_ptr_sub` takes an [`Ordering`] argument which describes the memory
-    /// ordering of this operation. All ordering modes are possible. Note that
-    /// using [`Acquire`] makes the store part of this operation [`Relaxed`],
-    /// and using [`Release`] makes the load part [`Relaxed`].
+    /// `fetch_ptr_sub` 接受一个 [`Ordering`] 参数来描述本操作的内存顺序。
+    /// 所有顺序模式都允许。注意:用 [`Acquire`] 会让本操作的 store 部分退化为 [`Relaxed`],
+    /// 用 [`Release`] 会让 load 部分退化为 [`Relaxed`];只有 [`AcqRel`] 或 [`SeqCst`] 才同时具备两端语义。
     ///
-    /// **Note**: This method is only available on platforms that support atomic
-    /// operations on [`AtomicPtr`].
+    /// **注意**:本方法只在支持 [`AtomicPtr`] 原子操作的平台上可用。
     ///
     /// [`wrapping_sub`]: pointer::wrapping_sub
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use core::sync::atomic::{AtomicPtr, Ordering};
@@ -2300,65 +2138,57 @@ impl<T> AtomicPtr<T> {
     #[inline]
     #[cfg(target_has_atomic = "ptr")]
     #[stable(feature = "strict_provenance_atomic_ptr", since = "1.91.0")]
-    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+    #[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
     #[rustc_should_not_be_called_on_const_items]
     pub fn fetch_ptr_sub(&self, val: usize, order: Ordering) -> *mut T {
         self.fetch_byte_sub(val.wrapping_mul(size_of::<T>()), order)
     }
 
-    /// Offsets the pointer's address by adding `val` *bytes*, returning the
-    /// previous pointer.
+    /// 通过加上 `val` *字节* 来偏移指针的地址,并返回操作前的旧指针。
     ///
-    /// This is equivalent to using [`wrapping_byte_add`] to atomically
-    /// perform `ptr = ptr.wrapping_byte_add(val)`.
+    /// 这等价于用 [`wrapping_byte_add`] 原子地执行 `ptr = ptr.wrapping_byte_add(val)`。
     ///
-    /// `fetch_byte_add` takes an [`Ordering`] argument which describes the
-    /// memory ordering of this operation. All ordering modes are possible. Note
-    /// that using [`Acquire`] makes the store part of this operation
-    /// [`Relaxed`], and using [`Release`] makes the load part [`Relaxed`].
+    /// `fetch_byte_add` 接受一个 [`Ordering`] 参数来描述本操作的内存顺序。
+    /// 所有顺序模式都允许。注意:用 [`Acquire`] 会让本操作的 store 部分退化为 [`Relaxed`],
+    /// 用 [`Release`] 会让 load 部分退化为 [`Relaxed`];只有 [`AcqRel`] 或 [`SeqCst`] 才同时具备两端语义。
     ///
-    /// **Note**: This method is only available on platforms that support atomic
-    /// operations on [`AtomicPtr`].
+    /// **注意**:本方法只在支持 [`AtomicPtr`] 原子操作的平台上可用。
     ///
     /// [`wrapping_byte_add`]: pointer::wrapping_byte_add
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use core::sync::atomic::{AtomicPtr, Ordering};
     ///
     /// let atom = AtomicPtr::<i64>::new(core::ptr::null_mut());
     /// assert_eq!(atom.fetch_byte_add(1, Ordering::Relaxed).addr(), 0);
-    /// // Note: in units of bytes, not `size_of::<i64>()`.
+    /// // 注意:这里的单位是字节,而不是 `size_of::<i64>()`。
     /// assert_eq!(atom.load(Ordering::Relaxed).addr(), 1);
     /// ```
     #[inline]
     #[cfg(target_has_atomic = "ptr")]
     #[stable(feature = "strict_provenance_atomic_ptr", since = "1.91.0")]
-    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+    #[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
     #[rustc_should_not_be_called_on_const_items]
     pub fn fetch_byte_add(&self, val: usize, order: Ordering) -> *mut T {
-        // SAFETY: data races are prevented by atomic intrinsics.
+        // SAFETY: 数据竞争由原子 intrinsic 防止。
         unsafe { atomic_add(self.p.get(), val, order).cast() }
     }
 
-    /// Offsets the pointer's address by subtracting `val` *bytes*, returning the
-    /// previous pointer.
+    /// 通过减去 `val` *字节* 来偏移指针的地址,并返回操作前的旧指针。
     ///
-    /// This is equivalent to using [`wrapping_byte_sub`] to atomically
-    /// perform `ptr = ptr.wrapping_byte_sub(val)`.
+    /// 这等价于用 [`wrapping_byte_sub`] 原子地执行 `ptr = ptr.wrapping_byte_sub(val)`。
     ///
-    /// `fetch_byte_sub` takes an [`Ordering`] argument which describes the
-    /// memory ordering of this operation. All ordering modes are possible. Note
-    /// that using [`Acquire`] makes the store part of this operation
-    /// [`Relaxed`], and using [`Release`] makes the load part [`Relaxed`].
+    /// `fetch_byte_sub` 接受一个 [`Ordering`] 参数来描述本操作的内存顺序。
+    /// 所有顺序模式都允许。注意:用 [`Acquire`] 会让本操作的 store 部分退化为 [`Relaxed`],
+    /// 用 [`Release`] 会让 load 部分退化为 [`Relaxed`];只有 [`AcqRel`] 或 [`SeqCst`] 才同时具备两端语义。
     ///
-    /// **Note**: This method is only available on platforms that support atomic
-    /// operations on [`AtomicPtr`].
+    /// **注意**:本方法只在支持 [`AtomicPtr`] 原子操作的平台上可用。
     ///
     /// [`wrapping_byte_sub`]: pointer::wrapping_byte_sub
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use core::sync::atomic::{AtomicPtr, Ordering};
@@ -2371,40 +2201,34 @@ impl<T> AtomicPtr<T> {
     #[inline]
     #[cfg(target_has_atomic = "ptr")]
     #[stable(feature = "strict_provenance_atomic_ptr", since = "1.91.0")]
-    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+    #[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
     #[rustc_should_not_be_called_on_const_items]
     pub fn fetch_byte_sub(&self, val: usize, order: Ordering) -> *mut T {
-        // SAFETY: data races are prevented by atomic intrinsics.
+        // SAFETY: 数据竞争由原子 intrinsic 防止。
         unsafe { atomic_sub(self.p.get(), val, order).cast() }
     }
 
-    /// Performs a bitwise "or" operation on the address of the current pointer,
-    /// and the argument `val`, and stores a pointer with provenance of the
-    /// current pointer and the resulting address.
+    /// 对当前指针的地址与参数 `val` 做按位“或”(or)运算,
+    /// 并存入一个指针 —— 该指针带有当前指针的 provenance(出处)和运算得到的新地址。
     ///
-    /// This is equivalent to using [`map_addr`] to atomically perform
-    /// `ptr = ptr.map_addr(|a| a | val)`. This can be used in tagged
-    /// pointer schemes to atomically set tag bits.
+    /// 这等价于用 [`map_addr`] 原子地执行 `ptr = ptr.map_addr(|a| a | val)`。
+    /// 可用于带标记位的指针(tagged pointer)方案中原子地设置标记位。
     ///
-    /// **Caveat**: This operation returns the previous value. To compute the
-    /// stored value without losing provenance, you may use [`map_addr`]. For
-    /// example: `a.fetch_or(val).map_addr(|a| a | val)`.
+    /// **告诫**:本操作返回的是操作前的旧值。若想在不丢失 provenance 的前提下计算出已存入的值,
+    /// 可以使用 [`map_addr`],例如:`a.fetch_or(val).map_addr(|a| a | val)`。
     ///
-    /// `fetch_or` takes an [`Ordering`] argument which describes the memory
-    /// ordering of this operation. All ordering modes are possible. Note that
-    /// using [`Acquire`] makes the store part of this operation [`Relaxed`],
-    /// and using [`Release`] makes the load part [`Relaxed`].
+    /// `fetch_or` 接受一个 [`Ordering`] 参数来描述本操作的内存顺序。
+    /// 所有顺序模式都允许。注意:用 [`Acquire`] 会让本操作的 store 部分退化为 [`Relaxed`],
+    /// 用 [`Release`] 会让 load 部分退化为 [`Relaxed`];只有 [`AcqRel`] 或 [`SeqCst`] 才同时具备两端语义。
     ///
-    /// **Note**: This method is only available on platforms that support atomic
-    /// operations on [`AtomicPtr`].
+    /// **注意**:本方法只在支持 [`AtomicPtr`] 原子操作的平台上可用。
     ///
-    /// This API and its claimed semantics are part of the Strict Provenance
-    /// experiment, see the [module documentation for `ptr`][crate::ptr] for
-    /// details.
+    /// 本 API 及其所声称的语义是 Strict Provenance 实验的一部分,
+    /// 详见 [`ptr` 的模块文档][crate::ptr]。
     ///
     /// [`map_addr`]: pointer::map_addr
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use core::sync::atomic::{AtomicPtr, Ordering};
@@ -2412,9 +2236,9 @@ impl<T> AtomicPtr<T> {
     /// let pointer = &mut 3i64 as *mut i64;
     ///
     /// let atom = AtomicPtr::<i64>::new(pointer);
-    /// // Tag the bottom bit of the pointer.
+    /// // 给指针的最低位打标记。
     /// assert_eq!(atom.fetch_or(1, Ordering::Relaxed).addr() & 1, 0);
-    /// // Extract and untag.
+    /// // 取出并去除标记。
     /// let tagged = atom.load(Ordering::Relaxed);
     /// assert_eq!(tagged.addr() & 1, 1);
     /// assert_eq!(tagged.map_addr(|p| p & !1), pointer);
@@ -2422,49 +2246,43 @@ impl<T> AtomicPtr<T> {
     #[inline]
     #[cfg(target_has_atomic = "ptr")]
     #[stable(feature = "strict_provenance_atomic_ptr", since = "1.91.0")]
-    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+    #[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
     #[rustc_should_not_be_called_on_const_items]
     pub fn fetch_or(&self, val: usize, order: Ordering) -> *mut T {
-        // SAFETY: data races are prevented by atomic intrinsics.
+        // SAFETY: 数据竞争由原子 intrinsic 防止。
         unsafe { atomic_or(self.p.get(), val, order).cast() }
     }
 
-    /// Performs a bitwise "and" operation on the address of the current
-    /// pointer, and the argument `val`, and stores a pointer with provenance of
-    /// the current pointer and the resulting address.
+    /// 对当前指针的地址与参数 `val` 做按位“与”(and)运算,
+    /// 并存入一个指针 —— 该指针带有当前指针的 provenance(出处)和运算得到的新地址。
     ///
-    /// This is equivalent to using [`map_addr`] to atomically perform
-    /// `ptr = ptr.map_addr(|a| a & val)`. This can be used in tagged
-    /// pointer schemes to atomically unset tag bits.
+    /// 这等价于用 [`map_addr`] 原子地执行 `ptr = ptr.map_addr(|a| a & val)`。
+    /// 可用于带标记位的指针(tagged pointer)方案中原子地清除标记位。
     ///
-    /// **Caveat**: This operation returns the previous value. To compute the
-    /// stored value without losing provenance, you may use [`map_addr`]. For
-    /// example: `a.fetch_and(val).map_addr(|a| a & val)`.
+    /// **告诫**:本操作返回的是操作前的旧值。若想在不丢失 provenance 的前提下计算出已存入的值,
+    /// 可以使用 [`map_addr`],例如:`a.fetch_and(val).map_addr(|a| a & val)`。
     ///
-    /// `fetch_and` takes an [`Ordering`] argument which describes the memory
-    /// ordering of this operation. All ordering modes are possible. Note that
-    /// using [`Acquire`] makes the store part of this operation [`Relaxed`],
-    /// and using [`Release`] makes the load part [`Relaxed`].
+    /// `fetch_and` 接受一个 [`Ordering`] 参数来描述本操作的内存顺序。
+    /// 所有顺序模式都允许。注意:用 [`Acquire`] 会让本操作的 store 部分退化为 [`Relaxed`],
+    /// 用 [`Release`] 会让 load 部分退化为 [`Relaxed`];只有 [`AcqRel`] 或 [`SeqCst`] 才同时具备两端语义。
     ///
-    /// **Note**: This method is only available on platforms that support atomic
-    /// operations on [`AtomicPtr`].
+    /// **注意**:本方法只在支持 [`AtomicPtr`] 原子操作的平台上可用。
     ///
-    /// This API and its claimed semantics are part of the Strict Provenance
-    /// experiment, see the [module documentation for `ptr`][crate::ptr] for
-    /// details.
+    /// 本 API 及其所声称的语义是 Strict Provenance 实验的一部分,
+    /// 详见 [`ptr` 的模块文档][crate::ptr]。
     ///
     /// [`map_addr`]: pointer::map_addr
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use core::sync::atomic::{AtomicPtr, Ordering};
     ///
     /// let pointer = &mut 3i64 as *mut i64;
-    /// // A tagged pointer
+    /// // 一个带标记的指针
     /// let atom = AtomicPtr::<i64>::new(pointer.map_addr(|a| a | 1));
     /// assert_eq!(atom.fetch_or(1, Ordering::Relaxed).addr() & 1, 1);
-    /// // Untag, and extract the previously tagged pointer.
+    /// // 去除标记,并取出之前被打了标记的指针。
     /// let untagged = atom.fetch_and(!1, Ordering::Relaxed)
     ///     .map_addr(|a| a & !1);
     /// assert_eq!(untagged, pointer);
@@ -2472,40 +2290,34 @@ impl<T> AtomicPtr<T> {
     #[inline]
     #[cfg(target_has_atomic = "ptr")]
     #[stable(feature = "strict_provenance_atomic_ptr", since = "1.91.0")]
-    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+    #[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
     #[rustc_should_not_be_called_on_const_items]
     pub fn fetch_and(&self, val: usize, order: Ordering) -> *mut T {
-        // SAFETY: data races are prevented by atomic intrinsics.
+        // SAFETY: 数据竞争由原子 intrinsic 防止。
         unsafe { atomic_and(self.p.get(), val, order).cast() }
     }
 
-    /// Performs a bitwise "xor" operation on the address of the current
-    /// pointer, and the argument `val`, and stores a pointer with provenance of
-    /// the current pointer and the resulting address.
+    /// 对当前指针的地址与参数 `val` 做按位“异或”(xor)运算,
+    /// 并存入一个指针 —— 该指针带有当前指针的 provenance(出处)和运算得到的新地址。
     ///
-    /// This is equivalent to using [`map_addr`] to atomically perform
-    /// `ptr = ptr.map_addr(|a| a ^ val)`. This can be used in tagged
-    /// pointer schemes to atomically toggle tag bits.
+    /// 这等价于用 [`map_addr`] 原子地执行 `ptr = ptr.map_addr(|a| a ^ val)`。
+    /// 可用于带标记位的指针(tagged pointer)方案中原子地翻转标记位。
     ///
-    /// **Caveat**: This operation returns the previous value. To compute the
-    /// stored value without losing provenance, you may use [`map_addr`]. For
-    /// example: `a.fetch_xor(val).map_addr(|a| a ^ val)`.
+    /// **告诫**:本操作返回的是操作前的旧值。若想在不丢失 provenance 的前提下计算出已存入的值,
+    /// 可以使用 [`map_addr`],例如:`a.fetch_xor(val).map_addr(|a| a ^ val)`。
     ///
-    /// `fetch_xor` takes an [`Ordering`] argument which describes the memory
-    /// ordering of this operation. All ordering modes are possible. Note that
-    /// using [`Acquire`] makes the store part of this operation [`Relaxed`],
-    /// and using [`Release`] makes the load part [`Relaxed`].
+    /// `fetch_xor` 接受一个 [`Ordering`] 参数来描述本操作的内存顺序。
+    /// 所有顺序模式都允许。注意:用 [`Acquire`] 会让本操作的 store 部分退化为 [`Relaxed`],
+    /// 用 [`Release`] 会让 load 部分退化为 [`Relaxed`];只有 [`AcqRel`] 或 [`SeqCst`] 才同时具备两端语义。
     ///
-    /// **Note**: This method is only available on platforms that support atomic
-    /// operations on [`AtomicPtr`].
+    /// **注意**:本方法只在支持 [`AtomicPtr`] 原子操作的平台上可用。
     ///
-    /// This API and its claimed semantics are part of the Strict Provenance
-    /// experiment, see the [module documentation for `ptr`][crate::ptr] for
-    /// details.
+    /// 本 API 及其所声称的语义是 Strict Provenance 实验的一部分,
+    /// 详见 [`ptr` 的模块文档][crate::ptr]。
     ///
     /// [`map_addr`]: pointer::map_addr
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use core::sync::atomic::{AtomicPtr, Ordering};
@@ -2513,33 +2325,30 @@ impl<T> AtomicPtr<T> {
     /// let pointer = &mut 3i64 as *mut i64;
     /// let atom = AtomicPtr::<i64>::new(pointer);
     ///
-    /// // Toggle a tag bit on the pointer.
+    /// // 翻转指针上的一个标记位。
     /// atom.fetch_xor(1, Ordering::Relaxed);
     /// assert_eq!(atom.load(Ordering::Relaxed).addr() & 1, 1);
     /// ```
     #[inline]
     #[cfg(target_has_atomic = "ptr")]
     #[stable(feature = "strict_provenance_atomic_ptr", since = "1.91.0")]
-    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+    #[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
     #[rustc_should_not_be_called_on_const_items]
     pub fn fetch_xor(&self, val: usize, order: Ordering) -> *mut T {
-        // SAFETY: data races are prevented by atomic intrinsics.
+        // SAFETY: 数据竞争由原子 intrinsic 防止。
         unsafe { atomic_xor(self.p.get(), val, order).cast() }
     }
 
-    /// Returns a mutable pointer to the underlying pointer.
+    /// 返回指向底层指针的裸可变指针。
     ///
-    /// Doing non-atomic reads and writes on the resulting pointer can be a data race.
-    /// This method is mostly useful for FFI, where the function signature may use
-    /// `*mut *mut T` instead of `&AtomicPtr<T>`.
+    /// 对返回的这个指针做非原子的读写可能造成数据竞争。
+    /// 本方法主要用于 FFI 场景 —— 那里函数签名往往用 `*mut *mut T` 而非 `&AtomicPtr<T>`。
     ///
-    /// Returning an `*mut` pointer from a shared reference to this atomic is safe because the
-    /// atomic types work with interior mutability. All modifications of an atomic change the value
-    /// through a shared reference, and can do so safely as long as they use atomic operations. Any
-    /// use of the returned raw pointer requires an `unsafe` block and still has to uphold the
-    /// requirements of the [memory model].
+    /// 从对该原子的共享引用返回 `*mut` 指针是安全的,因为原子类型基于内部可变性工作:
+    /// 对原子的所有修改都是通过共享引用进行的,而只要它们使用原子操作就能安全地这样做。
+    /// 对返回的裸指针的任何使用都需要 `unsafe` 块,并且仍然必须满足 [memory model] 的要求。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```ignore (extern-declaration)
     /// use std::sync::atomic::AtomicPtr;
@@ -2551,7 +2360,7 @@ impl<T> AtomicPtr<T> {
     /// let mut value = 17;
     /// let atomic = AtomicPtr::new(&mut value);
     ///
-    /// // SAFETY: Safe as long as `my_atomic_op` is atomic.
+    /// // SAFETY: 只要 `my_atomic_op` 是原子的,这就是安全的。
     /// unsafe {
     ///     my_atomic_op(atomic.as_ptr());
     /// }
@@ -2571,9 +2380,9 @@ impl<T> AtomicPtr<T> {
 #[stable(feature = "atomic_bool_from", since = "1.24.0")]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
 impl const From<bool> for AtomicBool {
-    /// Converts a `bool` into an `AtomicBool`.
+    /// 把一个 `bool` 转换为 `AtomicBool`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::sync::atomic::AtomicBool;
@@ -2590,14 +2399,14 @@ impl const From<bool> for AtomicBool {
 #[stable(feature = "atomic_from", since = "1.23.0")]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
 impl<T> const From<*mut T> for AtomicPtr<T> {
-    /// Converts a `*mut T` into an `AtomicPtr<T>`.
+    /// 把一个 `*mut T` 转换为 `AtomicPtr<T>`。
     #[inline]
     fn from(p: *mut T) -> Self {
         Self::new(p)
     }
 }
 
-#[allow(unused_macros)] // This macro ends up being unused on some architectures.
+#[allow(unused_macros)] // 在某些架构上,这个宏最终是用不到的。
 macro_rules! if_8_bit {
     (u8, $( yes = [$($yes:tt)*], )? $( no = [$($no:tt)*], )? ) => { concat!("", $($($yes)*)?) };
     (i8, $( yes = [$($yes:tt)*], )? $( no = [$($no:tt)*], )? ) => { concat!("", $($($yes)*)?) };
@@ -2622,34 +2431,31 @@ macro_rules! atomic_int {
      $min_fn:ident, $max_fn:ident,
      $align:expr,
      $int_type:ident $atomic_type:ident) => {
-        /// An integer type which can be safely shared between threads.
+        /// 一种可以在线程之间安全共享的整数类型。
         ///
-        /// This type has the same
+        /// 它与底层整数类型 [`
+        #[doc = $s_int_type]
+        /// `] 拥有相同的
         #[doc = if_8_bit!(
             $int_type,
-            yes = ["size, alignment, and bit validity"],
-            no = ["size and bit validity"],
+            yes = ["大小、对齐和位有效性(bit validity)"],
+            no = ["大小和位有效性(bit validity)"],
         )]
-        /// as the underlying integer type, [`
-        #[doc = $s_int_type]
-        /// `].
+        /// 。
         #[doc = if_8_bit! {
             $int_type,
             no = [
-                "However, the alignment of this type is always equal to its ",
-                "size, even on targets where [`", $s_int_type, "`] has a ",
-                "lesser alignment."
+                "不过,本类型的对齐始终等于其大小,",
+                "即使在 [`", $s_int_type, "`] 的对齐更小的目标平台上也是如此。"
             ],
         }]
         ///
-        /// For more about the differences between atomic types and
-        /// non-atomic types as well as information about the portability of
-        /// this type, please see the [module-level documentation].
+        /// 关于原子类型与非原子类型之间的差异,以及本类型可移植性方面的更多内容,
+        /// 请参阅 [module-level documentation]。
         ///
-        /// **Note:** This type is only available on platforms that support
-        /// atomic loads and stores of [`
+        /// **注意:** 本类型只在支持对 [`
         #[doc = $s_int_type]
-        /// `].
+        /// `] 进行原子 load 与 store 的平台上可用。
         ///
         /// [module-level documentation]: crate::sync::atomic
         #[$stable]
@@ -2670,7 +2476,7 @@ macro_rules! atomic_int {
         #[$stable_from]
         #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
         impl const From<$int_type> for $atomic_type {
-            #[doc = concat!("Converts an `", stringify!($int_type), "` into an `", stringify!($atomic_type), "`.")]
+            #[doc = concat!("把一个 `", stringify!($int_type), "` 转换为 `", stringify!($atomic_type), "`。")]
             #[inline]
             fn from(v: $int_type) -> Self { Self::new(v) }
         }
@@ -2682,14 +2488,14 @@ macro_rules! atomic_int {
             }
         }
 
-        // Send is implicitly implemented.
+        // Send 是隐式实现的。
         #[$stable]
         unsafe impl Sync for $atomic_type {}
 
         impl $atomic_type {
-            /// Creates a new atomic integer.
+            /// 创建一个新的原子整数。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             #[doc = concat!($extra_feature, "use std::sync::atomic::", stringify!($atomic_type), ";")]
@@ -2704,54 +2510,54 @@ macro_rules! atomic_int {
                 Self {v: UnsafeCell::new(v)}
             }
 
-            /// Creates a new reference to an atomic integer from a pointer.
+            /// 从一个指针创建一个指向原子整数的新引用。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             #[doc = concat!($extra_feature, "use std::sync::atomic::{self, ", stringify!($atomic_type), "};")]
             ///
-            /// // Get a pointer to an allocated value
+            /// // 取得指向一块已分配值的指针
             #[doc = concat!("let ptr: *mut ", stringify!($int_type), " = Box::into_raw(Box::new(0));")]
             ///
             #[doc = concat!("assert!(ptr.cast::<", stringify!($atomic_type), ">().is_aligned());")]
             ///
             /// {
-            ///     // Create an atomic view of the allocated value
-            // SAFETY: this is a doc comment, tidy, it can't hurt you (also guaranteed by the construction of `ptr` and the assert above)
+            ///     // 为这块已分配的值创建一个原子视图
+            // SAFETY: 这是一条文档注释,tidy,它伤害不到你(同时也由 `ptr` 的构造方式与上面的断言所保证)
             #[doc = concat!("    let atomic = unsafe {", stringify!($atomic_type), "::from_ptr(ptr) };")]
             ///
-            ///     // Use `atomic` for atomic operations, possibly share it with other threads
+            ///     // 用 `atomic` 做原子操作,也可以把它分享给其他线程
             ///     atomic.store(1, atomic::Ordering::Relaxed);
             /// }
             ///
-            /// // It's ok to non-atomically access the value behind `ptr`,
-            /// // since the reference to the atomic ended its lifetime in the block above
+            /// // 此时非原子地访问 `ptr` 背后的值是可以的,
+            /// // 因为指向该原子的引用已在上面的代码块中结束了生命周期
             /// assert_eq!(unsafe { *ptr }, 1);
             ///
-            /// // Deallocate the value
+            /// // 释放该值
             /// unsafe { drop(Box::from_raw(ptr)) }
             /// ```
             ///
-            /// # Safety
+            /// # 安全性(Safety)
             ///
-            /// * `ptr` must be aligned to
+            /// * `ptr` 必须按
             #[doc = concat!("  `align_of::<", stringify!($atomic_type), ">()`")]
+            /// 对齐
             #[doc = if_8_bit!{
                 $int_type,
                 yes = [
-                    "  (note that this is always true, since `align_of::<",
-                    stringify!($atomic_type), ">() == 1`)."
+                    "(注意:这总是成立的,因为 `align_of::<",
+                    stringify!($atomic_type), ">() == 1`)。"
                 ],
                 no = [
-                    "  (note that on some platforms this can be bigger than `align_of::<",
-                    stringify!($int_type), ">()`)."
+                    "(注意:在某些平台上这可能比 `align_of::<",
+                    stringify!($int_type), ">()` 更大)。"
                 ],
             }]
-            /// * `ptr` must be [valid] for both reads and writes for the whole lifetime `'a`.
-            /// * You must adhere to the [Memory model for atomic accesses]. In particular, it is not
-            ///   allowed to mix conflicting atomic and non-atomic accesses, or atomic accesses of different
-            ///   sizes, without synchronization.
+            /// * `ptr` 在整个生命周期 `'a` 内必须对读和写都 [valid]。
+            /// * 你必须遵守 [Memory model for atomic accesses]。特别地,不允许在没有同步的情况下
+            ///   混用冲突的原子访问与非原子访问,也不允许混用不同大小的原子访问。
             ///
             /// [valid]: crate::ptr#safety
             /// [Memory model for atomic accesses]: self#memory-model-for-atomic-accesses
@@ -2759,17 +2565,16 @@ macro_rules! atomic_int {
             #[stable(feature = "atomic_from_ptr", since = "1.75.0")]
             #[rustc_const_stable(feature = "const_atomic_from_ptr", since = "1.84.0")]
             pub const unsafe fn from_ptr<'a>(ptr: *mut $int_type) -> &'a $atomic_type {
-                // SAFETY: guaranteed by the caller
+                // SAFETY: 由调用方保证。
                 unsafe { &*ptr.cast() }
             }
 
 
-            /// Returns a mutable reference to the underlying integer.
+            /// 返回指向底层整数的可变引用。
             ///
-            /// This is safe because the mutable reference guarantees that no other threads are
-            /// concurrently accessing the atomic data.
+            /// 这是安全的,因为可变引用保证了没有其他线程在并发访问这块原子数据。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             #[doc = concat!($extra_feature, "use std::sync::atomic::{", stringify!($atomic_type), ", Ordering};")]
@@ -2785,17 +2590,17 @@ macro_rules! atomic_int {
                 self.v.get_mut()
             }
 
-            #[doc = concat!("Get atomic access to a `&mut ", stringify!($int_type), "`.")]
+            #[doc = concat!("取得对一个 `&mut ", stringify!($int_type), "` 的原子访问。")]
             ///
             #[doc = if_8_bit! {
                 $int_type,
                 no = [
-                    "**Note:** This function is only available on targets where `",
-                    stringify!($atomic_type), "` has the same alignment as `", stringify!($int_type), "`."
+                    "**注意:** 本函数只在 `",
+                    stringify!($atomic_type), "` 与 `", stringify!($int_type), "` 对齐相同的目标平台上可用。"
                 ],
             }]
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             /// #![feature(atomic_from_mut)]
@@ -2813,18 +2618,16 @@ macro_rules! atomic_int {
             pub fn from_mut(v: &mut $int_type) -> &mut Self {
                 let [] = [(); align_of::<Self>() - align_of::<$int_type>()];
                 // SAFETY:
-                //  - the mutable reference guarantees unique ownership.
-                //  - the alignment of `$int_type` and `Self` is the
-                //    same, as promised by $cfg_align and verified above.
+                //  - 可变引用保证了独占所有权。
+                //  - `$int_type` 与 `Self` 的对齐相同,这由 $cfg_align 保证并在上面验证。
                 unsafe { &mut *(v as *mut $int_type as *mut Self) }
             }
 
-            #[doc = concat!("Get non-atomic access to a `&mut [", stringify!($atomic_type), "]` slice")]
+            #[doc = concat!("取得对一个 `&mut [", stringify!($atomic_type), "]` 切片的非原子访问")]
             ///
-            /// This is safe because the mutable reference guarantees that no other threads are
-            /// concurrently accessing the atomic data.
+            /// 这是安全的,因为可变引用保证了没有其他线程在并发访问这块原子数据。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```ignore-wasm
             /// #![feature(atomic_from_mut)]
@@ -2851,21 +2654,21 @@ macro_rules! atomic_int {
             #[inline]
             #[unstable(feature = "atomic_from_mut", issue = "76314")]
             pub fn get_mut_slice(this: &mut [Self]) -> &mut [$int_type] {
-                // SAFETY: the mutable reference guarantees unique ownership.
+                // SAFETY: 可变引用保证了独占所有权。
                 unsafe { &mut *(this as *mut [Self] as *mut [$int_type]) }
             }
 
-            #[doc = concat!("Get atomic access to a `&mut [", stringify!($int_type), "]` slice.")]
+            #[doc = concat!("取得对一个 `&mut [", stringify!($int_type), "]` 切片的原子访问。")]
             ///
             #[doc = if_8_bit! {
                 $int_type,
                 no = [
-                    "**Note:** This function is only available on targets where `",
-                    stringify!($atomic_type), "` has the same alignment as `", stringify!($int_type), "`."
+                    "**注意:** 本函数只在 `",
+                    stringify!($atomic_type), "` 与 `", stringify!($int_type), "` 对齐相同的目标平台上可用。"
                 ],
             }]
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```ignore-wasm
             /// #![feature(atomic_from_mut)]
@@ -2888,18 +2691,16 @@ macro_rules! atomic_int {
             pub fn from_mut_slice(v: &mut [$int_type]) -> &mut [Self] {
                 let [] = [(); align_of::<Self>() - align_of::<$int_type>()];
                 // SAFETY:
-                //  - the mutable reference guarantees unique ownership.
-                //  - the alignment of `$int_type` and `Self` is the
-                //    same, as promised by $cfg_align and verified above.
+                //  - 可变引用保证了独占所有权。
+                //  - `$int_type` 与 `Self` 的对齐相同,这由 $cfg_align 保证并在上面验证。
                 unsafe { &mut *(v as *mut [$int_type] as *mut [Self]) }
             }
 
-            /// Consumes the atomic and returns the contained value.
+            /// 消耗这个原子,返回它所包含的值。
             ///
-            /// This is safe because passing `self` by value guarantees that no other threads are
-            /// concurrently accessing the atomic data.
+            /// 这是安全的,因为按值传入 `self` 保证了没有其他线程在并发访问这块原子数据。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             #[doc = concat!($extra_feature, "use std::sync::atomic::", stringify!($atomic_type), ";")]
@@ -2914,16 +2715,16 @@ macro_rules! atomic_int {
                 self.v.into_inner()
             }
 
-            /// Loads a value from the atomic integer.
+            /// 从原子整数中 load 出一个值。
             ///
-            /// `load` takes an [`Ordering`] argument which describes the memory ordering of this operation.
-            /// Possible values are [`SeqCst`], [`Acquire`] and [`Relaxed`].
+            /// `load` 接受一个 [`Ordering`] 参数来描述本操作的内存顺序。
+            /// 可用的取值有 [`SeqCst`]、[`Acquire`] 和 [`Relaxed`]。
             ///
             /// # Panics
             ///
-            /// Panics if `order` is [`Release`] or [`AcqRel`].
+            /// 当 `order` 为 [`Release`] 或 [`AcqRel`] 时会 panic。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             #[doc = concat!($extra_feature, "use std::sync::atomic::{", stringify!($atomic_type), ", Ordering};")]
@@ -2934,22 +2735,22 @@ macro_rules! atomic_int {
             /// ```
             #[inline]
             #[$stable]
-            #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+            #[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
             pub fn load(&self, order: Ordering) -> $int_type {
-                // SAFETY: data races are prevented by atomic intrinsics.
+                // SAFETY: 数据竞争由原子 intrinsic 防止。
                 unsafe { atomic_load(self.v.get(), order) }
             }
 
-            /// Stores a value into the atomic integer.
+            /// 把一个值 store 进原子整数。
             ///
-            /// `store` takes an [`Ordering`] argument which describes the memory ordering of this operation.
-            ///  Possible values are [`SeqCst`], [`Release`] and [`Relaxed`].
+            /// `store` 接受一个 [`Ordering`] 参数来描述本操作的内存顺序。
+            /// 可用的取值有 [`SeqCst`]、[`Release`] 和 [`Relaxed`]。
             ///
             /// # Panics
             ///
-            /// Panics if `order` is [`Acquire`] or [`AcqRel`].
+            /// 当 `order` 为 [`Acquire`] 或 [`AcqRel`] 时会 panic。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             #[doc = concat!($extra_feature, "use std::sync::atomic::{", stringify!($atomic_type), ", Ordering};")]
@@ -2961,24 +2762,24 @@ macro_rules! atomic_int {
             /// ```
             #[inline]
             #[$stable]
-            #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+            #[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
             #[rustc_should_not_be_called_on_const_items]
             pub fn store(&self, val: $int_type, order: Ordering) {
-                // SAFETY: data races are prevented by atomic intrinsics.
+                // SAFETY: 数据竞争由原子 intrinsic 防止。
                 unsafe { atomic_store(self.v.get(), val, order); }
             }
 
-            /// Stores a value into the atomic integer, returning the previous value.
+            /// 把一个值 store 进原子整数,并返回操作前的旧值。
             ///
-            /// `swap` takes an [`Ordering`] argument which describes the memory ordering
-            /// of this operation. All ordering modes are possible. Note that using
-            /// [`Acquire`] makes the store part of this operation [`Relaxed`], and
-            /// using [`Release`] makes the load part [`Relaxed`].
+            /// `swap` 接受一个 [`Ordering`] 参数来描述本操作的内存顺序。
+            /// 所有顺序模式都允许。注意:用 [`Acquire`] 会让本操作的 store 部分退化为 [`Relaxed`],
+            /// 用 [`Release`] 会让 load 部分退化为 [`Relaxed`];只有 [`AcqRel`] 或 [`SeqCst`] 才同时具备两端语义。
             ///
-            /// **Note**: This method is only available on platforms that support atomic operations on
-            #[doc = concat!("[`", $s_int_type, "`].")]
+            /// **注意**:本方法只在支持对
+            #[doc = concat!("[`", $s_int_type, "`]")]
+            /// 进行原子操作的平台上可用。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             #[doc = concat!($extra_feature, "use std::sync::atomic::{", stringify!($atomic_type), ", Ordering};")]
@@ -2990,34 +2791,31 @@ macro_rules! atomic_int {
             #[inline]
             #[$stable]
             #[$cfg_cas]
-            #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+            #[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
             #[rustc_should_not_be_called_on_const_items]
             pub fn swap(&self, val: $int_type, order: Ordering) -> $int_type {
-                // SAFETY: data races are prevented by atomic intrinsics.
+                // SAFETY: 数据竞争由原子 intrinsic 防止。
                 unsafe { atomic_swap(self.v.get(), val, order) }
             }
 
-            /// Stores a value into the atomic integer if the current value is the same as
-            /// the `current` value.
+            /// 当且仅当当前值与 `current` 相同时,把 `new` 写入原子整数。
             ///
-            /// The return value is always the previous value. If it is equal to `current`, then the
-            /// value was updated.
+            /// 返回值始终是操作前的旧值。如果它等于 `current`,说明值已被更新。
             ///
-            /// `compare_and_swap` also takes an [`Ordering`] argument which describes the memory
-            /// ordering of this operation. Notice that even when using [`AcqRel`], the operation
-            /// might fail and hence just perform an `Acquire` load, but not have `Release` semantics.
-            /// Using [`Acquire`] makes the store part of this operation [`Relaxed`] if it
-            /// happens, and using [`Release`] makes the load part [`Relaxed`].
+            /// `compare_and_swap` 也接受一个 [`Ordering`] 参数来描述本操作的内存顺序。
+            /// 注意:即便使用 [`AcqRel`],操作仍可能失败,此时它只执行一次 `Acquire` load,而不具备 `Release` 语义。
+            /// 用 [`Acquire`] 会让本操作(若真的发生)的 store 部分退化为 [`Relaxed`],
+            /// 用 [`Release`] 会让 load 部分退化为 [`Relaxed`]。
             ///
-            /// **Note**: This method is only available on platforms that support atomic operations on
-            #[doc = concat!("[`", $s_int_type, "`].")]
+            /// **注意**:本方法只在支持对
+            #[doc = concat!("[`", $s_int_type, "`]")]
+            /// 进行原子操作的平台上可用。
             ///
-            /// # Migrating to `compare_exchange` and `compare_exchange_weak`
+            /// # 迁移到 `compare_exchange` 和 `compare_exchange_weak`
             ///
-            /// `compare_and_swap` is equivalent to `compare_exchange` with the following mapping for
-            /// memory orderings:
+            /// `compare_and_swap` 等价于按下表映射内存顺序的 `compare_exchange`:
             ///
-            /// Original | Success | Failure
+            /// 原顺序   | Success | Failure
             /// -------- | ------- | -------
             /// Relaxed  | Relaxed | Relaxed
             /// Acquire  | Acquire | Acquire
@@ -3025,17 +2823,16 @@ macro_rules! atomic_int {
             /// AcqRel   | AcqRel  | Acquire
             /// SeqCst   | SeqCst  | SeqCst
             ///
-            /// `compare_and_swap` and `compare_exchange` also differ in their return type. You can use
-            /// `compare_exchange(...).unwrap_or_else(|x| x)` to recover the behavior of `compare_and_swap`,
-            /// but in most cases it is more idiomatic to check whether the return value is `Ok` or `Err`
-            /// rather than to infer success vs failure based on the value that was read.
+            /// `compare_and_swap` 与 `compare_exchange` 的返回类型也不同。你可以用
+            /// `compare_exchange(...).unwrap_or_else(|x| x)` 来恢复 `compare_and_swap` 的行为,
+            /// 但大多数情况下,更地道的做法是检查返回值是 `Ok` 还是 `Err`,
+            /// 而不是根据读到的值去推断成功还是失败。
             ///
-            /// During migration, consider whether it makes sense to use `compare_exchange_weak` instead.
-            /// `compare_exchange_weak` is allowed to fail spuriously even when the comparison succeeds,
-            /// which allows the compiler to generate better assembly code when the compare and swap
-            /// is used in a loop.
+            /// 迁移期间,也可以考虑改用 `compare_exchange_weak` 是否更合适。
+            /// `compare_exchange_weak` 允许在比较成功时仍偶发失败,这能让编译器在“比较并交换”被用于
+            /// 循环中时生成更优的汇编代码。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             #[doc = concat!($extra_feature, "use std::sync::atomic::{", stringify!($atomic_type), ", Ordering};")]
@@ -3055,7 +2852,7 @@ macro_rules! atomic_int {
                 note = "Use `compare_exchange` or `compare_exchange_weak` instead")
             ]
             #[$cfg_cas]
-            #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+            #[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
             #[rustc_should_not_be_called_on_const_items]
             pub fn compare_and_swap(&self,
                                     current: $int_type,
@@ -3070,25 +2867,24 @@ macro_rules! atomic_int {
                 }
             }
 
-            /// Stores a value into the atomic integer if the current value is the same as
-            /// the `current` value.
+            /// 当且仅当当前值与 `current` 相同时,把 `new` 写入原子整数。
             ///
-            /// The return value is a result indicating whether the new value was written and
-            /// containing the previous value. On success this value is guaranteed to be equal to
-            /// `current`.
+            /// 返回值是一个 `Result`,指示新值是否被写入,并携带操作前的旧值。
+            /// 成功时该值保证等于 `current`。
             ///
-            /// `compare_exchange` takes two [`Ordering`] arguments to describe the memory
-            /// ordering of this operation. `success` describes the required ordering for the
-            /// read-modify-write operation that takes place if the comparison with `current` succeeds.
-            /// `failure` describes the required ordering for the load operation that takes place when
-            /// the comparison fails. Using [`Acquire`] as success ordering makes the store part
-            /// of this operation [`Relaxed`], and using [`Release`] makes the successful load
-            /// [`Relaxed`]. The failure ordering can only be [`SeqCst`], [`Acquire`] or [`Relaxed`].
+            /// `compare_exchange` 接受两个 [`Ordering`] 参数来描述本操作的内存顺序。
+            /// `success` 描述比较成功时所执行的“读-改-写”操作所需的顺序;
+            /// `failure` 描述比较失败时所执行的 load 操作所需的顺序。
+            /// 把 `success` 设为 [`Acquire`] 会让本操作的 store 部分退化为 [`Relaxed`],
+            /// 设为 [`Release`] 会让成功路径上的 load 部分退化为 [`Relaxed`]。
+            /// `failure` 顺序只能是 [`SeqCst`]、[`Acquire`] 或 [`Relaxed`];
+            /// 传入 [`Release`] 或 [`AcqRel`] 会触发 panic。
             ///
-            /// **Note**: This method is only available on platforms that support atomic operations on
-            #[doc = concat!("[`", $s_int_type, "`].")]
+            /// **注意**:本方法只在支持对
+            #[doc = concat!("[`", $s_int_type, "`]")]
+            /// 进行原子操作的平台上可用。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             #[doc = concat!($extra_feature, "use std::sync::atomic::{", stringify!($atomic_type), ", Ordering};")]
@@ -3108,54 +2904,51 @@ macro_rules! atomic_int {
             /// assert_eq!(some_var.load(Ordering::Relaxed), 10);
             /// ```
             ///
-            /// # Considerations
+            /// # 注意事项
             ///
-            /// `compare_exchange` is a [compare-and-swap operation] and thus exhibits the usual downsides
-            /// of CAS operations. In particular, a load of the value followed by a successful
-            /// `compare_exchange` with the previous load *does not ensure* that other threads have not
-            /// changed the value in the interim! This is usually important when the *equality* check in
-            /// the `compare_exchange` is being used to check the *identity* of a value, but equality
-            /// does not necessarily imply identity. This is a particularly common case for pointers, as
-            /// a pointer holding the same address does not imply that the same object exists at that
-            /// address! In this case, `compare_exchange` can lead to the [ABA problem].
+            /// `compare_exchange` 是一个 [compare-and-swap operation],因此带有 CAS 操作惯有的缺陷。
+            /// 特别地,“先 load 出一个值,再用这个旧值做一次成功的 `compare_exchange`” *并不能保证*
+            /// 在这两步之间其他线程没有改动过该值!这一点在用 `compare_exchange` 里的*相等性*检查
+            /// 来判断值的*同一性*时尤其重要 —— 相等并不必然意味着同一。对指针来说这尤其常见:
+            /// 一个指针持有相同的地址,并不意味着该地址上还存在同一个对象!在这种场景下,
+            /// `compare_exchange` 可能导致 [ABA problem](即值被改成别的再改回原值,CAS 仍判定相等而通过)。
             ///
             /// [ABA Problem]: https://en.wikipedia.org/wiki/ABA_problem
             /// [compare-and-swap operation]: https://en.wikipedia.org/wiki/Compare-and-swap
             #[inline]
             #[$stable_cxchg]
             #[$cfg_cas]
-            #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+            #[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
             #[rustc_should_not_be_called_on_const_items]
             pub fn compare_exchange(&self,
                                     current: $int_type,
                                     new: $int_type,
                                     success: Ordering,
                                     failure: Ordering) -> Result<$int_type, $int_type> {
-                // SAFETY: data races are prevented by atomic intrinsics.
+                // SAFETY: 数据竞争由原子 intrinsic 防止。
                 unsafe { atomic_compare_exchange(self.v.get(), current, new, success, failure) }
             }
 
-            /// Stores a value into the atomic integer if the current value is the same as
-            /// the `current` value.
+            /// 当且仅当当前值与 `current` 相同时,把 `new` 写入原子整数。
             ///
-            #[doc = concat!("Unlike [`", stringify!($atomic_type), "::compare_exchange`],")]
-            /// this function is allowed to spuriously fail even
-            /// when the comparison succeeds, which can result in more efficient code on some
-            /// platforms. The return value is a result indicating whether the new value was
-            /// written and containing the previous value.
+            #[doc = concat!("与 [`", stringify!($atomic_type), "::compare_exchange`] 不同,")]
+            /// 本函数 **允许在比较成功时仍偶发失败(spurious failure)**,
+            /// 这能让某些平台生成更高效的代码。返回值是一个 `Result`,
+            /// 指示新值是否被写入,并携带操作前的旧值。
             ///
-            /// `compare_exchange_weak` takes two [`Ordering`] arguments to describe the memory
-            /// ordering of this operation. `success` describes the required ordering for the
-            /// read-modify-write operation that takes place if the comparison with `current` succeeds.
-            /// `failure` describes the required ordering for the load operation that takes place when
-            /// the comparison fails. Using [`Acquire`] as success ordering makes the store part
-            /// of this operation [`Relaxed`], and using [`Release`] makes the successful load
-            /// [`Relaxed`]. The failure ordering can only be [`SeqCst`], [`Acquire`] or [`Relaxed`].
+            /// `compare_exchange_weak` 接受两个 [`Ordering`] 参数来描述本操作的内存顺序。
+            /// `success` 描述比较成功时所执行的“读-改-写”操作所需的顺序;
+            /// `failure` 描述比较失败时所执行的 load 操作所需的顺序。
+            /// 把 `success` 设为 [`Acquire`] 会让本操作的 store 部分退化为 [`Relaxed`],
+            /// 设为 [`Release`] 会让成功路径上的 load 部分退化为 [`Relaxed`]。
+            /// `failure` 顺序只能是 [`SeqCst`]、[`Acquire`] 或 [`Relaxed`];
+            /// 传入 [`Release`] 或 [`AcqRel`] 会触发 panic。
             ///
-            /// **Note**: This method is only available on platforms that support atomic operations on
-            #[doc = concat!("[`", $s_int_type, "`].")]
+            /// **注意**:本方法只在支持对
+            #[doc = concat!("[`", $s_int_type, "`]")]
+            /// 进行原子操作的平台上可用。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             #[doc = concat!($extra_feature, "use std::sync::atomic::{", stringify!($atomic_type), ", Ordering};")]
@@ -3172,48 +2965,46 @@ macro_rules! atomic_int {
             /// }
             /// ```
             ///
-            /// # Considerations
+            /// # 注意事项
             ///
-            /// `compare_exchange` is a [compare-and-swap operation] and thus exhibits the usual downsides
-            /// of CAS operations. In particular, a load of the value followed by a successful
-            /// `compare_exchange` with the previous load *does not ensure* that other threads have not
-            /// changed the value in the interim. This is usually important when the *equality* check in
-            /// the `compare_exchange` is being used to check the *identity* of a value, but equality
-            /// does not necessarily imply identity. This is a particularly common case for pointers, as
-            /// a pointer holding the same address does not imply that the same object exists at that
-            /// address! In this case, `compare_exchange` can lead to the [ABA problem].
+            /// `compare_exchange` 是一个 [compare-and-swap operation],因此带有 CAS 操作惯有的缺陷。
+            /// 特别地,“先 load 出一个值,再用这个旧值做一次成功的 `compare_exchange`” *并不能保证*
+            /// 在这两步之间其他线程没有改动过该值。这一点在用 `compare_exchange` 里的*相等性*检查
+            /// 来判断值的*同一性*时尤其重要 —— 相等并不必然意味着同一。对指针来说这尤其常见:
+            /// 一个指针持有相同的地址,并不意味着该地址上还存在同一个对象!在这种场景下,
+            /// `compare_exchange` 可能导致 [ABA problem](即值被改成别的再改回原值,CAS 仍判定相等而通过)。
             ///
             /// [ABA Problem]: https://en.wikipedia.org/wiki/ABA_problem
             /// [compare-and-swap operation]: https://en.wikipedia.org/wiki/Compare-and-swap
             #[inline]
             #[$stable_cxchg]
             #[$cfg_cas]
-            #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+            #[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
             #[rustc_should_not_be_called_on_const_items]
             pub fn compare_exchange_weak(&self,
                                          current: $int_type,
                                          new: $int_type,
                                          success: Ordering,
                                          failure: Ordering) -> Result<$int_type, $int_type> {
-                // SAFETY: data races are prevented by atomic intrinsics.
+                // SAFETY: 数据竞争由原子 intrinsic 防止。
                 unsafe {
                     atomic_compare_exchange_weak(self.v.get(), current, new, success, failure)
                 }
             }
 
-            /// Adds to the current value, returning the previous value.
+            /// 在当前值上做加法,并返回操作前的旧值。
             ///
-            /// This operation wraps around on overflow.
+            /// 本操作在溢出时回绕(wrapping)。
             ///
-            /// `fetch_add` takes an [`Ordering`] argument which describes the memory ordering
-            /// of this operation. All ordering modes are possible. Note that using
-            /// [`Acquire`] makes the store part of this operation [`Relaxed`], and
-            /// using [`Release`] makes the load part [`Relaxed`].
+            /// `fetch_add` 接受一个 [`Ordering`] 参数来描述本操作的内存顺序。
+            /// 所有顺序模式都允许。注意:用 [`Acquire`] 会让本操作的 store 部分退化为 [`Relaxed`],
+            /// 用 [`Release`] 会让 load 部分退化为 [`Relaxed`];只有 [`AcqRel`] 或 [`SeqCst`] 才同时具备两端语义。
             ///
-            /// **Note**: This method is only available on platforms that support atomic operations on
-            #[doc = concat!("[`", $s_int_type, "`].")]
+            /// **注意**:本方法只在支持对
+            #[doc = concat!("[`", $s_int_type, "`]")]
+            /// 进行原子操作的平台上可用。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             #[doc = concat!($extra_feature, "use std::sync::atomic::{", stringify!($atomic_type), ", Ordering};")]
@@ -3225,26 +3016,26 @@ macro_rules! atomic_int {
             #[inline]
             #[$stable]
             #[$cfg_cas]
-            #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+            #[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
             #[rustc_should_not_be_called_on_const_items]
             pub fn fetch_add(&self, val: $int_type, order: Ordering) -> $int_type {
-                // SAFETY: data races are prevented by atomic intrinsics.
+                // SAFETY: 数据竞争由原子 intrinsic 防止。
                 unsafe { atomic_add(self.v.get(), val, order) }
             }
 
-            /// Subtracts from the current value, returning the previous value.
+            /// 在当前值上做减法,并返回操作前的旧值。
             ///
-            /// This operation wraps around on overflow.
+            /// 本操作在溢出时回绕(wrapping)。
             ///
-            /// `fetch_sub` takes an [`Ordering`] argument which describes the memory ordering
-            /// of this operation. All ordering modes are possible. Note that using
-            /// [`Acquire`] makes the store part of this operation [`Relaxed`], and
-            /// using [`Release`] makes the load part [`Relaxed`].
+            /// `fetch_sub` 接受一个 [`Ordering`] 参数来描述本操作的内存顺序。
+            /// 所有顺序模式都允许。注意:用 [`Acquire`] 会让本操作的 store 部分退化为 [`Relaxed`],
+            /// 用 [`Release`] 会让 load 部分退化为 [`Relaxed`];只有 [`AcqRel`] 或 [`SeqCst`] 才同时具备两端语义。
             ///
-            /// **Note**: This method is only available on platforms that support atomic operations on
-            #[doc = concat!("[`", $s_int_type, "`].")]
+            /// **注意**:本方法只在支持对
+            #[doc = concat!("[`", $s_int_type, "`]")]
+            /// 进行原子操作的平台上可用。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             #[doc = concat!($extra_feature, "use std::sync::atomic::{", stringify!($atomic_type), ", Ordering};")]
@@ -3256,29 +3047,28 @@ macro_rules! atomic_int {
             #[inline]
             #[$stable]
             #[$cfg_cas]
-            #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+            #[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
             #[rustc_should_not_be_called_on_const_items]
             pub fn fetch_sub(&self, val: $int_type, order: Ordering) -> $int_type {
-                // SAFETY: data races are prevented by atomic intrinsics.
+                // SAFETY: 数据竞争由原子 intrinsic 防止。
                 unsafe { atomic_sub(self.v.get(), val, order) }
             }
 
-            /// Bitwise "and" with the current value.
+            /// 与当前值做按位“与”(and)。
             ///
-            /// Performs a bitwise "and" operation on the current value and the argument `val`, and
-            /// sets the new value to the result.
+            /// 对当前值与参数 `val` 执行按位“与”操作,并把结果设为新值。
             ///
-            /// Returns the previous value.
+            /// 返回操作前的旧值。
             ///
-            /// `fetch_and` takes an [`Ordering`] argument which describes the memory ordering
-            /// of this operation. All ordering modes are possible. Note that using
-            /// [`Acquire`] makes the store part of this operation [`Relaxed`], and
-            /// using [`Release`] makes the load part [`Relaxed`].
+            /// `fetch_and` 接受一个 [`Ordering`] 参数来描述本操作的内存顺序。
+            /// 所有顺序模式都允许。注意:用 [`Acquire`] 会让本操作的 store 部分退化为 [`Relaxed`],
+            /// 用 [`Release`] 会让 load 部分退化为 [`Relaxed`];只有 [`AcqRel`] 或 [`SeqCst`] 才同时具备两端语义。
             ///
-            /// **Note**: This method is only available on platforms that support atomic operations on
-            #[doc = concat!("[`", $s_int_type, "`].")]
+            /// **注意**:本方法只在支持对
+            #[doc = concat!("[`", $s_int_type, "`]")]
+            /// 进行原子操作的平台上可用。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             #[doc = concat!($extra_feature, "use std::sync::atomic::{", stringify!($atomic_type), ", Ordering};")]
@@ -3290,29 +3080,28 @@ macro_rules! atomic_int {
             #[inline]
             #[$stable]
             #[$cfg_cas]
-            #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+            #[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
             #[rustc_should_not_be_called_on_const_items]
             pub fn fetch_and(&self, val: $int_type, order: Ordering) -> $int_type {
-                // SAFETY: data races are prevented by atomic intrinsics.
+                // SAFETY: 数据竞争由原子 intrinsic 防止。
                 unsafe { atomic_and(self.v.get(), val, order) }
             }
 
-            /// Bitwise "nand" with the current value.
+            /// 与当前值做按位“与非”(nand)。
             ///
-            /// Performs a bitwise "nand" operation on the current value and the argument `val`, and
-            /// sets the new value to the result.
+            /// 对当前值与参数 `val` 执行按位“与非”操作,并把结果设为新值。
             ///
-            /// Returns the previous value.
+            /// 返回操作前的旧值。
             ///
-            /// `fetch_nand` takes an [`Ordering`] argument which describes the memory ordering
-            /// of this operation. All ordering modes are possible. Note that using
-            /// [`Acquire`] makes the store part of this operation [`Relaxed`], and
-            /// using [`Release`] makes the load part [`Relaxed`].
+            /// `fetch_nand` 接受一个 [`Ordering`] 参数来描述本操作的内存顺序。
+            /// 所有顺序模式都允许。注意:用 [`Acquire`] 会让本操作的 store 部分退化为 [`Relaxed`],
+            /// 用 [`Release`] 会让 load 部分退化为 [`Relaxed`];只有 [`AcqRel`] 或 [`SeqCst`] 才同时具备两端语义。
             ///
-            /// **Note**: This method is only available on platforms that support atomic operations on
-            #[doc = concat!("[`", $s_int_type, "`].")]
+            /// **注意**:本方法只在支持对
+            #[doc = concat!("[`", $s_int_type, "`]")]
+            /// 进行原子操作的平台上可用。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             #[doc = concat!($extra_feature, "use std::sync::atomic::{", stringify!($atomic_type), ", Ordering};")]
@@ -3324,29 +3113,28 @@ macro_rules! atomic_int {
             #[inline]
             #[$stable_nand]
             #[$cfg_cas]
-            #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+            #[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
             #[rustc_should_not_be_called_on_const_items]
             pub fn fetch_nand(&self, val: $int_type, order: Ordering) -> $int_type {
-                // SAFETY: data races are prevented by atomic intrinsics.
+                // SAFETY: 数据竞争由原子 intrinsic 防止。
                 unsafe { atomic_nand(self.v.get(), val, order) }
             }
 
-            /// Bitwise "or" with the current value.
+            /// 与当前值做按位“或”(or)。
             ///
-            /// Performs a bitwise "or" operation on the current value and the argument `val`, and
-            /// sets the new value to the result.
+            /// 对当前值与参数 `val` 执行按位“或”操作,并把结果设为新值。
             ///
-            /// Returns the previous value.
+            /// 返回操作前的旧值。
             ///
-            /// `fetch_or` takes an [`Ordering`] argument which describes the memory ordering
-            /// of this operation. All ordering modes are possible. Note that using
-            /// [`Acquire`] makes the store part of this operation [`Relaxed`], and
-            /// using [`Release`] makes the load part [`Relaxed`].
+            /// `fetch_or` 接受一个 [`Ordering`] 参数来描述本操作的内存顺序。
+            /// 所有顺序模式都允许。注意:用 [`Acquire`] 会让本操作的 store 部分退化为 [`Relaxed`],
+            /// 用 [`Release`] 会让 load 部分退化为 [`Relaxed`];只有 [`AcqRel`] 或 [`SeqCst`] 才同时具备两端语义。
             ///
-            /// **Note**: This method is only available on platforms that support atomic operations on
-            #[doc = concat!("[`", $s_int_type, "`].")]
+            /// **注意**:本方法只在支持对
+            #[doc = concat!("[`", $s_int_type, "`]")]
+            /// 进行原子操作的平台上可用。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             #[doc = concat!($extra_feature, "use std::sync::atomic::{", stringify!($atomic_type), ", Ordering};")]
@@ -3358,29 +3146,28 @@ macro_rules! atomic_int {
             #[inline]
             #[$stable]
             #[$cfg_cas]
-            #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+            #[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
             #[rustc_should_not_be_called_on_const_items]
             pub fn fetch_or(&self, val: $int_type, order: Ordering) -> $int_type {
-                // SAFETY: data races are prevented by atomic intrinsics.
+                // SAFETY: 数据竞争由原子 intrinsic 防止。
                 unsafe { atomic_or(self.v.get(), val, order) }
             }
 
-            /// Bitwise "xor" with the current value.
+            /// 与当前值做按位“异或”(xor)。
             ///
-            /// Performs a bitwise "xor" operation on the current value and the argument `val`, and
-            /// sets the new value to the result.
+            /// 对当前值与参数 `val` 执行按位“异或”操作,并把结果设为新值。
             ///
-            /// Returns the previous value.
+            /// 返回操作前的旧值。
             ///
-            /// `fetch_xor` takes an [`Ordering`] argument which describes the memory ordering
-            /// of this operation. All ordering modes are possible. Note that using
-            /// [`Acquire`] makes the store part of this operation [`Relaxed`], and
-            /// using [`Release`] makes the load part [`Relaxed`].
+            /// `fetch_xor` 接受一个 [`Ordering`] 参数来描述本操作的内存顺序。
+            /// 所有顺序模式都允许。注意:用 [`Acquire`] 会让本操作的 store 部分退化为 [`Relaxed`],
+            /// 用 [`Release`] 会让 load 部分退化为 [`Relaxed`];只有 [`AcqRel`] 或 [`SeqCst`] 才同时具备两端语义。
             ///
-            /// **Note**: This method is only available on platforms that support atomic operations on
-            #[doc = concat!("[`", $s_int_type, "`].")]
+            /// **注意**:本方法只在支持对
+            #[doc = concat!("[`", $s_int_type, "`]")]
+            /// 进行原子操作的平台上可用。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             #[doc = concat!($extra_feature, "use std::sync::atomic::{", stringify!($atomic_type), ", Ordering};")]
@@ -3392,48 +3179,44 @@ macro_rules! atomic_int {
             #[inline]
             #[$stable]
             #[$cfg_cas]
-            #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+            #[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
             #[rustc_should_not_be_called_on_const_items]
             pub fn fetch_xor(&self, val: $int_type, order: Ordering) -> $int_type {
-                // SAFETY: data races are prevented by atomic intrinsics.
+                // SAFETY: 数据竞争由原子 intrinsic 防止。
                 unsafe { atomic_xor(self.v.get(), val, order) }
             }
 
-            /// Fetches the value, and applies a function to it that returns an optional
-            /// new value. Returns a `Result` of `Ok(previous_value)` if the function returned `Some(_)`, else
-            /// `Err(previous_value)`.
+            /// 取出当前值,并对它应用一个返回 `Option<新值>` 的函数。
+            /// 若该函数返回 `Some(_)`,则返回 `Ok(previous_value)`(操作前的旧值);否则返回 `Err(previous_value)`。
             ///
-            /// Note: This may call the function multiple times if the value has been changed from other threads in
-            /// the meantime, as long as the function returns `Some(_)`, but the function will have been applied
-            /// only once to the stored value.
+            /// 注意:只要该函数持续返回 `Some(_)`,当期间该值被其他线程改动时,本方法可能会
+            /// 多次调用该函数;但该函数最终只会对一个已存储的值生效一次。
             ///
-            /// `fetch_update` takes two [`Ordering`] arguments to describe the memory ordering of this operation.
-            /// The first describes the required ordering for when the operation finally succeeds while the second
-            /// describes the required ordering for loads. These correspond to the success and failure orderings of
+            /// `fetch_update` 接受两个 [`Ordering`] 参数来描述本操作的内存顺序。
+            /// 第一个描述操作最终成功时所需的顺序,第二个描述 load 所需的顺序。它们分别对应
             #[doc = concat!("[`", stringify!($atomic_type), "::compare_exchange`]")]
-            /// respectively.
+            /// 的 success 与 failure 顺序。
             ///
-            /// Using [`Acquire`] as success ordering makes the store part
-            /// of this operation [`Relaxed`], and using [`Release`] makes the final successful load
-            /// [`Relaxed`]. The (failed) load ordering can only be [`SeqCst`], [`Acquire`] or [`Relaxed`].
+            /// 把成功顺序设为 [`Acquire`] 会让本操作的 store 部分退化为 [`Relaxed`],
+            /// 设为 [`Release`] 会让最终成功路径上的 load 退化为 [`Relaxed`]。
+            /// (失败的)load 顺序只能是 [`SeqCst`]、[`Acquire`] 或 [`Relaxed`]。
             ///
-            /// **Note**: This method is only available on platforms that support atomic operations on
-            #[doc = concat!("[`", $s_int_type, "`].")]
+            /// **注意**:本方法只在支持对
+            #[doc = concat!("[`", $s_int_type, "`]")]
+            /// 进行原子操作的平台上可用。
             ///
-            /// # Considerations
+            /// # 注意事项
             ///
-            /// This method is not magic; it is not provided by the hardware, and does not act like a
-            /// critical section or mutex.
+            /// 本方法并不神奇:它不是硬件直接提供的,也不像临界区或互斥锁那样工作。
             ///
-            /// It is implemented on top of an atomic [compare-and-swap operation], and thus is subject to
-            /// the usual drawbacks of CAS operations. In particular, be careful of the [ABA problem]
-            /// if this atomic integer is an index or more generally if knowledge of only the *bitwise value*
-            /// of the atomic is not in and of itself sufficient to ensure any required preconditions.
+            /// 它是在原子 [compare-and-swap operation] 之上实现的,因此带有 CAS 操作惯有的缺陷。
+            /// 特别地,如果这个原子整数是一个索引,或者更一般地说,如果仅凭原子的 *按位取值*
+            /// 本身不足以确保所需的前置条件,那就要当心 [ABA problem]。
             ///
             /// [ABA Problem]: https://en.wikipedia.org/wiki/ABA_problem
             /// [compare-and-swap operation]: https://en.wikipedia.org/wiki/Compare-and-swap
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```rust
             #[doc = concat!($extra_feature, "use std::sync::atomic::{", stringify!($atomic_type), ", Ordering};")]
@@ -3447,7 +3230,7 @@ macro_rules! atomic_int {
             #[inline]
             #[stable(feature = "no_more_cas", since = "1.45.0")]
             #[$cfg_cas]
-            #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+            #[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
             #[rustc_should_not_be_called_on_const_items]
             pub fn fetch_update<F>(&self,
                                    set_order: Ordering,
@@ -3464,43 +3247,39 @@ macro_rules! atomic_int {
                 Err(prev)
             }
 
-            /// Fetches the value, and applies a function to it that returns an optional
-            /// new value. Returns a `Result` of `Ok(previous_value)` if the function returned `Some(_)`, else
-            /// `Err(previous_value)`.
+            /// 取出当前值,并对它应用一个返回 `Option<新值>` 的函数。
+            /// 若该函数返回 `Some(_)`,则返回 `Ok(previous_value)`(操作前的旧值);否则返回 `Err(previous_value)`。
             ///
-            #[doc = concat!("See also: [`update`](`", stringify!($atomic_type), "::update`).")]
+            #[doc = concat!("另见:[`update`](`", stringify!($atomic_type), "::update`)。")]
             ///
-            /// Note: This may call the function multiple times if the value has been changed from other threads in
-            /// the meantime, as long as the function returns `Some(_)`, but the function will have been applied
-            /// only once to the stored value.
+            /// 注意:只要该函数持续返回 `Some(_)`,当期间该值被其他线程改动时,本方法可能会
+            /// 多次调用该函数;但该函数最终只会对一个已存储的值生效一次。
             ///
-            /// `try_update` takes two [`Ordering`] arguments to describe the memory ordering of this operation.
-            /// The first describes the required ordering for when the operation finally succeeds while the second
-            /// describes the required ordering for loads. These correspond to the success and failure orderings of
+            /// `try_update` 接受两个 [`Ordering`] 参数来描述本操作的内存顺序。
+            /// 第一个描述操作最终成功时所需的顺序,第二个描述 load 所需的顺序。它们分别对应
             #[doc = concat!("[`", stringify!($atomic_type), "::compare_exchange`]")]
-            /// respectively.
+            /// 的 success 与 failure 顺序。
             ///
-            /// Using [`Acquire`] as success ordering makes the store part
-            /// of this operation [`Relaxed`], and using [`Release`] makes the final successful load
-            /// [`Relaxed`]. The (failed) load ordering can only be [`SeqCst`], [`Acquire`] or [`Relaxed`].
+            /// 把成功顺序设为 [`Acquire`] 会让本操作的 store 部分退化为 [`Relaxed`],
+            /// 设为 [`Release`] 会让最终成功路径上的 load 退化为 [`Relaxed`]。
+            /// (失败的)load 顺序只能是 [`SeqCst`]、[`Acquire`] 或 [`Relaxed`]。
             ///
-            /// **Note**: This method is only available on platforms that support atomic operations on
-            #[doc = concat!("[`", $s_int_type, "`].")]
+            /// **注意**:本方法只在支持对
+            #[doc = concat!("[`", $s_int_type, "`]")]
+            /// 进行原子操作的平台上可用。
             ///
-            /// # Considerations
+            /// # 注意事项
             ///
-            /// This method is not magic; it is not provided by the hardware, and does not act like a
-            /// critical section or mutex.
+            /// 本方法并不神奇:它不是硬件直接提供的,也不像临界区或互斥锁那样工作。
             ///
-            /// It is implemented on top of an atomic [compare-and-swap operation], and thus is subject to
-            /// the usual drawbacks of CAS operations. In particular, be careful of the [ABA problem]
-            /// if this atomic integer is an index or more generally if knowledge of only the *bitwise value*
-            /// of the atomic is not in and of itself sufficient to ensure any required preconditions.
+            /// 它是在原子 [compare-and-swap operation] 之上实现的,因此带有 CAS 操作惯有的缺陷。
+            /// 特别地,如果这个原子整数是一个索引,或者更一般地说,如果仅凭原子的 *按位取值*
+            /// 本身不足以确保所需的前置条件,那就要当心 [ABA problem]。
             ///
             /// [ABA Problem]: https://en.wikipedia.org/wiki/ABA_problem
             /// [compare-and-swap operation]: https://en.wikipedia.org/wiki/Compare-and-swap
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```rust
             /// #![feature(atomic_try_update)]
@@ -3515,7 +3294,7 @@ macro_rules! atomic_int {
             #[inline]
             #[unstable(feature = "atomic_try_update", issue = "135894")]
             #[$cfg_cas]
-            #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+            #[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
             #[rustc_should_not_be_called_on_const_items]
             pub fn try_update(
                 &self,
@@ -3523,47 +3302,44 @@ macro_rules! atomic_int {
                 fetch_order: Ordering,
                 f: impl FnMut($int_type) -> Option<$int_type>,
             ) -> Result<$int_type, $int_type> {
-                // FIXME(atomic_try_update): this is currently an unstable alias to `fetch_update`;
-                //      when stabilizing, turn `fetch_update` into a deprecated alias to `try_update`.
+                // FIXME(atomic_try_update): 目前这是 `fetch_update` 的一个 unstable 别名;
+                //      稳定化时,应把 `fetch_update` 改成 `try_update` 的 deprecated 别名。
                 self.fetch_update(set_order, fetch_order, f)
             }
 
-            /// Fetches the value, applies a function to it that it return a new value.
-            /// The new value is stored and the old value is returned.
+            /// 取出当前值,对它应用一个返回新值的函数。新值被存入,旧值被返回。
             ///
-            #[doc = concat!("See also: [`try_update`](`", stringify!($atomic_type), "::try_update`).")]
+            #[doc = concat!("另见:[`try_update`](`", stringify!($atomic_type), "::try_update`)。")]
             ///
-            /// Note: This may call the function multiple times if the value has been changed from other threads in
-            /// the meantime, but the function will have been applied only once to the stored value.
+            /// 注意:当期间该值被其他线程改动时,本方法可能会多次调用该函数;
+            /// 但该函数最终只会对一个已存储的值生效一次。
             ///
-            /// `update` takes two [`Ordering`] arguments to describe the memory ordering of this operation.
-            /// The first describes the required ordering for when the operation finally succeeds while the second
-            /// describes the required ordering for loads. These correspond to the success and failure orderings of
+            /// `update` 接受两个 [`Ordering`] 参数来描述本操作的内存顺序。
+            /// 第一个描述操作最终成功时所需的顺序,第二个描述 load 所需的顺序。它们分别对应
             #[doc = concat!("[`", stringify!($atomic_type), "::compare_exchange`]")]
-            /// respectively.
+            /// 的 success 与 failure 顺序。
             ///
-            /// Using [`Acquire`] as success ordering makes the store part
-            /// of this operation [`Relaxed`], and using [`Release`] makes the final successful load
-            /// [`Relaxed`]. The (failed) load ordering can only be [`SeqCst`], [`Acquire`] or [`Relaxed`].
+            /// 把成功顺序设为 [`Acquire`] 会让本操作的 store 部分退化为 [`Relaxed`],
+            /// 设为 [`Release`] 会让最终成功路径上的 load 退化为 [`Relaxed`]。
+            /// (失败的)load 顺序只能是 [`SeqCst`]、[`Acquire`] 或 [`Relaxed`]。
             ///
-            /// **Note**: This method is only available on platforms that support atomic operations on
-            #[doc = concat!("[`", $s_int_type, "`].")]
+            /// **注意**:本方法只在支持对
+            #[doc = concat!("[`", $s_int_type, "`]")]
+            /// 进行原子操作的平台上可用。
             ///
-            /// # Considerations
+            /// # 注意事项
             ///
             /// [CAS operation]: https://en.wikipedia.org/wiki/Compare-and-swap
-            /// This method is not magic; it is not provided by the hardware, and does not act like a
-            /// critical section or mutex.
+            /// 本方法并不神奇:它不是硬件直接提供的,也不像临界区或互斥锁那样工作。
             ///
-            /// It is implemented on top of an atomic [compare-and-swap operation], and thus is subject to
-            /// the usual drawbacks of CAS operations. In particular, be careful of the [ABA problem]
-            /// if this atomic integer is an index or more generally if knowledge of only the *bitwise value*
-            /// of the atomic is not in and of itself sufficient to ensure any required preconditions.
+            /// 它是在原子 [compare-and-swap operation] 之上实现的,因此带有 CAS 操作惯有的缺陷。
+            /// 特别地,如果这个原子整数是一个索引,或者更一般地说,如果仅凭原子的 *按位取值*
+            /// 本身不足以确保所需的前置条件,那就要当心 [ABA problem]。
             ///
             /// [ABA Problem]: https://en.wikipedia.org/wiki/ABA_problem
             /// [compare-and-swap operation]: https://en.wikipedia.org/wiki/Compare-and-swap
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```rust
             /// #![feature(atomic_try_update)]
@@ -3577,7 +3353,7 @@ macro_rules! atomic_int {
             #[inline]
             #[unstable(feature = "atomic_try_update", issue = "135894")]
             #[$cfg_cas]
-            #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+            #[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
             #[rustc_should_not_be_called_on_const_items]
             pub fn update(
                 &self,
@@ -3594,22 +3370,21 @@ macro_rules! atomic_int {
                 }
             }
 
-            /// Maximum with the current value.
+            /// 与当前值取最大值。
             ///
-            /// Finds the maximum of the current value and the argument `val`, and
-            /// sets the new value to the result.
+            /// 求当前值与参数 `val` 中的较大者,并把结果设为新值。
             ///
-            /// Returns the previous value.
+            /// 返回操作前的旧值。
             ///
-            /// `fetch_max` takes an [`Ordering`] argument which describes the memory ordering
-            /// of this operation. All ordering modes are possible. Note that using
-            /// [`Acquire`] makes the store part of this operation [`Relaxed`], and
-            /// using [`Release`] makes the load part [`Relaxed`].
+            /// `fetch_max` 接受一个 [`Ordering`] 参数来描述本操作的内存顺序。
+            /// 所有顺序模式都允许。注意:用 [`Acquire`] 会让本操作的 store 部分退化为 [`Relaxed`],
+            /// 用 [`Release`] 会让 load 部分退化为 [`Relaxed`];只有 [`AcqRel`] 或 [`SeqCst`] 才同时具备两端语义。
             ///
-            /// **Note**: This method is only available on platforms that support atomic operations on
-            #[doc = concat!("[`", $s_int_type, "`].")]
+            /// **注意**:本方法只在支持对
+            #[doc = concat!("[`", $s_int_type, "`]")]
+            /// 进行原子操作的平台上可用。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             #[doc = concat!($extra_feature, "use std::sync::atomic::{", stringify!($atomic_type), ", Ordering};")]
@@ -3619,7 +3394,7 @@ macro_rules! atomic_int {
             /// assert_eq!(foo.load(Ordering::SeqCst), 42);
             /// ```
             ///
-            /// If you want to obtain the maximum value in one step, you can use the following:
+            /// 如果你想一步就得到最大值,可以这样写:
             ///
             /// ```
             #[doc = concat!($extra_feature, "use std::sync::atomic::{", stringify!($atomic_type), ", Ordering};")]
@@ -3632,29 +3407,28 @@ macro_rules! atomic_int {
             #[inline]
             #[stable(feature = "atomic_min_max", since = "1.45.0")]
             #[$cfg_cas]
-            #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+            #[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
             #[rustc_should_not_be_called_on_const_items]
             pub fn fetch_max(&self, val: $int_type, order: Ordering) -> $int_type {
-                // SAFETY: data races are prevented by atomic intrinsics.
+                // SAFETY: 数据竞争由原子 intrinsic 防止。
                 unsafe { $max_fn(self.v.get(), val, order) }
             }
 
-            /// Minimum with the current value.
+            /// 与当前值取最小值。
             ///
-            /// Finds the minimum of the current value and the argument `val`, and
-            /// sets the new value to the result.
+            /// 求当前值与参数 `val` 中的较小者,并把结果设为新值。
             ///
-            /// Returns the previous value.
+            /// 返回操作前的旧值。
             ///
-            /// `fetch_min` takes an [`Ordering`] argument which describes the memory ordering
-            /// of this operation. All ordering modes are possible. Note that using
-            /// [`Acquire`] makes the store part of this operation [`Relaxed`], and
-            /// using [`Release`] makes the load part [`Relaxed`].
+            /// `fetch_min` 接受一个 [`Ordering`] 参数来描述本操作的内存顺序。
+            /// 所有顺序模式都允许。注意:用 [`Acquire`] 会让本操作的 store 部分退化为 [`Relaxed`],
+            /// 用 [`Release`] 会让 load 部分退化为 [`Relaxed`];只有 [`AcqRel`] 或 [`SeqCst`] 才同时具备两端语义。
             ///
-            /// **Note**: This method is only available on platforms that support atomic operations on
-            #[doc = concat!("[`", $s_int_type, "`].")]
+            /// **注意**:本方法只在支持对
+            #[doc = concat!("[`", $s_int_type, "`]")]
+            /// 进行原子操作的平台上可用。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             #[doc = concat!($extra_feature, "use std::sync::atomic::{", stringify!($atomic_type), ", Ordering};")]
@@ -3666,7 +3440,7 @@ macro_rules! atomic_int {
             /// assert_eq!(foo.load(Ordering::Relaxed), 22);
             /// ```
             ///
-            /// If you want to obtain the minimum value in one step, you can use the following:
+            /// 如果你想一步就得到最小值,可以这样写:
             ///
             /// ```
             #[doc = concat!($extra_feature, "use std::sync::atomic::{", stringify!($atomic_type), ", Ordering};")]
@@ -3679,26 +3453,24 @@ macro_rules! atomic_int {
             #[inline]
             #[stable(feature = "atomic_min_max", since = "1.45.0")]
             #[$cfg_cas]
-            #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+            #[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
             #[rustc_should_not_be_called_on_const_items]
             pub fn fetch_min(&self, val: $int_type, order: Ordering) -> $int_type {
-                // SAFETY: data races are prevented by atomic intrinsics.
+                // SAFETY: 数据竞争由原子 intrinsic 防止。
                 unsafe { $min_fn(self.v.get(), val, order) }
             }
 
-            /// Returns a mutable pointer to the underlying integer.
+            /// 返回指向底层整数的裸可变指针。
             ///
-            /// Doing non-atomic reads and writes on the resulting integer can be a data race.
-            /// This method is mostly useful for FFI, where the function signature may use
-            #[doc = concat!("`*mut ", stringify!($int_type), "` instead of `&", stringify!($atomic_type), "`.")]
+            /// 对返回的这个整数做非原子的读写可能造成数据竞争。
+            /// 本方法主要用于 FFI 场景 —— 那里函数签名往往用
+            #[doc = concat!("`*mut ", stringify!($int_type), "` 而非 `&", stringify!($atomic_type), "`。")]
             ///
-            /// Returning an `*mut` pointer from a shared reference to this atomic is safe because the
-            /// atomic types work with interior mutability. All modifications of an atomic change the value
-            /// through a shared reference, and can do so safely as long as they use atomic operations. Any
-            /// use of the returned raw pointer requires an `unsafe` block and still has to uphold the
-            /// requirements of the [memory model].
+            /// 从对该原子的共享引用返回 `*mut` 指针是安全的,因为原子类型基于内部可变性工作:
+            /// 对原子的所有修改都是通过共享引用进行的,而只要它们使用原子操作就能安全地这样做。
+            /// 对返回的裸指针的任何使用都需要 `unsafe` 块,并且仍然必须满足 [memory model] 的要求。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```ignore (extern-declaration)
             /// # fn main() {
@@ -3710,7 +3482,7 @@ macro_rules! atomic_int {
             ///
             #[doc = concat!("let atomic = ", stringify!($atomic_type), "::new(1);")]
             ///
-            /// // SAFETY: Safe as long as `my_atomic_op` is atomic.
+            /// // SAFETY: 只要 `my_atomic_op` 是原子的,这就是安全的。
             /// unsafe {
             ///     my_atomic_op(atomic.as_ptr());
             /// }
@@ -3962,7 +3734,7 @@ macro_rules! atomic_int_ptr_sized {
             usize AtomicUsize
         }
 
-        /// An [`AtomicIsize`] initialized to `0`.
+        /// 一个初始化为 `0` 的 [`AtomicIsize`]。
         #[cfg(target_pointer_width = $target_pointer_width)]
         #[stable(feature = "rust1", since = "1.0.0")]
         #[deprecated(
@@ -3972,7 +3744,7 @@ macro_rules! atomic_int_ptr_sized {
         )]
         pub const ATOMIC_ISIZE_INIT: AtomicIsize = AtomicIsize::new(0);
 
-        /// An [`AtomicUsize`] initialized to `0`.
+        /// 一个初始化为 `0` 的 [`AtomicUsize`]。
         #[cfg(target_pointer_width = $target_pointer_width)]
         #[stable(feature = "rust1", since = "1.0.0")]
         #[deprecated(
@@ -4004,9 +3776,9 @@ fn strongest_failure_ordering(order: Ordering) -> Ordering {
 }
 
 #[inline]
-#[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+#[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
 unsafe fn atomic_store<T: Copy>(dst: *mut T, val: T, order: Ordering) {
-    // SAFETY: the caller must uphold the safety contract for `atomic_store`.
+    // SAFETY: 由调用方保证 `atomic_store` 的安全契约:dst 指向有效且对齐的可写内存,数据竞争由原子 intrinsic 防止。
     unsafe {
         match order {
             Relaxed => intrinsics::atomic_store::<T, { AO::Relaxed }>(dst, val),
@@ -4019,9 +3791,9 @@ unsafe fn atomic_store<T: Copy>(dst: *mut T, val: T, order: Ordering) {
 }
 
 #[inline]
-#[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+#[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
 unsafe fn atomic_load<T: Copy>(dst: *const T, order: Ordering) -> T {
-    // SAFETY: the caller must uphold the safety contract for `atomic_load`.
+    // SAFETY: 由调用方保证 `atomic_load` 的安全契约:dst 指向有效且对齐的可读内存,数据竞争由原子 intrinsic 防止。
     unsafe {
         match order {
             Relaxed => intrinsics::atomic_load::<T, { AO::Relaxed }>(dst),
@@ -4035,9 +3807,9 @@ unsafe fn atomic_load<T: Copy>(dst: *const T, order: Ordering) -> T {
 
 #[inline]
 #[cfg(target_has_atomic)]
-#[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+#[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
 unsafe fn atomic_swap<T: Copy>(dst: *mut T, val: T, order: Ordering) -> T {
-    // SAFETY: the caller must uphold the safety contract for `atomic_swap`.
+    // SAFETY: 由调用方保证 `atomic_swap` 的安全契约:dst 指向有效且对齐的可读写内存,数据竞争由原子 intrinsic 防止。
     unsafe {
         match order {
             Relaxed => intrinsics::atomic_xchg::<T, { AO::Relaxed }>(dst, val),
@@ -4049,12 +3821,12 @@ unsafe fn atomic_swap<T: Copy>(dst: *mut T, val: T, order: Ordering) -> T {
     }
 }
 
-/// Returns the previous value (like __sync_fetch_and_add).
+/// 返回操作前的旧值(类似 __sync_fetch_and_add)。
 #[inline]
 #[cfg(target_has_atomic)]
-#[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+#[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
 unsafe fn atomic_add<T: Copy, U: Copy>(dst: *mut T, val: U, order: Ordering) -> T {
-    // SAFETY: the caller must uphold the safety contract for `atomic_add`.
+    // SAFETY: 由调用方保证 `atomic_add` 的安全契约:dst 指向有效且对齐的可读写内存,数据竞争由原子 intrinsic 防止。
     unsafe {
         match order {
             Relaxed => intrinsics::atomic_xadd::<T, U, { AO::Relaxed }>(dst, val),
@@ -4066,12 +3838,12 @@ unsafe fn atomic_add<T: Copy, U: Copy>(dst: *mut T, val: U, order: Ordering) -> 
     }
 }
 
-/// Returns the previous value (like __sync_fetch_and_sub).
+/// 返回操作前的旧值(类似 __sync_fetch_and_sub)。
 #[inline]
 #[cfg(target_has_atomic)]
-#[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+#[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
 unsafe fn atomic_sub<T: Copy, U: Copy>(dst: *mut T, val: U, order: Ordering) -> T {
-    // SAFETY: the caller must uphold the safety contract for `atomic_sub`.
+    // SAFETY: 由调用方保证 `atomic_sub` 的安全契约:dst 指向有效且对齐的可读写内存,数据竞争由原子 intrinsic 防止。
     unsafe {
         match order {
             Relaxed => intrinsics::atomic_xsub::<T, U, { AO::Relaxed }>(dst, val),
@@ -4083,10 +3855,10 @@ unsafe fn atomic_sub<T: Copy, U: Copy>(dst: *mut T, val: U, order: Ordering) -> 
     }
 }
 
-/// Publicly exposed for stdarch; nobody else should use this.
+/// 为 stdarch 公开暴露;其他任何人都不应使用它。
 #[inline]
 #[cfg(target_has_atomic)]
-#[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+#[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
 #[unstable(feature = "core_intrinsics", issue = "none")]
 #[doc(hidden)]
 pub unsafe fn atomic_compare_exchange<T: Copy>(
@@ -4096,7 +3868,7 @@ pub unsafe fn atomic_compare_exchange<T: Copy>(
     success: Ordering,
     failure: Ordering,
 ) -> Result<T, T> {
-    // SAFETY: the caller must uphold the safety contract for `atomic_compare_exchange`.
+    // SAFETY: 由调用方保证 `atomic_compare_exchange` 的安全契约:dst 指向有效且对齐的可读写内存,数据竞争由原子 intrinsic 防止。
     let (val, ok) = unsafe {
         match (success, failure) {
             (Relaxed, Relaxed) => {
@@ -4153,7 +3925,7 @@ pub unsafe fn atomic_compare_exchange<T: Copy>(
 
 #[inline]
 #[cfg(target_has_atomic)]
-#[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+#[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
 unsafe fn atomic_compare_exchange_weak<T: Copy>(
     dst: *mut T,
     old: T,
@@ -4161,7 +3933,7 @@ unsafe fn atomic_compare_exchange_weak<T: Copy>(
     success: Ordering,
     failure: Ordering,
 ) -> Result<T, T> {
-    // SAFETY: the caller must uphold the safety contract for `atomic_compare_exchange_weak`.
+    // SAFETY: 由调用方保证 `atomic_compare_exchange_weak` 的安全契约:dst 指向有效且对齐的可读写内存,数据竞争由原子 intrinsic 防止。
     let (val, ok) = unsafe {
         match (success, failure) {
             (Relaxed, Relaxed) => {
@@ -4218,9 +3990,9 @@ unsafe fn atomic_compare_exchange_weak<T: Copy>(
 
 #[inline]
 #[cfg(target_has_atomic)]
-#[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+#[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
 unsafe fn atomic_and<T: Copy, U: Copy>(dst: *mut T, val: U, order: Ordering) -> T {
-    // SAFETY: the caller must uphold the safety contract for `atomic_and`
+    // SAFETY: 由调用方保证 `atomic_and` 的安全契约:dst 指向有效且对齐的可读写内存,数据竞争由原子 intrinsic 防止。
     unsafe {
         match order {
             Relaxed => intrinsics::atomic_and::<T, U, { AO::Relaxed }>(dst, val),
@@ -4234,9 +4006,9 @@ unsafe fn atomic_and<T: Copy, U: Copy>(dst: *mut T, val: U, order: Ordering) -> 
 
 #[inline]
 #[cfg(target_has_atomic)]
-#[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+#[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
 unsafe fn atomic_nand<T: Copy, U: Copy>(dst: *mut T, val: U, order: Ordering) -> T {
-    // SAFETY: the caller must uphold the safety contract for `atomic_nand`
+    // SAFETY: 由调用方保证 `atomic_nand` 的安全契约:dst 指向有效且对齐的可读写内存,数据竞争由原子 intrinsic 防止。
     unsafe {
         match order {
             Relaxed => intrinsics::atomic_nand::<T, U, { AO::Relaxed }>(dst, val),
@@ -4250,9 +4022,9 @@ unsafe fn atomic_nand<T: Copy, U: Copy>(dst: *mut T, val: U, order: Ordering) ->
 
 #[inline]
 #[cfg(target_has_atomic)]
-#[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+#[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
 unsafe fn atomic_or<T: Copy, U: Copy>(dst: *mut T, val: U, order: Ordering) -> T {
-    // SAFETY: the caller must uphold the safety contract for `atomic_or`
+    // SAFETY: 由调用方保证 `atomic_or` 的安全契约:dst 指向有效且对齐的可读写内存,数据竞争由原子 intrinsic 防止。
     unsafe {
         match order {
             SeqCst => intrinsics::atomic_or::<T, U, { AO::SeqCst }>(dst, val),
@@ -4266,9 +4038,9 @@ unsafe fn atomic_or<T: Copy, U: Copy>(dst: *mut T, val: U, order: Ordering) -> T
 
 #[inline]
 #[cfg(target_has_atomic)]
-#[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+#[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
 unsafe fn atomic_xor<T: Copy, U: Copy>(dst: *mut T, val: U, order: Ordering) -> T {
-    // SAFETY: the caller must uphold the safety contract for `atomic_xor`
+    // SAFETY: 由调用方保证 `atomic_xor` 的安全契约:dst 指向有效且对齐的可读写内存,数据竞争由原子 intrinsic 防止。
     unsafe {
         match order {
             SeqCst => intrinsics::atomic_xor::<T, U, { AO::SeqCst }>(dst, val),
@@ -4280,12 +4052,12 @@ unsafe fn atomic_xor<T: Copy, U: Copy>(dst: *mut T, val: U, order: Ordering) -> 
     }
 }
 
-/// Updates `*dst` to the max value of `val` and the old value (signed comparison)
+/// 把 `*dst` 更新为 `val` 与旧值中的较大者(有符号比较)。
 #[inline]
 #[cfg(target_has_atomic)]
-#[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+#[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
 unsafe fn atomic_max<T: Copy>(dst: *mut T, val: T, order: Ordering) -> T {
-    // SAFETY: the caller must uphold the safety contract for `atomic_max`
+    // SAFETY: 由调用方保证 `atomic_max` 的安全契约:dst 指向有效且对齐的可读写内存,数据竞争由原子 intrinsic 防止。
     unsafe {
         match order {
             Relaxed => intrinsics::atomic_max::<T, { AO::Relaxed }>(dst, val),
@@ -4297,12 +4069,12 @@ unsafe fn atomic_max<T: Copy>(dst: *mut T, val: T, order: Ordering) -> T {
     }
 }
 
-/// Updates `*dst` to the min value of `val` and the old value (signed comparison)
+/// 把 `*dst` 更新为 `val` 与旧值中的较小者(有符号比较)。
 #[inline]
 #[cfg(target_has_atomic)]
-#[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+#[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
 unsafe fn atomic_min<T: Copy>(dst: *mut T, val: T, order: Ordering) -> T {
-    // SAFETY: the caller must uphold the safety contract for `atomic_min`
+    // SAFETY: 由调用方保证 `atomic_min` 的安全契约:dst 指向有效且对齐的可读写内存,数据竞争由原子 intrinsic 防止。
     unsafe {
         match order {
             Relaxed => intrinsics::atomic_min::<T, { AO::Relaxed }>(dst, val),
@@ -4314,12 +4086,12 @@ unsafe fn atomic_min<T: Copy>(dst: *mut T, val: T, order: Ordering) -> T {
     }
 }
 
-/// Updates `*dst` to the max value of `val` and the old value (unsigned comparison)
+/// 把 `*dst` 更新为 `val` 与旧值中的较大者(无符号比较)。
 #[inline]
 #[cfg(target_has_atomic)]
-#[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+#[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
 unsafe fn atomic_umax<T: Copy>(dst: *mut T, val: T, order: Ordering) -> T {
-    // SAFETY: the caller must uphold the safety contract for `atomic_umax`
+    // SAFETY: 由调用方保证 `atomic_umax` 的安全契约:dst 指向有效且对齐的可读写内存,数据竞争由原子 intrinsic 防止。
     unsafe {
         match order {
             Relaxed => intrinsics::atomic_umax::<T, { AO::Relaxed }>(dst, val),
@@ -4331,12 +4103,12 @@ unsafe fn atomic_umax<T: Copy>(dst: *mut T, val: T, order: Ordering) -> T {
     }
 }
 
-/// Updates `*dst` to the min value of `val` and the old value (unsigned comparison)
+/// 把 `*dst` 更新为 `val` 与旧值中的较小者(无符号比较)。
 #[inline]
 #[cfg(target_has_atomic)]
-#[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+#[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
 unsafe fn atomic_umin<T: Copy>(dst: *mut T, val: T, order: Ordering) -> T {
-    // SAFETY: the caller must uphold the safety contract for `atomic_umin`
+    // SAFETY: 由调用方保证 `atomic_umin` 的安全契约:dst 指向有效且对齐的可读写内存,数据竞争由原子 intrinsic 防止。
     unsafe {
         match order {
             Relaxed => intrinsics::atomic_umin::<T, { AO::Relaxed }>(dst, val),
@@ -4348,36 +4120,37 @@ unsafe fn atomic_umin<T: Copy>(dst: *mut T, val: T, order: Ordering) -> T {
     }
 }
 
-/// An atomic fence.
+/// 一个原子屏障(fence)。
 ///
-/// Fences create synchronization between themselves and atomic operations or fences in other
-/// threads. To achieve this, a fence prevents the compiler and CPU from reordering certain types of
-/// memory operations around it.
+/// 屏障在自身与其他线程中的原子操作或屏障之间建立同步关系。为做到这一点,
+/// 屏障会阻止编译器和 CPU 把某些类型的内存操作重排到它的另一侧。
 ///
-/// There are 3 different ways to use an atomic fence:
+/// 注意:与原子操作不同,屏障并不绑定到任何具体的内存位置;它建立的是不绑定特定地址的
+/// happens-before 关系,需要与原子操作配对才能起作用。
 ///
-/// - atomic - fence synchronization: an atomic operation with (at least) [`Release`] ordering
-///   semantics synchronizes with a fence with (at least) [`Acquire`] ordering semantics.
-/// - fence - atomic synchronization: a fence with (at least) [`Release`] ordering semantics
-///   synchronizes with an atomic operation with (at least) [`Acquire`] ordering semantics.
-/// - fence - fence synchronization: a fence with (at least) [`Release`] ordering semantics
-///   synchronizes with a fence with (at least) [`Acquire`] ordering semantics.
+/// 使用原子屏障有 3 种不同的方式:
 ///
-/// These 3 ways complement the regular, fence-less, atomic - atomic synchronization.
+/// - 原子 - 屏障 同步:一个具有(至少)[`Release`] 顺序语义的原子操作,
+///   与一个具有(至少)[`Acquire`] 顺序语义的屏障同步。
+/// - 屏障 - 原子 同步:一个具有(至少)[`Release`] 顺序语义的屏障,
+///   与一个具有(至少)[`Acquire`] 顺序语义的原子操作同步。
+/// - 屏障 - 屏障 同步:一个具有(至少)[`Release`] 顺序语义的屏障,
+///   与一个具有(至少)[`Acquire`] 顺序语义的屏障同步。
 ///
-/// ## Atomic - Fence
+/// 这 3 种方式是对常规的、无屏障的 原子 - 原子 同步的补充。
 ///
-/// An atomic operation on one thread will synchronize with a fence on another thread when:
+/// ## 原子 - 屏障(Atomic - Fence)
 ///
-/// -   on thread 1:
-///     -   an atomic operation 'X' with (at least) [`Release`] ordering semantics on some atomic
-///         object 'm',
+/// 当满足以下条件时,一个线程上的原子操作会与另一个线程上的屏障同步:
 ///
-/// -   is paired on thread 2 with:
-///     -   an atomic read 'Y' with any order on 'm',
-///     -   followed by a fence 'B' with (at least) [`Acquire`] ordering semantics.
+/// -   在线程 1 上:
+///     -   对某个原子对象 'm' 执行一个具有(至少)[`Release`] 顺序语义的原子操作 'X',
 ///
-/// This provides a happens-before dependence between X and B.
+/// -   在线程 2 上与之配对:
+///     -   对 'm' 执行一个任意顺序的原子读 'Y',
+///     -   其后跟随一个具有(至少)[`Acquire`] 顺序语义的屏障 'B'。
+///
+/// 这就在 X 与 B 之间提供了 happens-before 依赖。
 ///
 /// ```text
 ///     Thread 1                                          Thread 2
@@ -4391,18 +4164,18 @@ unsafe fn atomic_umin<T: Copy>(dst: *mut T, val: T, order: Ordering) -> T {
 ///                                                  }
 /// ```
 ///
-/// ## Fence - Atomic
+/// ## 屏障 - 原子(Fence - Atomic)
 ///
-/// A fence on one thread will synchronize with an atomic operation on another thread when:
+/// 当满足以下条件时,一个线程上的屏障会与另一个线程上的原子操作同步:
 ///
-/// -   on thread:
-///     -   a fence 'A' with (at least) [`Release`] ordering semantics,
-///     -   followed by an atomic write 'X' with any ordering on some atomic object 'm',
+/// -   在某线程上:
+///     -   一个具有(至少)[`Release`] 顺序语义的屏障 'A',
+///     -   其后跟随对某个原子对象 'm' 的一个任意顺序的原子写 'X',
 ///
-/// -   is paired on thread 2 with:
-///     -   an atomic operation 'Y' with (at least) [`Acquire`] ordering semantics.
+/// -   在线程 2 上与之配对:
+///     -   一个具有(至少)[`Acquire`] 顺序语义的原子操作 'Y'。
 ///
-/// This provides a happens-before dependence between A and Y.
+/// 这就在 A 与 Y 之间提供了 happens-before 依赖。
 ///
 /// ```text
 ///     Thread 1                                          Thread 2
@@ -4416,19 +4189,19 @@ unsafe fn atomic_umin<T: Copy>(dst: *mut T, val: T, order: Ordering) -> T {
 ///                                                  }
 /// ```
 ///
-/// ## Fence - Fence
+/// ## 屏障 - 屏障(Fence - Fence)
 ///
-/// A fence on one thread will synchronize with a fence on another thread when:
+/// 当满足以下条件时,一个线程上的屏障会与另一个线程上的屏障同步:
 ///
-/// -   on thread 1:
-///     -   a fence 'A' which has (at least) [`Release`] ordering semantics,
-///     -   followed by an atomic write 'X' with any ordering on some atomic object 'm',
+/// -   在线程 1 上:
+///     -   一个具有(至少)[`Release`] 顺序语义的屏障 'A',
+///     -   其后跟随对某个原子对象 'm' 的一个任意顺序的原子写 'X',
 ///
-/// -   is paired on thread 2 with:
-///     -   an atomic read 'Y' with any ordering on 'm',
-///     -   followed by a fence 'B' with (at least) [`Acquire`] ordering semantics.
+/// -   在线程 2 上与之配对:
+///     -   对 'm' 执行一个任意顺序的原子读 'Y',
+///     -   其后跟随一个具有(至少)[`Acquire`] 顺序语义的屏障 'B'。
 ///
-/// This provides a happens-before dependence between A and B.
+/// 这就在 A 与 B 之间提供了 happens-before 依赖。
 ///
 /// ```text
 ///     Thread 1                                          Thread 2
@@ -4443,35 +4216,33 @@ unsafe fn atomic_umin<T: Copy>(dst: *mut T, val: T, order: Ordering) -> T {
 ///                                                  }
 /// ```
 ///
-/// ## Mandatory Atomic
+/// ## 必须使用原子操作(Mandatory Atomic)
 ///
-/// Note that in the examples above, it is crucial that the access to `m` are atomic. Fences cannot
-/// be used to establish synchronization between non-atomic accesses in different threads. However,
-/// thanks to the happens-before relationship, any non-atomic access that happen-before the atomic
-/// operation or fence with (at least) [`Release`] ordering semantics are now also properly
-/// synchronized with any non-atomic accesses that happen-after the atomic operation or fence with
-/// (at least) [`Acquire`] ordering semantics.
+/// 注意:在上面的例子中,对 `m` 的访问是原子的这一点至关重要。屏障无法用来在不同线程的
+/// *非原子* 访问之间建立同步。不过,得益于 happens-before 关系,任何 happens-before 于
+/// 那个具有(至少)[`Release`] 顺序语义的原子操作或屏障的非原子访问,如今也会与任何
+/// happens-after 于那个具有(至少)[`Acquire`] 顺序语义的原子操作或屏障的非原子访问
+/// 正确地同步起来。
 ///
-/// ## Memory Ordering
+/// ## 内存顺序(Memory Ordering)
 ///
-/// A fence which has [`SeqCst`] ordering, in addition to having both [`Acquire`] and [`Release`]
-/// semantics, participates in the global program order of the other [`SeqCst`] operations and/or
-/// fences.
+/// 一个具有 [`SeqCst`] 顺序的屏障,除了同时具备 [`Acquire`] 和 [`Release`] 语义外,
+/// 还会参与到其他 [`SeqCst`] 操作和/或屏障的全局程序顺序中。
 ///
-/// Accepts [`Acquire`], [`Release`], [`AcqRel`] and [`SeqCst`] orderings.
+/// 接受 [`Acquire`]、[`Release`]、[`AcqRel`] 和 [`SeqCst`] 顺序。
 ///
 /// # Panics
 ///
-/// Panics if `order` is [`Relaxed`].
+/// 当 `order` 为 [`Relaxed`] 时会 panic。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use std::sync::atomic::AtomicBool;
 /// use std::sync::atomic::fence;
 /// use std::sync::atomic::Ordering;
 ///
-/// // A mutual exclusion primitive based on spinlock.
+/// // 一个基于自旋锁(spinlock)的互斥原语。
 /// pub struct Mutex {
 ///     flag: AtomicBool,
 /// }
@@ -4484,13 +4255,13 @@ unsafe fn atomic_umin<T: Copy>(dst: *mut T, val: T, order: Ordering) -> T {
 ///     }
 ///
 ///     pub fn lock(&self) {
-///         // Wait until the old value is `false`.
+///         // 一直等待,直到旧值为 `false`。
 ///         while self
 ///             .flag
 ///             .compare_exchange_weak(false, true, Ordering::Relaxed, Ordering::Relaxed)
 ///             .is_err()
 ///         {}
-///         // This fence synchronizes-with store in `unlock`.
+///         // 这个屏障与 `unlock` 中的 store 建立 synchronizes-with 关系。
 ///         fence(Ordering::Acquire);
 ///     }
 ///
@@ -4502,9 +4273,9 @@ unsafe fn atomic_umin<T: Copy>(dst: *mut T, val: T, order: Ordering) -> T {
 #[inline]
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_diagnostic_item = "fence"]
-#[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+#[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
 pub fn fence(order: Ordering) {
-    // SAFETY: using an atomic fence is safe.
+    // SAFETY: 使用原子屏障是安全的。
     unsafe {
         match order {
             Acquire => intrinsics::atomic_fence::<{ AO::Acquire }>(),
@@ -4516,43 +4287,37 @@ pub fn fence(order: Ordering) {
     }
 }
 
-/// A "compiler-only" atomic fence.
+/// 一个“仅编译器层面”的原子屏障。
 ///
-/// Like [`fence`], this function establishes synchronization with other atomic operations and
-/// fences. However, unlike [`fence`], `compiler_fence` only establishes synchronization with
-/// operations *in the same thread*. This may at first sound rather useless, since code within a
-/// thread is typically already totally ordered and does not need any further synchronization.
-/// However, there are cases where code can run on the same thread without being ordered:
-/// - The most common case is that of a *signal handler*: a signal handler runs in the same thread
-///   as the code it interrupted, but it is not ordered with respect to that code. `compiler_fence`
-///   can be used to establish synchronization between a thread and its signal handler, the same way
-///   that `fence` can be used to establish synchronization across threads.
-/// - Similar situations can arise in embedded programming with interrupt handlers, or in custom
-///   implementations of preemptive green threads. In general, `compiler_fence` can establish
-///   synchronization with code that is guaranteed to run on the same hardware CPU.
+/// 与 [`fence`] 一样,本函数也在自身与其他原子操作和屏障之间建立同步关系。
+/// 但与 [`fence`] 不同,`compiler_fence` 只与 *同一线程内* 的操作建立同步。
+/// 这乍听起来似乎相当无用 —— 因为同一线程内的代码通常本就是全序的,无需任何额外的同步。
+/// 然而,确实存在代码运行在同一线程上却没有被定序的情形:
+/// - 最常见的就是 *信号处理函数(signal handler)* 的情况:信号处理函数运行在它所中断的代码
+///   所在的同一线程上,但相对于那段代码它并没有被定序。可以用 `compiler_fence` 在一个线程
+///   与它的信号处理函数之间建立同步,就像用 `fence` 在线程之间建立同步那样。
+/// - 类似的情形也会出现在带中断处理函数的嵌入式编程中,或者在抢占式 green thread 的自定义实现中。
+///   一般而言,`compiler_fence` 可以与那些保证运行在同一物理 CPU 上的代码建立同步。
 ///
-/// See [`fence`] for how a fence can be used to achieve synchronization. Note that just like
-/// [`fence`], synchronization still requires atomic operations to be used in both threads -- it is
-/// not possible to perform synchronization entirely with fences and non-atomic operations.
+/// 关于如何用屏障来达成同步,参见 [`fence`]。注意:正如 [`fence`] 一样,
+/// 同步仍然要求在两侧都使用原子操作 —— 不可能仅凭屏障和非原子操作就完成同步。
 ///
-/// `compiler_fence` does not emit any machine code, but restricts the kinds of memory re-ordering
-/// the compiler is allowed to do. `compiler_fence` corresponds to [`atomic_signal_fence`] in C and
-/// C++.
+/// `compiler_fence` 不会发出任何机器码,而只是限制编译器被允许做的内存重排种类。
+/// `compiler_fence` 对应于 C 和 C++ 中的 [`atomic_signal_fence`]。
 ///
 /// [`atomic_signal_fence`]: https://en.cppreference.com/w/cpp/atomic/atomic_signal_fence
 ///
 /// # Panics
 ///
-/// Panics if `order` is [`Relaxed`].
+/// 当 `order` 为 [`Relaxed`] 时会 panic。
 ///
-/// # Examples
+/// # 示例
 ///
-/// Without the two `compiler_fence` calls, the read of `IMPORTANT_VARIABLE` in `signal_handler`
-/// is *undefined behavior* due to a data race, despite everything happening in a single thread.
-/// This is because the signal handler is considered to run concurrently with its associated
-/// thread, and explicit synchronization is required to pass data between a thread and its
-/// signal handler. The code below uses two `compiler_fence` calls to establish the usual
-/// release-acquire synchronization pattern (see [`fence`] for an image).
+/// 如果没有那两次 `compiler_fence` 调用,`signal_handler` 中对 `IMPORTANT_VARIABLE` 的读取
+/// 就是由数据竞争导致的 *未定义行为(undefined behavior)*,尽管一切都发生在单个线程中。
+/// 这是因为信号处理函数被认为与其关联线程并发运行,而在线程与其信号处理函数之间传递数据
+/// 需要显式的同步。下面的代码用两次 `compiler_fence` 调用建立起常见的 release-acquire 同步模式
+///(图示参见 [`fence`])。
 ///
 /// ```
 /// use std::sync::atomic::AtomicBool;
@@ -4564,14 +4329,14 @@ pub fn fence(order: Ordering) {
 ///
 /// fn main() {
 ///     unsafe { IMPORTANT_VARIABLE = 42 };
-///     // Marks earlier writes as being released with future relaxed stores.
+///     // 把前面的写标记为:相对于未来的 relaxed store 被释放(released)。
 ///     compiler_fence(Ordering::Release);
 ///     IS_READY.store(true, Ordering::Relaxed);
 /// }
 ///
 /// fn signal_handler() {
 ///     if IS_READY.load(Ordering::Relaxed) {
-///         // Acquires writes that were released with relaxed stores that we read from.
+///         // 获取(acquire)那些通过我们读到的 relaxed store 释放出来的写。
 ///         compiler_fence(Ordering::Acquire);
 ///         assert_eq!(unsafe { IMPORTANT_VARIABLE }, 42);
 ///     }
@@ -4580,9 +4345,9 @@ pub fn fence(order: Ordering) {
 #[inline]
 #[stable(feature = "compiler_fences", since = "1.21.0")]
 #[rustc_diagnostic_item = "compiler_fence"]
-#[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+#[cfg_attr(miri, track_caller)] // 即使不 panic,这也有助于 Miri 的回溯信息
 pub fn compiler_fence(order: Ordering) {
-    // SAFETY: using an atomic fence is safe.
+    // SAFETY: 使用原子屏障是安全的。
     unsafe {
         match order {
             Acquire => intrinsics::atomic_singlethreadfence::<{ AO::Acquire }>(),
@@ -4618,9 +4383,9 @@ impl<T> fmt::Pointer for AtomicPtr<T> {
     }
 }
 
-/// Signals the processor that it is inside a busy-wait spin-loop ("spin lock").
+/// 向处理器发出信号:它正处于一个忙等待的自旋循环(“spin lock”)之中。
 ///
-/// This function is deprecated in favor of [`hint::spin_loop`].
+/// 本函数已被弃用,请改用 [`hint::spin_loop`]。
 ///
 /// [`hint::spin_loop`]: crate::hint::spin_loop
 #[inline]
