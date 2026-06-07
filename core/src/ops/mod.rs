@@ -115,7 +115,7 @@
 //! let consume_and_return_x = move || x;
 //! consume_with_relish(consume_and_return_x);
 //!
-//! // `consume_and_return_x` can no longer be invoked at this point
+//! // 至此 `consume_and_return_x` 不能再被调用
 //! ```
 //!
 //! [`clone`]: Clone::clone

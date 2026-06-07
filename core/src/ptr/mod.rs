@@ -1,318 +1,273 @@
-//! Manually manage memory through raw pointers.
+//! 通过裸指针（raw pointer）手动管理内存。
 //!
-//! *[See also the pointer primitive types](pointer).*
+//! *[另见指针原生类型的文档](pointer)。*
 //!
-//! # Safety
+//! 裸指针 `*const T`/`*mut T` 与引用 `&T`/`&mut T` 有本质区别，使用前务必理解：
 //!
-//! Many functions in this module take raw pointers as arguments and read from or write to them. For
-//! this to be safe, these pointers must be *valid* for the given access. Whether a pointer is valid
-//! depends on the operation it is used for (read or write), and the extent of the memory that is
-//! accessed (i.e., how many bytes are read/written) -- it makes no sense to ask "is this pointer
-//! valid"; one has to ask "is this pointer valid for a given access". Most functions use `*mut T`
-//! and `*const T` to access only a single value, in which case the documentation omits the size and
-//! implicitly assumes it to be `size_of::<T>()` bytes.
+//! * 裸指针**不参与借用检查**：编译器不会追踪它的别名（aliasing）与生命周期，
+//!   保证内存安全的责任完全落在调用方身上。
+//! * 裸指针**可空（nullable）**：可以持有地址 0（即 [`null`]），而引用永远非空。
+//! * 裸指针**可悬垂（dangling）**：可以指向已释放或从未分配的内存，而引用在其生命周期内
+//!   必须始终指向有效内存。
+//! * **解引用裸指针需要 `unsafe`**：`*ptr` 必须写在 `unsafe` 块里，因为编译器无法替你
+//!   证明这次访问是安全的。
 //!
-//! The precise rules for validity are not determined yet. The guarantees that are
-//! provided at this point are very minimal:
+//! # 安全性（Safety）
 //!
-//! * For memory accesses of [size zero][zst], *every* pointer is valid, including the [null]
-//!   pointer. The following points are only concerned with non-zero-sized accesses.
-//! * A [null] pointer is *never* valid.
-//! * For a pointer to be valid, it is necessary, but not always sufficient, that the pointer be
-//!   *dereferenceable*. The [provenance] of the pointer is used to determine which [allocation]
-//!   it is derived from; a pointer is dereferenceable if the memory range of the given size
-//!   starting at the pointer is entirely contained within the bounds of that allocation. Note
-//!   that in Rust, every (stack-allocated) variable is considered a separate allocation.
-//! * All accesses performed by functions in this module are *non-atomic* in the sense
-//!   of [atomic operations] used to synchronize between threads. This means it is
-//!   undefined behavior to perform two concurrent accesses to the same location from different
-//!   threads unless both accesses only read from memory. Notice that this explicitly
-//!   includes [`read_volatile`] and [`write_volatile`]: Volatile accesses cannot
-//!   be used for inter-thread synchronization, regardless of whether they are acting on
-//!   Rust memory or not.
-//! * The result of casting a reference to a pointer is valid for as long as the
-//!   underlying allocation is live and no reference (just raw pointers) is used to
-//!   access the same memory. That is, reference and pointer accesses cannot be
-//!   interleaved.
+//! 本模块中的许多函数接收裸指针作为参数，并对其进行读取或写入。要让这些操作安全，
+//! 这些指针必须对所要进行的访问是 *valid*（有效的）。一个指针是否有效，取决于它被
+//! 用于何种操作（读还是写），以及被访问内存的范围（即读/写多少字节）——单独问“这个
+//! 指针有效吗”是没有意义的，必须问“这个指针对某个特定访问是否有效”。大多数函数使用
+//! `*mut T` 和 `*const T` 只访问单个值，此时文档省略了访问大小，并隐式地假设它是
+//! `size_of::<T>()` 字节。
 //!
-//! These axioms, along with careful use of [`offset`] for pointer arithmetic,
-//! are enough to correctly implement many useful things in unsafe code. Stronger guarantees
-//! will be provided eventually, as the [aliasing] rules are being determined. For more
-//! information, see the [book] as well as the section in the reference devoted
-//! to [undefined behavior][ub].
+//! validity（有效性）的精确规则尚未最终确定。目前能提供的保证非常有限：
 //!
-//! We say that a pointer is "dangling" if it is not valid for any non-zero-sized accesses. This
-//! means out-of-bounds pointers, pointers to freed memory, null pointers, and pointers created with
-//! [`NonNull::dangling`] are all dangling.
+//! * 对于大小为零的访问（[零大小访问][zst]），*任何*指针都是有效的，包括 [null]
+//!   指针。以下各点只针对非零大小的访问。
+//! * [null] 指针*永远*无效。
+//! * 一个指针要有效，它“可解引用”（*dereferenceable*）是必要条件，但并不总是充分条件。
+//!   指针的 [provenance]（来源）用于确定它派生自哪一块 [allocation]（分配）；当从该指针
+//!   起、给定大小的内存范围完全落在那块分配的边界之内时，该指针就是可解引用的。注意，
+//!   在 Rust 中，每个（栈上分配的）变量都被视为一块独立的分配。
+//! * 本模块中各函数执行的所有访问，在线程间用于同步的 [atomic operations]（原子操作）
+//!   意义上都是*非原子的*。这意味着：从不同线程并发地对同一位置执行两次访问是未定义
+//!   行为，除非这两次访问都只读取内存。注意这显式地包括 [`read_volatile`] 和
+//!   [`write_volatile`]：volatile 访问不能用于线程间同步，无论它们操作的是不是 Rust 内存。
+//! * 把引用转换为指针所得到的结果，在底层 allocation 仍存活、且没有任何引用（只有裸指针）
+//!   被用来访问同一块内存的期间内一直有效。也就是说，引用访问和指针访问不能交错进行。
 //!
-//! ## Alignment
+//! 这些公理，加上谨慎地用 [`offset`] 做指针算术，足以在 unsafe 代码中正确实现许多
+//! 有用的东西。随着 [aliasing] 规则逐步确定，将来会提供更强的保证。更多信息见
+//! [the book][book]，以及参考手册中专门讲 [undefined behavior][ub]（未定义行为）的章节。
 //!
-//! Valid raw pointers as defined above are not necessarily properly aligned (where
-//! "proper" alignment is defined by the pointee type, i.e., `*const T` must be
-//! aligned to `align_of::<T>()`). However, most functions require their
-//! arguments to be properly aligned, and will explicitly state
-//! this requirement in their documentation. Notable exceptions to this are
-//! [`read_unaligned`] and [`write_unaligned`].
+//! 我们称一个指针是 "dangling"（悬垂）的，如果它对任何非零大小的访问都无效。这意味着
+//! 越界的指针、指向已释放内存的指针、null 指针，以及用 [`NonNull::dangling`] 创建的指针，
+//! 都是悬垂指针。
 //!
-//! When a function requires proper alignment, it does so even if the access
-//! has size 0, i.e., even if memory is not actually touched. Consider using
-//! [`NonNull::dangling`] in such cases.
+//! ## 对齐（Alignment）
 //!
-//! ## Pointer to reference conversion
+//! 按上文定义为 valid 的裸指针，未必是“正确对齐”的（这里“正确”对齐由所指类型定义，
+//! 即 `*const T` 必须对齐到 `align_of::<T>()`）。然而，大多数函数都要求其参数正确对齐，
+//! 并会在文档中明确写出这一要求。[`read_unaligned`] 和 [`write_unaligned`] 是值得注意的例外。
 //!
-//! When converting a pointer to a reference (e.g. via `&*ptr` or `&mut *ptr`),
-//! there are several rules that must be followed:
+//! 当一个函数要求正确对齐时，即使访问大小为 0（即实际并不触碰内存），它也要求对齐。
+//! 这种情况下可考虑使用 [`NonNull::dangling`]。
 //!
-//! * The pointer must be properly aligned.
+//! ## 指针到引用的转换（Pointer to reference conversion）
 //!
-//! * It must be non-null.
+//! 当把指针转换为引用时（例如通过 `&*ptr` 或 `&mut *ptr`），必须遵守以下若干规则：
 //!
-//! * It must be "dereferenceable" in the sense defined above.
+//! * 指针必须正确对齐。
 //!
-//! * The pointer must point to a [valid value] of type `T`.
+//! * 它必须非空（non-null）。
 //!
-//! * You must enforce Rust's aliasing rules. The exact aliasing rules are not decided yet, so we
-//!   only give a rough overview here. The rules also depend on whether a mutable or a shared
-//!   reference is being created.
-//!   * When creating a mutable reference, then while this reference exists, the memory it points to
-//!     must not get accessed (read or written) through any other pointer or reference not derived
-//!     from this reference.
-//!   * When creating a shared reference, then while this reference exists, the memory it points to
-//!     must not get mutated (except inside `UnsafeCell`).
+//! * 它必须在上文定义的意义上“可解引用”（dereferenceable）。
 //!
-//! If a pointer follows all of these rules, it is said to be
-//! *convertible to a (mutable or shared) reference*.
-// ^ we use this term instead of saying that the produced reference must
-// be valid, as the validity of a reference is easily confused for the
-// validity of the thing it refers to, and while the two concepts are
-// closely related, they are not identical.
+//! * 指针必须指向一个类型 `T` 的 [valid value]（有效值）。
 //!
-//! These rules apply even if the result is unused!
-//! (The part about being initialized is not yet fully decided, but until
-//! it is, the only safe approach is to ensure that they are indeed initialized.)
+//! * 你必须遵守 Rust 的 aliasing 规则。确切的 aliasing 规则尚未确定，所以这里只给一个
+//!   粗略概述。规则还取决于创建的是可变引用还是共享引用。
+//!   * 创建可变引用时，在该引用存在期间，它所指向的内存不得通过任何其他不是从该引用派生
+//!     而来的指针或引用被访问（读或写）。
+//!   * 创建共享引用时，在该引用存在期间，它所指向的内存不得被改动（在 `UnsafeCell` 内部
+//!     除外）。
 //!
-//! An example of the implications of the above rules is that an expression such
-//! as `unsafe { &*(0 as *const u8) }` is Immediate Undefined Behavior.
+//! 如果一个指针遵守以上所有规则，就称它*可转换为（可变或共享）引用*。
+// ^ 我们使用这个术语，而不是说“产生的引用必须 valid”，因为引用的有效性容易和它所引用之物
+// 的有效性相混淆；这两个概念虽然密切相关，但并不相同。
+//!
+//! 这些规则即使在结果没有被使用时也照样适用！
+//!（关于“必须已初始化”的那部分尚未完全定论，但在定论之前，唯一安全的做法就是确保它们
+//! 确实已被初始化。）
+//!
+//! 上述规则的一个推论是：诸如 `unsafe { &*(0 as *const u8) }` 这样的表达式是立即（Immediate）
+//! 未定义行为。
 //!
 //! [valid value]: ../../reference/behavior-considered-undefined.html#invalid-values
 //!
-//! ## Allocation
+//! ## 分配（Allocation）
 //!
-//! <a id="allocated-object"></a> <!-- keep old URLs working -->
+//! <a id="allocated-object"></a> <!-- 保持旧 URL 仍可用 -->
 //!
-//! An *allocation* is a subset of program memory which is addressable
-//! from Rust, and within which pointer arithmetic is possible. Examples of
-//! allocations include heap allocations, stack-allocated variables,
-//! statics, and consts. The safety preconditions of some Rust operations -
-//! such as `offset` and field projections (`expr.field`) - are defined in
-//! terms of the allocations on which they operate.
+//! 一块 *allocation*（分配）是程序内存的一个子集，它可从 Rust 中寻址，且在其内部可以进行
+//! 指针算术。allocation 的例子包括堆分配、栈上分配的变量、`static` 和 `const`。某些 Rust
+//! 操作的安全前置条件——例如 `offset` 和字段投影（`expr.field`）——就是以它们所操作的
+//! allocation 来定义的。
 //!
-//! An allocation has a base address, a size, and a set of memory
-//! addresses. It is possible for an allocation to have zero size, but
-//! such an allocation will still have a base address. The base address
-//! of an allocation is not necessarily unique. While it is currently the
-//! case that an allocation always has a set of memory addresses which is
-//! fully contiguous (i.e., has no "holes"), there is no guarantee that this
-//! will not change in the future.
+//! 一块 allocation 有一个基地址、一个大小，以及一组内存地址。allocation 的大小可以为零，
+//! 但这样的 allocation 仍然有一个基地址。allocation 的基地址不一定唯一。虽然目前 allocation
+//! 总是拥有一组完全连续的内存地址（即没有“空洞”），但不保证将来不会改变。
 //!
-//! Allocations must behave like "normal" memory: in particular, reads must not have
-//! side-effects, and writes must become visible to other threads using the usual synchronization
-//! primitives.
+//! allocation 的行为必须像“正常”内存：特别是，读取不得有副作用，写入必须能通过通常的同步
+//! 原语对其他线程变得可见。
 //!
-//! For any allocation with `base` address, `size`, and a set of
-//! `addresses`, the following are guaranteed:
-//! - For all addresses `a` in `addresses`, `a` is in the range `base .. (base +
-//!   size)` (note that this requires `a < base + size`, not `a <= base + size`)
-//! - `base` is not equal to [`null()`] (i.e., the address with the numerical
-//!   value 0)
+//! 对于任意一块基地址为 `base`、大小为 `size`、地址集合为 `addresses` 的 allocation，保证如下：
+//! - 对 `addresses` 中所有地址 `a`，`a` 都落在 `base .. (base + size)` 范围内
+//!   （注意这要求 `a < base + size`，而不是 `a <= base + size`）
+//! - `base` 不等于 [`null()`]（即数值为 0 的地址）
 //! - `base + size <= usize::MAX`
 //! - `size <= isize::MAX`
 //!
-//! As a consequence of these guarantees, given any address `a` within the set
-//! of addresses of an allocation:
-//! - It is guaranteed that `a - base` does not overflow `isize`
-//! - It is guaranteed that `a - base` is non-negative
-//! - It is guaranteed that, given `o = a - base` (i.e., the offset of `a` within
-//!   the allocation), `base + o` will not wrap around the address space (in
-//!   other words, will not overflow `usize`)
+//! 作为这些保证的推论，对于某块 allocation 地址集合中的任意地址 `a`：
+//! - 保证 `a - base` 不会溢出 `isize`
+//! - 保证 `a - base` 非负
+//! - 保证：给定 `o = a - base`（即 `a` 在该 allocation 内的偏移），`base + o` 不会绕过
+//!   地址空间（换言之，不会溢出 `usize`）
 //!
 //! [`null()`]: null
 //!
-//! # Provenance
+//! # Provenance（来源 / 可证溯性）
 //!
-//! Pointers are not *simply* an "integer" or "address". For instance, it's uncontroversial
-//! to say that a Use After Free is clearly Undefined Behavior, even if you "get lucky"
-//! and the freed memory gets reallocated before your read/write (in fact this is the
-//! worst-case scenario, UAFs would be much less concerning if this didn't happen!).
-//! As another example, consider that [`wrapping_offset`] is documented to "remember"
-//! the allocation that the original pointer points to, even if it is offset far
-//! outside the memory range occupied by that allocation.
-//! To rationalize claims like this, pointers need to somehow be *more* than just their addresses:
-//! they must have **provenance**.
+//! 指针不*仅仅*是一个“整数”或“地址”。举例来说，大家都认同 Use After Free（释放后使用，
+//! 简称 UAF）显然是未定义行为，即便你“运气好”，被释放的内存在你读/写之前又被重新分配了
+//! （事实上这才是最坏的情形——如果这种重分配不会发生，UAF 反倒不那么令人担忧了！）。
+//! 再举一例：[`wrapping_offset`] 的文档说它会“记住”原始指针所指向的 allocation，即便它被
+//! 偏移到远在该 allocation 所占内存范围之外的地方。要使这类说法成立，指针就必须比单纯的
+//! 地址*更多*一些东西：它们必须带有 **provenance**（来源信息）。
 //!
-//! A pointer value in Rust semantically contains the following information:
+//! 在 Rust 语义中，一个指针值包含以下信息：
 //!
-//! * The **address** it points to, which can be represented by a `usize`.
-//! * The **provenance** it has, defining the memory it has permission to access. Provenance can be
-//!   absent, in which case the pointer does not have permission to access any memory.
+//! * 它所指向的 **address**（地址），可用一个 `usize` 表示。
+//! * 它所拥有的 **provenance**，定义了它有权访问哪块内存。provenance 也可以缺失，此时
+//!   该指针没有访问任何内存的权限。
 //!
-//! The exact structure of provenance is not yet specified, but the permission defined by a
-//! pointer's provenance have a *spatial* component, a *temporal* component, and a *mutability*
-//! component:
+//! provenance 的确切结构尚未规定，但一个指针的 provenance 所定义的权限具有一个*空间*分量、
+//! 一个*时间*分量，以及一个*可变性*分量：
 //!
-//! * Spatial: The set of memory addresses that the pointer is allowed to access.
-//! * Temporal: The timespan during which the pointer is allowed to access those memory addresses.
-//! * Mutability: Whether the pointer may only access the memory for reads, or also access it for
-//!   writes. Note that this can interact with the other components, e.g. a pointer might permit
-//!   mutation only for a subset of addresses, or only for a subset of its maximal timespan.
+//! * 空间（Spatial）：该指针被允许访问的内存地址的集合。
+//! * 时间（Temporal）：该指针被允许访问那些内存地址的时间跨度。
+//! * 可变性（Mutability）：该指针是只能用于读取这块内存，还是也可以用于写入。注意这一分量
+//!   可与其他分量交互，例如一个指针可能只在地址的某个子集上允许改动，或只在其最大时间
+//!   跨度的某个子段内允许改动。
 //!
-//! When an [allocation] is created, it has a unique Original Pointer. For alloc
-//! APIs this is literally the pointer the call returns, and for local variables and statics,
-//! this is the name of the variable/static. (This is mildly overloading the term "pointer"
-//! for the sake of brevity/exposition.)
+//! 当一块 [allocation] 被创建时，它有一个唯一的 Original Pointer（原始指针）。对 alloc 类
+//! API 来说，它就是该调用所返回的那个指针；对局部变量和 `static` 来说，它就是该变量/static
+//! 的名字。（为了简洁/便于阐述，这里稍微宽泛地借用了“指针”一词。）
 //!
-//! The Original Pointer for an allocation has provenance that constrains the *spatial*
-//! permissions of this pointer to the memory range of the allocation, and the *temporal*
-//! permissions to the lifetime of the allocation. Provenance is implicitly inherited by all
-//! pointers transitively derived from the Original Pointer through operations like [`offset`],
-//! borrowing, and pointer casts. Some operations may *shrink* the permissions of the derived
-//! provenance, limiting how much memory it can access or how long it's valid for (i.e. borrowing a
-//! subfield and subslicing can shrink the spatial component of provenance, and all borrowing can
-//! shrink the temporal component of provenance). However, no operation can ever *grow* the
-//! permissions of the derived provenance: even if you "know" there is a larger allocation, you
-//! can't derive a pointer with a larger provenance. Similarly, you cannot "recombine" two
-//! contiguous provenances back into one (i.e. with a `fn merge(&[T], &[T]) -> &[T]`).
+//! 一块 allocation 的 Original Pointer 所带的 provenance，将该指针的*空间*权限约束在该
+//! allocation 的内存范围内，将其*时间*权限约束在该 allocation 的生命周期内。所有从 Original
+//! Pointer 经由 [`offset`]、借用、指针强制转换等操作传递性地派生出来的指针，都会隐式地继承
+//! 这份 provenance。某些操作可能*缩小*所派生 provenance 的权限，限制它能访问多少内存或能在
+//! 多长时间内有效（例如借用一个子字段、对切片再切片，会缩小 provenance 的空间分量；而所有
+//! 借用都可能缩小 provenance 的时间分量）。然而，任何操作都*永远不能扩大*所派生 provenance
+//! 的权限：即便你“知道”存在一块更大的 allocation，你也无法派生出 provenance 更大的指针。
+//! 同理，你也不能把两段连续的 provenance“重新合并”成一段（即写出形如
+//! `fn merge(&[T], &[T]) -> &[T]` 的东西）。
 //!
-//! A reference to a place always has provenance over at least the memory that place occupies.
-//! A reference to a slice always has provenance over at least the range that slice describes.
-//! Whether and when exactly the provenance of a reference gets "shrunk" to *exactly* fit
-//! the memory it points to is not yet determined.
+//! 指向某个位置（place）的引用，其 provenance 至少覆盖该位置所占的内存。指向某个切片的
+//! 引用，其 provenance 至少覆盖该切片所描述的范围。引用的 provenance 是否、以及究竟何时会被
+//! “缩小”到*恰好*贴合它所指向的内存，目前尚未确定。
 //!
-//! A *shared* reference only ever has provenance that permits reading from memory,
-//! and never permits writes, except inside [`UnsafeCell`].
+//! *共享*引用所带的 provenance 永远只允许读取内存，从不允许写入，[`UnsafeCell`] 内部除外。
 //!
-//! Provenance can affect whether a program has undefined behavior:
+//! provenance 会影响一个程序是否具有未定义行为：
 //!
-//! * It is undefined behavior to access memory through a pointer that does not have provenance over
-//!   that memory. Note that a pointer "at the end" of its provenance is not actually outside its
-//!   provenance, it just has 0 bytes it can load/store. Zero-sized accesses do not require any
-//!   provenance since they access an empty range of memory.
+//! * 通过一个对某块内存不持有 provenance 的指针去访问该内存，是未定义行为。注意，一个处于其
+//!   provenance“末端”的指针实际上并未越出其 provenance，它只是没有任何字节可供 load/store。
+//!   零大小访问不需要任何 provenance，因为它访问的是一段空内存范围。
 //!
-//! * It is undefined behavior to [`offset`] a pointer across a memory range that is not contained
-//!   in the allocation it is derived from, or to [`offset_from`] two pointers not derived
-//!   from the same allocation. Provenance is used to say what exactly "derived from" even
-//!   means: the lineage of a pointer is traced back to the Original Pointer it descends from, and
-//!   that identifies the relevant allocation. In particular, it's always UB to offset a
-//!   pointer derived from something that is now deallocated, except if the offset is 0.
+//! * 把一个指针 [`offset`] 跨越一段不包含在它所派生自的 allocation 内的内存范围，或者对两个
+//!   并非派生自同一 allocation 的指针调用 [`offset_from`]，都是未定义行为。provenance 正是用来
+//!   说明“派生自”究竟意味着什么的：一个指针的血统被追溯回它所源出的 Original Pointer，由此
+//!   确定相关的 allocation。特别地，对一个派生自现已被释放之物的指针做 offset 总是 UB，除非
+//!   偏移量为 0。
 //!
-//! But it *is* still sound to:
+//! 但以下操作*仍然*是合理（sound）的：
 //!
-//! * Create a pointer without provenance from just an address (see [`without_provenance`]). Such a
-//!   pointer cannot be used for memory accesses (except for zero-sized accesses). This can still be
-//!   useful for sentinel values like `null` *or* to represent a tagged pointer that will never be
-//!   dereferenceable. In general, it is always sound for an integer to pretend to be a pointer "for
-//!   fun" as long as you don't use operations on it which require it to be valid (non-zero-sized
-//!   offset, read, write, etc).
+//! * 仅凭一个地址创建一个不带 provenance 的指针（见 [`without_provenance`]）。这样的指针不能
+//!   用于内存访问（零大小访问除外）。它仍然可用于哨兵值（如 `null`），*或者*用来表示一个永远
+//!   不会可解引用的带标记指针（tagged pointer）。一般来说，让一个整数“假装是指针玩玩”总是
+//!   合理的，只要你不对它做需要它有效的操作（非零大小的 offset、读、写等）。
 //!
-//! * Forge an allocation of size zero at any sufficiently aligned non-null address.
-//!   i.e. the usual "ZSTs are fake, do what you want" rules apply.
+//! * 在任意一个对齐充分的非空地址处“伪造”一块大小为零的 allocation。即通常的“ZST 是虚的，
+//!   随你怎么搞”规则适用。
 //!
-//! * [`wrapping_offset`] a pointer outside its provenance. This includes pointers
-//!   which have "no" provenance. In particular, this makes it sound to do pointer tagging tricks.
+//! * 把一个指针 [`wrapping_offset`] 到其 provenance 之外。这包括那些“没有”provenance 的指针。
+//!   特别地，这使得做指针打标记的各种小技巧成为合理操作。
 //!
-//! * Compare arbitrary pointers by address. Pointer comparison ignores provenance and addresses
-//!   *are* just integers, so there is always a coherent answer, even if the pointers are dangling
-//!   or from different provenances. Note that if you get "lucky" and notice that a pointer at the
-//!   end of one allocation is the "same" address as the start of another allocation,
-//!   anything you do with that fact is *probably* going to be gibberish. The scope of that
-//!   gibberish is kept under control by the fact that the two pointers *still* aren't allowed to
-//!   access the other's allocation (bytes), because they still have different provenance.
+//! * 按地址比较任意指针。指针比较忽略 provenance，而地址*就是*整数，所以总有一个连贯的答案，
+//!   即便这些指针是悬垂的或来自不同的 provenance。注意，如果你“走运”地发现某 allocation 末尾
+//!   的指针与另一 allocation 起始处“同一个”地址相等，那么你基于这一事实所做的任何事情*多半*
+//!   都会是一堆胡话。这堆胡话的影响范围受到如下事实的限制：这两个指针*仍然*不被允许访问对方
+//!   的 allocation（字节），因为它们仍然具有不同的 provenance。
 //!
-//! Note that the full definition of provenance in Rust is not decided yet, as this interacts
-//! with the as-yet undecided [aliasing] rules.
+//! 注意，provenance 在 Rust 中的完整定义尚未确定，因为它与至今未定的 [aliasing] 规则相互交织。
 //!
-//! ## Pointers Vs Integers
+//! ## 指针 vs 整数（Pointers Vs Integers）
 //!
-//! From this discussion, it becomes very clear that a `usize` *cannot* accurately represent a pointer,
-//! and converting from a pointer to a `usize` is generally an operation which *only* extracts the
-//! address. Converting this address back into pointer requires somehow answering the question:
-//! which provenance should the resulting pointer have?
+//! 经过以上讨论可以很清楚地看出：一个 `usize` *无法*准确表示一个指针，而从指针转换为 `usize`
+//! 通常是一个*仅仅*提取地址的操作。把这个地址再转换回指针，则需要以某种方式回答这个问题：
+//! 所得到的指针应该带有哪一份 provenance？
 //!
-//! Rust provides two ways of dealing with this situation: *Strict Provenance* and *Exposed Provenance*.
+//! Rust 提供了两种处理这种情况的方式：*Strict Provenance*（严格来源）和 *Exposed Provenance*
+//!（暴露来源）。
 //!
-//! Note that a pointer *can* represent a `usize` (via [`without_provenance`]), so the right type to
-//! use in situations where a value is "sometimes a pointer and sometimes a bare `usize`" is a
-//! pointer type.
+//! 注意，一个指针*可以*表示一个 `usize`（通过 [`without_provenance`]），所以在“有时是指针、
+//! 有时是裸 `usize`”的场合，应当选用的正确类型是指针类型。
 //!
-//! ## Strict Provenance
+//! ## Strict Provenance（严格来源）
 //!
-//! "Strict Provenance" refers to a set of APIs designed to make working with provenance more
-//! explicit. They are intended as substitutes for casting a pointer to an integer and back.
+//! "Strict Provenance" 指的是一组旨在使 provenance 的使用更加显式的 API。它们意在替代“把指针
+//! 转成整数再转回来”的做法。
 //!
-//! Entirely avoiding integer-to-pointer casts successfully side-steps the inherent ambiguity of
-//! that operation. This benefits compiler optimizations, and it is pretty much a requirement for
-//! using tools like [Miri] and architectures like [CHERI] that aim to detect and diagnose pointer
-//! misuse.
+//! 完全避免 integer-to-pointer（整数到指针）转换，可以成功地绕开该操作固有的歧义。这有利于
+//! 编译器优化，而且对于使用 [Miri] 这类工具、以及 [CHERI] 这类旨在检测和诊断指针误用的体系
+//! 结构而言，几乎是一项硬性要求。
 //!
-//! The key insight to making programming without integer-to-pointer casts *at all* viable is the
-//! [`with_addr`] method:
+//! 要让“*完全*不做 integer-to-pointer 转换”的编程方式变得可行，关键的洞见就是 [`with_addr`]
+//! 方法：
 //!
 //! ```text
-//!     /// Creates a new pointer with the given address.
+//!     /// 创建一个带有给定地址的新指针。
 //!     ///
-//!     /// This performs the same operation as an `addr as ptr` cast, but copies
-//!     /// the *provenance* of `self` to the new pointer.
-//!     /// This allows us to dynamically preserve and propagate this important
-//!     /// information in a way that is otherwise impossible with a unary cast.
+//!     /// 这执行的操作与 `addr as ptr` 转换相同，但会把 `self` 的 *provenance*
+//!     /// 复制到新指针上。
+//!     /// 这使我们能够动态地保留并传播这一重要信息，而这是用一元转换
+//!     ///（unary cast）所无法做到的。
 //!     ///
-//!     /// This is equivalent to using `wrapping_offset` to offset `self` to the
-//!     /// given address, and therefore has all the same capabilities and restrictions.
+//!     /// 这等价于用 `wrapping_offset` 把 `self` 偏移到给定地址，
+//!     /// 因此具有与之完全相同的能力与限制。
 //!     pub fn with_addr(self, addr: usize) -> Self;
 //! ```
 //!
-//! So you're still able to drop down to the address representation and do whatever
-//! clever bit tricks you want *as long as* you're able to keep around a pointer
-//! into the allocation you care about that can "reconstitute" the provenance.
-//! Usually this is very easy, because you only are taking a pointer, messing with the address,
-//! and then immediately converting back to a pointer. To make this use case more ergonomic,
-//! we provide the [`map_addr`] method.
+//! 于是你仍然能够下降到地址表示层、做任何你想做的巧妙位运算技巧，*只要*你能保留一个指向你
+//! 关心的那块 allocation 的指针，用以“重建”provenance。通常这非常容易，因为你往往只是取一个
+//! 指针、摆弄它的地址、然后立刻转换回指针。为让这一用例更顺手，我们提供了 [`map_addr`] 方法。
 //!
-//! To help make it clear that code is "following" Strict Provenance semantics, we also provide an
-//! [`addr`] method which promises that the returned address is not part of a
-//! pointer-integer-pointer roundtrip. In the future we may provide a lint for pointer<->integer
-//! casts to help you audit if your code conforms to strict provenance.
+//! 为了让代码“遵循”Strict Provenance 语义这件事更清晰，我们还提供了一个 [`addr`] 方法，它承诺
+//! 返回的地址不属于某次 指针-整数-指针 往返过程的一部分。将来我们可能为 指针<->整数 转换提供
+//! 一个 lint，帮你审查代码是否符合 strict provenance。
 //!
-//! ### Using Strict Provenance
+//! ### 使用 Strict Provenance
 //!
-//! Most code needs no changes to conform to strict provenance, as the only really concerning
-//! operation is casts from `usize` to a pointer. For code which *does* cast a `usize` to a pointer,
-//! the scope of the change depends on exactly what you're doing.
+//! 大多数代码无需改动即可符合 strict provenance，因为唯一真正令人担忧的操作是从 `usize` 到
+//! 指针的转换。对于*确实*要把 `usize` 转成指针的代码，改动的范围取决于你具体在做什么。
 //!
-//! In general, you just need to make sure that if you want to convert a `usize` address to a
-//! pointer and then use that pointer to read/write memory, you need to keep around a pointer
-//! that has sufficient provenance to perform that read/write itself. In this way all of your
-//! casts from an address to a pointer are essentially just applying offsets/indexing.
+//! 一般来说，你只需确保：如果你想把一个 `usize` 地址转换成指针、然后用该指针读/写内存，你就
+//! 需要保留一个带有足够 provenance、能自行执行该读/写的指针。这样一来，你所有“从地址到指针”
+//! 的转换本质上都只是在施加偏移/索引而已。
 //!
-//! This is generally trivial to do for simple cases like tagged pointers *as long as you
-//! represent the tagged pointer as an actual pointer and not a `usize`*. For instance:
+//! 对于像带标记指针这样的简单情形，做到这一点通常很轻松，*只要你把带标记指针表示为一个真正的
+//! 指针、而不是一个 `usize`*。例如：
 //!
 //! ```
 //! unsafe {
-//!     // A flag we want to pack into our pointer
+//!     // 我们想打包进指针里的一个标志位
 //!     static HAS_DATA: usize = 0x1;
 //!     static FLAG_MASK: usize = !HAS_DATA;
 //!
-//!     // Our value, which must have enough alignment to have spare least-significant-bits.
+//!     // 我们的值，它必须有足够的对齐，才能留出可用的最低有效位。
 //!     let my_precious_data: u32 = 17;
 //!     assert!(align_of::<u32>() > 1);
 //!
-//!     // Create a tagged pointer
+//!     // 创建一个带标记指针
 //!     let ptr = &my_precious_data as *const u32;
 //!     let tagged = ptr.map_addr(|addr| addr | HAS_DATA);
 //!
-//!     // Check the flag:
+//!     // 检查标志位：
 //!     if tagged.addr() & HAS_DATA != 0 {
-//!         // Untag and read the pointer
+//!         // 去掉标记并读取指针
 //!         let data = *tagged.map_addr(|addr| addr & FLAG_MASK);
 //!         assert_eq!(data, 17);
 //!     } else {
@@ -321,59 +276,47 @@
 //! }
 //! ```
 //!
-//! (Yes, if you've been using [`AtomicUsize`] for pointers in concurrent datastructures, you should
-//! be using [`AtomicPtr`] instead. If that messes up the way you atomically manipulate pointers,
-//! we would like to know why, and what needs to be done to fix it.)
+//!（没错，如果你在并发数据结构里一直用 [`AtomicUsize`] 来存指针，那你应该改用 [`AtomicPtr`]。
+//! 如果这打乱了你原子地操控指针的方式，我们很想知道为什么，以及需要做什么来修复它。）
 //!
-//! Situations where a valid pointer *must* be created from just an address, such as baremetal code
-//! accessing a memory-mapped interface at a fixed address, cannot currently be handled with strict
-//! provenance APIs and should use [exposed provenance](#exposed-provenance).
+//! 在那些*必须*仅凭地址创建一个有效指针的场合——例如裸机（baremetal）代码访问位于固定地址的
+//! 内存映射接口——目前无法用 strict provenance API 处理，应改用[暴露来源（exposed
+//! provenance）](#exposed-provenance)。
 //!
-//! ## Exposed Provenance
+//! ## Exposed Provenance（暴露来源）
 //!
-//! As discussed above, integer-to-pointer casts are not possible with Strict Provenance APIs.
-//! This is by design: the goal of Strict Provenance is to provide a clear specification that we are
-//! confident can be formalized unambiguously and can be subject to precise formal reasoning.
-//! Integer-to-pointer casts do not (currently) have such a clear specification.
+//! 如上所述，integer-to-pointer 转换无法用 Strict Provenance API 完成。这是有意为之的：Strict
+//! Provenance 的目标是提供一个清晰的规范，使我们有信心可以无歧义地形式化它，并对其进行精确的
+//! 形式化推理。而 integer-to-pointer 转换（目前）没有这样清晰的规范。
 //!
-//! However, there exist situations where integer-to-pointer casts cannot be avoided, or
-//! where avoiding them would require major refactoring. Legacy platform APIs also regularly assume
-//! that `usize` can capture all the information that makes up a pointer.
-//! Bare-metal platforms can also require the synthesis of a pointer "out of thin air" without
-//! anywhere to obtain proper provenance from.
+//! 然而，确实存在一些无法避免 integer-to-pointer 转换、或避免它就要大规模重构的场合。遗留的
+//! 平台 API 也常常假设 `usize` 能够捕获构成一个指针的全部信息。裸机平台还可能要求“凭空”合成
+//! 一个指针，而无处获取恰当的 provenance。
 //!
-//! Rust's model for dealing with integer-to-pointer casts is called *Exposed Provenance*. However,
-//! the semantics of Exposed Provenance are on much less solid footing than Strict Provenance, and
-//! at this point it is not yet clear whether a satisfying unambiguous semantics can be defined for
-//! Exposed Provenance. (If that sounds bad, be reassured that other popular languages that provide
-//! integer-to-pointer casts are not faring any better.) Furthermore, Exposed Provenance will not
-//! work (well) with tools like [Miri] and [CHERI].
+//! Rust 用来处理 integer-to-pointer 转换的模型叫做 *Exposed Provenance*。然而，Exposed
+//! Provenance 的语义所立足的根基远不如 Strict Provenance 牢靠，眼下尚不清楚能否为 Exposed
+//! Provenance 定义出令人满意的、无歧义的语义。（如果这听起来很糟，请放心：其他提供
+//! integer-to-pointer 转换的流行语言也好不到哪去。）此外，Exposed Provenance 与 [Miri] 和
+//! [CHERI] 这类工具配合得（并）不好。
 //!
-//! Exposed Provenance is provided by the [`expose_provenance`] and [`with_exposed_provenance`] methods,
-//! which are equivalent to `as` casts between pointers and integers.
-//! - [`expose_provenance`] is a lot like [`addr`], but additionally adds the provenance of the
-//!   pointer to a global list of 'exposed' provenances. (This list is purely conceptual, it exists
-//!   for the purpose of specifying Rust but is not materialized in actual executions, except in
-//!   tools like [Miri].)
-//!   Memory which is outside the control of the Rust abstract machine (MMIO registers, for example)
-//!   is always considered to be exposed, so long as this memory is disjoint from memory that will
-//!   be used by the abstract machine such as the stack, heap, and statics.
-//! - [`with_exposed_provenance`] can be used to construct a pointer with one of these previously
-//!   'exposed' provenances. [`with_exposed_provenance`] takes only `addr: usize` as arguments, so
-//!   unlike in [`with_addr`] there is no indication of what the correct provenance for the returned
-//!   pointer is -- and that is exactly what makes integer-to-pointer casts so tricky to rigorously
-//!   specify! The compiler will do its best to pick the right provenance for you, but currently we
-//!   cannot provide any guarantees about which provenance the resulting pointer will have. Only one
-//!   thing is clear: if there is *no* previously 'exposed' provenance that justifies the way the
-//!   returned pointer will be used, the program has undefined behavior.
+//! Exposed Provenance 由 [`expose_provenance`] 和 [`with_exposed_provenance`] 这两个方法提供，
+//! 它们等价于指针与整数之间的 `as` 转换。
+//! - [`expose_provenance`] 很像 [`addr`]，但额外把该指针的 provenance 加入一个全局的“已暴露”
+//!   provenance 列表。（这个列表纯属概念性的，它只为规范 Rust 而存在，在实际执行中并不会被
+//!   物化，[Miri] 之类的工具除外。）位于 Rust 抽象机控制之外的内存（例如 MMIO 寄存器）总是
+//!   被视为已暴露的，只要这块内存与抽象机将要使用的内存（如栈、堆、static）不相交。
+//! - [`with_exposed_provenance`] 可用于构造一个带有某个先前“已暴露”provenance 的指针。
+//!   [`with_exposed_provenance`] 只接受 `addr: usize` 作为参数，所以与 [`with_addr`] 不同，它
+//!   没有任何线索说明返回指针的正确 provenance 应该是什么——而这正是 integer-to-pointer 转换
+//!   如此难以严格规范的根源所在！编译器会尽力为你挑选“正确”的 provenance，但目前我们无法对
+//!   结果指针将带有哪一份 provenance 提供任何保证。唯一明确的一点是：如果*没有*任何先前“已
+//!   暴露”的 provenance 能够正当化返回指针被使用的方式，那么该程序就具有未定义行为。
 //!
-//! If at all possible, we encourage code to be ported to [Strict Provenance] APIs, thus avoiding
-//! the need for Exposed Provenance. Maximizing the amount of such code is a major win for avoiding
-//! specification complexity and to facilitate adoption of tools like [CHERI] and [Miri] that can be
-//! a big help in increasing the confidence in (unsafe) Rust code. However, we acknowledge that this
-//! is not always possible, and offer Exposed Provenance as a way to explicit "opt out" of the
-//! well-defined semantics of Strict Provenance, and "opt in" to the unclear semantics of
-//! integer-to-pointer casts.
+//! 如果可能的话，我们鼓励把代码移植到 [Strict Provenance] API，从而无需 Exposed Provenance。
+//! 让这类代码的占比最大化，对于避免规范复杂度、以及推动采用 [CHERI] 和 [Miri] 这类能大幅提升
+//!（unsafe）Rust 代码可信度的工具，都是一项重大利好。不过我们承认这并非总是可行，因此提供
+//! Exposed Provenance 作为一种途径，让你显式地“退出”Strict Provenance 那套良定义的语义、
+//! 并“接受”integer-to-pointer 转换那套不清晰的语义。
 //!
 //! [aliasing]: ../../nomicon/aliasing.html
 //! [allocation]: #allocation
@@ -398,7 +341,7 @@
 //! [`UnsafeCell`]: core::cell::UnsafeCell
 
 #![stable(feature = "rust1", since = "1.0.0")]
-// There are many unsafe functions taking pointers that don't dereference them.
+// 本模块中有许多接收指针、但并不解引用它们的 unsafe 函数。
 #![allow(clippy::not_unsafe_ptr_arg_deref)]
 
 use crate::cmp::Ordering;
@@ -427,82 +370,77 @@ pub use unique::Unique;
 mod const_ptr;
 mod mut_ptr;
 
-// Some functions are defined here because they accidentally got made
-// available in this module on stable. See <https://github.com/rust-lang/rust/issues/15702>.
-// (`transmute` also falls into this category, but it cannot be wrapped due to the
-// check that `T` and `U` have the same size.)
+// 有些函数定义在这里，是因为它们曾在 stable 中意外地暴露在了本模块里。
+// 详见 <https://github.com/rust-lang/rust/issues/15702>。
+//（`transmute` 也属于这一类，但由于存在“`T` 与 `U` 必须同样大小”的检查，它无法被包装。）
 
-/// Copies `count * size_of::<T>()` bytes from `src` to `dst`. The source
-/// and destination must *not* overlap.
+/// 从 `src` 处复制 `count * size_of::<T>()` 个字节到 `dst`。源区域与目标区域*不得*重叠。
 ///
-/// For regions of memory which might overlap, use [`copy`] instead.
+/// 对于可能重叠的内存区域，请改用 [`copy`]。
 ///
-/// `copy_nonoverlapping` is semantically equivalent to C's [`memcpy`], but
-/// with the source and destination arguments swapped,
-/// and `count` counting the number of `T`s instead of bytes.
+/// `copy_nonoverlapping` 在语义上等价于 C 的 [`memcpy`]，只是源参数和目标参数互换了位置，
+/// 且 `count` 计数的是 `T` 的个数而非字节数。
 ///
-/// The copy is "untyped" in the sense that data may be uninitialized or otherwise violate the
-/// requirements of `T`. The initialization state is preserved exactly.
+/// 这次复制是“无类型的”（untyped），意思是数据可以是未初始化的、或以其他方式违反 `T` 的要求。
+/// 初始化状态会被原样保留。
 ///
 /// [`memcpy`]: https://en.cppreference.com/w/c/string/byte/memcpy
 ///
-/// # Safety
+/// # 安全性（Safety）
 ///
-/// Behavior is undefined if any of the following conditions are violated:
+/// 若违反以下任一条件，行为即为未定义。调用方必须维护以下全部不变量：
 ///
-/// * `src` must be [valid] for reads of `count * size_of::<T>()` bytes.
+/// * `src` 必须对读取 `count * size_of::<T>()` 个字节是 [valid]（有效）的：非空、所指内存
+///   已分配且未释放、且这段范围完全落在同一块 allocation 内（不越界），并带有覆盖该范围的
+///   provenance。
 ///
-/// * `dst` must be [valid] for writes of `count * size_of::<T>()` bytes.
+/// * `dst` 必须对写入 `count * size_of::<T>()` 个字节是 [valid] 的（同上，针对写入）。
 ///
-/// * Both `src` and `dst` must be properly aligned.
+/// * `src` 和 `dst` 都必须正确对齐到 `align_of::<T>()`。
 ///
-/// * The region of memory beginning at `src` with a size of `count *
-///   size_of::<T>()` bytes must *not* overlap with the region of memory
-///   beginning at `dst` with the same size.
+/// * 从 `src` 起、大小为 `count * size_of::<T>()` 字节的内存区域，与从 `dst` 起、同样大小的
+///   内存区域*不得*重叠（这是 `copy_nonoverlapping` 相较 `copy` 的关键约束，对应 memcpy）。
 ///
-/// Like [`read`], `copy_nonoverlapping` creates a bitwise copy of `T`, regardless of
-/// whether `T` is [`Copy`]. If `T` is not [`Copy`], using *both* the values
-/// in the region beginning at `*src` and the region beginning at `*dst` can
-/// [violate memory safety][read-ownership].
+/// 与 [`read`] 一样，无论 `T` 是否为 [`Copy`]，`copy_nonoverlapping` 都会创建 `T` 的按位
+///（bitwise）副本。如果 `T` 不是 [`Copy`]，那么*同时*使用从 `*src` 起和从 `*dst` 起这两段
+/// 区域中的值，可能[违反内存安全][read-ownership]（因为同一个值会被析构两次）。
 ///
-/// Note that even if the effectively copied size (`count * size_of::<T>()`) is
-/// `0`, the pointers must be properly aligned.
+/// 注意：即使实际复制的大小（`count * size_of::<T>()`）为 `0`，这些指针也必须正确对齐。
 ///
 /// [`read`]: crate::ptr::read
 /// [read-ownership]: crate::ptr::read#ownership-of-the-returned-value
 /// [valid]: crate::ptr#safety
 ///
-/// # Examples
+/// # 示例
 ///
-/// Manually implement [`Vec::append`]:
+/// 手动实现 [`Vec::append`]：
 ///
 /// ```
 /// use std::ptr;
 ///
-/// /// Moves all the elements of `src` into `dst`, leaving `src` empty.
+/// /// 把 `src` 的所有元素移动进 `dst`，使 `src` 变为空。
 /// fn append<T>(dst: &mut Vec<T>, src: &mut Vec<T>) {
 ///     let src_len = src.len();
 ///     let dst_len = dst.len();
 ///
-///     // Ensure that `dst` has enough capacity to hold all of `src`.
+///     // 确保 `dst` 有足够容量容纳 `src` 的全部内容。
 ///     dst.reserve(src_len);
 ///
 ///     unsafe {
-///         // The call to add is always safe because `Vec` will never
-///         // allocate more than `isize::MAX` bytes.
+///         // 这次调用 add 总是安全的，因为 `Vec` 绝不会分配超过
+///         // `isize::MAX` 个字节。
 ///         let dst_ptr = dst.as_mut_ptr().add(dst_len);
 ///         let src_ptr = src.as_ptr();
 ///
-///         // Truncate `src` without dropping its contents. We do this first,
-///         // to avoid problems in case something further down panics.
+///         // 把 `src` 截断但不析构其内容。我们先做这一步，
+///         // 以免后面的某步发生 panic 时出问题。
 ///         src.set_len(0);
 ///
-///         // The two regions cannot overlap because mutable references do
-///         // not alias, and two different vectors cannot own the same
-///         // memory.
+///         // 这两块区域不可能重叠，因为可变引用不会别名（alias），
+///         // 而且两个不同的 vector 不可能拥有同一块内存。
 ///         ptr::copy_nonoverlapping(src_ptr, dst_ptr, src_len);
 ///
-///         // Notify `dst` that it now holds the contents of `src`.
+///         // 通知 `dst` 它现在持有了 `src` 的内容。
 ///         dst.set_len(dst_len + src_len);
 ///     }
 /// }
@@ -542,74 +480,68 @@ pub const unsafe fn copy_nonoverlapping<T>(src: *const T, dst: *mut T, count: us
         }
     );
 
-    // SAFETY: the safety contract for `copy_nonoverlapping` must be
-    // upheld by the caller.
+    // SAFETY: `copy_nonoverlapping` 的安全契约必须由调用方维护。
     unsafe { crate::intrinsics::copy_nonoverlapping(src, dst, count) }
 }
 
-/// Copies `count * size_of::<T>()` bytes from `src` to `dst`. The source
-/// and destination may overlap.
+/// 从 `src` 处复制 `count * size_of::<T>()` 个字节到 `dst`。源区域与目标区域可以重叠。
 ///
-/// If the source and destination will *never* overlap,
-/// [`copy_nonoverlapping`] can be used instead.
+/// 如果源区域与目标区域*永远不会*重叠，可改用 [`copy_nonoverlapping`]。
 ///
-/// `copy` is semantically equivalent to C's [`memmove`], but
-/// with the source and destination arguments swapped,
-/// and `count` counting the number of `T`s instead of bytes.
-/// Copying takes place as if the bytes were copied from `src`
-/// to a temporary array and then copied from the array to `dst`.
+/// `copy` 在语义上等价于 C 的 [`memmove`]，只是源参数和目标参数互换了位置，且 `count`
+/// 计数的是 `T` 的个数而非字节数。复制的进行方式仿佛是：先把字节从 `src` 拷到一个临时数组，
+/// 再从该数组拷到 `dst`（因此即便重叠也能给出确定结果，这正是 memmove 的语义）。
 ///
-/// The copy is "untyped" in the sense that data may be uninitialized or otherwise violate the
-/// requirements of `T`. The initialization state is preserved exactly.
+/// 这次复制是“无类型的”（untyped），意思是数据可以是未初始化的、或以其他方式违反 `T` 的要求。
+/// 初始化状态会被原样保留。
 ///
 /// [`memmove`]: https://en.cppreference.com/w/c/string/byte/memmove
 ///
-/// # Safety
+/// # 安全性（Safety）
 ///
-/// Behavior is undefined if any of the following conditions are violated:
+/// 若违反以下任一条件，行为即为未定义。调用方必须维护以下全部不变量：
 ///
-/// * `src` must be [valid] for reads of `count * size_of::<T>()` bytes.
+/// * `src` 必须对读取 `count * size_of::<T>()` 个字节是 [valid]（有效）的：非空、已分配未释放、
+///   不越界、并带有覆盖该范围的 provenance。
 ///
-/// * `dst` must be [valid] for writes of `count * size_of::<T>()` bytes, and must remain valid even
-///   when `src` is read for `count * size_of::<T>()` bytes. (This means if the memory ranges
-///   overlap, the `dst` pointer must not be invalidated by `src` reads.)
+/// * `dst` 必须对写入 `count * size_of::<T>()` 个字节是 [valid] 的，并且即便在读取 `src` 的
+///   `count * size_of::<T>()` 个字节期间也必须保持有效。（这意味着：如果两段内存范围重叠，
+///   对 `src` 的读取不得使 `dst` 指针失效。）
 ///
-/// * Both `src` and `dst` must be properly aligned.
+/// * `src` 和 `dst` 都必须正确对齐到 `align_of::<T>()`。
 ///
-/// Like [`read`], `copy` creates a bitwise copy of `T`, regardless of
-/// whether `T` is [`Copy`]. If `T` is not [`Copy`], using both the values
-/// in the region beginning at `*src` and the region beginning at `*dst` can
-/// [violate memory safety][read-ownership].
+/// 与 [`read`] 一样，无论 `T` 是否为 [`Copy`]，`copy` 都会创建 `T` 的按位副本。如果 `T` 不是
+/// [`Copy`]，那么同时使用从 `*src` 起和从 `*dst` 起这两段区域中的值，可能[违反内存
+/// 安全][read-ownership]（值会被析构两次）。
 ///
-/// Note that even if the effectively copied size (`count * size_of::<T>()`) is
-/// `0`, the pointers must be properly aligned.
+/// 注意：即使实际复制的大小（`count * size_of::<T>()`）为 `0`，这些指针也必须正确对齐。
 ///
 /// [`read`]: crate::ptr::read
 /// [read-ownership]: crate::ptr::read#ownership-of-the-returned-value
 /// [valid]: crate::ptr#safety
 ///
-/// # Examples
+/// # 示例
 ///
-/// Efficiently create a Rust vector from an unsafe buffer:
+/// 从一个 unsafe 缓冲区高效地创建一个 Rust vector：
 ///
 /// ```
 /// use std::ptr;
 ///
-/// /// # Safety
+/// /// # 安全性（Safety）
 /// ///
-/// /// * `ptr` must be correctly aligned for its type and non-zero.
-/// /// * `ptr` must be valid for reads of `elts` contiguous elements of type `T`.
-/// /// * Those elements must not be used after calling this function unless `T: Copy`.
+/// /// * `ptr` 必须按其类型正确对齐且非零。
+/// /// * `ptr` 必须对读取 `elts` 个连续的、类型为 `T` 的元素是 valid 的。
+/// /// * 调用本函数之后，这些元素不得再被使用，除非 `T: Copy`。
 /// # #[allow(dead_code)]
 /// unsafe fn from_buf_raw<T>(ptr: *const T, elts: usize) -> Vec<T> {
 ///     let mut dst = Vec::with_capacity(elts);
 ///
-///     // SAFETY: Our precondition ensures the source is aligned and valid,
-///     // and `Vec::with_capacity` ensures that we have usable space to write them.
+///     // SAFETY: 我们的前置条件确保源是对齐且有效的，
+///     // 而 `Vec::with_capacity` 确保我们有可写入它们的可用空间。
 ///     unsafe { ptr::copy(ptr, dst.as_mut_ptr(), elts); }
 ///
-///     // SAFETY: We created it with this much capacity earlier,
-///     // and the previous `copy` has initialized these elements.
+///     // SAFETY: 我们先前以这么多容量创建了它，
+///     // 而上面的 `copy` 已经初始化了这些元素。
 ///     unsafe { dst.set_len(elts); }
 ///     dst
 /// }
@@ -621,7 +553,7 @@ pub const unsafe fn copy_nonoverlapping<T>(src: *const T, dst: *mut T, count: us
 #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
 #[rustc_diagnostic_item = "ptr_copy"]
 pub const unsafe fn copy<T>(src: *const T, dst: *mut T, count: usize) {
-    // SAFETY: the safety contract for `copy` must be upheld by the caller.
+    // SAFETY: `copy` 的安全契约必须由调用方维护。
     unsafe {
         ub_checks::assert_unsafe_precondition!(
             check_language_ub,
@@ -639,44 +571,42 @@ pub const unsafe fn copy<T>(src: *const T, dst: *mut T, count: usize) {
     }
 }
 
-/// Sets `count * size_of::<T>()` bytes of memory starting at `dst` to
-/// `val`.
+/// 把从 `dst` 起的 `count * size_of::<T>()` 个字节内存全部设置为 `val`。
 ///
-/// `write_bytes` is similar to C's [`memset`], but sets `count *
-/// size_of::<T>()` bytes to `val`.
+/// `write_bytes` 类似于 C 的 [`memset`]，但设置的是 `count * size_of::<T>()` 个字节，每个字节
+/// 都设为 `val`。
 ///
 /// [`memset`]: https://en.cppreference.com/w/c/string/byte/memset
 ///
-/// # Safety
+/// # 安全性（Safety）
 ///
-/// Behavior is undefined if any of the following conditions are violated:
+/// 若违反以下任一条件，行为即为未定义。调用方必须维护以下全部不变量：
 ///
-/// * `dst` must be [valid] for writes of `count * size_of::<T>()` bytes.
+/// * `dst` 必须对写入 `count * size_of::<T>()` 个字节是 [valid]（有效）的：非空、已分配未释放、
+///   不越界、并带有覆盖该范围的 provenance。
 ///
-/// * `dst` must be properly aligned.
+/// * `dst` 必须正确对齐到 `align_of::<T>()`。
 ///
-/// Note that even if the effectively copied size (`count * size_of::<T>()`) is
-/// `0`, the pointer must be properly aligned.
+/// 注意：即使实际写入的大小（`count * size_of::<T>()`）为 `0`，该指针也必须正确对齐。
 ///
-/// Additionally, note that changing `*dst` in this way can easily lead to undefined behavior (UB)
-/// later if the written bytes are not a valid representation of some `T`. For instance, the
-/// following is an **incorrect** use of this function:
+/// 此外请注意：以这种方式改动 `*dst`，如果写入的字节并不构成某个 `T` 的有效表示，后续很容易
+/// 导致未定义行为（UB）。例如，下面就是对本函数的一个**错误**用法：
 ///
 /// ```rust,no_run
 /// unsafe {
 ///     let mut value: u8 = 0;
 ///     let ptr: *mut bool = &mut value as *mut u8 as *mut bool;
-///     let _bool = ptr.read(); // This is fine, `ptr` points to a valid `bool`.
-///     ptr.write_bytes(42u8, 1); // This function itself does not cause UB...
-///     let _bool = ptr.read(); // ...but it makes this operation UB! ⚠️
+///     let _bool = ptr.read(); // 这没问题，`ptr` 指向一个有效的 `bool`。
+///     ptr.write_bytes(42u8, 1); // 这个函数本身不会造成 UB……
+///     let _bool = ptr.read(); // ……但它使得这次操作成为 UB！⚠️
 /// }
 /// ```
 ///
 /// [valid]: crate::ptr#safety
 ///
-/// # Examples
+/// # 示例
 ///
-/// Basic usage:
+/// 基本用法：
 ///
 /// ```
 /// use std::ptr;
@@ -695,7 +625,7 @@ pub const unsafe fn copy<T>(src: *const T, dst: *mut T, count: usize) {
 #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
 #[rustc_diagnostic_item = "ptr_write_bytes"]
 pub const unsafe fn write_bytes<T>(dst: *mut T, val: u8, count: usize) {
-    // SAFETY: the safety contract for `write_bytes` must be upheld by the caller.
+    // SAFETY: `write_bytes` 的安全契约必须由调用方维护。
     unsafe {
         ub_checks::assert_unsafe_precondition!(
             check_language_ub,
@@ -710,67 +640,57 @@ pub const unsafe fn write_bytes<T>(dst: *mut T, val: u8, count: usize) {
     }
 }
 
-/// Executes the destructor (if any) of the pointed-to value.
+/// 就地（in place）执行所指向的值的析构函数（如果有的话）。
 ///
-/// This is almost the same as calling [`ptr::read`] and discarding
-/// the result, but has the following advantages:
-// FIXME: say something more useful than "almost the same"?
-// There are open questions here: `read` requires the value to be fully valid, e.g. if `T` is a
-// `bool` it must be 0 or 1, if it is a reference then it must be dereferenceable. `drop_in_place`
-// only requires that `*to_drop` be "valid for dropping" and we have not defined what that means. In
-// Miri it currently (May 2024) requires nothing at all for types without drop glue.
+/// 这几乎等同于调用 [`ptr::read`] 然后丢弃其结果，但具有以下优点：
+// FIXME: 说点比“几乎相同”更有用的？
+// 这里有一些悬而未决的问题：`read` 要求值是完全 valid 的，例如若 `T` 是
+// `bool` 则它必须是 0 或 1，若它是引用则必须可解引用。而 `drop_in_place`
+// 只要求 `*to_drop` 是“可供析构（valid for dropping）”的，但我们尚未定义这究竟意味着什么。
+// 在 Miri 中目前（2024 年 5 月）对于没有 drop glue 的类型不要求任何东西。
 ///
-/// * It is *required* to use `drop_in_place` to drop unsized types like
-///   trait objects, because they can't be read out onto the stack and
-///   dropped normally.
+/// * 对于像 trait 对象这样的非定长（unsized）类型，*必须*使用 `drop_in_place` 来析构，因为
+///   它们无法被读出到栈上再正常析构。
 ///
-/// * It is friendlier to the optimizer to do this over [`ptr::read`] when
-///   dropping manually allocated memory (e.g., in the implementations of
-///   `Box`/`Rc`/`Vec`), as the compiler doesn't need to prove that it's
-///   sound to elide the copy.
+/// * 在析构手动分配的内存时（例如在 `Box`/`Rc`/`Vec` 的实现中），相比 [`ptr::read`]，
+///   它对优化器更友好，因为编译器无需证明省略那次复制是合理的。
 ///
-/// * It can be used to drop [pinned] data when `T` is not `repr(packed)`
-///   (pinned data must not be moved before it is dropped).
+/// * 当 `T` 不是 `repr(packed)` 时，它可用于析构 [pinned] 数据（被 pin 住的数据在析构前
+///   不得被移动）。
 ///
-/// Unaligned values cannot be dropped in place, they must be copied to an aligned
-/// location first using [`ptr::read_unaligned`]. For packed structs, this move is
-/// done automatically by the compiler. This means the fields of packed structs
-/// are not dropped in-place.
+/// 未对齐（unaligned）的值不能就地析构，必须先用 [`ptr::read_unaligned`] 复制到一个对齐的
+/// 位置。对于 packed 结构体，这次移动由编译器自动完成。这意味着 packed 结构体的字段不是
+/// 就地析构的。
 ///
 /// [`ptr::read`]: self::read
 /// [`ptr::read_unaligned`]: self::read_unaligned
 /// [pinned]: crate::pin
 ///
-/// # Safety
+/// # 安全性（Safety）
 ///
-/// Behavior is undefined if any of the following conditions are violated:
+/// 若违反以下任一条件，行为即为未定义。调用方必须维护以下全部不变量：
 ///
-/// * `to_drop` must be [valid] for both reads and writes.
+/// * `to_drop` 必须对读取和写入*两者*都是 [valid]（有效）的。
 ///
-/// * `to_drop` must be properly aligned, even if `T` has size 0.
+/// * `to_drop` 必须正确对齐，即使 `T` 的大小为 0。
 ///
-/// * `to_drop` must be nonnull, even if `T` has size 0.
+/// * `to_drop` 必须非空（nonnull），即使 `T` 的大小为 0。
 ///
-/// * The value `to_drop` points to must be valid for dropping, which may mean
-///   it must uphold additional invariants. These invariants depend on the type
-///   of the value being dropped. For instance, when dropping a Box, the box's
-///   pointer to the heap must be valid.
+/// * `to_drop` 所指向的值必须是“可供析构”的，这可能意味着它要维护额外的不变量。这些不变量
+///   取决于被析构的值的类型。例如，析构一个 Box 时，该 box 指向堆的指针必须有效。
 ///
-/// * While `drop_in_place` is executing, the only way to access parts of
-///   `to_drop` is through the `&mut self` references supplied to the
-///   `Drop::drop` methods that `drop_in_place` invokes.
+/// * 在 `drop_in_place` 执行期间，访问 `to_drop` 各部分的唯一途径，是 `drop_in_place` 所调用
+///   的各个 `Drop::drop` 方法被提供的那些 `&mut self` 引用。
 ///
-/// Additionally, if `T` is not [`Copy`], using the pointed-to value after
-/// calling `drop_in_place` can cause undefined behavior. Note that `*to_drop =
-/// foo` counts as a use because it will cause the value to be dropped
-/// again. [`write()`] can be used to overwrite data without causing it to be
-/// dropped.
+/// 此外，如果 `T` 不是 [`Copy`]，那么在调用 `drop_in_place` 之后再使用所指向的值会导致未定义
+/// 行为。注意 `*to_drop = foo` 也算作一次使用，因为它会导致该值被再次析构（双重 drop）。
+/// 可用 [`write()`] 来覆盖数据而不触发它被析构。
 ///
 /// [valid]: self#safety
 ///
-/// # Examples
+/// # 示例
 ///
-/// Manually remove the last item from a vector:
+/// 手动移除一个 vector 的最后一个元素：
 ///
 /// ```
 /// use std::ptr;
@@ -782,19 +702,19 @@ pub const unsafe fn write_bytes<T>(dst: *mut T, val: u8, count: usize) {
 /// let mut v = vec![Rc::new(0), last];
 ///
 /// unsafe {
-///     // Get a raw pointer to the last element in `v`.
+///     // 取得指向 `v` 中最后一个元素的裸指针。
 ///     let ptr = &mut v[1] as *mut _;
-///     // Shorten `v` to prevent the last item from being dropped. We do that first,
-///     // to prevent issues if the `drop_in_place` below panics.
+///     // 缩短 `v`，以防最后一个元素被析构。我们先做这一步，
+///     // 以免下面的 `drop_in_place` 发生 panic 时出问题。
 ///     v.set_len(1);
-///     // Without a call `drop_in_place`, the last item would never be dropped,
-///     // and the memory it manages would be leaked.
+///     // 若不调用 `drop_in_place`，最后一个元素将永远不会被析构，
+///     // 它所管理的内存也会泄漏。
 ///     ptr::drop_in_place(ptr);
 /// }
 ///
 /// assert_eq!(v, &[0.into()]);
 ///
-/// // Ensure that the last item was dropped.
+/// // 确认最后一个元素确实被析构了。
 /// assert!(weak.upgrade().is_none());
 /// ```
 #[stable(feature = "drop_in_place", since = "1.8.0")]
@@ -806,27 +726,25 @@ pub const unsafe fn drop_in_place<T: PointeeSized>(to_drop: *mut T)
 where
     T: [const] Destruct,
 {
-    // Code here does not matter - this is replaced by the
-    // real drop glue by the compiler.
+    // 这里的代码无关紧要——它会被编译器替换为真正的 drop glue。
 
-    // SAFETY: see comment above
+    // SAFETY: 见上方注释
     unsafe { drop_in_place(to_drop) }
 }
 
-/// Creates a null raw pointer.
+/// 创建一个 null（空）裸指针。
 ///
-/// This function is equivalent to zero-initializing the pointer:
-/// `MaybeUninit::<*const T>::zeroed().assume_init()`.
-/// The resulting pointer has the address 0.
+/// 本函数等价于把指针零初始化：`MaybeUninit::<*const T>::zeroed().assume_init()`。
+/// 所得指针的地址为 0。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use std::ptr;
 ///
 /// let p: *const i32 = ptr::null();
 /// assert!(p.is_null());
-/// assert_eq!(p as usize, 0); // this pointer has the address 0
+/// assert_eq!(p as usize, 0); // 这个指针的地址是 0
 /// ```
 #[inline(always)]
 #[must_use]
@@ -838,20 +756,19 @@ pub const fn null<T: PointeeSized + Thin>() -> *const T {
     from_raw_parts(without_provenance::<()>(0), ())
 }
 
-/// Creates a null mutable raw pointer.
+/// 创建一个 null（空）可变裸指针。
 ///
-/// This function is equivalent to zero-initializing the pointer:
-/// `MaybeUninit::<*mut T>::zeroed().assume_init()`.
-/// The resulting pointer has the address 0.
+/// 本函数等价于把指针零初始化：`MaybeUninit::<*mut T>::zeroed().assume_init()`。
+/// 所得指针的地址为 0。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use std::ptr;
 ///
 /// let p: *mut i32 = ptr::null_mut();
 /// assert!(p.is_null());
-/// assert_eq!(p as usize, 0); // this pointer has the address 0
+/// assert_eq!(p as usize, 0); // 这个指针的地址是 0
 /// ```
 #[inline(always)]
 #[must_use]
@@ -863,19 +780,18 @@ pub const fn null_mut<T: PointeeSized + Thin>() -> *mut T {
     from_raw_parts_mut(without_provenance_mut::<()>(0), ())
 }
 
-/// Creates a pointer with the given address and no [provenance][crate::ptr#provenance].
+/// 创建一个带有给定地址、且不带 [provenance][crate::ptr#provenance] 的指针。
 ///
-/// This is equivalent to `ptr::null().with_addr(addr)`.
+/// 这等价于 `ptr::null().with_addr(addr)`。
 ///
-/// Without provenance, this pointer is not associated with any actual allocation. Such a
-/// no-provenance pointer may be used for zero-sized memory accesses (if suitably aligned), but
-/// non-zero-sized memory accesses with a no-provenance pointer are UB. No-provenance pointers are
-/// little more than a `usize` address in disguise.
+/// 由于不带 provenance，这个指针不与任何实际的 allocation 关联。这样的无 provenance 指针可用于
+/// 零大小的内存访问（如果对齐合适的话），但用无 provenance 指针做非零大小的内存访问是 UB。
+/// 无 provenance 指针只不过是一个伪装成指针的 `usize` 地址而已。
 ///
-/// This is different from `addr as *const T`, which creates a pointer that picks up a previously
-/// exposed provenance. See [`with_exposed_provenance`] for more details on that operation.
+/// 这与 `addr as *const T` 不同：后者创建的指针会拾取某个先前已暴露的 provenance。关于该操作的
+/// 更多细节见 [`with_exposed_provenance`]。
 ///
-/// This is a [Strict Provenance][crate::ptr#strict-provenance] API.
+/// 这是一个 [Strict Provenance][crate::ptr#strict-provenance] API。
 #[inline(always)]
 #[must_use]
 #[stable(feature = "strict_provenance", since = "1.84.0")]
@@ -885,15 +801,12 @@ pub const fn without_provenance<T>(addr: usize) -> *const T {
     without_provenance_mut(addr)
 }
 
-/// Creates a new pointer that is dangling, but non-null and well-aligned.
+/// 创建一个新指针：它是悬垂（dangling）的，但非空且良好对齐。
 ///
-/// This is useful for initializing types which lazily allocate, like
-/// `Vec::new` does.
+/// 这对初始化那些惰性分配（lazily allocate）的类型很有用，例如 `Vec::new` 就是这么做的。
 ///
-/// Note that the address of the returned pointer may potentially
-/// be that of a valid pointer, which means this must not be used
-/// as a "not yet initialized" sentinel value.
-/// Types that lazily allocate must track initialization by some other means.
+/// 注意，返回指针的地址有可能恰好就是某个有效指针的地址，因此它*不能*被当作“尚未初始化”的
+/// 哨兵值（sentinel value）使用。惰性分配的类型必须用其他手段来追踪初始化状态。
 #[inline(always)]
 #[must_use]
 #[stable(feature = "strict_provenance", since = "1.84.0")]
@@ -902,19 +815,18 @@ pub const fn dangling<T>() -> *const T {
     dangling_mut()
 }
 
-/// Creates a pointer with the given address and no [provenance][crate::ptr#provenance].
+/// 创建一个带有给定地址、且不带 [provenance][crate::ptr#provenance] 的指针。
 ///
-/// This is equivalent to `ptr::null_mut().with_addr(addr)`.
+/// 这等价于 `ptr::null_mut().with_addr(addr)`。
 ///
-/// Without provenance, this pointer is not associated with any actual allocation. Such a
-/// no-provenance pointer may be used for zero-sized memory accesses (if suitably aligned), but
-/// non-zero-sized memory accesses with a no-provenance pointer are UB. No-provenance pointers are
-/// little more than a `usize` address in disguise.
+/// 由于不带 provenance，这个指针不与任何实际的 allocation 关联。这样的无 provenance 指针可用于
+/// 零大小的内存访问（如果对齐合适的话），但用无 provenance 指针做非零大小的内存访问是 UB。
+/// 无 provenance 指针只不过是一个伪装成指针的 `usize` 地址而已。
 ///
-/// This is different from `addr as *mut T`, which creates a pointer that picks up a previously
-/// exposed provenance. See [`with_exposed_provenance_mut`] for more details on that operation.
+/// 这与 `addr as *mut T` 不同：后者创建的指针会拾取某个先前已暴露的 provenance。关于该操作的
+/// 更多细节见 [`with_exposed_provenance_mut`]。
 ///
-/// This is a [Strict Provenance][crate::ptr#strict-provenance] API.
+/// 这是一个 [Strict Provenance][crate::ptr#strict-provenance] API。
 #[inline(always)]
 #[must_use]
 #[stable(feature = "strict_provenance", since = "1.84.0")]
@@ -922,23 +834,18 @@ pub const fn dangling<T>() -> *const T {
 #[rustc_diagnostic_item = "ptr_without_provenance_mut"]
 #[allow(integer_to_ptr_transmutes)] // Expected semantics here.
 pub const fn without_provenance_mut<T>(addr: usize) -> *mut T {
-    // An int-to-pointer transmute currently has exactly the intended semantics: it creates a
-    // pointer without provenance. Note that this is *not* a stable guarantee about transmute
-    // semantics, it relies on sysroot crates having special status.
-    // SAFETY: every valid integer is also a valid pointer (as long as you don't dereference that
-    // pointer).
+    // 一次 int-to-pointer 的 transmute 目前恰好具有我们想要的语义：它创建一个不带 provenance
+    // 的指针。注意这*不是*关于 transmute 语义的稳定保证，它依赖于 sysroot crate 拥有特殊地位。
+    // SAFETY: 每个有效的整数也都是一个有效的指针（只要你不去解引用那个指针）。
     unsafe { mem::transmute(addr) }
 }
 
-/// Creates a new pointer that is dangling, but non-null and well-aligned.
+/// 创建一个新指针：它是悬垂（dangling）的，但非空且良好对齐。
 ///
-/// This is useful for initializing types which lazily allocate, like
-/// `Vec::new` does.
+/// 这对初始化那些惰性分配（lazily allocate）的类型很有用，例如 `Vec::new` 就是这么做的。
 ///
-/// Note that the address of the returned pointer may potentially
-/// be that of a valid pointer, which means this must not be used
-/// as a "not yet initialized" sentinel value.
-/// Types that lazily allocate must track initialization by some other means.
+/// 注意，返回指针的地址有可能恰好就是某个有效指针的地址，因此它*不能*被当作“尚未初始化”的
+/// 哨兵值（sentinel value）使用。惰性分配的类型必须用其他手段来追踪初始化状态。
 #[inline(always)]
 #[must_use]
 #[stable(feature = "strict_provenance", since = "1.84.0")]
@@ -947,127 +854,105 @@ pub const fn dangling_mut<T>() -> *mut T {
     NonNull::dangling().as_ptr()
 }
 
-/// Converts an address back to a pointer, picking up some previously 'exposed'
-/// [provenance][crate::ptr#provenance].
+/// 把一个地址转换回指针，并拾取某个先前“已暴露”的 [provenance][crate::ptr#provenance]。
 ///
-/// This is fully equivalent to `addr as *const T`. The provenance of the returned pointer is that
-/// of *some* pointer that was previously exposed by passing it to
-/// [`expose_provenance`][pointer::expose_provenance], or a `ptr as usize` cast. In addition, memory
-/// which is outside the control of the Rust abstract machine (MMIO registers, for example) is
-/// always considered to be accessible with an exposed provenance, so long as this memory is disjoint
-/// from memory that will be used by the abstract machine such as the stack, heap, and statics.
+/// 这完全等价于 `addr as *const T`。返回指针的 provenance，是*某个*先前通过传给
+/// [`expose_provenance`][pointer::expose_provenance]（或 `ptr as usize` 转换）而被暴露的指针的
+/// provenance。此外，位于 Rust 抽象机控制之外的内存（例如 MMIO 寄存器）总是被视为可用某个已
+/// 暴露 provenance 访问，只要这块内存与抽象机将要使用的内存（如栈、堆、static）不相交。
 ///
-/// The exact provenance that gets picked is not specified. The compiler will do its best to pick
-/// the "right" provenance for you (whatever that may be), but currently we cannot provide any
-/// guarantees about which provenance the resulting pointer will have -- and therefore there
-/// is no definite specification for which memory the resulting pointer may access.
+/// 究竟会挑中哪一份 provenance 并未规定。编译器会尽力为你挑选“正确”的那份（不管那是什么），
+/// 但目前我们无法对结果指针将带有哪一份 provenance 提供任何保证——因此也就没有关于结果指针可
+/// 访问哪块内存的确定规范。
 ///
-/// If there is *no* previously 'exposed' provenance that justifies the way the returned pointer
-/// will be used, the program has undefined behavior. In particular, the aliasing rules still apply:
-/// pointers and references that have been invalidated due to aliasing accesses cannot be used
-/// anymore, even if they have been exposed!
+/// 如果*没有*任何先前“已暴露”的 provenance 能够正当化返回指针被使用的方式，那么该程序就具有
+/// 未定义行为。特别地，aliasing 规则仍然适用：因别名访问而失效的指针和引用，即便它们曾被暴露，
+/// 也不能再使用了！
 ///
-/// Due to its inherent ambiguity, this operation may not be supported by tools that help you to
-/// stay conformant with the Rust memory model. It is recommended to use [Strict
-/// Provenance][self#strict-provenance] APIs such as [`with_addr`][pointer::with_addr] wherever
-/// possible.
+/// 由于其固有的歧义性，那些帮助你遵守 Rust 内存模型的工具可能不支持此操作。建议尽可能改用
+/// [Strict Provenance][self#strict-provenance] API，例如 [`with_addr`][pointer::with_addr]。
 ///
-/// On most platforms this will produce a value with the same bytes as the address. Platforms
-/// which need to store additional information in a pointer may not support this operation,
-/// since it is generally not possible to actually *compute* which provenance the returned
-/// pointer has to pick up.
+/// 在大多数平台上，这会产生一个字节与该地址相同的值。那些需要在指针中存储额外信息的平台可能
+/// 不支持此操作，因为通常无法真正*计算*出返回指针应当拾取哪一份 provenance。
 ///
-/// This is an [Exposed Provenance][crate::ptr#exposed-provenance] API.
+/// 这是一个 [Exposed Provenance][crate::ptr#exposed-provenance] API。
 #[must_use]
 #[inline(always)]
 #[stable(feature = "exposed_provenance", since = "1.84.0")]
 #[rustc_const_stable(feature = "const_exposed_provenance", since = "1.91.0")]
-#[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
-#[allow(fuzzy_provenance_casts)] // this *is* the explicit provenance API one should use instead
+#[cfg_attr(miri, track_caller)] // 即便没有 panic，这对 Miri 的回溯（backtrace）也有帮助
+#[allow(fuzzy_provenance_casts)] // 这*正是*应当替代使用的显式 provenance API
 pub const fn with_exposed_provenance<T>(addr: usize) -> *const T {
     addr as *const T
 }
 
-/// Converts an address back to a mutable pointer, picking up some previously 'exposed'
-/// [provenance][crate::ptr#provenance].
+/// 把一个地址转换回可变指针，并拾取某个先前“已暴露”的 [provenance][crate::ptr#provenance]。
 ///
-/// This is fully equivalent to `addr as *mut T`. The provenance of the returned pointer is that
-/// of *some* pointer that was previously exposed by passing it to
-/// [`expose_provenance`][pointer::expose_provenance], or a `ptr as usize` cast. In addition, memory
-/// which is outside the control of the Rust abstract machine (MMIO registers, for example) is
-/// always considered to be accessible with an exposed provenance, so long as this memory is disjoint
-/// from memory that will be used by the abstract machine such as the stack, heap, and statics.
+/// 这完全等价于 `addr as *mut T`。返回指针的 provenance，是*某个*先前通过传给
+/// [`expose_provenance`][pointer::expose_provenance]（或 `ptr as usize` 转换）而被暴露的指针的
+/// provenance。此外，位于 Rust 抽象机控制之外的内存（例如 MMIO 寄存器）总是被视为可用某个已
+/// 暴露 provenance 访问，只要这块内存与抽象机将要使用的内存（如栈、堆、static）不相交。
 ///
-/// The exact provenance that gets picked is not specified. The compiler will do its best to pick
-/// the "right" provenance for you (whatever that may be), but currently we cannot provide any
-/// guarantees about which provenance the resulting pointer will have -- and therefore there
-/// is no definite specification for which memory the resulting pointer may access.
+/// 究竟会挑中哪一份 provenance 并未规定。编译器会尽力为你挑选“正确”的那份（不管那是什么），
+/// 但目前我们无法对结果指针将带有哪一份 provenance 提供任何保证——因此也就没有关于结果指针可
+/// 访问哪块内存的确定规范。
 ///
-/// If there is *no* previously 'exposed' provenance that justifies the way the returned pointer
-/// will be used, the program has undefined behavior. In particular, the aliasing rules still apply:
-/// pointers and references that have been invalidated due to aliasing accesses cannot be used
-/// anymore, even if they have been exposed!
+/// 如果*没有*任何先前“已暴露”的 provenance 能够正当化返回指针被使用的方式，那么该程序就具有
+/// 未定义行为。特别地，aliasing 规则仍然适用：因别名访问而失效的指针和引用，即便它们曾被暴露，
+/// 也不能再使用了！
 ///
-/// Due to its inherent ambiguity, this operation may not be supported by tools that help you to
-/// stay conformant with the Rust memory model. It is recommended to use [Strict
-/// Provenance][self#strict-provenance] APIs such as [`with_addr`][pointer::with_addr] wherever
-/// possible.
+/// 由于其固有的歧义性，那些帮助你遵守 Rust 内存模型的工具可能不支持此操作。建议尽可能改用
+/// [Strict Provenance][self#strict-provenance] API，例如 [`with_addr`][pointer::with_addr]。
 ///
-/// On most platforms this will produce a value with the same bytes as the address. Platforms
-/// which need to store additional information in a pointer may not support this operation,
-/// since it is generally not possible to actually *compute* which provenance the returned
-/// pointer has to pick up.
+/// 在大多数平台上，这会产生一个字节与该地址相同的值。那些需要在指针中存储额外信息的平台可能
+/// 不支持此操作，因为通常无法真正*计算*出返回指针应当拾取哪一份 provenance。
 ///
-/// This is an [Exposed Provenance][crate::ptr#exposed-provenance] API.
+/// 这是一个 [Exposed Provenance][crate::ptr#exposed-provenance] API。
 #[must_use]
 #[inline(always)]
 #[stable(feature = "exposed_provenance", since = "1.84.0")]
 #[rustc_const_stable(feature = "const_exposed_provenance", since = "1.91.0")]
-#[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
-#[allow(fuzzy_provenance_casts)] // this *is* the explicit provenance API one should use instead
+#[cfg_attr(miri, track_caller)] // 即便没有 panic，这对 Miri 的回溯（backtrace）也有帮助
+#[allow(fuzzy_provenance_casts)] // 这*正是*应当替代使用的显式 provenance API
 pub const fn with_exposed_provenance_mut<T>(addr: usize) -> *mut T {
     addr as *mut T
 }
 
-/// Converts a reference to a raw pointer.
+/// 把一个引用转换为裸指针。
 ///
-/// For `r: &T`, `from_ref(r)` is equivalent to `r as *const T` (except for the caveat noted below),
-/// but is a bit safer since it will never silently change type or mutability, in particular if the
-/// code is refactored.
+/// 对于 `r: &T`，`from_ref(r)` 等价于 `r as *const T`（下文提到的注意点除外），但更安全一些，
+/// 因为它绝不会悄悄地改变类型或可变性，在代码被重构时尤其如此。
 ///
-/// The caller must ensure that the pointee outlives the pointer this function returns, or else it
-/// will end up dangling.
+/// 调用方必须确保所指对象（pointee）的存活时间长于本函数返回的指针，否则该指针将变为悬垂。
 ///
-/// The caller must also ensure that the memory the pointer (non-transitively) points to is never
-/// written to (except inside an `UnsafeCell`) using this pointer or any pointer derived from it. If
-/// you need to mutate the pointee, use [`from_mut`]. Specifically, to turn a mutable reference `m:
-/// &mut T` into `*const T`, prefer `from_mut(m).cast_const()` to obtain a pointer that can later be
-/// used for mutation.
+/// 调用方还必须确保：指针（非传递地）所指向的内存，绝不会通过此指针或任何从它派生的指针被写入
+///（在 `UnsafeCell` 内部除外）。如果你需要改动 pointee，请用 [`from_mut`]。具体来说，要把一个
+/// 可变引用 `m: &mut T` 转成 `*const T`，更推荐用 `from_mut(m).cast_const()` 来得到一个之后
+/// 仍可用于改动的指针。
 ///
-/// ## Interaction with lifetime extension
+/// ## 与生命周期延长（lifetime extension）的相互作用
 ///
-/// Note that this has subtle interactions with the rules for lifetime extension of temporaries in
-/// tail expressions. This code is valid, albeit in a non-obvious way:
+/// 注意，这与尾表达式（tail expression）中临时量的生命周期延长规则有微妙的相互作用。下面这段
+/// 代码是有效的，尽管原因并不显然：
 /// ```rust
 /// # type T = i32;
 /// # fn foo() -> T { 42 }
-/// // The temporary holding the return value of `foo` has its lifetime extended,
-/// // because the surrounding expression involves no function call.
+/// // 持有 `foo` 返回值的那个临时量，其生命周期被延长了，
+/// // 因为外围表达式不涉及函数调用。
 /// let p = &foo() as *const T;
 /// unsafe { p.read() };
 /// ```
-/// Naively replacing the cast with `from_ref` is not valid:
+/// 天真地把这个转换换成 `from_ref` 则是无效的：
 /// ```rust,no_run
 /// # use std::ptr;
 /// # type T = i32;
 /// # fn foo() -> T { 42 }
-/// // The temporary holding the return value of `foo` does *not* have its lifetime extended,
-/// // because the surrounding expression involves a function call.
+/// // 持有 `foo` 返回值的那个临时量，其生命周期*没有*被延长，
+/// // 因为外围表达式涉及了函数调用。
 /// let p = ptr::from_ref(&foo());
-/// unsafe { p.read() }; // UB! Reading from a dangling pointer ⚠️
+/// unsafe { p.read() }; // UB！从悬垂指针读取 ⚠️
 /// ```
-/// The recommended way to write this code is to avoid relying on lifetime extension
-/// when raw pointers are involved:
+/// 推荐的写法是：在涉及裸指针时，避免依赖生命周期延长。
 /// ```rust
 /// # use std::ptr;
 /// # type T = i32;
@@ -1086,39 +971,36 @@ pub const fn from_ref<T: PointeeSized>(r: &T) -> *const T {
     r
 }
 
-/// Converts a mutable reference to a raw pointer.
+/// 把一个可变引用转换为裸指针。
 ///
-/// For `r: &mut T`, `from_mut(r)` is equivalent to `r as *mut T` (except for the caveat noted
-/// below), but is a bit safer since it will never silently change type or mutability, in particular
-/// if the code is refactored.
+/// 对于 `r: &mut T`，`from_mut(r)` 等价于 `r as *mut T`（下文提到的注意点除外），但更安全一些，
+/// 因为它绝不会悄悄地改变类型或可变性，在代码被重构时尤其如此。
 ///
-/// The caller must ensure that the pointee outlives the pointer this function returns, or else it
-/// will end up dangling.
+/// 调用方必须确保所指对象（pointee）的存活时间长于本函数返回的指针，否则该指针将变为悬垂。
 ///
-/// ## Interaction with lifetime extension
+/// ## 与生命周期延长（lifetime extension）的相互作用
 ///
-/// Note that this has subtle interactions with the rules for lifetime extension of temporaries in
-/// tail expressions. This code is valid, albeit in a non-obvious way:
+/// 注意，这与尾表达式（tail expression）中临时量的生命周期延长规则有微妙的相互作用。下面这段
+/// 代码是有效的，尽管原因并不显然：
 /// ```rust
 /// # type T = i32;
 /// # fn foo() -> T { 42 }
-/// // The temporary holding the return value of `foo` has its lifetime extended,
-/// // because the surrounding expression involves no function call.
+/// // 持有 `foo` 返回值的那个临时量，其生命周期被延长了，
+/// // 因为外围表达式不涉及函数调用。
 /// let p = &mut foo() as *mut T;
 /// unsafe { p.write(T::default()) };
 /// ```
-/// Naively replacing the cast with `from_mut` is not valid:
+/// 天真地把这个转换换成 `from_mut` 则是无效的：
 /// ```rust,no_run
 /// # use std::ptr;
 /// # type T = i32;
 /// # fn foo() -> T { 42 }
-/// // The temporary holding the return value of `foo` does *not* have its lifetime extended,
-/// // because the surrounding expression involves a function call.
+/// // 持有 `foo` 返回值的那个临时量，其生命周期*没有*被延长，
+/// // 因为外围表达式涉及了函数调用。
 /// let p = ptr::from_mut(&mut foo());
-/// unsafe { p.write(T::default()) }; // UB! Writing to a dangling pointer ⚠️
+/// unsafe { p.write(T::default()) }; // UB！向悬垂指针写入 ⚠️
 /// ```
-/// The recommended way to write this code is to avoid relying on lifetime extension
-/// when raw pointers are involved:
+/// 推荐的写法是：在涉及裸指针时，避免依赖生命周期延长。
 /// ```rust
 /// # use std::ptr;
 /// # type T = i32;
@@ -1136,29 +1018,29 @@ pub const fn from_mut<T: PointeeSized>(r: &mut T) -> *mut T {
     r
 }
 
-/// Forms a raw slice from a pointer and a length.
+/// 由一个指针和一个长度构造一个裸切片（raw slice）。
 ///
-/// The `len` argument is the number of **elements**, not the number of bytes.
+/// `len` 参数是**元素**个数，而不是字节数。
 ///
-/// This function is safe, but actually using the return value is unsafe.
-/// See the documentation of [`slice::from_raw_parts`] for slice safety requirements.
+/// 本函数是安全的，但实际使用其返回值则是 unsafe 的。切片的安全要求见
+/// [`slice::from_raw_parts`] 的文档。
 ///
 /// [`slice::from_raw_parts`]: crate::slice::from_raw_parts
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```rust
 /// use std::ptr;
 ///
-/// // create a slice pointer when starting out with a pointer to the first element
+/// // 从指向首元素的指针出发，创建一个切片指针
 /// let x = [5, 6, 7];
 /// let raw_pointer = x.as_ptr();
 /// let slice = ptr::slice_from_raw_parts(raw_pointer, 3);
 /// assert_eq!(unsafe { &*slice }[2], 7);
 /// ```
 ///
-/// You must ensure that the pointer is valid and not null before dereferencing
-/// the raw slice. A slice reference must never have a null pointer, even if it's empty.
+/// 在解引用这个裸切片之前，你必须确保指针是有效且非空的。切片引用绝不能持有 null 指针，
+/// 即使它是空的。
 ///
 /// ```rust,should_panic
 /// use std::ptr;
@@ -1175,19 +1057,18 @@ pub const fn slice_from_raw_parts<T>(data: *const T, len: usize) -> *const [T] {
     from_raw_parts(data, len)
 }
 
-/// Forms a raw mutable slice from a pointer and a length.
+/// 由一个指针和一个长度构造一个可变裸切片（raw mutable slice）。
 ///
-/// The `len` argument is the number of **elements**, not the number of bytes.
+/// `len` 参数是**元素**个数，而不是字节数。
 ///
-/// Performs the same functionality as [`slice_from_raw_parts`], except that a
-/// raw mutable slice is returned, as opposed to a raw immutable slice.
+/// 功能与 [`slice_from_raw_parts`] 相同，区别在于返回的是可变裸切片，而非不可变裸切片。
 ///
-/// This function is safe, but actually using the return value is unsafe.
-/// See the documentation of [`slice::from_raw_parts_mut`] for slice safety requirements.
+/// 本函数是安全的，但实际使用其返回值则是 unsafe 的。切片的安全要求见
+/// [`slice::from_raw_parts_mut`] 的文档。
 ///
 /// [`slice::from_raw_parts_mut`]: crate::slice::from_raw_parts_mut
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```rust
 /// use std::ptr;
@@ -1197,14 +1078,14 @@ pub const fn slice_from_raw_parts<T>(data: *const T, len: usize) -> *const [T] {
 /// let slice = ptr::slice_from_raw_parts_mut(raw_pointer, 3);
 ///
 /// unsafe {
-///     (*slice)[2] = 99; // assign a value at an index in the slice
+///     (*slice)[2] = 99; // 给切片中某个下标处赋值
 /// };
 ///
 /// assert_eq!(unsafe { &*slice }[2], 99);
 /// ```
 ///
-/// You must ensure that the pointer is valid and not null before dereferencing
-/// the raw slice. A slice reference must never have a null pointer, even if it's empty.
+/// 在解引用这个裸切片之前，你必须确保指针是有效且非空的。切片引用绝不能持有 null 指针，
+/// 即使它是空的。
 ///
 /// ```rust,should_panic
 /// use std::ptr;
@@ -1221,39 +1102,35 @@ pub const fn slice_from_raw_parts_mut<T>(data: *mut T, len: usize) -> *mut [T] {
     from_raw_parts_mut(data, len)
 }
 
-/// Swaps the values at two mutable locations of the same type, without
-/// deinitializing either.
+/// 交换两个同类型可变位置上的值，且不会让其中任何一个变为未初始化。
 ///
-/// But for the following exceptions, this function is semantically
-/// equivalent to [`mem::swap`]:
+/// 除了以下若干例外，本函数在语义上等价于 [`mem::swap`]：
 ///
-/// * It operates on raw pointers instead of references. When references are
-///   available, [`mem::swap`] should be preferred.
+/// * 它操作的是裸指针而非引用。当引用可用时，应优先使用 [`mem::swap`]。
 ///
-/// * The two pointed-to values may overlap. If the values do overlap, then the
-///   overlapping region of memory from `x` will be used. This is demonstrated
-///   in the second example below.
+/// * 两个所指向的值可以重叠。如果它们确实重叠，那么将使用来自 `x` 的那段重叠内存区域。
+///   下面第二个示例演示了这一点。
 ///
-/// * The operation is "untyped" in the sense that data may be uninitialized or otherwise violate
-///   the requirements of `T`. The initialization state is preserved exactly.
+/// * 该操作是“无类型的”（untyped），意思是数据可以是未初始化的、或以其他方式违反 `T` 的要求。
+///   初始化状态会被原样保留。
 ///
-/// # Safety
+/// # 安全性（Safety）
 ///
-/// Behavior is undefined if any of the following conditions are violated:
+/// 若违反以下任一条件，行为即为未定义。调用方必须维护以下全部不变量：
 ///
-/// * Both `x` and `y` must be [valid] for both reads and writes. They must remain valid even when the
-///   other pointer is written. (This means if the memory ranges overlap, the two pointers must not
-///   be subject to aliasing restrictions relative to each other.)
+/// * `x` 和 `y` 都必须对读取和写入*两者*都是 [valid]（有效）的。即便在写入另一个指针时，它们
+///   也必须保持有效。（这意味着：如果两段内存范围重叠，这两个指针相对彼此不得受到 aliasing
+///   限制的约束。）
 ///
-/// * Both `x` and `y` must be properly aligned.
+/// * `x` 和 `y` 都必须正确对齐。
 ///
-/// Note that even if `T` has size `0`, the pointers must be properly aligned.
+/// 注意：即使 `T` 的大小为 `0`，这些指针也必须正确对齐。
 ///
 /// [valid]: self#safety
 ///
-/// # Examples
+/// # 示例
 ///
-/// Swapping two non-overlapping regions:
+/// 交换两个不重叠的区域：
 ///
 /// ```
 /// use std::ptr;
@@ -1261,8 +1138,8 @@ pub const fn slice_from_raw_parts_mut<T>(data: *mut T, len: usize) -> *mut [T] {
 /// let mut array = [0, 1, 2, 3];
 ///
 /// let (x, y) = array.split_at_mut(2);
-/// let x = x.as_mut_ptr().cast::<[u32; 2]>(); // this is `array[0..2]`
-/// let y = y.as_mut_ptr().cast::<[u32; 2]>(); // this is `array[2..4]`
+/// let x = x.as_mut_ptr().cast::<[u32; 2]>(); // 这是 `array[0..2]`
+/// let y = y.as_mut_ptr().cast::<[u32; 2]>(); // 这是 `array[2..4]`
 ///
 /// unsafe {
 ///     ptr::swap(x, y);
@@ -1270,7 +1147,7 @@ pub const fn slice_from_raw_parts_mut<T>(data: *mut T, len: usize) -> *mut [T] {
 /// }
 /// ```
 ///
-/// Swapping two overlapping regions:
+/// 交换两个重叠的区域：
 ///
 /// ```
 /// use std::ptr;
@@ -1279,16 +1156,16 @@ pub const fn slice_from_raw_parts_mut<T>(data: *mut T, len: usize) -> *mut [T] {
 ///
 /// let array_ptr: *mut i32 = array.as_mut_ptr();
 ///
-/// let x = array_ptr as *mut [i32; 3]; // this is `array[0..3]`
-/// let y = unsafe { array_ptr.add(1) } as *mut [i32; 3]; // this is `array[1..4]`
+/// let x = array_ptr as *mut [i32; 3]; // 这是 `array[0..3]`
+/// let y = unsafe { array_ptr.add(1) } as *mut [i32; 3]; // 这是 `array[1..4]`
 ///
 /// unsafe {
 ///     ptr::swap(x, y);
-///     // The indices `1..3` of the slice overlap between `x` and `y`.
-///     // Reasonable results would be for to them be `[2, 3]`, so that indices `0..3` are
-///     // `[1, 2, 3]` (matching `y` before the `swap`); or for them to be `[0, 1]`
-///     // so that indices `1..4` are `[0, 1, 2]` (matching `x` before the `swap`).
-///     // This implementation is defined to make the latter choice.
+///     // 切片的下标 `1..3` 在 `x` 与 `y` 之间重叠。
+///     // 合理的结果可能是让它们为 `[2, 3]`，从而下标 `0..3` 为
+///     // `[1, 2, 3]`（与 swap 之前的 `y` 相符）；或者让它们为 `[0, 1]`，
+///     // 从而下标 `1..4` 为 `[0, 1, 2]`（与 swap 之前的 `x` 相符）。
+///     // 本实现被定义为采取后一种选择。
 ///     assert_eq!([1, 0, 1, 2], array);
 /// }
 /// ```
@@ -1297,49 +1174,46 @@ pub const fn slice_from_raw_parts_mut<T>(data: *mut T, len: usize) -> *mut [T] {
 #[rustc_const_stable(feature = "const_swap", since = "1.85.0")]
 #[rustc_diagnostic_item = "ptr_swap"]
 pub const unsafe fn swap<T>(x: *mut T, y: *mut T) {
-    // Give ourselves some scratch space to work with.
-    // We do not have to worry about drops: `MaybeUninit` does nothing when dropped.
+    // 给自己留一块临时的工作空间。
+    // 我们无需担心 drop：`MaybeUninit` 被丢弃时什么也不做。
     let mut tmp = MaybeUninit::<T>::uninit();
 
-    // Perform the swap
-    // SAFETY: the caller must guarantee that `x` and `y` are
-    // valid for writes and properly aligned. `tmp` cannot be
-    // overlapping either `x` or `y` because `tmp` was just allocated
-    // on the stack as a separate allocation.
+    // 执行交换
+    // SAFETY: 调用方必须保证 `x` 和 `y` 对写入有效且正确对齐。
+    // `tmp` 不可能与 `x` 或 `y` 重叠，因为 `tmp` 刚刚作为一块独立的
+    // allocation 分配在栈上。
     unsafe {
         copy_nonoverlapping(x, tmp.as_mut_ptr(), 1);
-        copy(y, x, 1); // `x` and `y` may overlap
+        copy(y, x, 1); // `x` 和 `y` 可能重叠
         copy_nonoverlapping(tmp.as_ptr(), y, 1);
     }
 }
 
-/// Swaps `count * size_of::<T>()` bytes between the two regions of memory
-/// beginning at `x` and `y`. The two regions must *not* overlap.
+/// 在分别从 `x` 和 `y` 起的两段内存区域之间交换 `count * size_of::<T>()` 个字节。这两段区域
+///*不得*重叠。
 ///
-/// The operation is "untyped" in the sense that data may be uninitialized or otherwise violate the
-/// requirements of `T`. The initialization state is preserved exactly.
+/// 该操作是“无类型的”（untyped），意思是数据可以是未初始化的、或以其他方式违反 `T` 的要求。
+/// 初始化状态会被原样保留。
 ///
-/// # Safety
+/// # 安全性（Safety）
 ///
-/// Behavior is undefined if any of the following conditions are violated:
+/// 若违反以下任一条件，行为即为未定义。调用方必须维护以下全部不变量：
 ///
-/// * Both `x` and `y` must be [valid] for both reads and writes of `count *
-///   size_of::<T>()` bytes.
+/// * `x` 和 `y` 都必须对读取和写入*两者*、各 `count * size_of::<T>()` 个字节是 [valid]
+///（有效）的。
 ///
-/// * Both `x` and `y` must be properly aligned.
+/// * `x` 和 `y` 都必须正确对齐。
 ///
-/// * The region of memory beginning at `x` with a size of `count *
-///   size_of::<T>()` bytes must *not* overlap with the region of memory
-///   beginning at `y` with the same size.
+/// * 从 `x` 起、大小为 `count * size_of::<T>()` 字节的内存区域，与从 `y` 起、同样大小的内存
+///   区域*不得*重叠。
 ///
-/// Note that even if the effectively copied size (`count * size_of::<T>()`) is `0`,
-/// the pointers must be properly aligned.
+/// 注意：即使实际交换的大小（`count * size_of::<T>()`）为 `0`，这些指针也必须正确对齐。
 ///
 /// [valid]: self#safety
 ///
-/// # Examples
+/// # 示例
 ///
-/// Basic usage:
+/// 基本用法：
 ///
 /// ```
 /// use std::ptr;
@@ -1382,40 +1256,40 @@ pub const unsafe fn swap_nonoverlapping<T>(x: *mut T, y: *mut T, count: usize) {
     const_eval_select!(
         @capture[T] { x: *mut T, y: *mut T, count: usize }:
         if const {
-            // At compile-time we don't need all the special code below.
-            // SAFETY: Same preconditions as this function
+            // 在编译期，我们不需要下面那些特殊代码。
+            // SAFETY: 与本函数相同的前置条件
             unsafe { swap_nonoverlapping_const(x, y, count) }
         } else {
-            // Going though a slice here helps codegen know the size fits in `isize`
+            // 这里经由一个切片，有助于让 codegen 知道大小可以放进 `isize`
             let slice = slice_from_raw_parts_mut(x, count);
-            // SAFETY: This is all readable from the pointer, meaning it's one
-            // allocation, and thus cannot be more than isize::MAX bytes.
+            // SAFETY: 这一整块都可从该指针读取，意味着它属于同一块
+            // allocation，因此不可能超过 isize::MAX 字节。
             let bytes = unsafe { mem::size_of_val_raw::<[T]>(slice) };
             if let Some(bytes) = NonZero::new(bytes) {
-                // SAFETY: These are the same ranges, just expressed in a different
-                // type, so they're still non-overlapping.
+                // SAFETY: 这是同样的范围，只是用不同的类型来表达，
+                // 所以它们仍然是不重叠的。
                 unsafe { swap_nonoverlapping_bytes(x.cast(), y.cast(), bytes) };
             }
         }
     )
 }
 
-/// Same behavior and safety conditions as [`swap_nonoverlapping`]
+/// 行为与安全条件同 [`swap_nonoverlapping`]
 #[inline]
 const unsafe fn swap_nonoverlapping_const<T>(x: *mut T, y: *mut T, count: usize) {
     let mut i = 0;
     while i < count {
-        // SAFETY: By precondition, `i` is in-bounds because it's below `n`
+        // SAFETY: 依据前置条件，`i` 在界内，因为它小于 `n`
         let x = unsafe { x.add(i) };
-        // SAFETY: By precondition, `i` is in-bounds because it's below `n`
-        // and it's distinct from `x` since the ranges are non-overlapping
+        // SAFETY: 依据前置条件，`i` 在界内，因为它小于 `n`；
+        // 又因为两段范围不重叠，它与 `x` 不同
         let y = unsafe { y.add(i) };
 
-        // SAFETY: we're only ever given pointers that are valid to read/write,
-        // including being aligned, and nothing here panics so it's drop-safe.
+        // SAFETY: 我们拿到的指针总是可供读/写的（包括已对齐），
+        // 而且这里没有任何东西会 panic，所以对 drop 是安全的。
         unsafe {
-            // Note that it's critical that these use `copy_nonoverlapping`,
-            // rather than `read`/`write`, to avoid #134713 if T has padding.
+            // 注意，关键之处在于这些必须用 `copy_nonoverlapping`，
+            // 而不是 `read`/`write`，以避免 T 有 padding 时触发 #134713。
             let mut temp = MaybeUninit::<T>::uninit();
             copy_nonoverlapping(x, temp.as_mut_ptr(), 1);
             copy_nonoverlapping(y, x, 1);
@@ -1426,7 +1300,7 @@ const unsafe fn swap_nonoverlapping_const<T>(x: *mut T, y: *mut T, count: usize)
     }
 }
 
-// Don't let MIR inline this, because we really want it to keep its noalias metadata
+// 不要让 MIR 内联这个函数，因为我们确实希望它保留其 noalias 元数据
 #[rustc_no_mir_inline]
 #[inline]
 fn swap_chunk<const N: usize>(x: &mut MaybeUninit<[u8; N]>, y: &mut MaybeUninit<[u8; N]>) {
@@ -1438,7 +1312,7 @@ fn swap_chunk<const N: usize>(x: &mut MaybeUninit<[u8; N]>, y: &mut MaybeUninit<
 
 #[inline]
 unsafe fn swap_nonoverlapping_bytes(x: *mut u8, y: *mut u8, bytes: NonZero<usize>) {
-    // Same as `swap_nonoverlapping::<[u8; N]>`.
+    // 与 `swap_nonoverlapping::<[u8; N]>` 相同。
     unsafe fn swap_nonoverlapping_chunks<const N: usize>(
         x: *mut MaybeUninit<[u8; N]>,
         y: *mut MaybeUninit<[u8; N]>,
@@ -1446,28 +1320,28 @@ unsafe fn swap_nonoverlapping_bytes(x: *mut u8, y: *mut u8, bytes: NonZero<usize
     ) {
         let chunks = chunks.get();
         for i in 0..chunks {
-            // SAFETY: i is in [0, chunks) so the adds and dereferences are in-bounds.
+            // SAFETY: i 在 [0, chunks) 范围内，所以这些 add 和解引用都在界内。
             unsafe { swap_chunk(&mut *x.add(i), &mut *y.add(i)) };
         }
     }
 
-    // Same as `swap_nonoverlapping_bytes`, but accepts at most 1+2+4=7 bytes
+    // 与 `swap_nonoverlapping_bytes` 相同，但最多接受 1+2+4=7 个字节
     #[inline]
     unsafe fn swap_nonoverlapping_short(x: *mut u8, y: *mut u8, bytes: NonZero<usize>) {
-        // Tail handling for auto-vectorized code sometimes has element-at-a-time behaviour,
-        // see <https://github.com/rust-lang/rust/issues/134946>.
-        // By swapping as different sizes, rather than as a loop over bytes,
-        // we make sure not to end up with, say, seven byte-at-a-time copies.
+        // 自动向量化代码对尾部的处理有时会表现为逐元素的行为，
+        // 详见 <https://github.com/rust-lang/rust/issues/134946>。
+        // 通过按不同大小（而非按字节循环）来交换，
+        // 我们确保不会落到比如说“连续七次逐字节复制”的局面。
 
         let bytes = bytes.get();
         let mut i = 0;
         macro_rules! swap_prefix {
             ($($n:literal)+) => {$(
                 if (bytes & $n) != 0 {
-                    // SAFETY: `i` can only have the same bits set as those in bytes,
-                    // so these `add`s are in-bounds of `bytes`.  But the bit for
-                    // `$n` hasn't been set yet, so the `$n` bytes that `swap_chunk`
-                    // will read and write are within the usable range.
+                    // SAFETY: `i` 所置位的比特只可能是 bytes 中已置位的那些，
+                    // 所以这些 `add` 都在 `bytes` 的界内。但 `$n` 对应的比特
+                    // 尚未被置位，所以 `swap_chunk` 将读写的那 `$n` 个字节
+                    // 落在可用范围内。
                     unsafe { swap_chunk::<$n>(&mut*x.add(i).cast(), &mut*y.add(i).cast()) };
                     i |= $n;
                 }
@@ -1483,50 +1357,48 @@ unsafe fn swap_nonoverlapping_bytes(x: *mut u8, y: *mut u8, bytes: NonZero<usize
     let chunks = bytes / CHUNK_SIZE;
     let tail = bytes % CHUNK_SIZE;
     if let Some(chunks) = NonZero::new(chunks) {
-        // SAFETY: this is bytes/CHUNK_SIZE*CHUNK_SIZE bytes, which is <= bytes,
-        // so it's within the range of our non-overlapping bytes.
+        // SAFETY: 这是 bytes/CHUNK_SIZE*CHUNK_SIZE 个字节，它 <= bytes，
+        // 所以落在我们这段不重叠字节的范围内。
         unsafe { swap_nonoverlapping_chunks::<CHUNK_SIZE>(x.cast(), y.cast(), chunks) };
     }
     if let Some(tail) = NonZero::new(tail) {
         const { assert!(CHUNK_SIZE <= 8) };
         let delta = chunks * CHUNK_SIZE;
-        // SAFETY: the tail length is below CHUNK SIZE because of the remainder,
-        // and CHUNK_SIZE is at most 8 by the const assert, so tail <= 7
+        // SAFETY: 因为取了余数，尾部长度小于 CHUNK_SIZE，
+        // 而由 const 断言可知 CHUNK_SIZE 至多为 8，所以 tail <= 7
         unsafe { swap_nonoverlapping_short(x.add(delta), y.add(delta), tail) };
     }
 }
 
-/// Moves `src` into the pointed `dst`, returning the previous `dst` value.
+/// 把 `src` 移动进 `dst` 所指向的位置，并返回 `dst` 先前的值。
 ///
-/// Neither value is dropped.
+/// 两个值都不会被析构。
 ///
-/// This function is semantically equivalent to [`mem::replace`] except that it
-/// operates on raw pointers instead of references. When references are
-/// available, [`mem::replace`] should be preferred.
+/// 本函数在语义上等价于 [`mem::replace`]，区别仅在于它操作的是裸指针而非引用。当引用可用时，
+/// 应优先使用 [`mem::replace`]。
 ///
-/// # Safety
+/// # 安全性（Safety）
 ///
-/// Behavior is undefined if any of the following conditions are violated:
+/// 若违反以下任一条件，行为即为未定义。调用方必须维护以下全部不变量：
 ///
-/// * `dst` must be [valid] for both reads and writes.
+/// * `dst` 必须对读取和写入*两者*都是 [valid]（有效）的。
 ///
-/// * `dst` must be properly aligned.
+/// * `dst` 必须正确对齐。
 ///
-/// * `dst` must point to a properly initialized value of type `T`.
+/// * `dst` 必须指向一个已正确初始化的、类型为 `T` 的值。
 ///
-/// Note that even if `T` has size `0`, the pointer must be properly aligned.
+/// 注意：即使 `T` 的大小为 `0`，该指针也必须正确对齐。
 ///
 /// [valid]: self#safety
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use std::ptr;
 ///
 /// let mut rust = vec!['b', 'u', 's', 't'];
 ///
-/// // `mem::replace` would have the same effect without requiring the unsafe
-/// // block.
+/// // `mem::replace` 也能达到同样的效果，且无需 unsafe 块。
 /// let b = unsafe {
 ///     ptr::replace(&mut rust[0], 'r')
 /// };
@@ -1540,10 +1412,9 @@ unsafe fn swap_nonoverlapping_bytes(x: *mut u8, y: *mut u8, bytes: NonZero<usize
 #[rustc_diagnostic_item = "ptr_replace"]
 #[track_caller]
 pub const unsafe fn replace<T>(dst: *mut T, src: T) -> T {
-    // SAFETY: the caller must guarantee that `dst` is valid to be
-    // cast to a mutable reference (valid for writes, aligned, initialized),
-    // and cannot overlap `src` since `dst` must point to a distinct
-    // allocation.
+    // SAFETY: 调用方必须保证 `dst` 可被转为可变引用
+    //（即对写入有效、已对齐、已初始化），且不可能与 `src` 重叠，
+    // 因为 `dst` 必须指向一块不同的 allocation。
     unsafe {
         ub_checks::assert_unsafe_precondition!(
             check_language_ub,
@@ -1558,25 +1429,25 @@ pub const unsafe fn replace<T>(dst: *mut T, src: T) -> T {
     }
 }
 
-/// Reads the value from `src` without moving it. This leaves the
-/// memory in `src` unchanged.
+/// 从 `src` 处读取值，但不移动它。这会使 `src` 处的内存保持不变。
 ///
-/// # Safety
+/// # 安全性（Safety）
 ///
-/// Behavior is undefined if any of the following conditions are violated:
+/// 若违反以下任一条件，行为即为未定义。调用方必须维护以下全部不变量：
 ///
-/// * `src` must be [valid] for reads.
+/// * `src` 必须对读取是 [valid]（有效）的：非空、已分配未释放、不越界、并带有覆盖该范围的
+///   provenance。
 ///
-/// * `src` must be properly aligned. Use [`read_unaligned`] if this is not the
-///   case.
+/// * `src` 必须正确对齐。如果做不到这一点，请用 [`read_unaligned`]。
 ///
-/// * `src` must point to a properly initialized value of type `T`.
+/// * `src` 必须指向一个已正确初始化的、类型为 `T` 的值（`read` 会按位复制出该值，要求它
+///   已初始化）。
 ///
-/// Note that even if `T` has size `0`, the pointer must be properly aligned.
+/// 注意：即使 `T` 的大小为 `0`，该指针也必须正确对齐。
 ///
-/// # Examples
+/// # 示例
 ///
-/// Basic usage:
+/// 基本用法：
 ///
 /// ```
 /// let x = 12;
@@ -1587,33 +1458,32 @@ pub const unsafe fn replace<T>(dst: *mut T, src: T) -> T {
 /// }
 /// ```
 ///
-/// Manually implement [`mem::swap`]:
+/// 手动实现 [`mem::swap`]：
 ///
 /// ```
 /// use std::ptr;
 ///
 /// fn swap<T>(a: &mut T, b: &mut T) {
 ///     unsafe {
-///         // Create a bitwise copy of the value at `a` in `tmp`.
+///         // 在 `tmp` 中创建 `a` 处值的按位副本。
 ///         let tmp = ptr::read(a);
 ///
-///         // Exiting at this point (either by explicitly returning or by
-///         // calling a function which panics) would cause the value in `tmp` to
-///         // be dropped while the same value is still referenced by `a`. This
-///         // could trigger undefined behavior if `T` is not `Copy`.
+///         // 在这一点上退出（无论是显式 return，还是调用一个会 panic 的
+///         // 函数），都会导致 `tmp` 中的值被析构，而与此同时 `a` 仍引用着
+///         // 同一个值。如果 `T` 不是 `Copy`，这可能触发未定义行为。
 ///
-///         // Create a bitwise copy of the value at `b` in `a`.
-///         // This is safe because mutable references cannot alias.
+///         // 在 `a` 中创建 `b` 处值的按位副本。
+///         // 这是安全的，因为可变引用不会别名（alias）。
 ///         ptr::copy_nonoverlapping(b, a, 1);
 ///
-///         // As above, exiting here could trigger undefined behavior because
-///         // the same value is referenced by `a` and `b`.
+///         // 与上同理，在这里退出可能触发未定义行为，
+///         // 因为同一个值同时被 `a` 和 `b` 引用。
 ///
-///         // Move `tmp` into `b`.
+///         // 把 `tmp` 移动进 `b`。
 ///         ptr::write(b, tmp);
 ///
-///         // `tmp` has been moved (`write` takes ownership of its second argument),
-///         // so nothing is dropped implicitly here.
+///         // `tmp` 已被移走（`write` 取得其第二个参数的所有权），
+///         // 所以这里不会隐式析构任何东西。
 ///     }
 /// }
 ///
@@ -1626,36 +1496,34 @@ pub const unsafe fn replace<T>(dst: *mut T, src: T) -> T {
 /// assert_eq!(bar, "foo");
 /// ```
 ///
-/// ## Ownership of the Returned Value
+/// ## 返回值的所有权（Ownership of the Returned Value）
 ///
-/// `read` creates a bitwise copy of `T`, regardless of whether `T` is [`Copy`].
-/// If `T` is not [`Copy`], using both the returned value and the value at
-/// `*src` can violate memory safety. Note that assigning to `*src` counts as a
-/// use because it will attempt to drop the value at `*src`.
+/// 无论 `T` 是否为 [`Copy`]，`read` 都会创建 `T` 的按位副本。如果 `T` 不是 [`Copy`]，那么
+/// 同时使用返回值和 `*src` 处的值会违反内存安全（即所有权问题：值会被析构两次）。注意，
+/// 给 `*src` 赋值也算作一次使用，因为它会试图析构 `*src` 处的值。
 ///
-/// [`write()`] can be used to overwrite data without causing it to be dropped.
+/// 可用 [`write()`] 来覆盖数据而不触发它被析构。
 ///
 /// ```
 /// use std::ptr;
 ///
 /// let mut s = String::from("foo");
 /// unsafe {
-///     // `s2` now points to the same underlying memory as `s`.
+///     // `s2` 现在指向与 `s` 相同的底层内存。
 ///     let mut s2: String = ptr::read(&s);
 ///
 ///     assert_eq!(s2, "foo");
 ///
-///     // Assigning to `s2` causes its original value to be dropped. Beyond
-///     // this point, `s` must no longer be used, as the underlying memory has
-///     // been freed.
+///     // 给 `s2` 赋值会导致它原来的值被析构。在这一点之后，
+///     // `s` 不得再被使用，因为其底层内存已被释放。
 ///     s2 = String::default();
 ///     assert_eq!(s2, "");
 ///
-///     // Assigning to `s` would cause the old value to be dropped again,
-///     // resulting in undefined behavior.
-///     // s = String::from("bar"); // ERROR
+///     // 给 `s` 赋值会导致旧值被再次析构，
+///     // 从而引发未定义行为。
+///     // s = String::from("bar"); // 错误
 ///
-///     // `ptr::write` can be used to overwrite a value without dropping it.
+///     // 可用 `ptr::write` 来覆盖一个值而不析构它。
 ///     ptr::write(&mut s, String::from("bar"));
 /// }
 ///
@@ -1669,35 +1537,28 @@ pub const unsafe fn replace<T>(dst: *mut T, src: T) -> T {
 #[track_caller]
 #[rustc_diagnostic_item = "ptr_read"]
 pub const unsafe fn read<T>(src: *const T) -> T {
-    // It would be semantically correct to implement this via `copy_nonoverlapping`
-    // and `MaybeUninit`, as was done before PR #109035. Calling `assume_init`
-    // provides enough information to know that this is a typed operation.
+    // 按语义来说，本可以经由 `copy_nonoverlapping` 和 `MaybeUninit` 实现，
+    // 就像 PR #109035 之前那样。调用 `assume_init` 足以表明这是一次有类型的操作。
 
-    // However, as of March 2023 the compiler was not capable of taking advantage
-    // of that information. Thus, the implementation here switched to an intrinsic,
-    // which lowers to `_0 = *src` in MIR, to address a few issues:
+    // 然而，截至 2023 年 3 月，编译器还无法利用这一信息。于是这里的实现改用了
+    // 一个 intrinsic，它在 MIR 中下降为 `_0 = *src`，以解决以下几个问题：
     //
-    // - Using `MaybeUninit::assume_init` after a `copy_nonoverlapping` was not
-    //   turning the untyped copy into a typed load. As such, the generated
-    //   `load` in LLVM didn't get various metadata, such as `!range` (#73258),
-    //   `!nonnull`, and `!noundef`, resulting in poorer optimization.
-    // - Going through the extra local resulted in multiple extra copies, even
-    //   in optimized MIR.  (Ignoring StorageLive/Dead, the intrinsic is one
-    //   MIR statement, while the previous implementation was eight.)  LLVM
-    //   could sometimes optimize them away, but because `read` is at the core
-    //   of so many things, not having them in the first place improves what we
-    //   hand off to the backend.  For example, `mem::replace::<Big>` previously
-    //   emitted 4 `alloca` and 6 `memcpy`s, but is now 1 `alloc` and 3 `memcpy`s.
-    // - In general, this approach keeps us from getting any more bugs (like
-    //   #106369) that boil down to "`read(p)` is worse than `*p`", as this
-    //   makes them look identical to the backend (or other MIR consumers).
+    // - 在 `copy_nonoverlapping` 之后使用 `MaybeUninit::assume_init`，并不能把
+    //   无类型复制变成有类型的 load。因此 LLVM 中生成的 `load` 拿不到诸如 `!range`
+    //（#73258）、`!nonnull`、`!noundef` 之类的各种元数据，导致优化变差。
+    // - 经由额外的局部变量会产生多次额外复制，即便在优化过的 MIR 中也是如此。
+    //   （忽略 StorageLive/Dead，该 intrinsic 只是一条 MIR 语句，而此前的实现是八条。）
+    //   LLVM 有时能把它们优化掉，但由于 `read` 处在众多东西的核心，一开始就不产生它们，
+    //   能改善我们交给后端的东西。例如 `mem::replace::<Big>` 此前会发出 4 个 `alloca`
+    //   和 6 个 `memcpy`，而现在是 1 个 `alloc` 和 3 个 `memcpy`。
+    // - 总的来说，这一做法使我们不再招致更多形如“`read(p)` 比 `*p` 更差”的 bug
+    //   （比如 #106369），因为它让二者在后端（或其他 MIR 消费者）看来完全一样。
     //
-    // Future enhancements to MIR optimizations might well allow this to return
-    // to the previous implementation, rather than using an intrinsic.
+    // 将来 MIR 优化的增强，很可能允许它回到此前的实现，而不再使用 intrinsic。
 
-    // SAFETY: the caller must guarantee that `src` is valid for reads.
+    // SAFETY: 调用方必须保证 `src` 对读取有效。
     unsafe {
-        #[cfg(debug_assertions)] // Too expensive to always enable (for now?)
+        #[cfg(debug_assertions)] // 总是启用代价太高（暂时如此？）
         ub_checks::assert_unsafe_precondition!(
             check_language_ub,
             "ptr::read requires that the pointer argument is aligned and non-null",
@@ -1711,40 +1572,36 @@ pub const unsafe fn read<T>(src: *const T) -> T {
     }
 }
 
-/// Reads the value from `src` without moving it. This leaves the
-/// memory in `src` unchanged.
+/// 从 `src` 处读取值，但不移动它。这会使 `src` 处的内存保持不变。
 ///
-/// Unlike [`read`], `read_unaligned` works with unaligned pointers.
+/// 与 [`read`] 不同，`read_unaligned` 可用于未对齐（unaligned）的指针。
 ///
-/// # Safety
+/// # 安全性（Safety）
 ///
-/// Behavior is undefined if any of the following conditions are violated:
+/// 若违反以下任一条件，行为即为未定义。调用方必须维护以下全部不变量：
 ///
-/// * `src` must be [valid] for reads.
+/// * `src` 必须对读取是 [valid]（有效）的：非空、已分配未释放、不越界、并带有覆盖该范围的
+///   provenance。（注意此处*不*要求对齐。）
 ///
-/// * `src` must point to a properly initialized value of type `T`.
+/// * `src` 必须指向一个已正确初始化的、类型为 `T` 的值。
 ///
-/// Like [`read`], `read_unaligned` creates a bitwise copy of `T`, regardless of
-/// whether `T` is [`Copy`]. If `T` is not [`Copy`], using both the returned
-/// value and the value at `*src` can [violate memory safety][read-ownership].
+/// 与 [`read`] 一样，无论 `T` 是否为 [`Copy`]，`read_unaligned` 都会创建 `T` 的按位副本。
+/// 如果 `T` 不是 [`Copy`]，那么同时使用返回值和 `*src` 处的值可能[违反内存安全][read-ownership]。
 ///
 /// [read-ownership]: read#ownership-of-the-returned-value
 /// [valid]: self#safety
 ///
-/// ## On `packed` structs
+/// ## 关于 `packed` 结构体
 ///
-/// Attempting to create a raw pointer to an `unaligned` struct field with
-/// an expression such as `&packed.unaligned as *const FieldType` creates an
-/// intermediate unaligned reference before converting that to a raw pointer.
-/// That this reference is temporary and immediately cast is inconsequential
-/// as the compiler always expects references to be properly aligned.
-/// As a result, using `&packed.unaligned as *const FieldType` causes immediate
-/// *undefined behavior* in your program.
+/// 试图用诸如 `&packed.unaligned as *const FieldType` 这样的表达式去创建指向 `unaligned`
+///（未对齐）结构体字段的裸指针，会先创建一个中间的未对齐引用，然后再把它转换为裸指针。
+/// 这个引用是临时的、且会被立即转换，这一点无关紧要——因为编译器始终期望引用是正确对齐的。
+/// 结果就是：使用 `&packed.unaligned as *const FieldType` 会在你的程序中立即造成
+///*未定义行为*。
 ///
-/// Instead you must use the `&raw const` syntax to create the pointer.
-/// You may use that constructed pointer together with this function.
+/// 正确的做法是使用 `&raw const` 语法来创建指针。你可以把这样构造出的指针与本函数一起使用。
 ///
-/// An example of what not to do and how this relates to `read_unaligned` is:
+/// 一个“不该怎么做”、以及它与 `read_unaligned` 关系的示例：
 ///
 /// ```
 /// #[repr(packed, C)]
@@ -1758,19 +1615,19 @@ pub const unsafe fn read<T>(src: *const T) -> T {
 ///     unaligned: 0x01020304,
 /// };
 ///
-/// // Take the address of a 32-bit integer which is not aligned.
-/// // In contrast to `&packed.unaligned as *const _`, this has no undefined behavior.
+/// // 取一个未对齐的 32 位整数的地址。
+/// // 与 `&packed.unaligned as *const _` 不同，这没有未定义行为。
 /// let unaligned = &raw const packed.unaligned;
 ///
 /// let v = unsafe { std::ptr::read_unaligned(unaligned) };
 /// assert_eq!(v, 0x01020304);
 /// ```
 ///
-/// Accessing unaligned fields directly with e.g. `packed.unaligned` is safe however.
+/// 不过，用例如 `packed.unaligned` 直接访问未对齐字段是安全的。
 ///
-/// # Examples
+/// # 示例
 ///
-/// Read a `usize` value from a byte buffer:
+/// 从一个字节缓冲区读取一个 `usize` 值：
 ///
 /// ```
 /// fn read_usize(x: &[u8]) -> usize {
@@ -1788,12 +1645,11 @@ pub const unsafe fn read<T>(src: *const T) -> T {
 #[rustc_diagnostic_item = "ptr_read_unaligned"]
 pub const unsafe fn read_unaligned<T>(src: *const T) -> T {
     let mut tmp = MaybeUninit::<T>::uninit();
-    // SAFETY: the caller must guarantee that `src` is valid for reads.
-    // `src` cannot overlap `tmp` because `tmp` was just allocated on
-    // the stack as a separate allocation.
+    // SAFETY: 调用方必须保证 `src` 对读取有效。
+    // `src` 不可能与 `tmp` 重叠，因为 `tmp` 刚刚作为一块独立的
+    // allocation 分配在栈上。
     //
-    // Also, since we just wrote a valid value into `tmp`, it is guaranteed
-    // to be properly initialized.
+    // 另外，由于我们刚刚往 `tmp` 写入了一个有效的值，它必定已正确初始化。
     unsafe {
         copy_nonoverlapping(src as *const u8, tmp.as_mut_ptr() as *mut u8, size_of::<T>());
         tmp.assume_init()

@@ -7,7 +7,7 @@ use crate::slice::{self, SliceIndex};
 impl<T: PointeeSized> *const T {
     #[doc = include_str!("docs/is_null.md")]
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let s: &str = "Follow the rabbit";
@@ -20,18 +20,16 @@ impl<T: PointeeSized> *const T {
     #[inline]
     #[rustc_allow_const_fn_unstable(const_eval_select)]
     pub const fn is_null(self) -> bool {
-        // Compare via a cast to a thin pointer, so fat pointers are only
-        // considering their "data" part for null-ness.
+        // 先转换为 thin 指针再比较，这样对于 fat 指针只考虑其 "data" 部分来判断是否为 null。
         let ptr = self as *const u8;
         const_eval_select!(
             @capture { ptr: *const u8 } -> bool:
-            // This use of `const_raw_ptr_comparison` has been explicitly blessed by t-lang.
+            // 这里对 `const_raw_ptr_comparison` 的使用已经被 t-lang 团队明确批准。
             if const #[rustc_allow_const_fn_unstable(const_raw_ptr_comparison)] {
                 match (ptr).guaranteed_eq(null_mut()) {
                     Some(res) => res,
-                    // To remain maximally conservative, we stop execution when we don't
-                    // know whether the pointer is null or not.
-                    // We can *not* return `false` here, that would be unsound in `NonNull::new`!
+                    // 为了保持最大程度的保守，当我们无法确定指针是否为 null 时就停止执行。
+                    // 这里 *不能* 返回 `false`，否则会让 `NonNull::new` 变得不健全（unsound）！
                     None => panic!("null-ness of this pointer cannot be determined in const context"),
                 }
             } else {
@@ -40,7 +38,7 @@ impl<T: PointeeSized> *const T {
         )
     }
 
-    /// Casts to a pointer of another type.
+    /// 转换为指向另一类型的指针。
     #[stable(feature = "ptr_cast", since = "1.38.0")]
     #[rustc_const_stable(feature = "const_ptr_cast", since = "1.38.0")]
     #[rustc_diagnostic_item = "const_ptr_cast"]
@@ -49,12 +47,11 @@ impl<T: PointeeSized> *const T {
         self as _
     }
 
-    /// Try to cast to a pointer of another type by checking alignment.
+    /// 通过检查对齐来尝试转换为指向另一类型的指针。
     ///
-    /// If the pointer is properly aligned to the target type, it will be
-    /// cast to the target type. Otherwise, `None` is returned.
+    /// 如果该指针对目标类型来说是正确对齐的，就会被转换为目标类型；否则返回 `None`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```rust
     /// #![feature(pointer_try_cast_aligned)]
@@ -75,22 +72,19 @@ impl<T: PointeeSized> *const T {
         if self.is_aligned_to(align_of::<U>()) { Some(self.cast()) } else { None }
     }
 
-    /// Uses the address value in a new pointer of another type.
+    /// 在一个指向另一类型的新指针中复用本指针的地址值。
     ///
-    /// This operation will ignore the address part of its `meta` operand and discard existing
-    /// metadata of `self`. For pointers to a sized types (thin pointers), this has the same effect
-    /// as a simple cast. For pointers to an unsized type (fat pointers) this recombines the address
-    /// with new metadata such as slice lengths or `dyn`-vtable.
+    /// 该操作会忽略其 `meta` 操作数的地址部分，并丢弃 `self` 现有的 metadata。对于指向 sized
+    /// 类型的指针（thin 指针），其效果与一次简单的 cast 相同。对于指向 unsized 类型的指针（fat
+    /// 指针），它会把地址与新的 metadata（例如切片长度或 `dyn`-vtable）重新组合起来。
     ///
-    /// The resulting pointer will have provenance of `self`. This operation is semantically the
-    /// same as creating a new pointer with the data pointer value of `self` but the metadata of
-    /// `meta`, being fat or thin depending on the `meta` operand.
+    /// 结果指针将带有 `self` 的 provenance。该操作在语义上等同于创建一个新指针，其 data 指针值取
+    /// 自 `self`，而 metadata 取自 `meta`；其为 fat 或 thin 取决于 `meta` 操作数。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// This function is primarily useful for enabling pointer arithmetic on potentially fat
-    /// pointers. The pointer is cast to a sized pointee to utilize offset operations and then
-    /// recombined with its own original metadata.
+    /// 本函数主要用于在可能是 fat 的指针上进行指针算术运算。先把指针转换为指向 sized 的 pointee
+    /// 以便使用 offset 系列操作，然后再与它自己原本的 metadata 重新组合。
     ///
     /// ```
     /// #![feature(set_ptr_value)]
@@ -101,14 +95,13 @@ impl<T: PointeeSized> *const T {
     /// unsafe {
     ///     ptr = thin.add(8).with_metadata_of(ptr);
     ///     # assert_eq!(*(ptr as *const i32), 3);
-    ///     println!("{:?}", &*ptr); // will print "3"
+    ///     println!("{:?}", &*ptr); // 会打印 "3"
     /// }
     /// ```
     ///
-    /// # *Incorrect* usage
+    /// # *错误* 用法
     ///
-    /// The provenance from pointers is *not* combined. The result must only be used to refer to the
-    /// address allowed by `self`.
+    /// 来自各指针的 provenance *不会* 被合并。结果指针只能用于引用 `self` 所允许访问的地址。
     ///
     /// ```rust,no_run
     /// #![feature(set_ptr_value)]
@@ -121,7 +114,7 @@ impl<T: PointeeSized> *const T {
     /// let offset = (x as usize - y as usize) / 4;
     /// let bad = x.wrapping_add(offset).with_metadata_of(y);
     ///
-    /// // This dereference is UB. The pointer only has provenance for `x` but points to `y`.
+    /// // 这次解引用是 UB。该指针只拥有针对 `x` 的 provenance，却指向了 `y`。
     /// println!("{:?}", unsafe { &*bad });
     /// ```
     #[unstable(feature = "set_ptr_value", issue = "75091")]
@@ -134,10 +127,9 @@ impl<T: PointeeSized> *const T {
         from_raw_parts::<U>(self as *const (), metadata(meta))
     }
 
-    /// Changes constness without changing the type.
+    /// 在不改变类型的前提下改变 constness（可变性限定）。
     ///
-    /// This is a bit safer than `as` because it wouldn't silently change the type if the code is
-    /// refactored.
+    /// 这比 `as` 稍微安全一些，因为如果代码被重构，它不会悄无声息地改变类型。
     #[stable(feature = "ptr_const_cast", since = "1.65.0")]
     #[rustc_const_stable(feature = "ptr_const_cast", since = "1.65.0")]
     #[rustc_diagnostic_item = "ptr_cast_mut"]
@@ -151,34 +143,29 @@ impl<T: PointeeSized> *const T {
     #[inline(always)]
     #[stable(feature = "strict_provenance", since = "1.84.0")]
     pub fn addr(self) -> usize {
-        // A pointer-to-integer transmute currently has exactly the right semantics: it returns the
-        // address without exposing the provenance. Note that this is *not* a stable guarantee about
-        // transmute semantics, it relies on sysroot crates having special status.
-        // SAFETY: Pointer-to-integer transmutes are valid (if you are okay with losing the
-        // provenance).
+        // 指针到整数的 transmute 目前恰好具有正确的语义：它返回地址而不暴露 provenance。注意这
+        // *不是* 关于 transmute 语义的稳定保证，它依赖于 sysroot 内的 crate 拥有特殊地位。
+        // SAFETY: 指针到整数的 transmute 是有效的（前提是你能接受丢失 provenance）。
         unsafe { mem::transmute(self.cast::<()>()) }
     }
 
-    /// Exposes the ["provenance"][crate::ptr#provenance] part of the pointer for future use in
-    /// [`with_exposed_provenance`] and returns the "address" portion.
+    /// 暴露指针的 ["provenance"][crate::ptr#provenance] 部分以供日后在
+    /// [`with_exposed_provenance`] 中使用，并返回其 "address"（地址）部分。
     ///
-    /// This is equivalent to `self as usize`, which semantically discards provenance information.
-    /// Furthermore, this (like the `as` cast) has the implicit side-effect of marking the
-    /// provenance as 'exposed', so on platforms that support it you can later call
-    /// [`with_exposed_provenance`] to reconstitute the original pointer including its provenance.
+    /// 这等价于 `self as usize`，在语义上会丢弃 provenance 信息。此外，它（与 `as` cast 一样）带
+    /// 有一个隐式副作用：将该 provenance 标记为“已暴露（exposed）”，因此在支持的平台上，你之后
+    /// 可以调用 [`with_exposed_provenance`] 来重建出包含其 provenance 的原始指针。
     ///
-    /// Due to its inherent ambiguity, [`with_exposed_provenance`] may not be supported by tools
-    /// that help you to stay conformant with the Rust memory model. It is recommended to use
-    /// [Strict Provenance][crate::ptr#strict-provenance] APIs such as [`with_addr`][pointer::with_addr]
-    /// wherever possible, in which case [`addr`][pointer::addr] should be used instead of `expose_provenance`.
+    /// 由于其固有的歧义性，[`with_exposed_provenance`] 可能不被那些帮助你遵循 Rust 内存模型的工
+    /// 具所支持。建议尽可能使用 [Strict Provenance][crate::ptr#strict-provenance] API，例如
+    /// [`with_addr`][pointer::with_addr]，在这种情况下应当使用 [`addr`][pointer::addr] 而非
+    /// `expose_provenance`。
     ///
-    /// On most platforms this will produce a value with the same bytes as the original pointer,
-    /// because all the bytes are dedicated to describing the address. Platforms which need to store
-    /// additional information in the pointer may not support this operation, since the 'expose'
-    /// side-effect which is required for [`with_exposed_provenance`] to work is typically not
-    /// available.
+    /// 在大多数平台上，这会产生一个与原始指针字节相同的值，因为所有字节都用于描述地址。需要在指
+    /// 针中存放额外信息的平台可能不支持该操作，因为 [`with_exposed_provenance`] 正常工作所需的
+    /// 'expose' 副作用通常无法提供。
     ///
-    /// This is an [Exposed Provenance][crate::ptr#exposed-provenance] API.
+    /// 这是一个 [Exposed Provenance][crate::ptr#exposed-provenance] API。
     ///
     /// [`with_exposed_provenance`]: with_exposed_provenance
     #[inline(always)]
@@ -187,36 +174,33 @@ impl<T: PointeeSized> *const T {
         self.cast::<()>() as usize
     }
 
-    /// Creates a new pointer with the given address and the [provenance][crate::ptr#provenance] of
-    /// `self`.
+    /// 创建一个新指针，其地址为给定值，而 [provenance][crate::ptr#provenance] 取自 `self`。
     ///
-    /// This is similar to a `addr as *const T` cast, but copies
-    /// the *provenance* of `self` to the new pointer.
-    /// This avoids the inherent ambiguity of the unary cast.
+    /// 这类似于 `addr as *const T` cast，但会把 `self` 的 *provenance* 复制到新指针上。这避免了一
+    /// 元 cast 所固有的歧义。
     ///
-    /// This is equivalent to using [`wrapping_offset`][pointer::wrapping_offset] to offset
-    /// `self` to the given address, and therefore has all the same capabilities and restrictions.
+    /// 它等价于使用 [`wrapping_offset`][pointer::wrapping_offset] 把 `self` 偏移到给定地址，因此
+    /// 拥有与之完全相同的能力与限制。
     ///
-    /// This is a [Strict Provenance][crate::ptr#strict-provenance] API.
+    /// 这是一个 [Strict Provenance][crate::ptr#strict-provenance] API。
     #[must_use]
     #[inline]
     #[stable(feature = "strict_provenance", since = "1.84.0")]
     pub fn with_addr(self, addr: usize) -> Self {
-        // This should probably be an intrinsic to avoid doing any sort of arithmetic, but
-        // meanwhile, we can implement it with `wrapping_offset`, which preserves the pointer's
-        // provenance.
+        // 这本应是一个 intrinsic，以避免做任何算术运算；但在此之前，我们可以用 `wrapping_offset`
+        // 来实现它，它会保留指针的 provenance。
         let self_addr = self.addr() as isize;
         let dest_addr = addr as isize;
         let offset = dest_addr.wrapping_sub(self_addr);
         self.wrapping_byte_offset(offset)
     }
 
-    /// Creates a new pointer by mapping `self`'s address to a new one, preserving the
-    /// [provenance][crate::ptr#provenance] of `self`.
+    /// 通过把 `self` 的地址映射为一个新地址来创建一个新指针，同时保留 `self` 的
+    /// [provenance][crate::ptr#provenance]。
     ///
-    /// This is a convenience for [`with_addr`][pointer::with_addr], see that method for details.
+    /// 这是 [`with_addr`][pointer::with_addr] 的便捷包装，详见该方法。
     ///
-    /// This is a [Strict Provenance][crate::ptr#strict-provenance] API.
+    /// 这是一个 [Strict Provenance][crate::ptr#strict-provenance] API。
     #[must_use]
     #[inline]
     #[stable(feature = "strict_provenance", since = "1.84.0")]
@@ -224,9 +208,9 @@ impl<T: PointeeSized> *const T {
         self.with_addr(f(self.addr()))
     }
 
-    /// Decompose a (possibly wide) pointer into its data pointer and metadata components.
+    /// 把一个（可能是宽指针的）指针分解为它的 data 指针与 metadata 两个部分。
     ///
-    /// The pointer can be later reconstructed with [`from_raw_parts`].
+    /// 之后可以用 [`from_raw_parts`] 重新构造出该指针。
     #[unstable(feature = "ptr_metadata", issue = "81513")]
     #[inline]
     pub const fn to_raw_parts(self) -> (*const (), <T as super::Pointee>::Metadata) {
@@ -244,7 +228,7 @@ impl<T: PointeeSized> *const T {
     /// }
     /// ```
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let ptr: *const u8 = &10u8 as *const u8;
@@ -263,24 +247,23 @@ impl<T: PointeeSized> *const T {
     #[rustc_const_stable(feature = "const_ptr_is_null", since = "1.84.0")]
     #[inline]
     pub const unsafe fn as_ref<'a>(self) -> Option<&'a T> {
-        // SAFETY: the caller must guarantee that `self` is valid
-        // for a reference if it isn't null.
+        // SAFETY: 调用方必须保证：当 `self` 不为 null 时，它对于一个引用而言是有效的。
         if self.is_null() { None } else { unsafe { Some(&*self) } }
     }
 
-    /// Returns a shared reference to the value behind the pointer.
-    /// If the pointer may be null or the value may be uninitialized, [`as_uninit_ref`] must be used instead.
-    /// If the pointer may be null, but the value is known to have been initialized, [`as_ref`] must be used instead.
+    /// 返回指针所指向值的共享引用。
+    /// 如果指针可能为 null，或所指向的值可能未初始化，则必须改用 [`as_uninit_ref`]。
+    /// 如果指针可能为 null，但所指向的值已知已被初始化，则必须改用 [`as_ref`]。
     ///
     /// [`as_ref`]: #method.as_ref
     /// [`as_uninit_ref`]: #method.as_uninit_ref
     ///
-    /// # Safety
+    /// # 安全性（Safety）
     ///
-    /// When calling this method, you have to ensure that
-    /// the pointer is [convertible to a reference](crate::ptr#pointer-to-reference-conversion).
+    /// 调用该方法时，你必须确保该指针是
+    /// [convertible to a reference](crate::ptr#pointer-to-reference-conversion)（可转换为引用）的。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(ptr_as_ref_unchecked)]
@@ -295,7 +278,7 @@ impl<T: PointeeSized> *const T {
     #[inline]
     #[must_use]
     pub const unsafe fn as_ref_unchecked<'a>(self) -> &'a T {
-        // SAFETY: the caller must guarantee that `self` is valid for a reference
+        // SAFETY: 调用方必须保证 `self` 对于一个引用而言是有效的。
         unsafe { &*self }
     }
 
@@ -304,7 +287,7 @@ impl<T: PointeeSized> *const T {
     /// [`is_null`]: #method.is_null
     /// [`as_ref`]: #method.as_ref
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(ptr_as_uninit)]
@@ -323,14 +306,13 @@ impl<T: PointeeSized> *const T {
     where
         T: Sized,
     {
-        // SAFETY: the caller must guarantee that `self` meets all the
-        // requirements for a reference.
+        // SAFETY: 调用方必须保证 `self` 满足引用所要求的全部条件。
         if self.is_null() { None } else { Some(unsafe { &*(self as *const MaybeUninit<T>) }) }
     }
 
     #[doc = include_str!("./docs/offset.md")]
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let s: &str = "123";
@@ -353,14 +335,14 @@ impl<T: PointeeSized> *const T {
         #[inline]
         #[rustc_allow_const_fn_unstable(const_eval_select)]
         const fn runtime_offset_nowrap(this: *const (), count: isize, size: usize) -> bool {
-            // We can use const_eval_select here because this is only for UB checks.
+            // 这里可以使用 const_eval_select，因为它仅用于 UB 检查。
             const_eval_select!(
                 @capture { this: *const (), count: isize, size: usize } -> bool:
                 if const {
                     true
                 } else {
-                    // `size` is the size of a Rust type, so we know that
-                    // `size <= isize::MAX` and thus `as` cast here is not lossy.
+                    // `size` 是某个 Rust 类型的大小，因此我们知道 `size <= isize::MAX`，于是这里
+                    // 的 `as` cast 不会丢失信息。
                     let Some(byte_offset) = count.checked_mul(size as isize) else {
                         return false;
                     };
@@ -380,67 +362,60 @@ impl<T: PointeeSized> *const T {
             ) => runtime_offset_nowrap(this, count, size)
         );
 
-        // SAFETY: the caller must uphold the safety contract for `offset`.
+        // SAFETY: 调用方必须维护 `offset` 的安全契约。
         unsafe { intrinsics::offset(self, count) }
     }
 
-    /// Adds a signed offset in bytes to a pointer.
+    /// 给指针加上一个以字节为单位的有符号偏移量。
     ///
-    /// `count` is in units of **bytes**.
+    /// `count` 的单位是 **字节**。
     ///
-    /// This is purely a convenience for casting to a `u8` pointer and
-    /// using [offset][pointer::offset] on it. See that method for documentation
-    /// and safety requirements.
+    /// 这纯粹是一个便捷封装，相当于先转换为 `u8` 指针，再在其上调用 [offset][pointer::offset]。
+    /// 文档与安全要求请参见该方法。
     ///
-    /// For non-`Sized` pointees this operation changes only the data pointer,
-    /// leaving the metadata untouched.
+    /// 对于非 `Sized` 的 pointee，该操作只改变 data 指针，而保持 metadata 不变。
     #[must_use]
     #[inline(always)]
     #[stable(feature = "pointer_byte_offsets", since = "1.75.0")]
     #[rustc_const_stable(feature = "const_pointer_byte_offsets", since = "1.75.0")]
     #[track_caller]
     pub const unsafe fn byte_offset(self, count: isize) -> Self {
-        // SAFETY: the caller must uphold the safety contract for `offset`.
+        // SAFETY: 调用方必须维护 `offset` 的安全契约。
         unsafe { self.cast::<u8>().offset(count).with_metadata_of(self) }
     }
 
-    /// Adds a signed offset to a pointer using wrapping arithmetic.
+    /// 使用回绕（wrapping）算术给指针加上一个有符号偏移量。
     ///
-    /// `count` is in units of T; e.g., a `count` of 3 represents a pointer
-    /// offset of `3 * size_of::<T>()` bytes.
+    /// `count` 的单位是 T；例如 `count` 为 3 表示偏移 `3 * size_of::<T>()` 个字节。
     ///
-    /// # Safety
+    /// # 安全性（Safety）
     ///
-    /// This operation itself is always safe, but using the resulting pointer is not.
+    /// 该操作本身始终是安全的，但使用其结果指针则不一定安全。
     ///
-    /// The resulting pointer "remembers" the [allocation] that `self` points to
-    /// (this is called "[Provenance](ptr/index.html#provenance)").
-    /// The pointer must not be used to read or write other allocations.
+    /// 结果指针会“记住” `self` 所指向的那个 [allocation]（这被称为
+    /// "[Provenance](ptr/index.html#provenance)"）。该指针不得用于读写其他 allocation。
     ///
-    /// In other words, `let z = x.wrapping_offset((y as isize) - (x as isize))` does *not* make `z`
-    /// the same as `y` even if we assume `T` has size `1` and there is no overflow: `z` is still
-    /// attached to the object `x` is attached to, and dereferencing it is Undefined Behavior unless
-    /// `x` and `y` point into the same allocation.
+    /// 换句话说，`let z = x.wrapping_offset((y as isize) - (x as isize))` *不会* 使 `z`
+    /// 等同于 `y`，即便我们假设 `T` 的大小为 `1` 且没有溢出：`z` 仍然依附于 `x` 所依附的对象，
+    /// 除非 `x` 和 `y` 指向同一个 allocation，否则解引用它就是未定义行为。
     ///
-    /// Compared to [`offset`], this method basically delays the requirement of staying within the
-    /// same allocation: [`offset`] is immediate Undefined Behavior when crossing object
-    /// boundaries; `wrapping_offset` produces a pointer but still leads to Undefined Behavior if a
-    /// pointer is dereferenced when it is out-of-bounds of the object it is attached to. [`offset`]
-    /// can be optimized better and is thus preferable in performance-sensitive code.
+    /// 与 [`offset`] 相比，本方法基本上是把“必须停留在同一 allocation 内”这一要求推迟了：
+    /// [`offset`] 在跨越对象边界时即刻构成未定义行为；而 `wrapping_offset` 会产生一个指针，但当该
+    /// 指针在其所依附对象的边界之外被解引用时，仍会导致未定义行为。[`offset`] 能被更好地优化，因
+    /// 此在性能敏感的代码中更可取。
     ///
-    /// The delayed check only considers the value of the pointer that was dereferenced, not the
-    /// intermediate values used during the computation of the final result. For example,
-    /// `x.wrapping_offset(o).wrapping_offset(o.wrapping_neg())` is always the same as `x`. In other
-    /// words, leaving the allocation and then re-entering it later is permitted.
+    /// 这种被推迟的检查只考虑被解引用的那个指针的值，而不考虑计算最终结果过程中用到的中间值。例
+    /// 如，`x.wrapping_offset(o).wrapping_offset(o.wrapping_neg())` 始终等同于 `x`。换言之，先离
+    /// 开 allocation 再于稍后重新进入它是被允许的。
     ///
     /// [`offset`]: #method.offset
     /// [allocation]: crate::ptr#allocation
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use std::fmt::Write;
-    /// // Iterate using a raw pointer in increments of two elements
+    /// // 使用裸指针以每次两个元素的步长进行迭代
     /// let data = [1u8, 2, 3, 4, 5];
     /// let mut ptr: *const u8 = data.as_ptr();
     /// let step = 2;
@@ -464,20 +439,18 @@ impl<T: PointeeSized> *const T {
     where
         T: Sized,
     {
-        // SAFETY: the `arith_offset` intrinsic has no prerequisites to be called.
+        // SAFETY: 调用 `arith_offset` intrinsic 没有任何前置条件。
         unsafe { intrinsics::arith_offset(self, count) }
     }
 
-    /// Adds a signed offset in bytes to a pointer using wrapping arithmetic.
+    /// 使用回绕（wrapping）算术给指针加上一个以字节为单位的有符号偏移量。
     ///
-    /// `count` is in units of **bytes**.
+    /// `count` 的单位是 **字节**。
     ///
-    /// This is purely a convenience for casting to a `u8` pointer and
-    /// using [wrapping_offset][pointer::wrapping_offset] on it. See that method
-    /// for documentation.
+    /// 这纯粹是一个便捷封装，相当于先转换为 `u8` 指针，再在其上调用
+    /// [wrapping_offset][pointer::wrapping_offset]。文档请参见该方法。
     ///
-    /// For non-`Sized` pointees this operation changes only the data pointer,
-    /// leaving the metadata untouched.
+    /// 对于非 `Sized` 的 pointee，该操作只改变 data 指针，而保持 metadata 不变。
     #[must_use]
     #[inline(always)]
     #[stable(feature = "pointer_byte_offsets", since = "1.75.0")]
@@ -486,34 +459,33 @@ impl<T: PointeeSized> *const T {
         self.cast::<u8>().wrapping_offset(count).with_metadata_of(self)
     }
 
-    /// Masks out bits of the pointer according to a mask.
+    /// 根据掩码屏蔽掉指针的某些比特位。
     ///
-    /// This is convenience for `ptr.map_addr(|a| a & mask)`.
+    /// 这是 `ptr.map_addr(|a| a & mask)` 的便捷封装。
     ///
-    /// For non-`Sized` pointees this operation changes only the data pointer,
-    /// leaving the metadata untouched.
+    /// 对于非 `Sized` 的 pointee，该操作只改变 data 指针，而保持 metadata 不变。
     ///
-    /// ## Examples
+    /// ## 示例
     ///
     /// ```
     /// #![feature(ptr_mask)]
     /// let v = 17_u32;
     /// let ptr: *const u32 = &v;
     ///
-    /// // `u32` is 4 bytes aligned,
-    /// // which means that lower 2 bits are always 0.
+    /// // `u32` 按 4 字节对齐，
+    /// // 这意味着低 2 位始终为 0。
     /// let tag_mask = 0b11;
     /// let ptr_mask = !tag_mask;
     ///
-    /// // We can store something in these lower bits
+    /// // 我们可以在这些低位里存放一些东西
     /// let tagged_ptr = ptr.map_addr(|a| a | 0b10);
     ///
-    /// // Get the "tag" back
+    /// // 把 "tag" 取回来
     /// let tag = tagged_ptr.addr() & tag_mask;
     /// assert_eq!(tag, 0b10);
     ///
-    /// // Note that `tagged_ptr` is unaligned, it's UB to read from it.
-    /// // To get original pointer `mask` can be used:
+    /// // 注意 `tagged_ptr` 是未对齐的，从它读取属于 UB。
+    /// // 要取回原始指针，可以使用 `mask`：
     /// let masked_ptr = tagged_ptr.mask(ptr_mask);
     /// assert_eq!(unsafe { *masked_ptr }, 17);
     /// ```
@@ -524,46 +496,40 @@ impl<T: PointeeSized> *const T {
         intrinsics::ptr_mask(self.cast::<()>(), mask).with_metadata_of(self)
     }
 
-    /// Calculates the distance between two pointers within the same allocation. The returned value is in
-    /// units of T: the distance in bytes divided by `size_of::<T>()`.
+    /// 计算同一 allocation 内两个指针之间的距离。返回值以 T 为单位：即以字节为单位的距离除以
+    /// `size_of::<T>()`。
     ///
-    /// This is equivalent to `(self as isize - origin as isize) / (size_of::<T>() as isize)`,
-    /// except that it has a lot more opportunities for UB, in exchange for the compiler
-    /// better understanding what you are doing.
+    /// 这等价于 `(self as isize - origin as isize) / (size_of::<T>() as isize)`，区别在于它有多得
+    /// 多的产生 UB 的机会，作为交换，编译器能更好地理解你想做什么。
     ///
-    /// The primary motivation of this method is for computing the `len` of an array/slice
-    /// of `T` that you are currently representing as a "start" and "end" pointer
-    /// (and "end" is "one past the end" of the array).
-    /// In that case, `end.offset_from(start)` gets you the length of the array.
+    /// 本方法的主要用途是：当你把一个数组/切片用一对“起始”指针与“结束”指针来表示（“结束”指的是该
+    /// 数组“末尾后一位”）时，计算其 `len`。在这种情况下，`end.offset_from(start)` 就能得到该数组
+    /// 的长度。
     ///
-    /// All of the following safety requirements are trivially satisfied for this usecase.
+    /// 对于该用例，下面所有的安全要求都能被平凡地满足。
     ///
     /// [`offset`]: #method.offset
     ///
-    /// # Safety
+    /// # 安全性（Safety）
     ///
-    /// If any of the following conditions are violated, the result is Undefined Behavior:
+    /// 若违反以下任一条件，结果即为未定义行为：
     ///
-    /// * `self` and `origin` must either
+    /// * `self` 与 `origin` 必须满足以下之一：
     ///
-    ///   * point to the same address, or
-    ///   * both be [derived from][crate::ptr#provenance] a pointer to the same [allocation], and the memory range between
-    ///     the two pointers must be in bounds of that object. (See below for an example.)
+    ///   * 指向同一地址，或
+    ///   * 两者都 [derived from][crate::ptr#provenance] 指向同一 [allocation] 的指针，并且这两个
+    ///     指针之间的内存范围必须落在该对象的边界内。（见下方示例。）
     ///
-    /// * The distance between the pointers, in bytes, must be an exact multiple
-    ///   of the size of `T`.
+    /// * 两指针之间以字节计的距离，必须是 `T` 大小的精确整数倍。
     ///
-    /// As a consequence, the absolute distance between the pointers, in bytes, computed on
-    /// mathematical integers (without "wrapping around"), cannot overflow an `isize`. This is
-    /// implied by the in-bounds requirement, and the fact that no allocation can be larger
-    /// than `isize::MAX` bytes.
+    /// 由此可得：在数学整数意义上（不发生“回绕”）计算的、两指针之间以字节计的绝对距离，不能溢出
+    /// `isize`。这一点由 in-bounds 要求以及“任何 allocation 都不可能大于 `isize::MAX` 字节”这一事
+    /// 实共同蕴含。
     ///
-    /// The requirement for pointers to be derived from the same allocation is primarily
-    /// needed for `const`-compatibility: the distance between pointers into *different* allocated
-    /// objects is not known at compile-time. However, the requirement also exists at
-    /// runtime and may be exploited by optimizations. If you wish to compute the difference between
-    /// pointers that are not guaranteed to be from the same allocation, use `(self as isize -
-    /// origin as isize) / size_of::<T>()`.
+    /// “两指针必须派生自同一 allocation”这一要求，主要是为了 `const`-兼容性：指向 *不同* 已分配对
+    /// 象的指针之间的距离在编译期是未知的。不过该要求在运行时同样存在，并且可能被优化所利用。如果
+    /// 你想计算不保证来自同一 allocation 的两指针之间的差值，请使用 `(self as isize -
+    /// origin as isize) / size_of::<T>()`。
     // FIXME: recommend `addr()` instead of `as usize` once that is stable.
     ///
     /// [`add`]: #method.add
@@ -571,11 +537,11 @@ impl<T: PointeeSized> *const T {
     ///
     /// # Panics
     ///
-    /// This function panics if `T` is a Zero-Sized Type ("ZST").
+    /// 当 `T` 是零大小类型（"ZST"）时，本函数会 panic。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage:
+    /// 基本用法：
     ///
     /// ```
     /// let a = [0; 5];
@@ -589,20 +555,20 @@ impl<T: PointeeSized> *const T {
     /// }
     /// ```
     ///
-    /// *Incorrect* usage:
+    /// *错误* 用法：
     ///
     /// ```rust,no_run
     /// let ptr1 = Box::into_raw(Box::new(0u8)) as *const u8;
     /// let ptr2 = Box::into_raw(Box::new(1u8)) as *const u8;
     /// let diff = (ptr2 as isize).wrapping_sub(ptr1 as isize);
-    /// // Make ptr2_other an "alias" of ptr2.add(1), but derived from ptr1.
+    /// // 使 ptr2_other 成为 ptr2.add(1) 的“别名”，但它派生自 ptr1。
     /// let ptr2_other = (ptr1 as *const u8).wrapping_offset(diff).wrapping_offset(1);
     /// assert_eq!(ptr2 as usize, ptr2_other as usize);
-    /// // Since ptr2_other and ptr2 are derived from pointers to different objects,
-    /// // computing their offset is undefined behavior, even though
-    /// // they point to addresses that are in-bounds of the same object!
+    /// // 由于 ptr2_other 与 ptr2 派生自指向不同对象的指针，
+    /// // 计算它们的偏移量属于未定义行为，即便
+    /// // 它们指向的地址落在同一对象的边界内！
     /// unsafe {
-    ///     let one = ptr2_other.offset_from(ptr2); // Undefined Behavior! ⚠️
+    ///     let one = ptr2_other.offset_from(ptr2); // 未定义行为！ ⚠️
     /// }
     /// ```
     #[stable(feature = "ptr_offset_from", since = "1.47.0")]
@@ -615,43 +581,35 @@ impl<T: PointeeSized> *const T {
     {
         let pointee_size = size_of::<T>();
         assert!(0 < pointee_size && pointee_size <= isize::MAX as usize);
-        // SAFETY: the caller must uphold the safety contract for `ptr_offset_from`.
+        // SAFETY: 调用方必须维护 `ptr_offset_from` 的安全契约。
         unsafe { intrinsics::ptr_offset_from(self, origin) }
     }
 
-    /// Calculates the distance between two pointers within the same allocation. The returned value is in
-    /// units of **bytes**.
+    /// 计算同一 allocation 内两个指针之间的距离。返回值以 **字节** 为单位。
     ///
-    /// This is purely a convenience for casting to a `u8` pointer and
-    /// using [`offset_from`][pointer::offset_from] on it. See that method for
-    /// documentation and safety requirements.
+    /// 这纯粹是一个便捷封装，相当于先转换为 `u8` 指针，再在其上调用
+    /// [`offset_from`][pointer::offset_from]。文档与安全要求请参见该方法。
     ///
-    /// For non-`Sized` pointees this operation considers only the data pointers,
-    /// ignoring the metadata.
+    /// 对于非 `Sized` 的 pointee，该操作只考虑 data 指针，忽略 metadata。
     #[inline(always)]
     #[stable(feature = "pointer_byte_offsets", since = "1.75.0")]
     #[rustc_const_stable(feature = "const_pointer_byte_offsets", since = "1.75.0")]
     #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
     pub const unsafe fn byte_offset_from<U: ?Sized>(self, origin: *const U) -> isize {
-        // SAFETY: the caller must uphold the safety contract for `offset_from`.
+        // SAFETY: 调用方必须维护 `offset_from` 的安全契约。
         unsafe { self.cast::<u8>().offset_from(origin.cast::<u8>()) }
     }
 
-    /// Calculates the distance between two pointers within the same allocation, *where it's known that
-    /// `self` is equal to or greater than `origin`*. The returned value is in
-    /// units of T: the distance in bytes is divided by `size_of::<T>()`.
+    /// 计算同一 allocation 内两个指针之间的距离，*前提是已知 `self` 大于或等于 `origin`*。返回值
+    /// 以 T 为单位：即以字节为单位的距离除以 `size_of::<T>()`。
     ///
-    /// This computes the same value that [`offset_from`](#method.offset_from)
-    /// would compute, but with the added precondition that the offset is
-    /// guaranteed to be non-negative.  This method is equivalent to
-    /// `usize::try_from(self.offset_from(origin)).unwrap_unchecked()`,
-    /// but it provides slightly more information to the optimizer, which can
-    /// sometimes allow it to optimize slightly better with some backends.
+    /// 它计算的值与 [`offset_from`](#method.offset_from) 相同，但附加了一个前置条件：保证该偏移量
+    /// 非负。本方法等价于 `usize::try_from(self.offset_from(origin)).unwrap_unchecked()`，但它能向
+    /// 优化器提供略多一些的信息，在某些后端上有时能让优化效果稍好。
     ///
-    /// This method can be thought of as recovering the `count` that was passed
-    /// to [`add`](#method.add) (or, with the parameters in the other order,
-    /// to [`sub`](#method.sub)).  The following are all equivalent, assuming
-    /// that their safety preconditions are met:
+    /// 本方法可以理解为：恢复出当初传给 [`add`](#method.add) 的那个 `count`（或者，把参数顺序对调
+    /// 后，恢复出传给 [`sub`](#method.sub) 的 `count`）。在满足各自安全前置条件的前提下，下面这些
+    /// 写法全部等价：
     /// ```rust
     /// # unsafe fn blah(ptr: *const i32, origin: *const i32, count: usize) -> bool { unsafe {
     /// ptr.offset_from_unsigned(origin) == count
@@ -662,23 +620,21 @@ impl<T: PointeeSized> *const T {
     /// # } }
     /// ```
     ///
-    /// # Safety
+    /// # 安全性（Safety）
     ///
-    /// - The distance between the pointers must be non-negative (`self >= origin`)
+    /// - 两指针之间的距离必须非负（`self >= origin`）
     ///
-    /// - *All* the safety conditions of [`offset_from`](#method.offset_from)
-    ///   apply to this method as well; see it for the full details.
+    /// - [`offset_from`](#method.offset_from) 的 *所有* 安全条件也都适用于本方法；完整细节请参见该
+    ///   方法。
     ///
-    /// Importantly, despite the return type of this method being able to represent
-    /// a larger offset, it's still *not permitted* to pass pointers which differ
-    /// by more than `isize::MAX` *bytes*.  As such, the result of this method will
-    /// always be less than or equal to `isize::MAX as usize`.
+    /// 重要提示：尽管本方法的返回类型能够表示更大的偏移量，但仍然 *不允许* 传入相差超过
+    /// `isize::MAX` *字节* 的指针。因此，本方法的结果将始终小于或等于 `isize::MAX as usize`。
     ///
     /// # Panics
     ///
-    /// This function panics if `T` is a Zero-Sized Type ("ZST").
+    /// 当 `T` 是零大小类型（"ZST"）时，本函数会 panic。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let a = [0; 5];
@@ -691,7 +647,7 @@ impl<T: PointeeSized> *const T {
     ///     assert_eq!(ptr2.offset_from_unsigned(ptr2), 0);
     /// }
     ///
-    /// // This would be incorrect, as the pointers are not correctly ordered:
+    /// // 下面这样写是错误的，因为两指针的顺序不正确：
     /// // ptr1.offset_from_unsigned(ptr2)
     /// ```
     #[stable(feature = "ptr_sub_ptr", since = "1.87.0")]
@@ -725,46 +681,37 @@ impl<T: PointeeSized> *const T {
 
         let pointee_size = size_of::<T>();
         assert!(0 < pointee_size && pointee_size <= isize::MAX as usize);
-        // SAFETY: the caller must uphold the safety contract for `ptr_offset_from_unsigned`.
+        // SAFETY: 调用方必须维护 `ptr_offset_from_unsigned` 的安全契约。
         unsafe { intrinsics::ptr_offset_from_unsigned(self, origin) }
     }
 
-    /// Calculates the distance between two pointers within the same allocation, *where it's known that
-    /// `self` is equal to or greater than `origin`*. The returned value is in
-    /// units of **bytes**.
+    /// 计算同一 allocation 内两个指针之间的距离，*前提是已知 `self` 大于或等于 `origin`*。返回值
+    /// 以 **字节** 为单位。
     ///
-    /// This is purely a convenience for casting to a `u8` pointer and
-    /// using [`offset_from_unsigned`][pointer::offset_from_unsigned] on it.
-    /// See that method for documentation and safety requirements.
+    /// 这纯粹是一个便捷封装，相当于先转换为 `u8` 指针，再在其上调用
+    /// [`offset_from_unsigned`][pointer::offset_from_unsigned]。文档与安全要求请参见该方法。
     ///
-    /// For non-`Sized` pointees this operation considers only the data pointers,
-    /// ignoring the metadata.
+    /// 对于非 `Sized` 的 pointee，该操作只考虑 data 指针，忽略 metadata。
     #[stable(feature = "ptr_sub_ptr", since = "1.87.0")]
     #[rustc_const_stable(feature = "const_ptr_sub_ptr", since = "1.87.0")]
     #[inline]
     #[track_caller]
     pub const unsafe fn byte_offset_from_unsigned<U: ?Sized>(self, origin: *const U) -> usize {
-        // SAFETY: the caller must uphold the safety contract for `offset_from_unsigned`.
+        // SAFETY: 调用方必须维护 `offset_from_unsigned` 的安全契约。
         unsafe { self.cast::<u8>().offset_from_unsigned(origin.cast::<u8>()) }
     }
 
-    /// Returns whether two pointers are guaranteed to be equal.
+    /// 返回两个指针是否被保证相等。
     ///
-    /// At runtime this function behaves like `Some(self == other)`.
-    /// However, in some contexts (e.g., compile-time evaluation),
-    /// it is not always possible to determine equality of two pointers, so this function may
-    /// spuriously return `None` for pointers that later actually turn out to have its equality known.
-    /// But when it returns `Some`, the pointers' equality is guaranteed to be known.
+    /// 在运行时，本函数的行为类似 `Some(self == other)`。然而在某些上下文中（例如编译期求值），并
+    /// 不总能确定两个指针是否相等，因此对于那些之后实际上能确定相等性的指针，本函数也可能虚假地返
+    /// 回 `None`。但当它返回 `Some` 时，两指针的相等性就保证是确定的。
     ///
-    /// The return value may change from `Some` to `None` and vice versa depending on the compiler
-    /// version and unsafe code must not
-    /// rely on the result of this function for soundness. It is suggested to only use this function
-    /// for performance optimizations where spurious `None` return values by this function do not
-    /// affect the outcome, but just the performance.
-    /// The consequences of using this method to make runtime and compile-time code behave
-    /// differently have not been explored. This method should not be used to introduce such
-    /// differences, and it should also not be stabilized before we have a better understanding
-    /// of this issue.
+    /// 返回值可能随编译器版本不同而在 `Some` 与 `None` 之间变化，unsafe 代码绝不能依赖本函数的结
+    /// 果来保证健全性（soundness）。建议仅在性能优化场景中使用本函数，即那些本函数虚假返回 `None`
+    /// 也不影响最终结果、只影响性能的场景。利用本方法让运行期与编译期代码表现不同所带来的后果尚未
+    /// 被探究过。不应使用本方法来引入此类差异，并且在我们对该问题有更深入理解之前，它也不应被稳定
+    /// 化。
     #[unstable(feature = "const_raw_ptr_comparison", issue = "53020")]
     #[rustc_const_unstable(feature = "const_raw_ptr_comparison", issue = "53020")]
     #[inline]
@@ -778,23 +725,17 @@ impl<T: PointeeSized> *const T {
         }
     }
 
-    /// Returns whether two pointers are guaranteed to be inequal.
+    /// 返回两个指针是否被保证不相等。
     ///
-    /// At runtime this function behaves like `Some(self != other)`.
-    /// However, in some contexts (e.g., compile-time evaluation),
-    /// it is not always possible to determine inequality of two pointers, so this function may
-    /// spuriously return `None` for pointers that later actually turn out to have its inequality known.
-    /// But when it returns `Some`, the pointers' inequality is guaranteed to be known.
+    /// 在运行时，本函数的行为类似 `Some(self != other)`。然而在某些上下文中（例如编译期求值），并
+    /// 不总能确定两个指针是否不相等，因此对于那些之后实际上能确定不相等性的指针，本函数也可能虚假
+    /// 地返回 `None`。但当它返回 `Some` 时，两指针的不相等性就保证是确定的。
     ///
-    /// The return value may change from `Some` to `None` and vice versa depending on the compiler
-    /// version and unsafe code must not
-    /// rely on the result of this function for soundness. It is suggested to only use this function
-    /// for performance optimizations where spurious `None` return values by this function do not
-    /// affect the outcome, but just the performance.
-    /// The consequences of using this method to make runtime and compile-time code behave
-    /// differently have not been explored. This method should not be used to introduce such
-    /// differences, and it should also not be stabilized before we have a better understanding
-    /// of this issue.
+    /// 返回值可能随编译器版本不同而在 `Some` 与 `None` 之间变化，unsafe 代码绝不能依赖本函数的结
+    /// 果来保证健全性（soundness）。建议仅在性能优化场景中使用本函数，即那些本函数虚假返回 `None`
+    /// 也不影响最终结果、只影响性能的场景。利用本方法让运行期与编译期代码表现不同所带来的后果尚未
+    /// 被探究过。不应使用本方法来引入此类差异，并且在我们对该问题有更深入理解之前，它也不应被稳定
+    /// 化。
     #[unstable(feature = "const_raw_ptr_comparison", issue = "53020")]
     #[rustc_const_unstable(feature = "const_raw_ptr_comparison", issue = "53020")]
     #[inline]
@@ -810,7 +751,7 @@ impl<T: PointeeSized> *const T {
 
     #[doc = include_str!("./docs/add.md")]
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let s: &str = "123";
@@ -859,64 +800,57 @@ impl<T: PointeeSized> *const T {
             ) => runtime_add_nowrap(this, count, size)
         );
 
-        // SAFETY: the caller must uphold the safety contract for `offset`.
+        // SAFETY: 调用方必须维护 `offset` 的安全契约。
         unsafe { intrinsics::offset(self, count) }
     }
 
-    /// Adds an unsigned offset in bytes to a pointer.
+    /// 给指针加上一个以字节为单位的无符号偏移量。
     ///
-    /// `count` is in units of bytes.
+    /// `count` 的单位是字节。
     ///
-    /// This is purely a convenience for casting to a `u8` pointer and
-    /// using [add][pointer::add] on it. See that method for documentation
-    /// and safety requirements.
+    /// 这纯粹是一个便捷封装，相当于先转换为 `u8` 指针，再在其上调用 [add][pointer::add]。文档与安
+    /// 全要求请参见该方法。
     ///
-    /// For non-`Sized` pointees this operation changes only the data pointer,
-    /// leaving the metadata untouched.
+    /// 对于非 `Sized` 的 pointee，该操作只改变 data 指针，而保持 metadata 不变。
     #[must_use]
     #[inline(always)]
     #[stable(feature = "pointer_byte_offsets", since = "1.75.0")]
     #[rustc_const_stable(feature = "const_pointer_byte_offsets", since = "1.75.0")]
     #[track_caller]
     pub const unsafe fn byte_add(self, count: usize) -> Self {
-        // SAFETY: the caller must uphold the safety contract for `add`.
+        // SAFETY: 调用方必须维护 `add` 的安全契约。
         unsafe { self.cast::<u8>().add(count).with_metadata_of(self) }
     }
 
-    /// Subtracts an unsigned offset from a pointer.
+    /// 从指针中减去一个无符号偏移量。
     ///
-    /// This can only move the pointer backward (or not move it). If you need to move forward or
-    /// backward depending on the value, then you might want [`offset`](#method.offset) instead
-    /// which takes a signed offset.
+    /// 这只能让指针向后移动（或保持不动）。如果你需要根据某个值来决定向前还是向后移动，那么你可能
+    /// 想要的是接受有符号偏移量的 [`offset`](#method.offset)。
     ///
-    /// `count` is in units of T; e.g., a `count` of 3 represents a pointer
-    /// offset of `3 * size_of::<T>()` bytes.
+    /// `count` 的单位是 T；例如 `count` 为 3 表示偏移 `3 * size_of::<T>()` 个字节。
     ///
-    /// # Safety
+    /// # 安全性（Safety）
     ///
-    /// If any of the following conditions are violated, the result is Undefined Behavior:
+    /// 若违反以下任一条件，结果即为未定义行为：
     ///
-    /// * The offset in bytes, `count * size_of::<T>()`, computed on mathematical integers (without
-    ///   "wrapping around"), must fit in an `isize`.
+    /// * 以字节计的偏移量 `count * size_of::<T>()`，在数学整数意义上（不发生“回绕”）计算时，必须
+    ///   能装入一个 `isize`。
     ///
-    /// * If the computed offset is non-zero, then `self` must be [derived from][crate::ptr#provenance] a pointer to some
-    ///   [allocation], and the entire memory range between `self` and the result must be in
-    ///   bounds of that allocation. In particular, this range must not "wrap around" the edge
-    ///   of the address space.
+    /// * 如果计算出的偏移量非零，则 `self` 必须 [derived from][crate::ptr#provenance] 指向某个
+    ///   [allocation] 的指针，并且 `self` 与结果之间的整个内存范围必须落在该 allocation 的边界
+    ///   内。特别地，该范围不得“回绕”地址空间的边缘。
     ///
-    /// Allocations can never be larger than `isize::MAX` bytes, so if the computed offset
-    /// stays in bounds of the allocation, it is guaranteed to satisfy the first requirement.
-    /// This implies, for instance, that `vec.as_ptr().add(vec.len())` (for `vec: Vec<T>`) is always
-    /// safe.
+    /// Allocation 永远不可能大于 `isize::MAX` 字节，因此如果计算出的偏移量保持在该 allocation 的
+    /// 边界内，就保证能满足上面的第一个要求。这意味着，举例来说，`vec.as_ptr().add(vec.len())`
+    /// （对于 `vec: Vec<T>`）始终是安全的。
     ///
-    /// Consider using [`wrapping_sub`] instead if these constraints are
-    /// difficult to satisfy. The only advantage of this method is that it
-    /// enables more aggressive compiler optimizations.
+    /// 如果这些约束难以满足，可以考虑改用 [`wrapping_sub`]。本方法唯一的优势在于它能启用更激进的
+    /// 编译器优化。
     ///
     /// [`wrapping_sub`]: #method.wrapping_sub
     /// [allocation]: crate::ptr#allocation
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let s: &str = "123";
@@ -965,72 +899,64 @@ impl<T: PointeeSized> *const T {
         );
 
         if T::IS_ZST {
-            // Pointer arithmetic does nothing when the pointee is a ZST.
+            // 当 pointee 是 ZST 时，指针算术不做任何事情。
             self
         } else {
-            // SAFETY: the caller must uphold the safety contract for `offset`.
-            // Because the pointee is *not* a ZST, that means that `count` is
-            // at most `isize::MAX`, and thus the negation cannot overflow.
+            // SAFETY: 调用方必须维护 `offset` 的安全契约。
+            // 因为 pointee *不是* ZST，所以 `count` 至多为 `isize::MAX`，因此对它取负不会溢出。
             unsafe { intrinsics::offset(self, intrinsics::unchecked_sub(0, count as isize)) }
         }
     }
 
-    /// Subtracts an unsigned offset in bytes from a pointer.
+    /// 从指针中减去一个以字节为单位的无符号偏移量。
     ///
-    /// `count` is in units of bytes.
+    /// `count` 的单位是字节。
     ///
-    /// This is purely a convenience for casting to a `u8` pointer and
-    /// using [sub][pointer::sub] on it. See that method for documentation
-    /// and safety requirements.
+    /// 这纯粹是一个便捷封装，相当于先转换为 `u8` 指针，再在其上调用 [sub][pointer::sub]。文档与安
+    /// 全要求请参见该方法。
     ///
-    /// For non-`Sized` pointees this operation changes only the data pointer,
-    /// leaving the metadata untouched.
+    /// 对于非 `Sized` 的 pointee，该操作只改变 data 指针，而保持 metadata 不变。
     #[must_use]
     #[inline(always)]
     #[stable(feature = "pointer_byte_offsets", since = "1.75.0")]
     #[rustc_const_stable(feature = "const_pointer_byte_offsets", since = "1.75.0")]
     #[track_caller]
     pub const unsafe fn byte_sub(self, count: usize) -> Self {
-        // SAFETY: the caller must uphold the safety contract for `sub`.
+        // SAFETY: 调用方必须维护 `sub` 的安全契约。
         unsafe { self.cast::<u8>().sub(count).with_metadata_of(self) }
     }
 
-    /// Adds an unsigned offset to a pointer using wrapping arithmetic.
+    /// 使用回绕（wrapping）算术给指针加上一个无符号偏移量。
     ///
-    /// `count` is in units of T; e.g., a `count` of 3 represents a pointer
-    /// offset of `3 * size_of::<T>()` bytes.
+    /// `count` 的单位是 T；例如 `count` 为 3 表示偏移 `3 * size_of::<T>()` 个字节。
     ///
-    /// # Safety
+    /// # 安全性（Safety）
     ///
-    /// This operation itself is always safe, but using the resulting pointer is not.
+    /// 该操作本身始终是安全的，但使用其结果指针则不一定安全。
     ///
-    /// The resulting pointer "remembers" the [allocation] that `self` points to; it must not
-    /// be used to read or write other allocations.
+    /// 结果指针会“记住” `self` 所指向的那个 [allocation]；它不得用于读写其他 allocation。
     ///
-    /// In other words, `let z = x.wrapping_add((y as usize) - (x as usize))` does *not* make `z`
-    /// the same as `y` even if we assume `T` has size `1` and there is no overflow: `z` is still
-    /// attached to the object `x` is attached to, and dereferencing it is Undefined Behavior unless
-    /// `x` and `y` point into the same allocation.
+    /// 换句话说，`let z = x.wrapping_add((y as usize) - (x as usize))` *不会* 使 `z` 等同于 `y`，
+    /// 即便我们假设 `T` 的大小为 `1` 且没有溢出：`z` 仍然依附于 `x` 所依附的对象，除非 `x` 和 `y`
+    /// 指向同一个 allocation，否则解引用它就是未定义行为。
     ///
-    /// Compared to [`add`], this method basically delays the requirement of staying within the
-    /// same allocation: [`add`] is immediate Undefined Behavior when crossing object
-    /// boundaries; `wrapping_add` produces a pointer but still leads to Undefined Behavior if a
-    /// pointer is dereferenced when it is out-of-bounds of the object it is attached to. [`add`]
-    /// can be optimized better and is thus preferable in performance-sensitive code.
+    /// 与 [`add`] 相比，本方法基本上是把“必须停留在同一 allocation 内”这一要求推迟了：[`add`] 在
+    /// 跨越对象边界时即刻构成未定义行为；而 `wrapping_add` 会产生一个指针，但当该指针在其所依附对
+    /// 象的边界之外被解引用时，仍会导致未定义行为。[`add`] 能被更好地优化，因此在性能敏感的代码中
+    /// 更可取。
     ///
-    /// The delayed check only considers the value of the pointer that was dereferenced, not the
-    /// intermediate values used during the computation of the final result. For example,
-    /// `x.wrapping_add(o).wrapping_sub(o)` is always the same as `x`. In other words, leaving the
-    /// allocation and then re-entering it later is permitted.
+    /// 这种被推迟的检查只考虑被解引用的那个指针的值，而不考虑计算最终结果过程中用到的中间值。例
+    /// 如，`x.wrapping_add(o).wrapping_sub(o)` 始终等同于 `x`。换言之，先离开 allocation 再于稍后
+    /// 重新进入它是被允许的。
     ///
     /// [`add`]: #method.add
     /// [allocation]: crate::ptr#allocation
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use std::fmt::Write;
-    /// // Iterate using a raw pointer in increments of two elements
+    /// // 使用裸指针以每次两个元素的步长进行迭代
     /// let data = [1u8, 2, 3, 4, 5];
     /// let mut ptr: *const u8 = data.as_ptr();
     /// let step = 2;
@@ -1057,15 +983,14 @@ impl<T: PointeeSized> *const T {
         self.wrapping_offset(count as isize)
     }
 
-    /// Adds an unsigned offset in bytes to a pointer using wrapping arithmetic.
+    /// 使用回绕（wrapping）算术给指针加上一个以字节为单位的无符号偏移量。
     ///
-    /// `count` is in units of bytes.
+    /// `count` 的单位是字节。
     ///
-    /// This is purely a convenience for casting to a `u8` pointer and
-    /// using [wrapping_add][pointer::wrapping_add] on it. See that method for documentation.
+    /// 这纯粹是一个便捷封装，相当于先转换为 `u8` 指针，再在其上调用
+    /// [wrapping_add][pointer::wrapping_add]。文档请参见该方法。
     ///
-    /// For non-`Sized` pointees this operation changes only the data pointer,
-    /// leaving the metadata untouched.
+    /// 对于非 `Sized` 的 pointee，该操作只改变 data 指针，而保持 metadata 不变。
     #[must_use]
     #[inline(always)]
     #[stable(feature = "pointer_byte_offsets", since = "1.75.0")]
@@ -1074,42 +999,37 @@ impl<T: PointeeSized> *const T {
         self.cast::<u8>().wrapping_add(count).with_metadata_of(self)
     }
 
-    /// Subtracts an unsigned offset from a pointer using wrapping arithmetic.
+    /// 使用回绕（wrapping）算术从指针中减去一个无符号偏移量。
     ///
-    /// `count` is in units of T; e.g., a `count` of 3 represents a pointer
-    /// offset of `3 * size_of::<T>()` bytes.
+    /// `count` 的单位是 T；例如 `count` 为 3 表示偏移 `3 * size_of::<T>()` 个字节。
     ///
-    /// # Safety
+    /// # 安全性（Safety）
     ///
-    /// This operation itself is always safe, but using the resulting pointer is not.
+    /// 该操作本身始终是安全的，但使用其结果指针则不一定安全。
     ///
-    /// The resulting pointer "remembers" the [allocation] that `self` points to; it must not
-    /// be used to read or write other allocations.
+    /// 结果指针会“记住” `self` 所指向的那个 [allocation]；它不得用于读写其他 allocation。
     ///
-    /// In other words, `let z = x.wrapping_sub((x as usize) - (y as usize))` does *not* make `z`
-    /// the same as `y` even if we assume `T` has size `1` and there is no overflow: `z` is still
-    /// attached to the object `x` is attached to, and dereferencing it is Undefined Behavior unless
-    /// `x` and `y` point into the same allocation.
+    /// 换句话说，`let z = x.wrapping_sub((x as usize) - (y as usize))` *不会* 使 `z` 等同于 `y`，
+    /// 即便我们假设 `T` 的大小为 `1` 且没有溢出：`z` 仍然依附于 `x` 所依附的对象，除非 `x` 和 `y`
+    /// 指向同一个 allocation，否则解引用它就是未定义行为。
     ///
-    /// Compared to [`sub`], this method basically delays the requirement of staying within the
-    /// same allocation: [`sub`] is immediate Undefined Behavior when crossing object
-    /// boundaries; `wrapping_sub` produces a pointer but still leads to Undefined Behavior if a
-    /// pointer is dereferenced when it is out-of-bounds of the object it is attached to. [`sub`]
-    /// can be optimized better and is thus preferable in performance-sensitive code.
+    /// 与 [`sub`] 相比，本方法基本上是把“必须停留在同一 allocation 内”这一要求推迟了：[`sub`] 在
+    /// 跨越对象边界时即刻构成未定义行为；而 `wrapping_sub` 会产生一个指针，但当该指针在其所依附对
+    /// 象的边界之外被解引用时，仍会导致未定义行为。[`sub`] 能被更好地优化，因此在性能敏感的代码中
+    /// 更可取。
     ///
-    /// The delayed check only considers the value of the pointer that was dereferenced, not the
-    /// intermediate values used during the computation of the final result. For example,
-    /// `x.wrapping_add(o).wrapping_sub(o)` is always the same as `x`. In other words, leaving the
-    /// allocation and then re-entering it later is permitted.
+    /// 这种被推迟的检查只考虑被解引用的那个指针的值，而不考虑计算最终结果过程中用到的中间值。例
+    /// 如，`x.wrapping_add(o).wrapping_sub(o)` 始终等同于 `x`。换言之，先离开 allocation 再于稍后
+    /// 重新进入它是被允许的。
     ///
     /// [`sub`]: #method.sub
     /// [allocation]: crate::ptr#allocation
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # use std::fmt::Write;
-    /// // Iterate using a raw pointer in increments of two elements (backwards)
+    /// // 使用裸指针以每次两个元素的步长进行迭代（反向）
     /// let data = [1u8, 2, 3, 4, 5];
     /// let mut ptr: *const u8 = data.as_ptr();
     /// let start_rounded_down = ptr.wrapping_sub(2);
@@ -1136,15 +1056,14 @@ impl<T: PointeeSized> *const T {
         self.wrapping_offset((count as isize).wrapping_neg())
     }
 
-    /// Subtracts an unsigned offset in bytes from a pointer using wrapping arithmetic.
+    /// 使用回绕（wrapping）算术从指针中减去一个以字节为单位的无符号偏移量。
     ///
-    /// `count` is in units of bytes.
+    /// `count` 的单位是字节。
     ///
-    /// This is purely a convenience for casting to a `u8` pointer and
-    /// using [wrapping_sub][pointer::wrapping_sub] on it. See that method for documentation.
+    /// 这纯粹是一个便捷封装，相当于先转换为 `u8` 指针，再在其上调用
+    /// [wrapping_sub][pointer::wrapping_sub]。文档请参见该方法。
     ///
-    /// For non-`Sized` pointees this operation changes only the data pointer,
-    /// leaving the metadata untouched.
+    /// 对于非 `Sized` 的 pointee，该操作只改变 data 指针，而保持 metadata 不变。
     #[must_use]
     #[inline(always)]
     #[stable(feature = "pointer_byte_offsets", since = "1.75.0")]
@@ -1153,10 +1072,9 @@ impl<T: PointeeSized> *const T {
         self.cast::<u8>().wrapping_sub(count).with_metadata_of(self)
     }
 
-    /// Reads the value from `self` without moving it. This leaves the
-    /// memory in `self` unchanged.
+    /// 从 `self` 读取出其中的值，但不移动它。这会保持 `self` 处的内存不变。
     ///
-    /// See [`ptr::read`] for safety concerns and examples.
+    /// 关于安全性方面的考虑与示例，请参见 [`ptr::read`]。
     ///
     /// [`ptr::read`]: crate::ptr::read()
     #[stable(feature = "pointer_methods", since = "1.26.0")]
@@ -1167,18 +1085,16 @@ impl<T: PointeeSized> *const T {
     where
         T: Sized,
     {
-        // SAFETY: the caller must uphold the safety contract for `read`.
+        // SAFETY: 调用方必须维护 `read` 的安全契约。
         unsafe { read(self) }
     }
 
-    /// Performs a volatile read of the value from `self` without moving it. This
-    /// leaves the memory in `self` unchanged.
+    /// 对 `self` 中的值执行一次 volatile（易变）读取，但不移动它。这会保持 `self` 处的内存不变。
     ///
-    /// Volatile operations are intended to act on I/O memory, and are guaranteed
-    /// to not be elided or reordered by the compiler across other volatile
-    /// operations.
+    /// Volatile 操作意在作用于 I/O 内存，并且保证编译器不会将其消除，也不会与其他 volatile 操作之
+    /// 间发生重排。
     ///
-    /// See [`ptr::read_volatile`] for safety concerns and examples.
+    /// 关于安全性方面的考虑与示例，请参见 [`ptr::read_volatile`]。
     ///
     /// [`ptr::read_volatile`]: crate::ptr::read_volatile()
     #[stable(feature = "pointer_methods", since = "1.26.0")]
@@ -1188,16 +1104,15 @@ impl<T: PointeeSized> *const T {
     where
         T: Sized,
     {
-        // SAFETY: the caller must uphold the safety contract for `read_volatile`.
+        // SAFETY: 调用方必须维护 `read_volatile` 的安全契约。
         unsafe { read_volatile(self) }
     }
 
-    /// Reads the value from `self` without moving it. This leaves the
-    /// memory in `self` unchanged.
+    /// 从 `self` 读取出其中的值，但不移动它。这会保持 `self` 处的内存不变。
     ///
-    /// Unlike `read`, the pointer may be unaligned.
+    /// 与 `read` 不同，该指针可以是未对齐的。
     ///
-    /// See [`ptr::read_unaligned`] for safety concerns and examples.
+    /// 关于安全性方面的考虑与示例，请参见 [`ptr::read_unaligned`]。
     ///
     /// [`ptr::read_unaligned`]: crate::ptr::read_unaligned()
     #[stable(feature = "pointer_methods", since = "1.26.0")]
@@ -1208,16 +1123,15 @@ impl<T: PointeeSized> *const T {
     where
         T: Sized,
     {
-        // SAFETY: the caller must uphold the safety contract for `read_unaligned`.
+        // SAFETY: 调用方必须维护 `read_unaligned` 的安全契约。
         unsafe { read_unaligned(self) }
     }
 
-    /// Copies `count * size_of::<T>()` bytes from `self` to `dest`. The source
-    /// and destination may overlap.
+    /// 把 `count * size_of::<T>()` 个字节从 `self` 复制到 `dest`。源与目标可以重叠。
     ///
-    /// NOTE: this has the *same* argument order as [`ptr::copy`].
+    /// 注意：它的参数顺序与 [`ptr::copy`] *相同*。
     ///
-    /// See [`ptr::copy`] for safety concerns and examples.
+    /// 关于安全性方面的考虑与示例，请参见 [`ptr::copy`]。
     ///
     /// [`ptr::copy`]: crate::ptr::copy()
     #[rustc_const_stable(feature = "const_intrinsic_copy", since = "1.83.0")]
@@ -1228,16 +1142,15 @@ impl<T: PointeeSized> *const T {
     where
         T: Sized,
     {
-        // SAFETY: the caller must uphold the safety contract for `copy`.
+        // SAFETY: 调用方必须维护 `copy` 的安全契约。
         unsafe { copy(self, dest, count) }
     }
 
-    /// Copies `count * size_of::<T>()` bytes from `self` to `dest`. The source
-    /// and destination may *not* overlap.
+    /// 把 `count * size_of::<T>()` 个字节从 `self` 复制到 `dest`。源与目标 *不得* 重叠。
     ///
-    /// NOTE: this has the *same* argument order as [`ptr::copy_nonoverlapping`].
+    /// 注意：它的参数顺序与 [`ptr::copy_nonoverlapping`] *相同*。
     ///
-    /// See [`ptr::copy_nonoverlapping`] for safety concerns and examples.
+    /// 关于安全性方面的考虑与示例，请参见 [`ptr::copy_nonoverlapping`]。
     ///
     /// [`ptr::copy_nonoverlapping`]: crate::ptr::copy_nonoverlapping()
     #[rustc_const_stable(feature = "const_intrinsic_copy", since = "1.83.0")]
@@ -1248,30 +1161,26 @@ impl<T: PointeeSized> *const T {
     where
         T: Sized,
     {
-        // SAFETY: the caller must uphold the safety contract for `copy_nonoverlapping`.
+        // SAFETY: 调用方必须维护 `copy_nonoverlapping` 的安全契约。
         unsafe { copy_nonoverlapping(self, dest, count) }
     }
 
-    /// Computes the offset that needs to be applied to the pointer in order to make it aligned to
-    /// `align`.
+    /// 计算为使指针对齐到 `align` 而需要施加给它的偏移量。
     ///
-    /// If it is not possible to align the pointer, the implementation returns
-    /// `usize::MAX`.
+    /// 如果无法使该指针对齐，实现会返回 `usize::MAX`。
     ///
-    /// The offset is expressed in number of `T` elements, and not bytes. The value returned can be
-    /// used with the `wrapping_add` method.
+    /// 该偏移量以 `T` 元素的个数表示，而不是字节数。返回的值可与 `wrapping_add` 方法配合使用。
     ///
-    /// There are no guarantees whatsoever that offsetting the pointer will not overflow or go
-    /// beyond the allocation that the pointer points into. It is up to the caller to ensure that
-    /// the returned offset is correct in all terms other than alignment.
+    /// 完全不保证对指针施加该偏移量后不会溢出、也不会越出该指针所指向的 allocation。除对齐之外的
+    /// 一切正确性，都由调用方负责确保返回的偏移量是正确的。
     ///
     /// # Panics
     ///
-    /// The function panics if `align` is not a power-of-two.
+    /// 如果 `align` 不是 2 的幂，本函数会 panic。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Accessing adjacent `u8` as `u16`
+    /// 把相邻的若干个 `u8` 作为 `u16` 访问
     ///
     /// ```
     /// # unsafe {
@@ -1283,8 +1192,7 @@ impl<T: PointeeSized> *const T {
     ///     let u16_ptr = ptr.add(offset).cast::<u16>();
     ///     assert!(*u16_ptr == u16::from_ne_bytes([5, 6]) || *u16_ptr == u16::from_ne_bytes([6, 7]));
     /// } else {
-    ///     // while the pointer can be aligned via `offset`, it would point
-    ///     // outside the allocation
+    ///     // 虽然该指针可以通过 `offset` 对齐，但对齐后它会指向 allocation 之外
     /// }
     /// # }
     /// ```
@@ -1299,10 +1207,10 @@ impl<T: PointeeSized> *const T {
             panic!("align_offset: align is not a power-of-two");
         }
 
-        // SAFETY: `align` has been checked to be a power of 2 above
+        // SAFETY: 上面已经检查过 `align` 是 2 的幂
         let ret = unsafe { align_offset(self, align) };
 
-        // Inform Miri that we want to consider the resulting pointer to be suitably aligned.
+        // 告知 Miri：我们希望把得到的结果指针视为已恰当对齐。
         #[cfg(miri)]
         if ret != usize::MAX {
             intrinsics::miri_promise_symbolic_alignment(self.wrapping_add(ret).cast(), align);
@@ -1311,12 +1219,12 @@ impl<T: PointeeSized> *const T {
         ret
     }
 
-    /// Returns whether the pointer is properly aligned for `T`.
+    /// 返回该指针对于 `T` 而言是否已恰当对齐。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
-    /// // On some platforms, the alignment of i32 is less than 4.
+    /// // 在某些平台上，i32 的对齐小于 4。
     /// #[repr(align(4))]
     /// struct AlignedI32(i32);
     ///
@@ -1336,21 +1244,20 @@ impl<T: PointeeSized> *const T {
         self.is_aligned_to(align_of::<T>())
     }
 
-    /// Returns whether the pointer is aligned to `align`.
+    /// 返回该指针是否对齐到 `align`。
     ///
-    /// For non-`Sized` pointees this operation considers only the data pointer,
-    /// ignoring the metadata.
+    /// 对于非 `Sized` 的 pointee，该操作只考虑 data 指针，忽略 metadata。
     ///
     /// # Panics
     ///
-    /// The function panics if `align` is not a power-of-two (this includes 0).
+    /// 如果 `align` 不是 2 的幂（这也包括 0），本函数会 panic。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(pointer_is_aligned_to)]
     ///
-    /// // On some platforms, the alignment of i32 is less than 4.
+    /// // 在某些平台上，i32 的对齐小于 4。
     /// #[repr(align(4))]
     /// struct AlignedI32(i32);
     ///
@@ -1379,7 +1286,7 @@ impl<T: PointeeSized> *const T {
 }
 
 impl<T> *const T {
-    /// Casts from a type to its maybe-uninitialized version.
+    /// 从某个类型转换为其 maybe-uninitialized（可能未初始化）版本。
     #[must_use]
     #[inline(always)]
     #[unstable(feature = "cast_maybe_uninit", issue = "145036")]
@@ -1388,10 +1295,9 @@ impl<T> *const T {
     }
 }
 impl<T> *const MaybeUninit<T> {
-    /// Casts from a maybe-uninitialized type to its initialized version.
+    /// 从 maybe-uninitialized（可能未初始化）类型转换为其已初始化版本。
     ///
-    /// This is always safe, since UB can only occur if the pointer is read
-    /// before being initialized.
+    /// 这始终是安全的，因为 UB 只可能在指针被初始化之前就被读取时才会发生。
     #[must_use]
     #[inline(always)]
     #[unstable(feature = "cast_maybe_uninit", issue = "145036")]
@@ -1401,14 +1307,13 @@ impl<T> *const MaybeUninit<T> {
 }
 
 impl<T> *const [T] {
-    /// Returns the length of a raw slice.
+    /// 返回一个裸切片的长度。
     ///
-    /// The returned value is the number of **elements**, not the number of bytes.
+    /// 返回的值是 **元素** 的个数，而不是字节数。
     ///
-    /// This function is safe, even when the raw slice cannot be cast to a slice
-    /// reference because the pointer is null or unaligned.
+    /// 即便由于指针为 null 或未对齐而无法把该裸切片转换为切片引用，本函数仍然是安全的。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```rust
     /// use std::ptr;
@@ -1423,9 +1328,9 @@ impl<T> *const [T] {
         metadata(self)
     }
 
-    /// Returns `true` if the raw slice has a length of 0.
+    /// 如果裸切片的长度为 0，则返回 `true`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::ptr;
@@ -1440,11 +1345,11 @@ impl<T> *const [T] {
         self.len() == 0
     }
 
-    /// Returns a raw pointer to the slice's buffer.
+    /// 返回一个指向该切片缓冲区的裸指针。
     ///
-    /// This is equivalent to casting `self` to `*const T`, but more type-safe.
+    /// 这等价于把 `self` 转换为 `*const T`，但更具类型安全性。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```rust
     /// #![feature(slice_ptr_get)]
@@ -1459,9 +1364,9 @@ impl<T> *const [T] {
         self as *const T
     }
 
-    /// Gets a raw pointer to the underlying array.
+    /// 获取一个指向底层数组的裸指针。
     ///
-    /// If `N` is not exactly equal to the length of `self`, then this method returns `None`.
+    /// 如果 `N` 与 `self` 的长度不完全相等，则本方法返回 `None`。
     #[stable(feature = "core_slice_as_array", since = "1.93.0")]
     #[rustc_const_stable(feature = "core_slice_as_array", since = "1.93.0")]
     #[inline]
@@ -1475,15 +1380,14 @@ impl<T> *const [T] {
         }
     }
 
-    /// Returns a raw pointer to an element or subslice, without doing bounds
-    /// checking.
+    /// 返回一个指向某个元素或子切片的裸指针，且不做边界检查。
     ///
-    /// Calling this method with an out-of-bounds index or when `self` is not dereferenceable
-    /// is *[undefined behavior]* even if the resulting pointer is not used.
+    /// 当以越界的索引调用本方法，或在 `self` 不可解引用（dereferenceable）时调用本方法，即为
+    /// *[未定义行为][undefined behavior]*，即便其结果指针并未被使用。
     ///
     /// [undefined behavior]: https://doc.rust-lang.org/reference/behavior-considered-undefined.html
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(slice_ptr_get)]
@@ -1501,7 +1405,7 @@ impl<T> *const [T] {
     where
         I: [const] SliceIndex<[T]>,
     {
-        // SAFETY: the caller ensures that `self` is dereferenceable and `index` in-bounds.
+        // SAFETY: 调用方确保 `self` 是可解引用的，且 `index` 在边界内。
         unsafe { index.get_unchecked(self) }
     }
 
@@ -1512,14 +1416,14 @@ impl<T> *const [T] {
         if self.is_null() {
             None
         } else {
-            // SAFETY: the caller must uphold the safety contract for `as_uninit_slice`.
+            // SAFETY: 调用方必须维护 `as_uninit_slice` 的安全契约。
             Some(unsafe { slice::from_raw_parts(self as *const MaybeUninit<T>, self.len()) })
         }
     }
 }
 
 impl<T> *const T {
-    /// Casts from a pointer-to-`T` to a pointer-to-`[T; N]`.
+    /// 从指向 `T` 的指针转换为指向 `[T; N]` 的指针。
     #[inline]
     #[unstable(feature = "ptr_cast_array", issue = "144514")]
     pub const fn cast_array<const N: usize>(self) -> *const [T; N] {
@@ -1528,11 +1432,11 @@ impl<T> *const T {
 }
 
 impl<T, const N: usize> *const [T; N] {
-    /// Returns a raw pointer to the array's buffer.
+    /// 返回一个指向该数组缓冲区的裸指针。
     ///
-    /// This is equivalent to casting `self` to `*const T`, but more type-safe.
+    /// 这等价于把 `self` 转换为 `*const T`，但更具类型安全性。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```rust
     /// #![feature(array_ptr_get)]
@@ -1547,9 +1451,9 @@ impl<T, const N: usize> *const [T; N] {
         self as *const T
     }
 
-    /// Returns a raw pointer to a slice containing the entire array.
+    /// 返回一个裸指针，指向包含整个数组的切片。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(array_ptr_get)]
@@ -1565,7 +1469,7 @@ impl<T, const N: usize> *const [T; N] {
     }
 }
 
-/// Pointer equality is by address, as produced by the [`<*const T>::addr`](pointer::addr) method.
+/// 指针相等性是按地址来判断的，正如 [`<*const T>::addr`](pointer::addr) 方法所产生的地址。
 #[stable(feature = "rust1", since = "1.0.0")]
 #[diagnostic::on_const(
     message = "pointers cannot be reliably compared during const eval",
@@ -1579,7 +1483,7 @@ impl<T: PointeeSized> PartialEq for *const T {
     }
 }
 
-/// Pointer equality is an equivalence relation.
+/// 指针相等性是一个等价关系。
 #[stable(feature = "rust1", since = "1.0.0")]
 #[diagnostic::on_const(
     message = "pointers cannot be reliably compared during const eval",
@@ -1587,7 +1491,7 @@ impl<T: PointeeSized> PartialEq for *const T {
 )]
 impl<T: PointeeSized> Eq for *const T {}
 
-/// Pointer comparison is by address, as produced by the `[`<*const T>::addr`](pointer::addr)` method.
+/// 指针比较是按地址来进行的，正如 `[`<*const T>::addr`](pointer::addr)` 方法所产生的地址。
 #[stable(feature = "rust1", since = "1.0.0")]
 #[diagnostic::on_const(
     message = "pointers cannot be reliably compared during const eval",
@@ -1607,7 +1511,7 @@ impl<T: PointeeSized> Ord for *const T {
     }
 }
 
-/// Pointer comparison is by address, as produced by the `[`<*const T>::addr`](pointer::addr)` method.
+/// 指针比较是按地址来进行的，正如 `[`<*const T>::addr`](pointer::addr)` 方法所产生的地址。
 #[stable(feature = "rust1", since = "1.0.0")]
 #[diagnostic::on_const(
     message = "pointers cannot be reliably compared during const eval",
@@ -1647,7 +1551,7 @@ impl<T: PointeeSized> PartialOrd for *const T {
 
 #[stable(feature = "raw_ptr_default", since = "1.88.0")]
 impl<T: ?Sized + Thin> Default for *const T {
-    /// Returns the default value of [`null()`][crate::ptr::null].
+    /// 返回 [`null()`][crate::ptr::null] 的默认值。
     fn default() -> Self {
         crate::ptr::null()
     }

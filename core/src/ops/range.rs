@@ -840,9 +840,9 @@ pub const trait RangeBounds<T: ?Sized> {
     #[stable(feature = "collections_range", since = "1.28.0")]
     fn end_bound(&self) -> Bound<&T>;
 
-    /// Returns `true` if `item` is contained in the range.
+    /// 如果 `item` 包含在该区间内,返回 `true`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// assert!( (3..5).contains(&4));
@@ -871,10 +871,10 @@ pub const trait RangeBounds<T: ?Sized> {
         })
     }
 
-    /// Returns `true` if the range contains no items.
-    /// One-sided ranges (`RangeFrom`, etc) always return `false`.
+    /// 如果该区间不含任何元素,返回 `true`。单侧区间(`RangeFrom` 等)总是返回
+    /// `false`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(range_bounds_is_empty)]
@@ -887,7 +887,7 @@ pub const trait RangeBounds<T: ?Sized> {
     /// assert!( RangeBounds::is_empty(&(3..2)));
     /// ```
     ///
-    /// The range is empty if either side is incomparable:
+    /// 如果两端中的任意一端不可比较(incomparable),该区间即为空:
     ///
     /// ```
     /// #![feature(range_bounds_is_empty)]
@@ -898,7 +898,7 @@ pub const trait RangeBounds<T: ?Sized> {
     /// assert!( RangeBounds::is_empty(&(f32::NAN..5.0)));
     /// ```
     ///
-    /// But never empty if either side is unbounded:
+    /// 但只要任意一端无界,它就绝不会为空:
     ///
     /// ```
     /// #![feature(range_bounds_is_empty)]
@@ -909,7 +909,7 @@ pub const trait RangeBounds<T: ?Sized> {
     /// assert!(!RangeBounds::<u8>::is_empty(&(..)));
     /// ```
     ///
-    /// `(Excluded(a), Excluded(b))` is only empty if `a >= b`:
+    /// `(Excluded(a), Excluded(b))` 仅当 `a >= b` 时才为空:
     ///
     /// ```
     /// #![feature(range_bounds_is_empty)]
@@ -937,18 +937,16 @@ pub const trait RangeBounds<T: ?Sized> {
     }
 }
 
-/// Used to convert a range into start and end bounds, consuming the
-/// range by value.
+/// 用于把一个区间转换成起始端点和末尾端点,并按值消耗该区间。
 ///
-/// `IntoBounds` is implemented by Rust’s built-in range types, produced
-/// by range syntax like `..`, `a..`, `..b`, `..=c`, `d..e`, or `f..=g`.
+/// `IntoBounds` 由 Rust 内建的各种区间类型实现,这些类型由形如 `..`、`a..`、
+/// `..b`、`..=c`、`d..e` 或 `f..=g` 的区间语法产生。
 #[unstable(feature = "range_into_bounds", issue = "136903")]
 #[rustc_const_unstable(feature = "const_range", issue = "none")]
 pub const trait IntoBounds<T>: [const] RangeBounds<T> {
-    /// Convert this range into the start and end bounds.
-    /// Returns `(start_bound, end_bound)`.
+    /// 把这个区间转换成起始端点和末尾端点。返回 `(start_bound, end_bound)`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(range_into_bounds)]
@@ -960,9 +958,9 @@ pub const trait IntoBounds<T>: [const] RangeBounds<T> {
     /// ```
     fn into_bounds(self) -> (Bound<T>, Bound<T>);
 
-    /// Compute the intersection of  `self` and `other`.
+    /// 计算 `self` 与 `other` 的交集(intersection)。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(range_into_bounds)]
@@ -976,7 +974,7 @@ pub const trait IntoBounds<T>: [const] RangeBounds<T> {
     /// assert_eq!((7..=13).intersect(8..13), (Included(8), Excluded(13)));
     /// ```
     ///
-    /// Combine with `is_empty` to determine if two ranges overlap.
+    /// 结合 `is_empty` 使用,即可判断两个区间是否重叠(overlap)。
     ///
     /// ```
     /// #![feature(range_into_bounds)]
@@ -1117,8 +1115,8 @@ impl<T> const RangeBounds<T> for RangeInclusive<T> {
     }
     fn end_bound(&self) -> Bound<&T> {
         if self.exhausted {
-            // When the iterator is exhausted, we usually have start == end,
-            // but we want the range to appear empty, containing nothing.
+            // 当迭代器耗尽时,我们通常有 start == end,
+            // 但我们希望该区间表现为空,即不含任何元素。
             Excluded(&self.end)
         } else {
             Included(&self.end)
@@ -1133,8 +1131,8 @@ impl<T> const IntoBounds<T> for RangeInclusive<T> {
         (
             Included(self.start),
             if self.exhausted {
-                // When the iterator is exhausted, we usually have start == end,
-                // but we want the range to appear empty, containing nothing.
+                // 当迭代器耗尽时,我们通常有 start == end,
+                // 但我们希望该区间表现为空,即不含任何元素。
                 Excluded(self.end)
             } else {
                 Included(self.end)
@@ -1202,12 +1200,12 @@ impl<'a, T: ?Sized + 'a> const RangeBounds<T> for (Bound<&'a T>, Bound<&'a T>) {
     }
 }
 
-// This impl intentionally does not have `T: ?Sized`;
-// see https://github.com/rust-lang/rust/pull/61584 for discussion of why.
+// 这个 impl 故意不带 `T: ?Sized`;
+// 关于原因的讨论,见 https://github.com/rust-lang/rust/pull/61584。
 //
-/// If you need to use this implementation where `T` is unsized,
-/// consider using the `RangeBounds` impl for a 2-tuple of [`Bound<&T>`][Bound],
-/// i.e. replace `start..` with `(Bound::Included(start), Bound::Unbounded)`.
+/// 如果你需要在 `T` 为非定长(unsized)的场景下使用这个实现,可以考虑改用
+/// 针对由 [`Bound<&T>`][Bound] 组成的二元组的 `RangeBounds` 实现,
+/// 也就是把 `start..` 替换为 `(Bound::Included(start), Bound::Unbounded)`。
 #[stable(feature = "collections_range", since = "1.28.0")]
 #[rustc_const_unstable(feature = "const_range", issue = "none")]
 impl<T> const RangeBounds<T> for RangeFrom<&T> {
@@ -1219,12 +1217,12 @@ impl<T> const RangeBounds<T> for RangeFrom<&T> {
     }
 }
 
-// This impl intentionally does not have `T: ?Sized`;
-// see https://github.com/rust-lang/rust/pull/61584 for discussion of why.
+// 这个 impl 故意不带 `T: ?Sized`;
+// 关于原因的讨论,见 https://github.com/rust-lang/rust/pull/61584。
 //
-/// If you need to use this implementation where `T` is unsized,
-/// consider using the `RangeBounds` impl for a 2-tuple of [`Bound<&T>`][Bound],
-/// i.e. replace `..end` with `(Bound::Unbounded, Bound::Excluded(end))`.
+/// 如果你需要在 `T` 为非定长(unsized)的场景下使用这个实现,可以考虑改用
+/// 针对由 [`Bound<&T>`][Bound] 组成的二元组的 `RangeBounds` 实现,
+/// 也就是把 `..end` 替换为 `(Bound::Unbounded, Bound::Excluded(end))`。
 #[stable(feature = "collections_range", since = "1.28.0")]
 #[rustc_const_unstable(feature = "const_range", issue = "none")]
 impl<T> const RangeBounds<T> for RangeTo<&T> {
@@ -1236,12 +1234,12 @@ impl<T> const RangeBounds<T> for RangeTo<&T> {
     }
 }
 
-// This impl intentionally does not have `T: ?Sized`;
-// see https://github.com/rust-lang/rust/pull/61584 for discussion of why.
+// 这个 impl 故意不带 `T: ?Sized`;
+// 关于原因的讨论,见 https://github.com/rust-lang/rust/pull/61584。
 //
-/// If you need to use this implementation where `T` is unsized,
-/// consider using the `RangeBounds` impl for a 2-tuple of [`Bound<&T>`][Bound],
-/// i.e. replace `start..end` with `(Bound::Included(start), Bound::Excluded(end))`.
+/// 如果你需要在 `T` 为非定长(unsized)的场景下使用这个实现,可以考虑改用
+/// 针对由 [`Bound<&T>`][Bound] 组成的二元组的 `RangeBounds` 实现,
+/// 也就是把 `start..end` 替换为 `(Bound::Included(start), Bound::Excluded(end))`。
 #[stable(feature = "collections_range", since = "1.28.0")]
 #[rustc_const_unstable(feature = "const_range", issue = "none")]
 impl<T> const RangeBounds<T> for Range<&T> {
@@ -1253,12 +1251,12 @@ impl<T> const RangeBounds<T> for Range<&T> {
     }
 }
 
-// This impl intentionally does not have `T: ?Sized`;
-// see https://github.com/rust-lang/rust/pull/61584 for discussion of why.
+// 这个 impl 故意不带 `T: ?Sized`;
+// 关于原因的讨论,见 https://github.com/rust-lang/rust/pull/61584。
 //
-/// If you need to use this implementation where `T` is unsized,
-/// consider using the `RangeBounds` impl for a 2-tuple of [`Bound<&T>`][Bound],
-/// i.e. replace `start..=end` with `(Bound::Included(start), Bound::Included(end))`.
+/// 如果你需要在 `T` 为非定长(unsized)的场景下使用这个实现,可以考虑改用
+/// 针对由 [`Bound<&T>`][Bound] 组成的二元组的 `RangeBounds` 实现,
+/// 也就是把 `start..=end` 替换为 `(Bound::Included(start), Bound::Included(end))`。
 #[stable(feature = "collections_range", since = "1.28.0")]
 #[rustc_const_unstable(feature = "const_range", issue = "none")]
 impl<T> const RangeBounds<T> for RangeInclusive<&T> {
@@ -1270,12 +1268,12 @@ impl<T> const RangeBounds<T> for RangeInclusive<&T> {
     }
 }
 
-// This impl intentionally does not have `T: ?Sized`;
-// see https://github.com/rust-lang/rust/pull/61584 for discussion of why.
+// 这个 impl 故意不带 `T: ?Sized`;
+// 关于原因的讨论,见 https://github.com/rust-lang/rust/pull/61584。
 //
-/// If you need to use this implementation where `T` is unsized,
-/// consider using the `RangeBounds` impl for a 2-tuple of [`Bound<&T>`][Bound],
-/// i.e. replace `..=end` with `(Bound::Unbounded, Bound::Included(end))`.
+/// 如果你需要在 `T` 为非定长(unsized)的场景下使用这个实现,可以考虑改用
+/// 针对由 [`Bound<&T>`][Bound] 组成的二元组的 `RangeBounds` 实现,
+/// 也就是把 `..=end` 替换为 `(Bound::Unbounded, Bound::Included(end))`。
 #[stable(feature = "collections_range", since = "1.28.0")]
 #[rustc_const_unstable(feature = "const_range", issue = "none")]
 impl<T> const RangeBounds<T> for RangeToInclusive<&T> {
@@ -1287,30 +1285,29 @@ impl<T> const RangeBounds<T> for RangeToInclusive<&T> {
     }
 }
 
-/// An internal helper for `split_off` functions indicating
-/// which end a `OneSidedRange` is bounded on.
+/// 一个供 `split_off` 系列函数内部使用的辅助类型,用来指明一个 `OneSidedRange`
+/// (单侧区间)在哪一端是有界的。
 #[unstable(feature = "one_sided_range", issue = "69780")]
 #[allow(missing_debug_implementations)]
 pub enum OneSidedRangeBound {
-    /// The range is bounded inclusively from below and is unbounded above.
+    /// 该区间下界包含、上界无界。
     StartInclusive,
-    /// The range is bounded exclusively from above and is unbounded below.
+    /// 该区间上界不包含、下界无界。
     End,
-    /// The range is bounded inclusively from above and is unbounded below.
+    /// 该区间上界包含、下界无界。
     EndInclusive,
 }
 
-/// `OneSidedRange` is implemented for built-in range types that are unbounded
-/// on one side. For example, `a..`, `..b` and `..=c` implement `OneSidedRange`,
-/// but `..`, `d..e`, and `f..=g` do not.
+/// `OneSidedRange` 为那些在某一侧无界的内建区间类型而实现。例如,`a..`、`..b`
+/// 和 `..=c` 都实现了 `OneSidedRange`,而 `..`、`d..e` 和 `f..=g` 则没有。
 ///
-/// Types that implement `OneSidedRange<T>` must return `Bound::Unbounded`
-/// from one of `RangeBounds::start_bound` or `RangeBounds::end_bound`.
+/// 实现 `OneSidedRange<T>` 的类型,必须从 `RangeBounds::start_bound` 或
+/// `RangeBounds::end_bound` 二者之一返回 `Bound::Unbounded`。
 #[unstable(feature = "one_sided_range", issue = "69780")]
 #[rustc_const_unstable(feature = "const_range", issue = "none")]
 pub const trait OneSidedRange<T>: RangeBounds<T> {
-    /// An internal-only helper function for `split_off` and
-    /// `split_off_mut` that returns the bound of the one-sided range.
+    /// 一个仅供 `split_off` 和 `split_off_mut` 内部使用的辅助函数,返回该单侧
+    /// 区间的端点。
     fn bound(self) -> (OneSidedRangeBound, T);
 }
 
