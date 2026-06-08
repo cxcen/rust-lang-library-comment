@@ -360,7 +360,7 @@ impl f16 {
     /// assert!(!zero.is_subnormal());
     /// assert!(!f16::NAN.is_subnormal());
     /// assert!(!f16::INFINITY.is_subnormal());
-    /// // Values between `0` and `min` are Subnormal.
+    /// // `0` 和 `min` 之间的值是次正规数（Subnormal）。
     /// assert!(lower_than_min.is_subnormal());
     /// # }
     /// ```
@@ -389,7 +389,7 @@ impl f16 {
     /// assert!(!zero.is_normal());
     /// assert!(!f16::NAN.is_normal());
     /// assert!(!f16::INFINITY.is_normal());
-    /// // Values between `0` and `min` are Subnormal.
+    /// // `0` 和 `min` 之间的值是次正规数（Subnormal）。
     /// assert!(!lower_than_min.is_normal());
     /// # }
     /// ```
@@ -510,9 +510,9 @@ impl f16 {
     /// # // FIXME(f16_f128): ABI issues on MSVC
     /// # #[cfg(all(target_arch = "x86_64", target_os = "linux"))] {
     ///
-    /// // f16::EPSILON is the difference between 1.0 and the next number up.
+    /// // f16::EPSILON 是 1.0 与下一个更大的数之间的差值。
     /// assert_eq!(1.0f16.next_up(), 1.0 + f16::EPSILON);
-    /// // But not for most numbers.
+    /// // 但对大多数数字而言并非如此。
     /// assert!(0.1f16.next_up() < 0.1 + f16::EPSILON);
     /// assert_eq!(4356f16.next_up(), 4360.0);
     /// # }
@@ -566,7 +566,7 @@ impl f16 {
     /// # #[cfg(all(target_arch = "x86_64", target_os = "linux"))] {
     ///
     /// let x = 1.0f16;
-    /// // Clamp value into range [0, 1).
+    /// // 将值限制到范围 [0, 1) 内。
     /// let clamped = x.clamp(0.0, 1.0f16.next_down());
     /// assert!(clamped < 1.0);
     /// assert_eq!(clamped.next_up(), 1.0);
@@ -1169,7 +1169,7 @@ impl f16 {
     ///
     /// bois.sort_by(|a, b| a.weight.total_cmp(&b.weight));
     ///
-    /// // `f16::NAN` could be positive or negative, which will affect the sort order.
+    /// // `f16::NAN` 可能为正也可能为负，这会影响排序顺序。
     /// if f16::NAN.is_sign_negative() {
     ///     bois.into_iter().map(|b| b.weight)
     ///         .zip([f16::NAN, -5.0, 0.1, 10.0, 99.0, f16::INFINITY].iter())
@@ -1241,10 +1241,10 @@ impl f16 {
     /// assert!((2.0f16).clamp(-2.0, 1.0) == 1.0);
     /// assert!((f16::NAN).clamp(-2.0, 1.0).is_nan());
     ///
-    /// // These always returns zero, but the sign (which is ignored by `==`) is non-deterministic.
+    /// // 这些总是返回零，但其符号（被 `==` 忽略）是不确定的。
     /// assert!((0.0f16).clamp(-0.0, -0.0) == 0.0);
     /// assert!((1.0f16).clamp(-0.0, 0.0) == 0.0);
-    /// // This is definitely a negative zero.
+    /// // 这肯定是一个负零。
     /// assert!((-1.0f16).clamp(-0.0, 1.0).is_sign_negative());
     /// # }
     /// ```
@@ -1671,9 +1671,9 @@ impl f16 {
     /// let one_minus_eps = 1.0_f16 - f16::EPSILON;
     /// let minus_one = -1.0_f16;
     ///
-    /// // The exact result (1 + eps) * (1 - eps) = 1 - eps * eps.
+    /// // 精确结果 (1 + eps) * (1 - eps) = 1 - eps * eps。
     /// assert_eq!(one_plus_eps.mul_add(one_minus_eps, minus_one), -f16::EPSILON * f16::EPSILON);
-    /// // Different rounding with the non-fused multiply and add.
+    /// // 非融合乘加运算会产生不同的舍入结果。
     /// assert_eq!(one_plus_eps * one_minus_eps + minus_one, 0.0);
     /// # }
     /// ```
@@ -1755,7 +1755,7 @@ impl f16 {
     /// assert_eq!((-a).rem_euclid(b), 1.0);
     /// assert_eq!(a.rem_euclid(-b), 3.0);
     /// assert_eq!((-a).rem_euclid(-b), 1.0);
-    /// // limitation due to round-off error
+    /// // 受舍入误差所限
     /// assert!((-f16::EPSILON).rem_euclid(3.0) != 0.0);
     /// # }
     /// ```

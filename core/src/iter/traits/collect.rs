@@ -423,7 +423,7 @@ pub trait Extend<A> {
     /// **对实现者:** 如果集合要在 unsafe 代码中依赖此方法的安全前置条件（也就是说，
     /// 条件被违反时可能触发 UB），就必须正确实现 `extend_reserve`。换句话说，调用者
     /// 可以假设: 如果已经通过 `extend_reserve` 预留了足够空间，就可以调用此方法。
-    // 此方法仅供内部使用。它出现在 trait 上只是因为 specialization 的限制。
+    // 此方法仅供内部使用。它出现在 trait 上只是因为特化的限制。
     #[unstable(feature = "extend_one_unchecked", issue = "none")]
     #[doc(hidden)]
     unsafe fn extend_one_unchecked(&mut self, item: A)
@@ -613,7 +613,7 @@ macro_rules! impl_extend_tuple {
             }
 
             unsafe fn extend_one_unchecked(&mut self, item: ($($ty,)+)) {
-                // SAFETY: Those are our safety preconditions, and we correctly forward `extend_reserve`.
+                // SAFETY: 这些正是我们的安全前置条件，并且我们正确转发了 `extend_reserve`。
                 unsafe {
                     $(self.$index.extend_one_unchecked(item.$index);)+
                 }

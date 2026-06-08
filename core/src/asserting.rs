@@ -12,7 +12,7 @@
 use crate::fmt::{Debug, Formatter};
 use crate::marker::PhantomData;
 
-// ***** TryCapture - Generic *****
+// ***** TryCapture - 泛型 *****
 
 /// [Capture] 使用的标记类型。
 #[unstable(feature = "generic_assert_internals", issue = "44838")]
@@ -36,7 +36,7 @@ impl<E> Debug for Capture<E, TryCaptureWithoutDebug> {
     }
 }
 
-// ***** TryCapture - Printable *****
+// ***** TryCapture - 可打印 *****
 
 /// [Capture] 使用的标记类型。
 #[unstable(feature = "generic_assert_internals", issue = "44838")]
@@ -71,22 +71,22 @@ where
     }
 }
 
-// ***** Others *****
+// ***** 其他 *****
 
 //spellchecker:off
-/// All possible captured `assert!` elements
+/// 所有可能捕获的 `assert!` 元素。
 ///
-/// # Types
+/// # 类型
 ///
-/// * `E`: **E**lement that is going to be displayed.
-/// * `M`: **M**arker used to differentiate [Capture]s in regards to [Debug].
+/// * `E`: 将要显示的元素。
+/// * `M`: 用于按 [Debug] 区分 [Capture] 的标记。
 //spellchecker:on
 #[unstable(feature = "generic_assert_internals", issue = "44838")]
 pub struct Capture<E, M> {
-    // If None, then `E` does not implements [Printable] or `E` wasn't evaluated (`assert!( ... )`
-    // short-circuited).
+    // 如果为 None，则 `E` 没有实现 [Printable]，或者 `E` 未被求值
+    // （`assert!( ... )` 短路）。
     //
-    // If Some, then `E` implements [Printable] and was evaluated.
+    // 如果为 Some，则 `E` 实现了 [Printable] 且已被求值。
     pub elem: Option<E>,
     phantom: PhantomData<M>,
 }
@@ -98,11 +98,11 @@ impl<M, T> Capture<M, T> {
     }
 }
 
-/// Necessary for the implementations of `TryCapture*`
+/// 实现 `TryCapture*` 时需要。
 #[unstable(feature = "generic_assert_internals", issue = "44838")]
 pub struct Wrapper<T>(pub T);
 
-/// Tells which elements can be copied and displayed
+/// 表示哪些元素可以被复制和显示。
 #[unstable(feature = "generic_assert_internals", issue = "44838")]
 pub trait Printable: Copy + Debug {}
 

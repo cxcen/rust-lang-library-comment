@@ -33,14 +33,14 @@
 /// ```
 /// let praise_the_borrow_checker = true;
 ///
-/// // using the `if` conditional
+/// // 使用 `if` 条件语句
 /// if praise_the_borrow_checker {
 ///     println!("oh, yeah!");
 /// } else {
 ///     println!("what?!!");
 /// }
 ///
-/// // ... or, a match pattern
+/// // ... 或者，一个 match 模式
 /// match praise_the_borrow_checker {
 ///     true => println!("keep praising!"),
 ///     false => println!("you should praise!"),
@@ -260,24 +260,24 @@ mod prim_bool {}
 ///
 // FIXME: `core::convert::absurd` 合并后改用它。
 /// ```rust,ignore (illustrative-and-has-placeholders)
-/// // this
+/// // 这段代码
 /// let x: u8 = panic!();
 ///
-/// // is (essentially) turned by the compiler into
+/// // 会（本质上）被编译器转换为
 /// let x: u8 = absurd(panic!());
 ///
-/// // where absurd is a function with the following signature
-/// // (it's sound, because `!` always marks unreachable code):
+/// // 其中 absurd 是一个具有如下签名的函数
+/// // （这是健全的，因为 `!` 总是标记不可达代码）：
 /// fn absurd<T>(_: !) -> T { ... }
 /// ```
 ///
 /// 如果无法推断出类型，这可能导致编译错误：
 ///
 /// ```compile_fail
-/// // this
+/// // 这段代码
 /// { panic!() };
 ///
-/// // gets turned into this
+/// // 会被转换为这样
 /// { absurd(panic!()) }; // error: can't infer the type of `absurd`
 /// ```
 ///
@@ -326,17 +326,17 @@ impl ! {}
 /// 违反此规则会导致 undefined behavior。
 ///
 /// ```compile_fail
-/// // Each of these is a compiler error
+/// // 下面每一个都是编译错误
 /// ['\u{D800}', '\u{DFFF}', '\u{110000}'];
 /// ```
 ///
 /// ```should_panic
-/// // Panics; from_u32 returns None.
+/// // 会 panic；from_u32 返回 None。
 /// char::from_u32(0xDE01).unwrap();
 /// ```
 ///
 /// ```no_run
-/// // Undefined behavior
+/// // Undefined behavior（未定义行为）
 /// let _ = unsafe { char::from_u32_unchecked(0x110000) };
 /// ```
 ///
@@ -379,12 +379,12 @@ impl ! {}
 /// ```
 /// let v = vec!['h', 'e', 'l', 'l', 'o'];
 ///
-/// // five elements times four bytes for each element
+/// // 五个元素，每个元素四个字节
 /// assert_eq!(20, v.len() * size_of::<char>());
 ///
 /// let s = String::from("hello");
 ///
-/// // five elements times one byte per element
+/// // 五个元素，每个元素一个字节
 /// assert_eq!(5, s.len() * size_of::<u8>());
 /// ```
 ///
@@ -527,8 +527,8 @@ impl () {}
 /// let my_speed: Box<i32> = Box::new(88);
 /// let my_speed: *mut i32 = Box::into_raw(my_speed);
 ///
-/// // By taking ownership of the original `Box<T>` though
-/// // we are obligated to put it together later to be destroyed.
+/// // 不过由于获取了原始 `Box<T>` 的所有权，
+/// // 我们有义务稍后将其重新组装以便销毁。
 /// unsafe {
 ///     drop(Box::from_raw(my_speed));
 /// }
@@ -648,7 +648,7 @@ mod prim_pointer {}
 ///
 /// assert_eq!([1, 2], &array[1..]);
 ///
-/// // This loop prints: 0 1 2
+/// // 这个循环打印：0 1 2
 /// for x in array {
 ///     print!("{x} ");
 /// }
@@ -695,24 +695,24 @@ mod prim_pointer {}
 /// 将来，2015 和 2018 edition 上的行为可能会与后续 edition 保持一致。
 ///
 /// ```rust,edition2018
-/// // Rust 2015 and 2018:
+/// // Rust 2015 和 2018：
 ///
 /// # #![allow(array_into_iter)] // override our `deny(warnings)`
 /// let array: [i32; 3] = [0; 3];
 ///
-/// // This creates a slice iterator, producing references to each value.
+/// // 这会创建一个 slice 迭代器，产生指向每个值的引用。
 /// for item in array.into_iter().enumerate() {
 ///     let (i, x): (usize, &i32) = item;
 ///     println!("array[{i}] = {x}");
 /// }
 ///
-/// // The `array_into_iter` lint suggests this change for future compatibility:
+/// // `array_into_iter` lint 建议做如下修改以保证未来兼容性：
 /// for item in array.iter().enumerate() {
 ///     let (i, x): (usize, &i32) = item;
 ///     println!("array[{i}] = {x}");
 /// }
 ///
-/// // You can explicitly iterate an array by value using `IntoIterator::into_iter`
+/// // 你可以用 `IntoIterator::into_iter` 显式地按值迭代数组
 /// for item in IntoIterator::into_iter(array).enumerate() {
 ///     let (i, x): (usize, i32) = item;
 ///     println!("array[{i}] = {x}");
@@ -723,17 +723,17 @@ mod prim_pointer {}
 /// 若要像旧 edition 那样按引用迭代，应使用 `iter()`。
 ///
 /// ```rust,edition2021
-/// // Rust 2021:
+/// // Rust 2021：
 ///
 /// let array: [i32; 3] = [0; 3];
 ///
-/// // This iterates by reference:
+/// // 这会按引用迭代：
 /// for item in array.iter().enumerate() {
 ///     let (i, x): (usize, &i32) = item;
 ///     println!("array[{i}] = {x}");
 /// }
 ///
-/// // This iterates by value:
+/// // 这会按值迭代：
 /// for item in array.into_iter().enumerate() {
 ///     let (i, x): (usize, i32) = item;
 ///     println!("array[{i}] = {x}");
@@ -750,30 +750,30 @@ mod prim_pointer {}
 ///   等价于 2021 之后的行为（Rust 1.53+）
 ///
 /// ```rust,edition2018
-/// // Rust 2015 and 2018:
+/// // Rust 2015 和 2018：
 ///
 /// let array: [i32; 3] = [0; 3];
 ///
-/// // This iterates by reference:
+/// // 这会按引用迭代：
 /// for item in array.iter() {
 ///     let x: &i32 = item;
 ///     println!("{x}");
 /// }
 ///
-/// // This iterates by value:
+/// // 这会按值迭代：
 /// for item in IntoIterator::into_iter(array) {
 ///     let x: i32 = item;
 ///     println!("{x}");
 /// }
 ///
-/// // This iterates by value:
+/// // 这会按值迭代：
 /// for item in array {
 ///     let x: i32 = item;
 ///     println!("{x}");
 /// }
 ///
-/// // IntoIter can also start a chain.
-/// // This iterates by value:
+/// // IntoIter 也可以作为链式调用的起点。
+/// // 这会按值迭代：
 /// for item in IntoIterator::into_iter(array).enumerate() {
 ///     let (i, x): (usize, i32) = item;
 ///     println!("array[{i}] = {x}");
@@ -803,10 +803,10 @@ mod prim_array {}
 /// 切片是某块内存的视图，由一个指针和一个长度表示。
 ///
 /// ```
-/// // slicing a Vec
+/// // 对 Vec 进行切片
 /// let vec = vec![1, 2, 3];
 /// let int_slice = &vec[..];
-/// // coercing an array to a slice
+/// // 将数组强制转换为切片
 /// let str_slice: &[&str] = &["one", "two", "three"];
 /// ```
 ///
@@ -933,16 +933,16 @@ mod prim_slice {}
 /// let ptr = story.as_ptr();
 /// let len = story.len();
 ///
-/// // story has nineteen bytes
+/// // story 有十九个字节
 /// assert_eq!(19, len);
 ///
-/// // We can re-build a str out of ptr and len. This is all unsafe because
-/// // we are responsible for making sure the two components are valid:
+/// // 我们可以用 ptr 和 len 重新构建一个 str。这一切都是 unsafe 的，因为
+/// // 我们有责任确保这两个组成部分是有效的：
 /// let s = unsafe {
-///     // First, we build a &[u8]...
+///     // 首先，我们构建一个 &[u8]...
 ///     let slice = slice::from_raw_parts(ptr, len);
 ///
-///     // ... and then convert that slice into a string slice
+///     // ... 然后将该切片转换为字符串切片
 ///     str::from_utf8(slice)
 /// };
 ///
@@ -1056,7 +1056,7 @@ mod prim_str {}
 ///
 /// ```
 /// fn calculate_point() -> (i32, i32) {
-///     // Don't do a calculation, that's not the point of the example
+///     // 别做真正的计算，那不是这个示例的重点
 ///     (4, 5)
 /// }
 ///
@@ -1065,7 +1065,7 @@ mod prim_str {}
 /// assert_eq!(point.0, 4);
 /// assert_eq!(point.1, 5);
 ///
-/// // Combining this with patterns can be nicer.
+/// // 将其与模式结合起来会更好。
 ///
 /// let (x, y) = calculate_point();
 ///
@@ -1582,7 +1582,7 @@ mod prim_ref {}
 ///
 /// let safe_ptr: fn(usize) -> usize = add_one;
 ///
-/// //ERROR: mismatched types: expected normal fn, found unsafe fn
+/// //ERROR: 类型不匹配：期望 normal fn，却得到 unsafe fn
 /// //let bad_ptr: fn(usize) -> usize = add_one_unsafely;
 ///
 /// let unsafe_ptr: unsafe fn(usize) -> usize = add_one_unsafely;

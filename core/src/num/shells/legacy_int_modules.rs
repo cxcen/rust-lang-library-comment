@@ -10,22 +10,22 @@ macro_rules! legacy_int_module {
         )]
         #[rustc_diagnostic_item = concat!(stringify!($T), "_legacy_mod")]
         pub mod $T {
-            #![doc = concat!("Redundant constants module for the [`", stringify!($T), "` primitive type][", stringify!($T), "].")]
+            #![doc = concat!("用于 [`", stringify!($T), "` 原语类型][", stringify!($T), "] 的冗余常量模块。")]
             //!
-            //! New code should use the associated constants directly on the primitive type.
+            //! 新代码应直接使用原语类型上的关联常量。
 
             #[doc = concat!(
-                "The smallest value that can be represented by this integer type. Use ",
-                "[`", stringify!($T), "::MIN", "`] instead."
+                "此整数类型可表示的最小值。请改用 ",
+                "[`", stringify!($T), "::MIN", "`]。"
             )]
             ///
             /// # 示例
             ///
             /// ```rust
-            /// // deprecated way
+            /// // 已弃用的写法
             #[doc = concat!("let min = std::", stringify!($T), "::MIN;")]
             ///
-            /// // intended way
+            /// // 推荐的写法
             #[doc = concat!("let min = ", stringify!($T), "::MIN;")]
             /// ```
             ///
@@ -35,17 +35,17 @@ macro_rules! legacy_int_module {
             pub const MIN: $T = $T::MIN;
 
             #[doc = concat!(
-                "The largest value that can be represented by this integer type. Use ",
-                "[`", stringify!($T), "::MAX", "`] instead."
+                "此整数类型可表示的最大值。请改用 ",
+                "[`", stringify!($T), "::MAX", "`]。"
             )]
             ///
             /// # 示例
             ///
             /// ```rust
-            /// // deprecated way
+            /// // 已弃用的写法
             #[doc = concat!("let max = std::", stringify!($T), "::MAX;")]
             ///
-            /// // intended way
+            /// // 推荐的写法
             #[doc = concat!("let max = ", stringify!($T), "::MAX;")]
             /// ```
             ///

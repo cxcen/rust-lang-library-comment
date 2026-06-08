@@ -478,7 +478,7 @@ enum AddrKind {
 /// ```
 /// use std::net::SocketAddr;
 ///
-/// // No problem, the `panic!` message has disappeared.
+/// // 没问题,`panic!` 消息已经消失了。
 /// let _foo: SocketAddr = "127.0.0.1:8080".parse().expect("unreachable panic");
 /// ```
 #[stable(feature = "rust1", since = "1.0.0")]

@@ -1,9 +1,8 @@
-//! This module reexports the primitive types to allow usage that is not
-//! possibly shadowed by other declared types.
+//! 本模块重新导出 primitive 类型，使其用法不会被其他已声明类型遮蔽。
 //!
-//! This is normally only useful in macro generated code.
+//! 这通常只对宏生成的代码有用。
 //!
-//! An example of this is when generating a new struct and an impl for it:
+//! 一个例子是在生成新结构体及其 impl 时：
 //!
 //! ```rust,compile_fail
 //! pub struct bool;
@@ -15,10 +14,10 @@
 //! # trait QueryId { const SOME_PROPERTY: ::core::primitive::bool; }
 //! ```
 //!
-//! Note that the `SOME_PROPERTY` associated constant would not compile, as its
-//! type `bool` refers to the struct, rather than to the primitive bool type.
+//! 注意，`SOME_PROPERTY` 关联常量无法编译，因为它的类型 `bool` 指向该结构体，
+//! 而不是 primitive bool 类型。
 //!
-//! A correct implementation could look like:
+//! 正确实现可以写成：
 //!
 //! ```rust
 //! # #[allow(non_camel_case_types)]
@@ -31,9 +30,8 @@
 //! # trait QueryId { const SOME_PROPERTY: ::core::primitive::bool; }
 //! ```
 //!
-//! We also used `::core` instead of `core`, because `core` can be
-//! shadowed, too. Paths, starting with `::`, are searched in
-//! the [extern prelude] since Edition 2018.
+//! 这里还使用了 `::core` 而不是 `core`，因为 `core` 也可能被遮蔽。
+//! 从 Edition 2018 开始，以 `::` 开头的路径会在 [extern prelude] 中搜索。
 //!
 //! [extern prelude]: https://doc.rust-lang.org/nightly/reference/names/preludes.html#extern-prelude
 

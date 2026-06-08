@@ -4,7 +4,7 @@ use crate::marker::{Freeze, PointeeSized, Unsize};
 use crate::ops::{CoerceUnsized, DispatchFromDyn};
 
 /// 创建一个 pattern type。
-/// ```ignore (cannot test this from within core yet)
+/// ```ignore (目前还不能在 core 内测试)
 /// type Positive = std::pat::pattern_type!(i32 is 1..);
 /// ```
 #[macro_export]
@@ -17,7 +17,7 @@ macro_rules! pattern_type {
 }
 
 /// 由整数类型和 `char` 实现的 trait。
-/// 未来可用于泛型 pattern type；目前则用于简化 pattern type range 的 AST lowering。
+/// 未来可用于泛型 pattern type；目前则用于简化 pattern type range 的 AST 降低过程。
 #[unstable(feature = "pattern_type_range_trait", issue = "123646")]
 #[rustc_const_unstable(feature = "pattern_type_range_trait", issue = "123646")]
 #[diagnostic::on_unimplemented(
@@ -25,11 +25,11 @@ macro_rules! pattern_type {
     label = "only integer types and `char` are supported"
 )]
 pub const trait RangePattern {
-    /// inherent `MIN` 关联常量的 trait 版本。
+    /// 固有 `MIN` 关联常量的 trait 版本。
     #[lang = "RangeMin"]
     const MIN: Self;
 
-    /// inherent `MAX` 关联常量的 trait 版本。
+    /// 固有 `MAX` 关联常量的 trait 版本。
     #[lang = "RangeMax"]
     const MAX: Self;
 

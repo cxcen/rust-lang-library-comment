@@ -13,8 +13,8 @@ use crate::ops::Try;
 #[must_use = "iterators are lazy and do nothing unless consumed"]
 #[stable(feature = "rust1", since = "1.0.0")]
 pub struct Fuse<I> {
-    // NOTE: 对 `I: FusedIterator`，我们通常不会主动把这里设成 `None`，
-    // 但由于 variance 相关原因仍必须能处理该状态。见 rust-lang/rust#85863。
+    // 注意: 对 `I: FusedIterator`，我们通常不会主动把这里设成 `None`，
+    // 但由于型变相关原因仍必须能处理该状态。见 rust-lang/rust#85863。
     iter: Option<I>,
 }
 impl<I> Fuse<I> {
@@ -33,7 +33,7 @@ impl<I> FusedIterator for Fuse<I> where I: Iterator {}
 #[unstable(issue = "none", feature = "trusted_fused")]
 unsafe impl<I> TrustedFused for Fuse<I> where I: TrustedFused {}
 
-// 这里的所有 specialized 实现都保持为内部细节，避免把 default fn 暴露到 trait 外部。
+// 这里的所有特化实现都保持为内部细节，避免把 default fn 暴露到 trait 外部。
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<I> Iterator for Fuse<I>
 where
@@ -243,15 +243,14 @@ where
     const MAY_HAVE_SIDE_EFFECT: bool = I::MAY_HAVE_SIDE_EFFECT;
 }
 
-/// Fuse specialization trait
+/// `Fuse` 特化 trait。
 ///
-/// We only need to worry about `&mut self` methods, which
-/// may exhaust the iterator without consuming it.
+/// 只需关注 `&mut self` 方法，因为这些方法可能在不消耗迭代器本身的情况下耗尽它。
 #[doc(hidden)]
 trait FuseImpl<I> {
     type Item;
 
-    // Functions specific to any normal Iterators
+    // 普通 `Iterator` 特有的函数。
     fn next(&mut self) -> Option<Self::Item>;
     fn nth(&mut self, n: usize) -> Option<Self::Item>;
     fn try_fold<Acc, Fold, R>(&mut self, acc: Acc, fold: Fold) -> R
@@ -263,7 +262,7 @@ trait FuseImpl<I> {
     where
         P: FnMut(&Self::Item) -> bool;
 
-    // Functions specific to DoubleEndedIterators
+    // `DoubleEndedIterator` 特有的函数。
     fn next_back(&mut self) -> Option<Self::Item>
     where
         I: DoubleEndedIterator;
@@ -363,8 +362,8 @@ where
     }
 }
 
-/// Specialized `Fuse` impl which doesn't bother clearing `iter` when exhausted.
-/// However, we must still be prepared for the possibility that it was already cleared!
+/// 特化的 `Fuse` 实现: 耗尽时不会特意清空 `iter`。
+/// 但仍必须准备好处理它已经被清空的可能性！
 #[doc(hidden)]
 impl<I> FuseImpl<I> for Fuse<I>
 where

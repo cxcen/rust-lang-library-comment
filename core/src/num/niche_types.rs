@@ -58,7 +58,7 @@ macro_rules! define_valid_range_type {
             ///
             /// `val` 必须落在该类型声明的有效范围内。若传入范围外位模式，会立刻违反
             /// 类型有效性不变量；编译器可能已经基于这些位模式“不可能出现”的假设做布局
-            /// 或分支优化，因此这种违规属于 language UB。
+            /// 或分支优化，因此这种违规属于语言层面的 UB。
             #[inline]
             pub const unsafe fn new_unchecked(val: $int) -> Self {
                 // SAFETY: 调用方已经承诺 `val` 位于有效范围内。
@@ -100,7 +100,7 @@ macro_rules! define_valid_range_type {
         }
 
         impl Hash for $name {
-            // Required method
+            // 必需方法
             fn hash<H: Hasher>(&self, state: &mut H) {
                 Hash::hash(&self.as_inner(), state);
             }

@@ -135,7 +135,7 @@ where
 const fn inst_partition<T, F: FnMut(&T, &T) -> bool>() -> fn(&mut [T], &T, &mut F) -> usize {
     const MAX_BRANCHLESS_PARTITION_SIZE: usize = 96;
     if size_of::<T>() <= MAX_BRANCHLESS_PARTITION_SIZE {
-        // 对复制成本相对较低、无分支优化收益较大的类型进行 specialization，
+        // 对复制成本相对较低、无分支优化收益较大的类型进行特化，
         // 例如 `u64` 和 `String`。
         cfg_select! {
             feature = "optimize_for_size" => {
@@ -150,7 +150,7 @@ const fn inst_partition<T, F: FnMut(&T, &T) -> bool>() -> fn(&mut [T], &T, &mut 
     }
 }
 
-/// See [`partition`].
+/// 见 [`partition`]。
 fn partition_hoare_branchy_cyclic<T, F>(v: &mut [T], pivot: &T, is_less: &mut F) -> usize
 where
     F: FnMut(&T, &T) -> bool,

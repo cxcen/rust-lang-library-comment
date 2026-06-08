@@ -1,17 +1,15 @@
-//! Platform-specific extensions to `core` for Darwin / Apple platforms.
+//! Darwin / Apple 平台的 `core` 平台特定扩展。
 //!
-//! This is available on the following operating systems:
+//! 这适用于以下操作系统:
 //! - macOS
 //! - iOS
 //! - tvOS
 //! - watchOS
 //! - visionOS
 //!
-//! Note: This module is called "Darwin" as that's the name of the underlying
-//! core OS of the above operating systems, but it should not be confused with
-//! the `-darwin` suffix in the `x86_64-apple-darwin` and
-//! `aarch64-apple-darwin` target names, which are mostly named that way for
-//! legacy reasons.
+//! 注意: 本模块称为 "Darwin"，因为这是上述操作系统底层核心操作系统的名称，
+//! 但不应与 `x86_64-apple-darwin` 和 `aarch64-apple-darwin` 目标名中的
+//! `-darwin` 后缀混淆；这些目标名大多是出于历史原因这样命名。
 
 #![unstable(feature = "darwin_objc", issue = "145496")]
 #![doc(cfg(target_vendor = "apple"))]

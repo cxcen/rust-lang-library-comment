@@ -22,11 +22,11 @@ use crate::{cfg_select, intrinsics, mem};
 /// # 示例
 ///
 /// ```rust
-/// // deprecated way
+/// // 已弃用的方式
 /// # #[allow(deprecated, deprecated_in_future)]
 /// let r = std::f32::RADIX;
 ///
-/// // intended way
+/// // 推荐的方式
 /// let r = f32::RADIX;
 /// ```
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -40,11 +40,11 @@ pub const RADIX: u32 = f32::RADIX;
 /// # 示例
 ///
 /// ```rust
-/// // deprecated way
+/// // 已弃用的方式
 /// # #[allow(deprecated, deprecated_in_future)]
 /// let d = std::f32::MANTISSA_DIGITS;
 ///
-/// // intended way
+/// // 推荐的方式
 /// let d = f32::MANTISSA_DIGITS;
 /// ```
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -61,11 +61,11 @@ pub const MANTISSA_DIGITS: u32 = f32::MANTISSA_DIGITS;
 /// # 示例
 ///
 /// ```rust
-/// // deprecated way
+/// // 已弃用的方式
 /// # #[allow(deprecated, deprecated_in_future)]
 /// let d = std::f32::DIGITS;
 ///
-/// // intended way
+/// // 推荐的方式
 /// let d = f32::DIGITS;
 /// ```
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -83,11 +83,11 @@ pub const DIGITS: u32 = f32::DIGITS;
 /// # 示例
 ///
 /// ```rust
-/// // deprecated way
+/// // 已弃用的方式
 /// # #[allow(deprecated, deprecated_in_future)]
 /// let e = std::f32::EPSILON;
 ///
-/// // intended way
+/// // 推荐的方式
 /// let e = f32::EPSILON;
 /// ```
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -101,11 +101,11 @@ pub const EPSILON: f32 = f32::EPSILON;
 /// # 示例
 ///
 /// ```rust
-/// // deprecated way
+/// // 已弃用的方式
 /// # #[allow(deprecated, deprecated_in_future)]
 /// let min = std::f32::MIN;
 ///
-/// // intended way
+/// // 推荐的方式
 /// let min = f32::MIN;
 /// ```
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -119,11 +119,11 @@ pub const MIN: f32 = f32::MIN;
 /// # 示例
 ///
 /// ```rust
-/// // deprecated way
+/// // 已弃用的方式
 /// # #[allow(deprecated, deprecated_in_future)]
 /// let min = std::f32::MIN_POSITIVE;
 ///
-/// // intended way
+/// // 推荐的方式
 /// let min = f32::MIN_POSITIVE;
 /// ```
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -137,11 +137,11 @@ pub const MIN_POSITIVE: f32 = f32::MIN_POSITIVE;
 /// # 示例
 ///
 /// ```rust
-/// // deprecated way
+/// // 已弃用的方式
 /// # #[allow(deprecated, deprecated_in_future)]
 /// let max = std::f32::MAX;
 ///
-/// // intended way
+/// // 推荐的方式
 /// let max = f32::MAX;
 /// ```
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -155,11 +155,11 @@ pub const MAX: f32 = f32::MAX;
 /// # 示例
 ///
 /// ```rust
-/// // deprecated way
+/// // 已弃用的方式
 /// # #[allow(deprecated, deprecated_in_future)]
 /// let min = std::f32::MIN_EXP;
 ///
-/// // intended way
+/// // 推荐的方式
 /// let min = f32::MIN_EXP;
 /// ```
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -173,11 +173,11 @@ pub const MIN_EXP: i32 = f32::MIN_EXP;
 /// # 示例
 ///
 /// ```rust
-/// // deprecated way
+/// // 已弃用的方式
 /// # #[allow(deprecated, deprecated_in_future)]
 /// let max = std::f32::MAX_EXP;
 ///
-/// // intended way
+/// // 推荐的方式
 /// let max = f32::MAX_EXP;
 /// ```
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -191,11 +191,11 @@ pub const MAX_EXP: i32 = f32::MAX_EXP;
 /// # 示例
 ///
 /// ```rust
-/// // deprecated way
+/// // 已弃用的方式
 /// # #[allow(deprecated, deprecated_in_future)]
 /// let min = std::f32::MIN_10_EXP;
 ///
-/// // intended way
+/// // 推荐的方式
 /// let min = f32::MIN_10_EXP;
 /// ```
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -209,11 +209,11 @@ pub const MIN_10_EXP: i32 = f32::MIN_10_EXP;
 /// # 示例
 ///
 /// ```rust
-/// // deprecated way
+/// // 已弃用的方式
 /// # #[allow(deprecated, deprecated_in_future)]
 /// let max = std::f32::MAX_10_EXP;
 ///
-/// // intended way
+/// // 推荐的方式
 /// let max = f32::MAX_10_EXP;
 /// ```
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -227,11 +227,11 @@ pub const MAX_10_EXP: i32 = f32::MAX_10_EXP;
 /// # 示例
 ///
 /// ```rust
-/// // deprecated way
+/// // 已弃用的方式
 /// # #[allow(deprecated, deprecated_in_future)]
 /// let nan = std::f32::NAN;
 ///
-/// // intended way
+/// // 推荐的方式
 /// let nan = f32::NAN;
 /// ```
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -245,11 +245,11 @@ pub const NAN: f32 = f32::NAN;
 /// # 示例
 ///
 /// ```rust
-/// // deprecated way
+/// // 已弃用的方式
 /// # #[allow(deprecated, deprecated_in_future)]
 /// let inf = std::f32::INFINITY;
 ///
-/// // intended way
+/// // 推荐的方式
 /// let inf = f32::INFINITY;
 /// ```
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -263,11 +263,11 @@ pub const INFINITY: f32 = f32::INFINITY;
 /// # 示例
 ///
 /// ```rust
-/// // deprecated way
+/// // 已弃用的方式
 /// # #[allow(deprecated, deprecated_in_future)]
 /// let ninf = std::f32::NEG_INFINITY;
 ///
-/// // intended way
+/// // 推荐的方式
 /// let ninf = f32::NEG_INFINITY;
 /// ```
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -598,7 +598,7 @@ impl f32 {
     /// assert!(!zero.is_subnormal());
     /// assert!(!f32::NAN.is_subnormal());
     /// assert!(!f32::INFINITY.is_subnormal());
-    /// // Values between `0` and `min` are Subnormal.
+    /// // `0` 和 `min` 之间的值是次正规数（Subnormal）。
     /// assert!(lower_than_min.is_subnormal());
     /// ```
     /// [subnormal]: https://en.wikipedia.org/wiki/Denormal_number
@@ -625,7 +625,7 @@ impl f32 {
     /// assert!(!zero.is_normal());
     /// assert!(!f32::NAN.is_normal());
     /// assert!(!f32::INFINITY.is_normal());
-    /// // Values between `0` and `min` are Subnormal.
+    /// // `0` 和 `min` 之间的值是次正规数（Subnormal）。
     /// assert!(!lower_than_min.is_normal());
     /// ```
     /// [subnormal]: https://en.wikipedia.org/wiki/Denormal_number
@@ -734,9 +734,9 @@ impl f32 {
     /// 为有限值时，`x == x.next_up().next_down()` 也成立。
     ///
     /// ```rust
-    /// // f32::EPSILON is the difference between 1.0 and the next number up.
+    /// // f32::EPSILON 是 1.0 与下一个更大的数之间的差值。
     /// assert_eq!(1.0f32.next_up(), 1.0 + f32::EPSILON);
-    /// // But not for most numbers.
+    /// // 但对大多数数字而言并非如此。
     /// assert!(0.1f32.next_up() < 0.1 + f32::EPSILON);
     /// assert_eq!(16777216f32.next_up(), 16777218.0);
     /// ```
@@ -786,7 +786,7 @@ impl f32 {
     ///
     /// ```rust
     /// let x = 1.0f32;
-    /// // Clamp value into range [0, 1).
+    /// // 将值限制到范围 [0, 1) 内。
     /// let clamped = x.clamp(0.0, 1.0f32.next_down());
     /// assert!(clamped < 1.0);
     /// assert_eq!(clamped.next_up(), 1.0);
@@ -1352,7 +1352,7 @@ impl f32 {
     ///
     /// bois.sort_by(|a, b| a.weight.total_cmp(&b.weight));
     ///
-    /// // `f32::NAN` could be positive or negative, which will affect the sort order.
+    /// // `f32::NAN` 可能为正也可能为负，这会影响排序顺序。
     /// if f32::NAN.is_sign_negative() {
     ///     assert!(bois.into_iter().map(|b| b.weight)
     ///         .zip([f32::NAN, -5.0, 0.1, 10.0, 99.0, f32::INFINITY].iter())
@@ -1420,10 +1420,10 @@ impl f32 {
     /// assert!((2.0f32).clamp(-2.0, 1.0) == 1.0);
     /// assert!((f32::NAN).clamp(-2.0, 1.0).is_nan());
     ///
-    /// // These always returns zero, but the sign (which is ignored by `==`) is non-deterministic.
+    /// // 这些总是返回零，但其符号（被 `==` 忽略）是不确定的。
     /// assert!((0.0f32).clamp(-0.0, -0.0) == 0.0);
     /// assert!((1.0f32).clamp(-0.0, 0.0) == 0.0);
-    /// // This is definitely a negative zero.
+    /// // 这肯定是一个负零。
     /// assert!((-1.0f32).clamp(-0.0, 1.0).is_sign_negative());
     /// ```
     #[must_use = "method returns a new number and does not mutate the original value"]
@@ -1827,12 +1827,12 @@ pub mod math {
     /// let one_minus_eps = 1.0_f32 - f32::EPSILON;
     /// let minus_one = -1.0_f32;
     ///
-    /// // The exact result (1 + eps) * (1 - eps) = 1 - eps * eps.
+    /// // 精确结果 (1 + eps) * (1 - eps) = 1 - eps * eps。
     /// assert_eq!(
     ///     f32::math::mul_add(one_plus_eps, one_minus_eps, minus_one),
     ///     -f32::EPSILON * f32::EPSILON
     /// );
-    /// // Different rounding with the non-fused multiply and add.
+    /// // 非融合乘加运算会产生不同的舍入结果。
     /// assert_eq!(one_plus_eps * one_minus_eps + minus_one, 0.0);
     /// # }
     /// ```
@@ -1896,7 +1896,7 @@ pub mod math {
     /// assert_eq!(f32::math::rem_euclid(-a, b), 1.0);
     /// assert_eq!(f32::math::rem_euclid(a, -b), 3.0);
     /// assert_eq!(f32::math::rem_euclid(-a, -b), 1.0);
-    /// // limitation due to round-off error
+    /// // 受舍入误差所限
     /// assert!(f32::math::rem_euclid(-f32::EPSILON, 3.0) != 0.0);
     /// ```
     ///

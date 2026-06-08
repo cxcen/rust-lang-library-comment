@@ -500,7 +500,7 @@ where
     }
 }
 
-// 另见下面的 `OneShot` specialization。
+// 另见下面的 `OneShot` 特化。
 impl<I, U> Iterator for FlattenCompat<I, U>
 where
     I: Iterator<Item: IntoIterator<IntoIter = U, Item = U::Item>>,
@@ -615,7 +615,7 @@ where
     }
 }
 
-// 另见下面的 `OneShot` specialization。
+// 另见下面的 `OneShot` 特化。
 impl<I, U> DoubleEndedIterator for FlattenCompat<I, U>
 where
     I: DoubleEndedIterator<Item: IntoIterator<IntoIter = U, Item = U::Item>>,
@@ -707,7 +707,7 @@ where
 }
 
 trait ConstSizeIntoIterator: IntoIterator {
-    // FIXME(#31844): convert to an associated const once specialization supports that
+    // FIXME(#31844): 特化机制支持后，把它改为关联常量
     fn size() -> Option<usize>;
 }
 
@@ -751,7 +751,7 @@ fn and_then_or_clear<T, U>(opt: &mut Option<T>, f: impl FnOnce(&mut T) -> Option
     x
 }
 
-/// 用于那些永远不会返回多于一个项的 iterator 类型的 specialization trait。
+/// 用于那些永远不会返回多于一个项的 iterator 类型的特化 trait。
 ///
 /// 注意，仍然必须处理 iterator 在进入我们控制之前就已经耗尽的可能性。
 #[rustc_specialization_trait]
@@ -768,20 +768,20 @@ impl<T> OneShot for result::IntoIter<T> {}
 impl<T> OneShot for result::Iter<'_, T> {}
 impl<T> OneShot for result::IterMut<'_, T> {}
 
-// These are always empty, which is fine to optimize too.
+// 这些类型总是空的，因此同样适合优化。
 impl<T> OneShot for Empty<T> {}
 impl<T> OneShot for array::IntoIter<T, 0> {}
 
-// These adapters never increase the number of items.
-// (There are more possible, but for now this matches BoundedSize above.)
+// 这些适配器永远不会增加项数。
+// （还有更多可能的类型，但目前这与上方的 `BoundedSize` 保持一致。）
 impl<I: OneShot> OneShot for Cloned<I> {}
 impl<I: OneShot> OneShot for Copied<I> {}
 impl<I: OneShot, P> OneShot for Filter<I, P> {}
 impl<I: OneShot, P> OneShot for FilterMap<I, P> {}
 impl<I: OneShot, F> OneShot for Map<I, F> {}
 
-// Blanket impls pass this property through as well
-// (but we can't do `Box<I>` unless we expose this trait to alloc)
+// 这些泛型 impl 也会传递该性质
+// （但除非把此 trait 暴露给 alloc，否则不能对 `Box<I>` 这样做）
 impl<I: OneShot> OneShot for &mut I {}
 
 #[inline]
@@ -823,7 +823,7 @@ where
     }
 }
 
-// Specialization: 当内层迭代器 `U` 永远不会返回超过一项时，`frontiter` 和 `backiter`
+// 特化: 当内层迭代器 `U` 永远不会返回超过一项时，`frontiter` 和 `backiter`
 // 状态是浪费的，因为它们总是已经消耗了自己的项。因此在这个实现中，我们完全忽略它们，
 // 只关注 `self.iter`，并且只调用一次内层 `U::next()`。
 //
@@ -898,8 +898,8 @@ where
     }
 }
 
-// 注意: 实际上并不关心 `U: DoubleEndedIterator`，因为对 one-shot 迭代器来说正向和
-// 反向相同；但为了匹配默认 specialization，必须保留这个 bound。
+// 注意: 实际上并不关心 `U: DoubleEndedIterator`，因为对一次性迭代器来说正向和
+// 反向相同；但为了匹配默认特化，必须保留这个约束。
 impl<I, U> DoubleEndedIterator for FlattenCompat<I, U>
 where
     I: DoubleEndedIterator<Item: IntoIterator<IntoIter = U, Item = U::Item>>,

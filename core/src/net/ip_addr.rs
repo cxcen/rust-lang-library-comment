@@ -184,10 +184,10 @@ impl Hash for Ipv6Addr {
 /// use std::net::Ipv6Addr;
 /// use std::net::Ipv6MulticastScope::*;
 ///
-/// // An IPv6 multicast address with global scope (`ff0e::`).
+/// // 一个具有全局作用域的 IPv6 组播地址（`ff0e::`）。
 /// let address = Ipv6Addr::new(0xff0e, 0, 0, 0, 0, 0, 0, 0);
 ///
-/// // Will print "Global scope".
+/// // 将打印 "Global scope"。
 /// match address.multicast_scope() {
 ///     Some(InterfaceLocal) => println!("Interface-Local scope"),
 ///     Some(LinkLocal) => println!("Link-Local scope"),
@@ -208,19 +208,19 @@ impl Hash for Ipv6Addr {
 #[unstable(feature = "ip", issue = "27709")]
 #[non_exhaustive]
 pub enum Ipv6MulticastScope {
-    /// Interface-Local scope。
+    /// Interface-Local（接口本地）作用域。
     InterfaceLocal,
-    /// Link-Local scope。
+    /// Link-Local（链路本地）作用域。
     LinkLocal,
-    /// Realm-Local scope。
+    /// Realm-Local（域本地）作用域。
     RealmLocal,
-    /// Admin-Local scope。
+    /// Admin-Local（管理本地）作用域。
     AdminLocal,
-    /// Site-Local scope。
+    /// Site-Local（站点本地）作用域。
     SiteLocal,
-    /// Organization-Local scope。
+    /// Organization-Local（组织本地）作用域。
     OrganizationLocal,
-    /// Global scope。
+    /// Global（全局）作用域。
     Global,
 }
 
@@ -779,44 +779,44 @@ impl Ipv4Addr {
     ///
     /// use std::net::Ipv4Addr;
     ///
-    /// // Most IPv4 addresses are globally reachable:
+    /// // 大多数 IPv4 地址都是全局可达的：
     /// assert_eq!(Ipv4Addr::new(80, 9, 12, 3).is_global(), true);
     ///
-    /// // However some addresses have been assigned a special meaning
-    /// // that makes them not globally reachable. Some examples are:
+    /// // 不过有些地址被赋予了特殊含义，
+    /// // 使它们变得不可全局到达。一些例子如下：
     ///
-    /// // The unspecified address (`0.0.0.0`)
+    /// // 未指定地址（`0.0.0.0`）
     /// assert_eq!(Ipv4Addr::UNSPECIFIED.is_global(), false);
     ///
-    /// // Addresses reserved for private use (`10.0.0.0/8`, `172.16.0.0/12`, 192.168.0.0/16)
+    /// // 保留供私有使用的地址（`10.0.0.0/8`、`172.16.0.0/12`、192.168.0.0/16）
     /// assert_eq!(Ipv4Addr::new(10, 254, 0, 0).is_global(), false);
     /// assert_eq!(Ipv4Addr::new(192, 168, 10, 65).is_global(), false);
     /// assert_eq!(Ipv4Addr::new(172, 16, 10, 65).is_global(), false);
     ///
-    /// // Addresses in the shared address space (`100.64.0.0/10`)
+    /// // 共享地址空间中的地址（`100.64.0.0/10`）
     /// assert_eq!(Ipv4Addr::new(100, 100, 0, 0).is_global(), false);
     ///
-    /// // The loopback addresses (`127.0.0.0/8`)
+    /// // 环回地址（`127.0.0.0/8`）
     /// assert_eq!(Ipv4Addr::LOCALHOST.is_global(), false);
     ///
-    /// // Link-local addresses (`169.254.0.0/16`)
+    /// // 链路本地地址（`169.254.0.0/16`）
     /// assert_eq!(Ipv4Addr::new(169, 254, 45, 1).is_global(), false);
     ///
-    /// // Addresses reserved for documentation (`192.0.2.0/24`, `198.51.100.0/24`, `203.0.113.0/24`)
+    /// // 保留供文档使用的地址（`192.0.2.0/24`、`198.51.100.0/24`、`203.0.113.0/24`）
     /// assert_eq!(Ipv4Addr::new(192, 0, 2, 255).is_global(), false);
     /// assert_eq!(Ipv4Addr::new(198, 51, 100, 65).is_global(), false);
     /// assert_eq!(Ipv4Addr::new(203, 0, 113, 6).is_global(), false);
     ///
-    /// // Addresses reserved for benchmarking (`198.18.0.0/15`)
+    /// // 保留供基准测试使用的地址（`198.18.0.0/15`）
     /// assert_eq!(Ipv4Addr::new(198, 18, 0, 0).is_global(), false);
     ///
-    /// // Reserved addresses (`240.0.0.0/4`)
+    /// // 保留地址（`240.0.0.0/4`）
     /// assert_eq!(Ipv4Addr::new(250, 10, 20, 30).is_global(), false);
     ///
-    /// // The broadcast address (`255.255.255.255`)
+    /// // 广播地址（`255.255.255.255`）
     /// assert_eq!(Ipv4Addr::BROADCAST.is_global(), false);
     ///
-    /// // For a complete overview see the IANA IPv4 Special-Purpose Address Registry.
+    /// // 完整的概览请参阅 IANA IPv4 Special-Purpose Address Registry。
     /// ```
     #[unstable(feature = "ip", issue = "27709")]
     #[must_use]
@@ -910,7 +910,7 @@ impl Ipv4Addr {
     /// assert_eq!(Ipv4Addr::new(255, 255, 255, 254).is_reserved(), true);
     ///
     /// assert_eq!(Ipv4Addr::new(239, 255, 255, 255).is_reserved(), false);
-    /// // The broadcast address is not considered as reserved for future use by this implementation
+    /// // 本实现不将广播地址视为保留供将来使用
     /// assert_eq!(Ipv4Addr::new(255, 255, 255, 255).is_reserved(), false);
     /// ```
     #[unstable(feature = "ip", issue = "27709")]
@@ -1543,35 +1543,35 @@ impl Ipv6Addr {
     ///
     /// use std::net::Ipv6Addr;
     ///
-    /// // Most IPv6 addresses are globally reachable:
+    /// // 大多数 IPv6 地址都是全局可达的：
     /// assert_eq!(Ipv6Addr::new(0x26, 0, 0x1c9, 0, 0, 0xafc8, 0x10, 0x1).is_global(), true);
     ///
-    /// // However some addresses have been assigned a special meaning
-    /// // that makes them not globally reachable. Some examples are:
+    /// // 不过有些地址被赋予了特殊含义，
+    /// // 使它们变得不可全局到达。一些例子如下：
     ///
-    /// // The unspecified address (`::`)
+    /// // 未指定地址（`::`）
     /// assert_eq!(Ipv6Addr::UNSPECIFIED.is_global(), false);
     ///
-    /// // The loopback address (`::1`)
+    /// // 环回地址（`::1`）
     /// assert_eq!(Ipv6Addr::LOCALHOST.is_global(), false);
     ///
-    /// // IPv4-mapped addresses (`::ffff:0:0/96`)
+    /// // IPv4 映射地址（`::ffff:0:0/96`）
     /// assert_eq!(Ipv6Addr::new(0, 0, 0, 0, 0, 0xffff, 0xc00a, 0x2ff).is_global(), false);
     ///
-    /// // Addresses reserved for benchmarking (`2001:2::/48`)
+    /// // 保留供基准测试使用的地址（`2001:2::/48`）
     /// assert_eq!(Ipv6Addr::new(0x2001, 2, 0, 0, 0, 0, 0, 1,).is_global(), false);
     ///
-    /// // Addresses reserved for documentation (`2001:db8::/32` and `3fff::/20`)
+    /// // 保留供文档使用的地址（`2001:db8::/32` 和 `3fff::/20`）
     /// assert_eq!(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1).is_global(), false);
     /// assert_eq!(Ipv6Addr::new(0x3fff, 0, 0, 0, 0, 0, 0, 0).is_global(), false);
     ///
-    /// // Unique local addresses (`fc00::/7`)
+    /// // 唯一本地地址（`fc00::/7`）
     /// assert_eq!(Ipv6Addr::new(0xfc02, 0, 0, 0, 0, 0, 0, 1).is_global(), false);
     ///
-    /// // Unicast addresses with link-local scope (`fe80::/10`)
+    /// // 具有链路本地作用域的单播地址（`fe80::/10`）
     /// assert_eq!(Ipv6Addr::new(0xfe81, 0, 0, 0, 0, 0, 0, 1).is_global(), false);
     ///
-    /// // For a complete overview see the IANA IPv6 Special-Purpose Address Registry.
+    /// // 完整的概览请参阅 IANA IPv6 Special-Purpose Address Registry。
     /// ```
     #[unstable(feature = "ip", issue = "27709")]
     #[must_use]
@@ -1644,11 +1644,11 @@ impl Ipv6Addr {
     ///
     /// use std::net::Ipv6Addr;
     ///
-    /// // The unspecified and loopback addresses are unicast.
+    /// // 未指定地址和环回地址都是单播地址。
     /// assert_eq!(Ipv6Addr::UNSPECIFIED.is_unicast(), true);
     /// assert_eq!(Ipv6Addr::LOCALHOST.is_unicast(), true);
     ///
-    /// // Any address that is not a multicast address (`ff00::/8`) is unicast.
+    /// // 任何不是组播地址（`ff00::/8`）的地址都是单播地址。
     /// assert_eq!(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 0).is_unicast(), true);
     /// assert_eq!(Ipv6Addr::new(0xff00, 0, 0, 0, 0, 0, 0, 0).is_unicast(), false);
     /// ```
@@ -1690,14 +1690,14 @@ impl Ipv6Addr {
     /// ```
     /// use std::net::Ipv6Addr;
     ///
-    /// // The loopback address (`::1`) does not actually have link-local scope.
+    /// // 环回地址（`::1`）实际上并不具有链路本地作用域。
     /// assert_eq!(Ipv6Addr::LOCALHOST.is_unicast_link_local(), false);
     ///
-    /// // Only addresses in `fe80::/10` have link-local scope.
+    /// // 只有 `fe80::/10` 范围内的地址才具有链路本地作用域。
     /// assert_eq!(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 0).is_unicast_link_local(), false);
     /// assert_eq!(Ipv6Addr::new(0xfe80, 0, 0, 0, 0, 0, 0, 0).is_unicast_link_local(), true);
     ///
-    /// // Addresses outside the stricter `fe80::/64` also have link-local scope.
+    /// // 更严格的 `fe80::/64` 之外的地址同样具有链路本地作用域。
     /// assert_eq!(Ipv6Addr::new(0xfe80, 0, 0, 1, 0, 0, 0, 0).is_unicast_link_local(), true);
     /// assert_eq!(Ipv6Addr::new(0xfe81, 0, 0, 0, 0, 0, 0, 0).is_unicast_link_local(), true);
     /// ```

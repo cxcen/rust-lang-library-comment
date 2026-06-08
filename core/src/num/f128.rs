@@ -369,7 +369,7 @@ impl f128 {
     /// assert!(!zero.is_subnormal());
     /// assert!(!f128::NAN.is_subnormal());
     /// assert!(!f128::INFINITY.is_subnormal());
-    /// // Values between `0` and `min` are Subnormal.
+    /// // `0` 和 `min` 之间的值是次正规数（Subnormal）。
     /// assert!(lower_than_min.is_subnormal());
     /// # }
     /// ```
@@ -400,7 +400,7 @@ impl f128 {
     /// assert!(!zero.is_normal());
     /// assert!(!f128::NAN.is_normal());
     /// assert!(!f128::INFINITY.is_normal());
-    /// // Values between `0` and `min` are Subnormal.
+    /// // `0` 和 `min` 之间的值是次正规数（Subnormal）。
     /// assert!(!lower_than_min.is_normal());
     /// # }
     /// ```
@@ -517,9 +517,9 @@ impl f128 {
     /// # // FIXME(f16_f128): remove when `eqtf2` is available
     /// # #[cfg(all(target_arch = "x86_64", target_os = "linux"))] {
     ///
-    /// // f128::EPSILON is the difference between 1.0 and the next number up.
+    /// // f128::EPSILON 是 1.0 与下一个更大的数之间的差值。
     /// assert_eq!(1.0f128.next_up(), 1.0 + f128::EPSILON);
-    /// // But not for most numbers.
+    /// // 但对大多数数字而言并非如此。
     /// assert!(0.1f128.next_up() < 0.1 + f128::EPSILON);
     /// assert_eq!(4611686018427387904f128.next_up(), 4611686018427387904.000000000000001);
     /// # }
@@ -573,7 +573,7 @@ impl f128 {
     /// # #[cfg(all(target_arch = "x86_64", target_os = "linux"))] {
     ///
     /// let x = 1.0f128;
-    /// // Clamp value into range [0, 1).
+    /// // 将值限制到范围 [0, 1) 内。
     /// let clamped = x.clamp(0.0, 1.0f128.next_down());
     /// assert!(clamped < 1.0);
     /// assert_eq!(clamped.next_up(), 1.0);
@@ -1193,7 +1193,7 @@ impl f128 {
     ///
     /// bois.sort_by(|a, b| a.weight.total_cmp(&b.weight));
     ///
-    /// // `f128::NAN` could be positive or negative, which will affect the sort order.
+    /// // `f128::NAN` 可能为正也可能为负，这会影响排序顺序。
     /// if f128::NAN.is_sign_negative() {
     ///     bois.into_iter().map(|b| b.weight)
     ///         .zip([f128::NAN, -5.0, 0.1, 10.0, 99.0, f128::INFINITY].iter())
@@ -1265,10 +1265,10 @@ impl f128 {
     /// assert!((2.0f128).clamp(-2.0, 1.0) == 1.0);
     /// assert!((f128::NAN).clamp(-2.0, 1.0).is_nan());
     ///
-    /// // These always returns zero, but the sign (which is ignored by `==`) is non-deterministic.
+    /// // 这些总是返回零，但其符号（被 `==` 忽略）是不确定的。
     /// assert!((0.0f128).clamp(-0.0, -0.0) == 0.0);
     /// assert!((1.0f128).clamp(-0.0, 0.0) == 0.0);
-    /// // This is definitely a negative zero.
+    /// // 这肯定是一个负零。
     /// assert!((-1.0f128).clamp(-0.0, 1.0).is_sign_negative());
     /// # }
     /// ```
@@ -1698,9 +1698,9 @@ impl f128 {
     /// let one_minus_eps = 1.0_f128 - f128::EPSILON;
     /// let minus_one = -1.0_f128;
     ///
-    /// // The exact result (1 + eps) * (1 - eps) = 1 - eps * eps.
+    /// // 精确结果 (1 + eps) * (1 - eps) = 1 - eps * eps。
     /// assert_eq!(one_plus_eps.mul_add(one_minus_eps, minus_one), -f128::EPSILON * f128::EPSILON);
-    /// // Different rounding with the non-fused multiply and add.
+    /// // 非融合乘加运算会产生不同的舍入结果。
     /// assert_eq!(one_plus_eps * one_minus_eps + minus_one, 0.0);
     /// # }
     /// ```
@@ -1782,7 +1782,7 @@ impl f128 {
     /// assert_eq!((-a).rem_euclid(b), 1.0);
     /// assert_eq!(a.rem_euclid(-b), 3.0);
     /// assert_eq!((-a).rem_euclid(-b), 1.0);
-    /// // limitation due to round-off error
+    /// // 受舍入误差所限
     /// assert!((-f128::EPSILON).rem_euclid(3.0) != 0.0);
     /// # }
     /// ```

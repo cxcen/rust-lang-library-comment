@@ -40,8 +40,8 @@ use crate::{cmp, ptr};
 ///         let size = layout.size();
 ///         let align = layout.align();
 ///
-///         // `Layout` contract forbids making a `Layout` with align=0, or align not power of 2.
-///         // So we can safely use a mask to ensure alignment without worrying about UB.
+///         // `Layout` 的约定禁止构造 align=0 或 align 不是 2 的幂的 `Layout`。
+///         // 因此我们可以安全地用掩码来保证对齐,而不必担心 UB。
 ///         let align_mask_to_round_down = !(align - 1);
 ///
 ///         if align > MAX_SUPPORTED_ALIGN {
