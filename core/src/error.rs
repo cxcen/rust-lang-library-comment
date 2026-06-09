@@ -4,30 +4,34 @@
 use crate::any::TypeId;
 use crate::fmt::{self, Debug, Display, Formatter};
 
-/// `Error` 是描述错误值基本约定的 trait，也就是 [`Result<T, E>`] 中 `E` 这类值的公共接口。
+/// `Error` is a trait representing the basic expectations for error values,
+/// i.e., values of type `E` in [`Result<T, E>`].
 ///
-/// 错误类型必须通过 [`Display`] 和 [`Debug`] 描述自身。面向用户的错误消息通常应是简短的
-/// 小写句子，并且不带句末标点：
+/// Errors must describe themselves through the [`Display`] and [`Debug`]
+/// traits. Error messages are typically concise lowercase sentences without
+/// trailing punctuation:
 ///
 /// ```
 /// let err = "NaN".parse::<u32>().unwrap_err();
 /// assert_eq!(err.to_string(), "invalid digit found in string");
 /// ```
 ///
-/// # 错误来源
+/// # Error source
 ///
-/// 错误可以提供原因信息。[`Error::source()`] 通常用于错误跨越“抽象边界”的场景：如果上层模块
-/// 需要报告一个由下层模块错误引起的错误，它可以通过 `Error::source()` 暴露那个下层错误。这样
-/// 上层模块既能提供符合自身抽象的错误类型，又能在调试时保留足够的实现细节。
+/// Errors may provide cause information. [`Error::source()`] is generally
+/// used when errors cross "abstraction boundaries". If one module must report
+/// an error that is caused by an error from a lower-level module, it can allow
+/// accessing that error via `Error::source()`. This makes it possible for the
+/// high-level module to provide its own errors while also revealing some of the
+/// implementation for debugging.
 ///
-/// 对包装底层错误的错误类型，底层错误应当二选一：要么由外层错误的 `Error::source()` 返回，
-/// 要么由外层错误的 `Display` 实现渲染出来，但不要两者同时做。这样可以避免错误报告中重复输出
-/// 同一层原因。
+/// In error types that wrap an underlying error, the underlying error
+/// should be either returned by the outer error's `Error::source()`, or rendered
+/// by the outer error's `Display` implementation, but not both.
 ///
-/// # 示例
+/// # Example
 ///
-/// 实现 `Error` trait 只要求该类型同时实现 `Debug` 和 `Display`。`Display` 负责面向人的短消息，
-/// `Debug` 负责调试表示，而 `source` 链则用于表达错误之间的因果关系。
+/// Implementing the `Error` trait only requires that `Debug` and `Display` are implemented too.
 ///
 /// ```
 /// use std::error::Error;
@@ -53,9 +57,9 @@ use crate::fmt::{self, Debug, Display, Formatter};
 #[rustc_has_incoherent_inherent_impls]
 #[allow(multiple_supertrait_upcastable)]
 pub trait Error: Debug + Display {
-    /// 如果存在，返回此错误的下层来源。
+    /// Returns the lower-level source of this error, if any.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::error::Error;
@@ -108,7 +112,7 @@ pub trait Error: Debug + Display {
         None
     }
 
-    /// 取得 `self` 的 `TypeId`。
+    /// Gets the `TypeId` of `self`.
     #[doc(hidden)]
     #[unstable(
         feature = "error_type_id",
@@ -124,7 +128,7 @@ pub trait Error: Debug + Display {
 
     /// ```
     /// if let Err(e) = "xc".parse::<u32>() {
-    ///     // 直接打印 `e` 本身，不再需要 description()。
+    ///     // Print `e` itself, no need for description().
     ///     eprintln!("Error: {e}");
     /// }
     /// ```
@@ -144,13 +148,12 @@ pub trait Error: Debug + Display {
         self.source()
     }
 
-    /// 为错误报告上下文提供基于类型的访问。
+    /// Provides type-based access to context intended for error reports.
     ///
-    /// 该方法和 [`Request::provide_value`]、[`Request::provide_ref`] 配合使用，用于从
-    /// `dyn Error` trait object 中提取成员变量的值或引用。它让错误报告器可以按类型请求
-    /// backtrace、span、错误码等上下文，而不需要每种上下文都在 `Error` trait 上新增方法。
+    /// Used in conjunction with [`Request::provide_value`] and [`Request::provide_ref`] to extract
+    /// references to member variables from `dyn Error` trait objects.
     ///
-    /// # 示例
+    /// # Example
     ///
     /// ```rust
     /// #![feature(error_generic_member_access)]
@@ -203,20 +206,22 @@ pub trait Error: Debug + Display {
     /// }
     /// ```
     ///
-    /// # 委托实现
+    /// # Delegating Impls
     ///
     /// <div class="warning">
     ///
-    /// **警告**：建议实现者避免把 `provide` 的实现委托给 source 错误的 `provide` 实现。
+    /// **Warning**: We recommend implementors avoid delegating implementations of `provide` to
+    /// source error implementations.
     ///
     /// </div>
     ///
-    /// 此方法应只暴露 source 链当前这一层的上下文，而不是继续暴露 source 链后续错误已经暴露的
-    /// 上下文。委托 `provide` 实现会让同一上下文被 source 链上的多个错误重复提供，可能导致错误
-    /// 报告中出现非预期的信息重复，或者迫使报告器使用启发式规则去重。
+    /// This method should expose context from the current piece of the source chain only, not from
+    /// sources that are exposed in the chain of sources. Delegating `provide` implementations cause
+    /// the same context to be provided by multiple errors in the chain of sources which can cause
+    /// unintended duplication of information in error reports or require heuristics to deduplicate.
     ///
-    /// 换句话说，下面这种 `provide` 实现模式不推荐使用；对暴露给第三方的公共 API 中的
-    /// [`Error`] 类型尤其不应这样写。
+    /// In other words, the following implementation pattern for `provide` is discouraged and should
+    /// not be used for [`Error`] types exposed in public APIs to third parties.
     ///
     /// ```rust
     /// # #![feature(error_generic_member_access)]
@@ -246,7 +251,7 @@ pub trait Error: Debug + Display {
     ///     }
     ///
     ///     fn provide<'a>(&'a self, request: &mut Request<'a>) {
-    ///         self.source.provide(request) // <--- 不推荐
+    ///         self.source.provide(request) // <--- Discouraged
     ///     }
     /// }
     /// ```
@@ -256,8 +261,8 @@ pub trait Error: Debug + Display {
 }
 
 mod private {
-    // 这是一个防止 `Error` 实现覆盖 `type_id` 的技巧；
-    // 如果用户实现能伪造 `TypeId`，就可能启用不健全的 downcasting。
+    // This is a hack to prevent `type_id` from being overridden by `Error`
+    // implementations, since that can enable unsound downcasting.
     #[unstable(feature = "error_type_id", issue = "60784")]
     #[derive(Debug)]
     pub struct Internal;
@@ -266,40 +271,42 @@ mod private {
 #[unstable(feature = "never_type", issue = "35121")]
 impl Error for ! {}
 
-// 从 `any.rs` 复制而来。
+// Copied from `any.rs`.
 impl dyn Error + 'static {
-    /// 如果内部具体类型与 `T` 相同，则返回 `true`。
+    /// Returns `true` if the inner type is the same as `T`.
     #[stable(feature = "error_downcast", since = "1.3.0")]
     #[inline]
     pub fn is<T: Error + 'static>(&self) -> bool {
-        // 取得此函数被单态化时使用的类型 `T` 的 `TypeId`。
+        // Get `TypeId` of the type this function is instantiated with.
         let t = TypeId::of::<T>();
 
-        // 取得 trait object (`self`) 内部具体类型的 `TypeId`。
+        // Get `TypeId` of the type in the trait object (`self`).
         let concrete = self.type_id(private::Internal);
 
-        // 比较两个 `TypeId` 是否相等。
+        // Compare both `TypeId`s on equality.
         t == concrete
     }
 
-    /// 如果内部值的具体类型是 `T`，则返回它的共享引用；否则返回 `None`。
+    /// Returns some reference to the inner value if it is of type `T`, or
+    /// `None` if it isn't.
     #[stable(feature = "error_downcast", since = "1.3.0")]
     #[inline]
     pub fn downcast_ref<T: Error + 'static>(&self) -> Option<&T> {
         if self.is::<T>() {
-            // SAFETY: `is` 已确认 trait object 内部具体类型就是 `T`，因此这个指针转换正确。
+            // SAFETY: `is` ensures this type cast is correct
             unsafe { Some(&*(self as *const dyn Error as *const T)) }
         } else {
             None
         }
     }
 
-    /// 如果内部值的具体类型是 `T`，则返回它的可变引用；否则返回 `None`。
+    /// Returns some mutable reference to the inner value if it is of type `T`, or
+    /// `None` if it isn't.
     #[stable(feature = "error_downcast", since = "1.3.0")]
     #[inline]
     pub fn downcast_mut<T: Error + 'static>(&mut self) -> Option<&mut T> {
         if self.is::<T>() {
-            // SAFETY: `is` 已确认 trait object 内部具体类型就是 `T`，因此这个指针转换正确。
+            // SAFETY: `is` ensures this type cast is correct
             unsafe { Some(&mut *(self as *mut dyn Error as *mut T)) }
         } else {
             None
@@ -308,21 +315,21 @@ impl dyn Error + 'static {
 }
 
 impl dyn Error + 'static + Send {
-    /// 转发到 `dyn Error` 类型上定义的同名方法。
+    /// Forwards to the method defined on the type `dyn Error`.
     #[stable(feature = "error_downcast", since = "1.3.0")]
     #[inline]
     pub fn is<T: Error + 'static>(&self) -> bool {
         <dyn Error + 'static>::is::<T>(self)
     }
 
-    /// 转发到 `dyn Error` 类型上定义的同名方法。
+    /// Forwards to the method defined on the type `dyn Error`.
     #[stable(feature = "error_downcast", since = "1.3.0")]
     #[inline]
     pub fn downcast_ref<T: Error + 'static>(&self) -> Option<&T> {
         <dyn Error + 'static>::downcast_ref::<T>(self)
     }
 
-    /// 转发到 `dyn Error` 类型上定义的同名方法。
+    /// Forwards to the method defined on the type `dyn Error`.
     #[stable(feature = "error_downcast", since = "1.3.0")]
     #[inline]
     pub fn downcast_mut<T: Error + 'static>(&mut self) -> Option<&mut T> {
@@ -331,21 +338,21 @@ impl dyn Error + 'static + Send {
 }
 
 impl dyn Error + 'static + Send + Sync {
-    /// 转发到 `dyn Error` 类型上定义的同名方法。
+    /// Forwards to the method defined on the type `dyn Error`.
     #[stable(feature = "error_downcast", since = "1.3.0")]
     #[inline]
     pub fn is<T: Error + 'static>(&self) -> bool {
         <dyn Error + 'static>::is::<T>(self)
     }
 
-    /// 转发到 `dyn Error` 类型上定义的同名方法。
+    /// Forwards to the method defined on the type `dyn Error`.
     #[stable(feature = "error_downcast", since = "1.3.0")]
     #[inline]
     pub fn downcast_ref<T: Error + 'static>(&self) -> Option<&T> {
         <dyn Error + 'static>::downcast_ref::<T>(self)
     }
 
-    /// 转发到 `dyn Error` 类型上定义的同名方法。
+    /// Forwards to the method defined on the type `dyn Error`.
     #[stable(feature = "error_downcast", since = "1.3.0")]
     #[inline]
     pub fn downcast_mut<T: Error + 'static>(&mut self) -> Option<&mut T> {
@@ -354,11 +361,13 @@ impl dyn Error + 'static + Send + Sync {
 }
 
 impl dyn Error {
-    /// 返回一个迭代器：从当前错误开始，然后通过递归调用 [`Error::source`] 沿 source 链前进。
+    /// Returns an iterator starting with the current error and continuing with
+    /// recursively calling [`Error::source`].
     ///
-    /// 如果想跳过当前错误、只处理它的来源错误，可使用 `skip(1)`。
+    /// If you want to omit the current error and only use its sources,
+    /// use `skip(1)`.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// #![feature(error_iter)]
@@ -393,7 +402,7 @@ impl dyn Error {
     ///
     /// let b = B(Some(Box::new(A)));
     ///
-    /// // let err : Box<Error> = b.into(); // 或者
+    /// // let err : Box<Error> = b.into(); // or
     /// let err = &b as &dyn Error;
     ///
     /// let mut iter = err.sources();
@@ -406,26 +415,27 @@ impl dyn Error {
     #[unstable(feature = "error_iter", issue = "58520")]
     #[inline]
     pub fn sources(&self) -> Source<'_> {
-        // 你可能会觉得这个方法更适合放在 `Error` trait 中，这个判断是对的。
-        // 遗憾的是那样行不通：原因不是普通的 dyn-incompatibility 规则，而是下面的
-        // `Source` 需要把 `self` 的引用保存为 trait object。
-        // 如果此方法声明在 `Error` 中，那么 `self` 的类型会是 `&T`，其中 `T`
-        // 是某个实现了 `Error` 的具体类型。我们需要把 `self` 强制转换为 `&dyn Error`，
-        // 但这要求 `Self` 大小已知（即 `Self: Sized`）。这个约束不能加在 `Error`
-        // 上，因为那会禁止 `Error` trait object；也不能加在方法上，因为那会导致此方法
-        // 不能在 trait object 上调用（并且我们还需要 `'static` 约束，但除了 `Sized`
-        // 之外对 `Self` 加其他约束的方法是 dyn-incompatible）。要求 `Unsize` 约束也不具备
-        // 向后兼容性。
+        // You may think this method would be better in the `Error` trait, and you'd be right.
+        // Unfortunately that doesn't work, not because of the dyn-incompatibility rules but
+        // because we save a reference to `self` in `Source`s below as a trait object.
+        // If this method was declared in `Error`, then `self` would have the type `&T` where
+        // `T` is some concrete type which implements `Error`. We would need to coerce `self`
+        // to have type `&dyn Error`, but that requires that `Self` has a known size
+        // (i.e., `Self: Sized`). We can't put that bound on `Error` since that would forbid
+        // `Error` trait objects, and we can't put that bound on the method because that means
+        // the method can't be called on trait objects (we'd also need the `'static` bound,
+        // but that isn't allowed because methods with bounds on `Self` other than `Sized` are
+        // dyn-incompatible). Requiring an `Unsize` bound is not backwards compatible.
 
         Source { current: Some(self) }
     }
 }
 
-/// 从给定的 `impl Error` 请求类型为 `T` 的值。
+/// Requests a value of type `T` from the given `impl Error`.
 ///
-/// # 示例
+/// # Examples
 ///
-/// 从错误中取得一个 `String` 值。
+/// Get a string value from an error.
 ///
 /// ```rust
 /// #![feature(error_generic_member_access)]
@@ -444,11 +454,11 @@ where
     request_by_type_tag::<'a, tags::Value<T>>(err)
 }
 
-/// 从给定的 `impl Error` 请求类型为 `T` 的引用。
+/// Requests a reference of type `T` from the given `impl Error`.
 ///
-/// # 示例
+/// # Examples
 ///
-/// 从错误中取得一个 `str` 引用。
+/// Get a string reference from an error.
 ///
 /// ```rust
 /// #![feature(error_generic_member_access)]
@@ -467,7 +477,7 @@ where
     request_by_type_tag::<'a, tags::Ref<tags::MaybeSizedValue<T>>>(err)
 }
 
-/// 按类型标签从 `Error` 请求一个特定值。
+/// Request a specific value by tag from the `Error`.
 fn request_by_type_tag<'a, I>(err: &'a (impl Error + ?Sized)) -> Option<I::Reified>
 where
     I: tags::Type<'a>,
@@ -478,41 +488,48 @@ where
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// Request 及其方法
+// Request and its methods
 ///////////////////////////////////////////////////////////////////////////////
 
-/// `Request` 支持泛型的、由类型驱动的数据访问。目前它的使用限制在标准库内部，服务于这样
-/// 的场景：trait 作者希望允许 trait 实现者跨 trait 边界共享泛型信息。驱动这个设计的典型用例是
-/// `core::error::Error`；如果没有 `Request`，它就需要为每一种具体上下文类型（例如实现者想向
-/// 用户暴露的 `std::backtrace::Backtrace`）各增加一个方法。
+/// `Request` supports generic, type-driven access to data. Its use is currently restricted to the
+/// standard library in cases where trait authors wish to allow trait implementors to share generic
+/// information across trait boundaries. The motivating and prototypical use case is
+/// `core::error::Error` which would otherwise require a method per concrete type (eg.
+/// `std::backtrace::Backtrace` instance that implementors want to expose to users).
 ///
-/// # 数据流
+/// # Data flow
 ///
-/// 为了描述 `Request` 对象的预期数据流，可以把 API 边界两侧看作两类概念用户：
+/// To describe the intended data flow for Request objects, let's consider two conceptual users
+/// separated by API boundaries:
 ///
-/// * Consumer：使用 `Request` 实例请求对象的一方。例如，一个为用户提供高级 `Error`/`Result`
-///   报告的 crate，可能想从给定的 `dyn Error` 中请求 Backtrace。
+/// * Consumer - the consumer requests objects using a Request instance; eg a crate that offers
+///   fancy `Error`/`Result` reporting to users wants to request a Backtrace from a given `dyn Error`.
 ///
-/// * Producer：在 `Request` 请求到来时提供对象的一方。例如，一个库的 `Error` 实现在创建错误
-///   实例时自动捕获 backtrace，并在被请求时暴露它。
+/// * Producer - the producer provides objects when requested via Request; eg. a library with an
+///   an `Error` implementation that automatically captures backtraces at the time instances are
+///   created.
 ///
-/// Consumer 只需要知道把请求提交到哪里，并且必须通过 Producer 响应中的 `Option<T>` 处理请求
-/// 未被满足的情况。
+/// The consumer only needs to know where to submit their request and are expected to handle the
+/// request not being fulfilled by the use of `Option<T>` in the responses offered by the producer.
 ///
-/// * Producer 初始化某个特定类型字段的值，或者准备好在被请求时生成该值，例如
-///   `backtrace::Backtrace` 或 `std::backtrace::Backtrace`。
-/// * Consumer 请求某个具体类型的对象，例如 `std::backtrace::Backtrace`。在 Producer 是
-///   `dyn Error` trait object 的情况下，`request_ref` 和 `request_value` 两个函数用于简化
-///   “为给定类型取得 `Option<T>`” 的流程。
-/// * Producer 在被请求时填充给定的 `Request` 对象；该对象以可变引用形式传入。
-/// * Consumer 从 `Request` 对象中取出请求类型对应的值或引用，并通过 `Option<T>` 表达是否成功。
-///   对 `dyn Error` 来说，上述 `request_ref` 和 `request_value` 意味着 `dyn Error` 用户完全不必
-///   直接处理 `Request` 类型（但 `Error` 实现者需要）。`Option` 的 `None` 只表示 Producer 当前
-///   不能提供所请求类型的实例，并不表示它理论上不能或永远不会提供。
+/// * A Producer initializes the value of one of its fields of a specific type. (or is otherwise
+///   prepared to generate a value requested). eg, `backtrace::Backtrace` or
+///   `std::backtrace::Backtrace`
+/// * A Consumer requests an object of a specific type (say `std::backtrace::Backtrace`). In the
+///   case of a `dyn Error` trait object (the Producer), there are functions called `request_ref` and
+///   `request_value` to simplify obtaining an `Option<T>` for a given type.
+/// * The Producer, when requested, populates the given Request object which is given as a mutable
+///   reference.
+/// * The Consumer extracts a value or reference to the requested type from the `Request` object
+///   wrapped in an `Option<T>`; in the case of `dyn Error` the aforementioned `request_ref` and `
+///   request_value` methods mean that `dyn Error` users don't have to deal with the `Request` type at
+///   all (but `Error` implementors do). The `None` case of the `Option` suggests only that the
+///   Producer cannot currently offer an instance of the requested type, not it can't or never will.
 ///
-/// # 示例
+/// # Examples
 ///
-/// 最直接的演示方式是实现一次 `Error` 的 `provide` trait 方法：
+/// The best way to demonstrate this is using an example implementation of `Error`'s `provide` trait
+/// method:
 ///
 /// ```
 /// #![feature(error_generic_member_access)]
@@ -571,11 +588,11 @@ where
 pub struct Request<'a>(Tagged<dyn Erased<'a> + 'a>);
 
 impl<'a> Request<'a> {
-    /// 提供一个只包含 static 生命周期的值或其他类型。
+    /// Provides a value or other type with only static lifetimes.
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 提供一个 `u8`。
+    /// Provides an `u8`.
     ///
     /// ```rust
     /// #![feature(error_generic_member_access)]
@@ -605,11 +622,11 @@ impl<'a> Request<'a> {
         self.provide::<tags::Value<T>>(value)
     }
 
-    /// 通过闭包计算并提供一个只包含 static 生命周期的值或其他类型。
+    /// Provides a value or other type with only static lifetimes computed using a closure.
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 通过克隆提供一个 `String`。
+    /// Provides a `String` by cloning.
     ///
     /// ```rust
     /// #![feature(error_generic_member_access)]
@@ -639,11 +656,12 @@ impl<'a> Request<'a> {
         self.provide_with::<tags::Value<T>>(fulfil)
     }
 
-    /// 提供一个引用。被引用类型必须受 `'static` 约束，但可以是未定大小类型。
+    /// Provides a reference. The referee type must be bounded by `'static`,
+    /// but may be unsized.
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 以 `&str` 形式提供指向字段的引用。
+    /// Provides a reference to a field as a `&str`.
     ///
     /// ```rust
     /// #![feature(error_generic_member_access)]
@@ -670,11 +688,12 @@ impl<'a> Request<'a> {
         self.provide::<tags::Ref<tags::MaybeSizedValue<T>>>(value)
     }
 
-    /// 通过闭包计算并提供一个引用。被引用类型必须受 `'static` 约束，但可以是未定大小类型。
+    /// Provides a reference computed using a closure. The referee type
+    /// must be bounded by `'static`, but may be unsized.
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 以 `&str` 形式提供指向字段的引用。
+    /// Provides a reference to a field as a `&str`.
     ///
     /// ```rust
     /// #![feature(error_generic_member_access)]
@@ -711,7 +730,7 @@ impl<'a> Request<'a> {
         self.provide_with::<tags::Ref<tags::MaybeSizedValue<T>>>(fulfil)
     }
 
-    /// 使用给定的 `Type` 标签提供一个值。
+    /// Provides a value with the given `Type` tag.
     fn provide<I>(&mut self, value: I::Reified) -> &mut Self
     where
         I: tags::Type<'a>,
@@ -722,7 +741,7 @@ impl<'a> Request<'a> {
         self
     }
 
-    /// 使用给定的 `Type` 标签提供一个值，并通过闭包避免不必要的计算。
+    /// Provides a value with the given `Type` tag, using a closure to prevent unnecessary work.
     fn provide_with<I>(&mut self, fulfil: impl FnOnce() -> I::Reified) -> &mut Self
     where
         I: tags::Type<'a>,
@@ -733,13 +752,14 @@ impl<'a> Request<'a> {
         self
     }
 
-    /// 检查如果提供指定类型的值，当前 `Request` 是否会被满足。
+    /// Checks if the `Request` would be satisfied if provided with a
+    /// value of the specified type. If the type does not match or has
+    /// already been provided, returns false.
     ///
-    /// 如果类型不匹配，或者该类型的值已经被提供，则返回 `false`。
+    /// # Examples
     ///
-    /// # 示例
-    ///
-    /// 检查是否仍需要提供 `u8`，然后按需提供它。
+    /// Checks if a `u8` still needs to be provided and then provides
+    /// it.
     ///
     /// ```rust
     /// #![feature(error_generic_member_access)]
@@ -770,7 +790,7 @@ impl<'a> Request<'a> {
     /// }
     ///
     /// impl Child {
-    ///     // 假设这个计算需要消耗大量资源。
+    ///     // Pretend that this takes a lot of resources to evaluate.
     ///     fn an_expensive_computation(&self) -> Option<u8> {
     ///         Some(99)
     ///     }
@@ -784,19 +804,20 @@ impl<'a> Request<'a> {
     ///
     /// impl std::error::Error for Child {
     ///     fn provide<'a>(&'a self, request: &mut Request<'a>) {
-    ///         // 一般来说，我们不知道这次调用是否会提供
-    ///         // 一个 `u8` 值……
+    ///         // In general, we don't know if this call will provide
+    ///         // an `u8` value or not...
     ///         self.parent.provide(request);
     ///
-    ///         // ……因此在运行昂贵计算前，先检查是否还需要 `u8`。
+    ///         // ...so we check to see if the `u8` is needed before
+    ///         // we run our expensive computation.
     ///         if request.would_be_satisfied_by_value_of::<u8>() {
     ///             if let Some(v) = self.an_expensive_computation() {
     ///                 request.provide_value::<u8>(v);
     ///             }
     ///         }
     ///
-    ///         // 现在无论是 parent 提供了值，还是我们提供了值，
-    ///         // 这个请求都已经被满足。
+    ///         // The request will be satisfied now, regardless of if
+    ///         // the parent provided the value or we did.
     ///         assert!(!request.would_be_satisfied_by_value_of::<u8>());
     ///     }
     /// }
@@ -818,13 +839,15 @@ impl<'a> Request<'a> {
         self.would_be_satisfied_by::<tags::Value<T>>()
     }
 
-    /// 检查如果提供指定类型值的引用，当前 `Request` 是否会被满足。
+    /// Checks if the `Request` would be satisfied if provided with a
+    /// reference to a value of the specified type.
     ///
-    /// 如果类型不匹配，或者该类型的引用已经被提供，则返回 `false`。
+    /// If the type does not match or has already been provided, returns false.
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 检查是否仍需要提供 `&str`，然后按需提供它。
+    /// Checks if a `&str` still needs to be provided and then provides
+    /// it.
     ///
     /// ```rust
     /// #![feature(error_generic_member_access)]
@@ -856,7 +879,7 @@ impl<'a> Request<'a> {
     /// }
     ///
     /// impl Child {
-    ///     // 假设这个计算需要消耗大量资源。
+    ///     // Pretend that this takes a lot of resources to evaluate.
     ///     fn an_expensive_computation(&self) -> Option<&str> {
     ///         Some(&self.name)
     ///     }
@@ -870,19 +893,20 @@ impl<'a> Request<'a> {
     ///
     /// impl std::error::Error for Child {
     ///     fn provide<'a>(&'a self, request: &mut Request<'a>) {
-    ///         // 一般来说，我们不知道这次调用是否会提供
-    ///         // 一个 `str` 引用……
+    ///         // In general, we don't know if this call will provide
+    ///         // a `str` reference or not...
     ///         self.parent.provide(request);
     ///
-    ///         // ……因此在运行昂贵计算前，先检查是否还需要 `&str`。
+    ///         // ...so we check to see if the `&str` is needed before
+    ///         // we run our expensive computation.
     ///         if request.would_be_satisfied_by_ref_of::<str>() {
     ///             if let Some(v) = self.an_expensive_computation() {
     ///                 request.provide_ref::<str>(v);
     ///             }
     ///         }
     ///
-    ///         // 现在无论是 parent 提供了引用，还是我们提供了引用，
-    ///         // 这个请求都已经被满足。
+    ///         // The request will be satisfied now, regardless of if
+    ///         // the parent provided the reference or we did.
     ///         assert!(!request.would_be_satisfied_by_ref_of::<str>());
     ///     }
     /// }
@@ -919,27 +943,33 @@ impl<'a> Debug for Request<'a> {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// 类型标签
+// Type tags
 ///////////////////////////////////////////////////////////////////////////////
 
 pub(crate) mod tags {
-    //! 类型标签使用一个单独的值来标识类型。本模块包含若干常见类型模式对应的类型标签。
+    //! Type tags are used to identify a type using a separate value. This module includes type tags
+    //! for some very common types.
     //!
-    //! 目前类型标签不会暴露给用户。未来如果要让 `Request` API 支持更复杂的类型（通常是带有
-    //! 生命周期参数的类型），就需要编写自定义标签来描述这些类型。
+    //! Currently type tags are not exposed to the user. But in the future, if you want to use the
+    //! Request API with more complex types (typically those including lifetime parameters), you
+    //! will need to write your own tags.
 
     use crate::marker::PhantomData;
 
-    /// 由具体标签类型实现，用来描述在给定生命周期 `'a` 下可被请求的类型。
+    /// This trait is implemented by specific tag types in order to allow
+    /// describing a type which can be requested for a given lifetime `'a`.
     ///
-    /// 本模块中包含几个由类型驱动的标签实现示例；crate 也可以为带内部生命周期的复杂类型实现
-    /// 自己的标签。
+    /// A few example implementations for type-driven tags can be found in this
+    /// module, although crates may also implement their own tags for more
+    /// complex types with internal lifetimes.
     pub(crate) trait Type<'a>: Sized + 'static {
-        /// 在给定生命周期下，可由此标签标识的值类型。
+        /// The type of values which may be tagged by this tag for the given
+        /// lifetime.
         type Reified: 'a;
     }
 
-    /// 类似 [`Type`] trait，但表示可能为未定大小的类型（即带 `?Sized` 约束），例如 `str`。
+    /// Similar to the [`Type`] trait, but represents a type which may be unsized (i.e., has a
+    /// `?Sized` bound). E.g., `str`.
     pub(crate) trait MaybeSizedType<'a>: Sized + 'static {
         type Reified: 'a + ?Sized;
     }
@@ -948,7 +978,7 @@ pub(crate) mod tags {
         type Reified = T::Reified;
     }
 
-    /// 基于类型的标签，用于受 `'static` 约束、也就是不含借用元素的类型。
+    /// Type-based tag for types bounded by `'static`, i.e., with no borrowed elements.
     #[derive(Debug)]
     pub(crate) struct Value<T: 'static>(PhantomData<T>);
 
@@ -956,7 +986,7 @@ pub(crate) mod tags {
         type Reified = T;
     }
 
-    /// 类似 [`Value`] 的基于类型标签，但允许被标识类型是未定大小类型（即带 `?Sized` 约束）。
+    /// Type-based tag similar to [`Value`] but which may be unsized (i.e., has a `?Sized` bound).
     #[derive(Debug)]
     pub(crate) struct MaybeSizedValue<T: ?Sized + 'static>(PhantomData<T>);
 
@@ -964,8 +994,8 @@ pub(crate) mod tags {
         type Reified = T;
     }
 
-    /// 基于类型的引用标签，用于引用类型（`&'a T`），其中 T 由
-    /// `<I as MaybeSizedType<'a>>::Reified` 表示。
+    /// Type-based tag for reference types (`&'a T`, where T is represented by
+    /// `<I as MaybeSizedType<'a>>::Reified`.
     #[derive(Debug)]
     pub(crate) struct Ref<I>(PhantomData<I>);
 
@@ -974,25 +1004,26 @@ pub(crate) mod tags {
     }
 }
 
-/// 带有类型标签 `I` 的 `Option`。
+/// An `Option` with a type tag `I`.
 ///
-/// 由于此结构体实现了 `Erased`，它的类型可以被擦除，从而形成动态类型的 option。随后可以通过
-/// `Tagged::tag_id` 动态检查类型；而具体类型在构造时经过静态检查，因此仍保留一定程度的类型安全。
+/// Since this struct implements `Erased`, the type can be erased to make a dynamically typed
+/// option. The type can be checked dynamically using `Tagged::tag_id` and since this is statically
+/// checked for the concrete type, there is some degree of type safety.
 #[repr(transparent)]
 pub(crate) struct TaggedOption<'a, I: tags::Type<'a>>(pub Option<I::Reified>);
 
 impl<'a, I: tags::Type<'a>> Tagged<TaggedOption<'a, I>> {
     pub(crate) fn as_request(&mut self) -> &mut Request<'a> {
         let erased = self as &mut Tagged<dyn Erased<'a> + 'a>;
-        // SAFETY: `Request` 是 repr(transparent)，因此把 `&mut Tagged<dyn Erased<'a> + 'a>`
-        // 转换为 `&mut Request<'a>` 保持布局一致。
+        // SAFETY: transmuting `&mut Tagged<dyn Erased<'a> + 'a>` to `&mut Request<'a>` is safe since
+        // `Request` is repr(transparent).
         unsafe { &mut *(erased as *mut Tagged<dyn Erased<'a>> as *mut Request<'a>) }
     }
 }
 
-/// 表示类型已擦除但仍可识别的对象。
+/// Represents a type-erased but identifiable object.
 ///
-/// 该 trait 只由 `TaggedOption` 类型实现。
+/// This trait is exclusively implemented by the `TaggedOption` type.
 unsafe trait Erased<'a>: 'a {}
 
 unsafe impl<'a, I: tags::Type<'a>> Erased<'a> for TaggedOption<'a, I> {}
@@ -1003,21 +1034,23 @@ struct Tagged<E: ?Sized> {
 }
 
 impl<'a> Tagged<dyn Erased<'a> + 'a> {
-    /// 如果动态值带有标签 `I`，则返回其共享引用；否则返回 `None`。
+    /// Returns some reference to the dynamic value if it is tagged with `I`,
+    /// or `None` otherwise.
     #[inline]
     fn downcast<I>(&self) -> Option<&TaggedOption<'a, I>>
     where
         I: tags::Type<'a>,
     {
         if self.tag_id == TypeId::of::<I>() {
-            // SAFETY: 刚刚已经检查过当前对象确实指向标签 `I` 对应的值。
+            // SAFETY: Just checked whether we're pointing to an I.
             Some(&unsafe { &*(self as *const Self).cast::<Tagged<TaggedOption<'a, I>>>() }.value)
         } else {
             None
         }
     }
 
-    /// 如果动态值带有标签 `I`，则返回其可变引用；否则返回 `None`。
+    /// Returns some mutable reference to the dynamic value if it is tagged with `I`,
+    /// or `None` otherwise.
     #[inline]
     fn downcast_mut<I>(&mut self) -> Option<&mut TaggedOption<'a, I>>
     where
@@ -1025,7 +1058,7 @@ impl<'a> Tagged<dyn Erased<'a> + 'a> {
     {
         if self.tag_id == TypeId::of::<I>() {
             Some(
-                // SAFETY: 刚刚已经检查过当前对象确实指向标签 `I` 对应的值。
+                // SAFETY: Just checked whether we're pointing to an I.
                 &mut unsafe { &mut *(self as *mut Self).cast::<Tagged<TaggedOption<'a, I>>>() }
                     .value,
             )
@@ -1035,9 +1068,10 @@ impl<'a> Tagged<dyn Erased<'a> + 'a> {
     }
 }
 
-/// 遍历某个 [`Error`] 及其 source 链的迭代器。
+/// An iterator over an [`Error`] and its sources.
 ///
-/// 如果想跳过起始错误、只处理其来源错误，可使用 `skip(1)`。
+/// If you want to omit the initial error and only process
+/// its sources, use `skip(1)`.
 #[unstable(feature = "error_iter", issue = "58520")]
 #[derive(Clone, Debug)]
 pub struct Source<'a> {

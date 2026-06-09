@@ -1,20 +1,15 @@
-//! 泛型哈希支持。
+//! Generic hashing support.
 //!
-//! 本模块提供一套泛型接口，用来计算值的 [hash]。在 `core` 中它只定义
-//! `Hash`、`Hasher` 和 `BuildHasher` 之间的协议，不负责选择具体表结构；
-//! 最常见的使用者是 [`HashMap`] 和 [`HashSet`]。这些集合依赖同一个核心契约：
-//! 两个由 [`Eq`] 判定相等的键必须向 [`Hasher`] 写入等价的输入，并最终产生相等的
-//! hash 值。反过来，hash 相等并不表示值相等，因为碰撞总是允许存在。
+//! This module provides a generic way to compute the [hash] of a value.
+//! Hashes are most commonly used with [`HashMap`] and [`HashSet`].
 //!
 //! [hash]: https://en.wikipedia.org/wiki/Hash_function
 //! [`HashMap`]: ../../std/collections/struct.HashMap.html
 //! [`HashSet`]: ../../std/collections/struct.HashSet.html
 //!
-//! 让类型支持 `Hash` 的最简单方式是使用 `#[derive(Hash)]`。派生实现会按照字段顺序
-//! 依次调用字段的 `Hash::hash`，因此字段参与 [`Eq`] 比较的方式通常也应当和字段参与
-//! `Hash` 的方式保持一致：
+//! The simplest way to make a type hashable is to use `#[derive(Hash)]`:
 //!
-//! # 示例
+//! # Examples
 //!
 //! ```rust
 //! use std::hash::{DefaultHasher, Hash, Hasher};
@@ -46,9 +41,8 @@
 //! }
 //! ```
 //!
-//! 如果某些字段不属于相等性判定的一部分，或者需要自定义写入顺序，就需要手写
-//! [`Hash`] trait。手写实现时要把逻辑重点放在“哪些值在 [`Eq`] 下相等”，而不是放在
-//! “怎样得到看起来随机的数字”；随机化和防碰撞策略属于具体 [`Hasher`] 的职责：
+//! If you need more control over how a value is hashed, you need to implement
+//! the [`Hash`] trait:
 //!
 //! ```rust
 //! use std::hash::{DefaultHasher, Hash, Hasher};
@@ -100,17 +94,16 @@ use crate::{fmt, marker};
 
 mod sip;
 
-/// 可被哈希的类型。
+/// A hashable type.
 ///
-/// 实现 `Hash` 的类型可以把自身的判定数据写入某个 [`Hasher`]。`Hash` 本身并不规定
-/// 最终算法，也不直接返回 `u64`；它只负责把值表示成一段有边界、顺序明确的输入流，
-/// 由 [`Hasher`] 根据自己的状态和算法生成最终结果。
+/// Types implementing `Hash` are able to be [`hash`]ed with an instance of
+/// [`Hasher`].
 ///
-/// ## 实现 `Hash`
+/// ## Implementing `Hash`
 ///
-/// 如果所有字段都实现了 `Hash`，通常可以直接使用 `#[derive(Hash)]`。派生代码会按字段
-/// 顺序调用每个字段的 [`hash`]，因此它天然和同样派生出来的 [`PartialEq`]、[`Eq`] 保持
-/// 同一套字段语义。
+/// You can derive `Hash` with `#[derive(Hash)]` if all fields implement `Hash`.
+/// The resulting hash will be the combination of the values from calling
+/// [`hash`] on each field.
 ///
 /// ```
 /// #[derive(Hash)]
@@ -120,8 +113,8 @@ mod sip;
 /// }
 /// ```
 ///
-/// 如果只有一部分字段参与键的身份，或者需要把多个字段归一化后再参与 hash，可以手写
-/// `Hash` trait。手写实现必须和该类型的相等性语义配套设计：
+/// If you need more control over how a value is hashed, you can of course
+/// implement the `Hash` trait yourself:
 ///
 /// ```
 /// use std::hash::{Hash, Hasher};
@@ -140,48 +133,49 @@ mod sip;
 /// }
 /// ```
 ///
-/// ## `Hash` 和 `Eq`
+/// ## `Hash` and `Eq`
 ///
-/// 当同一个类型同时实现 `Hash` 和 [`Eq`] 时，必须满足下面的性质：
+/// When implementing both `Hash` and [`Eq`], it is important that the following
+/// property holds:
 ///
 /// ```text
 /// k1 == k2 -> hash(k1) == hash(k2)
 /// ```
 ///
-/// 换句话说，如果两个键相等，它们产生的 hash 也必须相等。[`HashMap`] 和 [`HashSet`]
-/// 都把这个性质当作查找、插入和去重的基础。它们仍然会处理不同值得到相同 hash 的碰撞，
-/// 但如果相等值得到不同 hash，集合可能把同一个逻辑键放进不同桶中，从而出现查找失败、
-/// 重复键或无法预期的迭代行为。
+/// In other words, if two keys are equal, their hashes must also be equal.
+/// [`HashMap`] and [`HashSet`] both rely on this behavior.
 ///
-/// 同时使用 `#[derive(PartialEq, Eq, Hash)]` 时，派生实现会对同一组字段采用一致顺序，
-/// 因而通常不需要手动维护这个性质。
+/// Thankfully, you won't need to worry about upholding this property when
+/// deriving both [`Eq`] and `Hash` with `#[derive(PartialEq, Eq, Hash)]`.
 ///
-/// 违反这个性质是逻辑错误。由逻辑错误导致的行为没有稳定规范，但 trait 的使用者必须保证
-/// 这种错误不会升级为 undefined behavior。这一点划定了 unsafe 边界：`unsafe` 代码
-/// **不得**把 `Hash`/`Eq` 实现的正确性当作内存安全前置条件，也不能依赖“相等值一定产生
-/// 相等 hash”来证明指针、别名或生命周期操作是安全的。
+/// Violating this property is a logic error. The behavior resulting from a logic error is not
+/// specified, but users of the trait must ensure that such logic errors do *not* result in
+/// undefined behavior. This means that `unsafe` code **must not** rely on the correctness of these
+/// methods.
 ///
-/// ## 前缀碰撞
+/// ## Prefix collisions
 ///
-/// `hash` 的实现应当确保传给 `Hasher` 的数据是 prefix-free 的。也就是说，对于不相等的
-/// 值，应当写入不同的值序列，并且任一序列都不应当只是另一个序列的前缀。这个要求也常被
-/// 称为 domain separation：实现需要在“字段边界”“集合长度”“字符串结束”等位置写入足够
-/// 的分隔信息，使不同结构不能被拼接成同一条字节流。
+/// Implementations of `hash` should ensure that the data they
+/// pass to the `Hasher` are prefix-free. That is,
+/// values which are not equal should cause two different sequences of values to be written,
+/// and neither of the two sequences should be a prefix of the other.
 ///
-/// 例如，[`Hash` for `&str`][impl] 的标准实现会额外向 `Hasher` 写入一个 `0xFF` 字节。
-/// 由于合法 UTF-8 字符串中不会出现该字节，它可以作为字符串的 domain separator，使
-/// `("ab", "c")` 和 `("a", "bc")` 这样的值组合写入不同的输入序列。
+/// For example, the standard implementation of [`Hash` for `&str`][impl] passes an extra
+/// `0xFF` byte to the `Hasher` so that the values `("ab", "c")` and `("a",
+/// "bc")` hash differently.
 ///
-/// ## 可移植性
+/// ## Portability
 ///
-/// 由于端序和类型大小可能因平台而异，`Hash` 写入 `Hasher` 的数据不应被视为跨平台可移植。
-/// 此外，多数标准库类型写入的数据格式也不保证在不同编译器版本之间保持稳定。
+/// Due to differences in endianness and type sizes, data fed by `Hash` to a `Hasher`
+/// should not be considered portable across platforms. Additionally the data passed by most
+/// standard library types should not be considered stable between compiler versions.
 ///
-/// 因此，测试不应断言某个硬编码 hash 值，也不应检查写给 `Hasher` 的内部字节细节；更合适
-/// 的测试目标是验证它和 `Eq` 的一致性。
+/// This means tests shouldn't probe hard-coded hash values or data fed to a `Hasher` and
+/// instead should check consistency with `Eq`.
 ///
-/// 需要跨平台或跨编译器版本稳定的序列化格式，应避免直接编码 hash，或者只依赖那些额外
-/// 明确承诺了稳定格式的 `Hash`/`Hasher` 实现。
+/// Serialization formats intended to be portable between platforms or compiler versions should
+/// either avoid encoding hashes or only rely on `Hash` and `Hasher` implementations that
+/// provide additional guarantees.
 ///
 /// [`HashMap`]: ../../std/collections/struct.HashMap.html
 /// [`HashSet`]: ../../std/collections/struct.HashSet.html
@@ -190,13 +184,9 @@ mod sip;
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_diagnostic_item = "Hash"]
 pub trait Hash: marker::PointeeSized {
-    /// 将此值写入给定的 [`Hasher`]。
+    /// Feeds this value into the given [`Hasher`].
     ///
-    /// 实现者应写入足以表达该值在 `Eq` 下身份的数据，并保持字段顺序和分隔规则稳定。
-    /// 这个方法不应自行调用 [`Hasher::finish`]；同一个 `Hasher` 可能还要继续接收外层结构
-    /// 的其他字段。
-    ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::hash::{DefaultHasher, Hash, Hasher};
@@ -208,19 +198,24 @@ pub trait Hash: marker::PointeeSized {
     #[stable(feature = "rust1", since = "1.0.0")]
     fn hash<H: Hasher>(&self, state: &mut H);
 
-    /// 将此类型的一个切片写入给定的 [`Hasher`]。
+    /// Feeds a slice of this type into the given [`Hasher`].
     ///
-    /// 这个方法是便利入口，但它的具体实现被有意留作未指定。它不保证等价于对每个元素重复
-    /// 调用 [`hash`]。如果切片在该类型的 [`PartialEq`] 实现中并不是一个整体单元，`Hash`
-    /// 实现就应当牢记这一点，直接逐项调用 [`hash`]，而不是把任意中间切片交给
-    /// [`hash_slice`]。
+    /// This method is meant as a convenience, but its implementation is
+    /// also explicitly left unspecified. It isn't guaranteed to be
+    /// equivalent to repeated calls of [`hash`] and implementations of
+    /// [`Hash`] should keep that in mind and call [`hash`] themselves
+    /// if the slice isn't treated as a whole unit in the [`PartialEq`]
+    /// implementation.
     ///
-    /// 例如，[`VecDeque`] 的实现如果天真地调用 [`as_slices`]，再分别对两个切片调用
-    /// [`hash_slice`]，就是错误的：一次 [`make_contiguous`] 可以改变两个切片的划分方式，
-    /// 却不改变 [`PartialEq`] 结果。因为这些切片只是更大双端队列的内部表示，而不是相等性
-    /// 语义中的独立整体，所以不能在这里使用此方法。
+    /// For example, a [`VecDeque`] implementation might naïvely call
+    /// [`as_slices`] and then [`hash_slice`] on each slice, but this
+    /// is wrong since the two slices can change with a call to
+    /// [`make_contiguous`] without affecting the [`PartialEq`]
+    /// result. Since these slices aren't treated as singular
+    /// units, and instead part of a larger deque, this method cannot
+    /// be used.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::hash::{DefaultHasher, Hash, Hasher};
@@ -247,53 +242,55 @@ pub trait Hash: marker::PointeeSized {
     }
 }
 
-// 独立模块用于从 prelude 重新导出宏 `Hash`，同时避免一并导出 trait `Hash`。
+// Separate module to reexport the macro `Hash` from prelude without the trait `Hash`.
 pub(crate) mod macros {
-    /// 生成 trait `Hash` 实现的派生宏。
+    /// Derive macro generating an impl of the trait `Hash`.
     #[rustc_builtin_macro]
     #[stable(feature = "builtin_macro_prelude", since = "1.38.0")]
     #[allow_internal_unstable(core_intrinsics)]
     pub macro Hash($item:item) {
-        /* 编译器内建 */
+        /* compiler built-in */
     }
 }
 #[stable(feature = "builtin_macro_prelude", since = "1.38.0")]
 #[doc(inline)]
 pub use macros::Hash;
 
-/// 对任意字节流进行哈希的 trait。
+/// A trait for hashing an arbitrary stream of bytes.
 ///
-/// `Hasher` 的实例通常保存一段会随着输入而更新的内部状态。`Hash` 实现通过调用
-/// `write`/`write_*` 方法把值写进这段状态，最后由 [`finish`] 读取当前状态对应的
-/// `u64` 结果。
+/// Instances of `Hasher` usually represent state that is changed while hashing
+/// data.
 ///
-/// `Hasher` 只提供相当基础的接口：用 [`finish`] 取得已生成的 hash，用 [`write`] 和
-/// [`write_u8`] 等方法写入字节切片或整数。绝大多数时候，`Hasher` 会和 [`Hash`] trait
-/// 一起使用，由 `Hash` 决定写入哪些数据，由 `Hasher` 决定如何压缩这些数据。
+/// `Hasher` provides a fairly basic interface for retrieving the generated hash
+/// (with [`finish`]), and writing integers as well as slices of bytes into an
+/// instance (with [`write`] and [`write_u8`] etc.). Most of the time, `Hasher`
+/// instances are used in conjunction with the [`Hash`] trait.
 ///
-/// 这个 trait 不保证各个 `write_*` 方法之间有任何特定等价关系，因而 [`Hash`] 实现不能假设
-/// 它们会以某种方式工作。例如，不能假设一次 [`write_u32`] 调用等价于四次 [`write_u8`]
-/// 调用；也不能假设相邻的 `write` 调用会被合并。因此，例如下面这段写入：
+/// This trait provides no guarantees about how the various `write_*` methods are
+/// defined and implementations of [`Hash`] should not assume that they work one
+/// way or another. You cannot assume, for example, that a [`write_u32`] call is
+/// equivalent to four calls of [`write_u8`].  Nor can you assume that adjacent
+/// `write` calls are merged, so it's possible, for example, that
 /// ```
 /// # fn foo(hasher: &mut impl std::hash::Hasher) {
 /// hasher.write(&[1, 2]);
 /// hasher.write(&[3, 4, 5, 6]);
 /// # }
 /// ```
-/// 和下面这段写入：
+/// and
 /// ```
 /// # fn foo(hasher: &mut impl std::hash::Hasher) {
 /// hasher.write(&[1, 2, 3, 4]);
 /// hasher.write(&[5, 6]);
 /// # }
 /// ```
-/// 可能产生不同的 hash：
+/// end up producing different hashes.
 ///
-/// 换言之，要让等价的值产生相同 hash，[`Hash`] 实现必须保证它们执行完全相同的调用序列：
-/// 同样的方法、同样的参数、同样的顺序。这就是 `Hasher` 的字节流语义和 `Hash`/`Eq` 契约
-/// 连接起来的地方。
+/// Thus to produce the same hash value, [`Hash`] implementations must ensure
+/// for equivalent items that exactly the same sequence of calls is made -- the
+/// same methods with the same parameters in the same order.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// use std::hash::{DefaultHasher, Hasher};
@@ -314,12 +311,14 @@ pub use macros::Hash;
 /// [`write_u32`]: Hasher::write_u32
 #[stable(feature = "rust1", since = "1.0.0")]
 pub trait Hasher {
-    /// 返回到目前为止已写入值对应的 hash 值。
+    /// Returns the hash value for the values written so far.
     ///
-    /// 尽管方法名叫 `finish`，它不会重置 hasher 的内部状态。后续 [`write`] 会从当前状态
-    /// 继续。如果需要开始一次全新的 hash 计算，必须创建新的 hasher。
+    /// Despite its name, the method does not reset the hasher’s internal
+    /// state. Additional [`write`]s will continue from the current value.
+    /// If you need to start a fresh hash value, you will have to create
+    /// a new hasher.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::hash::{DefaultHasher, Hasher};
@@ -335,12 +334,9 @@ pub trait Hasher {
     #[must_use]
     fn finish(&self) -> u64;
 
-    /// 向这个 `Hasher` 写入一段字节数据。
+    /// Writes some data into this `Hasher`.
     ///
-    /// 这里的 `bytes` 是原始输入片段，不自动携带长度或字段边界信息。需要 prefix-free 的
-    /// 结构应由调用方，也就是对应的 `Hash` 实现，先写入长度前缀或其他 domain separator。
-    ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::hash::{DefaultHasher, Hasher};
@@ -353,105 +349,109 @@ pub trait Hasher {
     /// println!("Hash is {:x}!", hasher.finish());
     /// ```
     ///
-    /// # 实现者注意
+    /// # Note to Implementers
     ///
-    /// 实现这个方法时通常不应自动添加长度前缀。哪些序列需要长度或边界分隔，是
-    /// [`Hash`] 实现的语义责任；它应当在需要时先调用 [`Hasher::write_length_prefix`]。
+    /// You generally should not do length-prefixing as part of implementing
+    /// this method.  It's up to the [`Hash`] implementation to call
+    /// [`Hasher::write_length_prefix`] before sequences that need it.
     #[stable(feature = "rust1", since = "1.0.0")]
     fn write(&mut self, bytes: &[u8]);
 
-    /// 向这个 hasher 写入一个 `u8`。
+    /// Writes a single `u8` into this hasher.
     #[inline]
     #[stable(feature = "hasher_write", since = "1.3.0")]
     fn write_u8(&mut self, i: u8) {
         self.write(&[i])
     }
-    /// 向这个 hasher 写入一个 `u16`。
+    /// Writes a single `u16` into this hasher.
     #[inline]
     #[stable(feature = "hasher_write", since = "1.3.0")]
     fn write_u16(&mut self, i: u16) {
         self.write(&i.to_ne_bytes())
     }
-    /// 向这个 hasher 写入一个 `u32`。
+    /// Writes a single `u32` into this hasher.
     #[inline]
     #[stable(feature = "hasher_write", since = "1.3.0")]
     fn write_u32(&mut self, i: u32) {
         self.write(&i.to_ne_bytes())
     }
-    /// 向这个 hasher 写入一个 `u64`。
+    /// Writes a single `u64` into this hasher.
     #[inline]
     #[stable(feature = "hasher_write", since = "1.3.0")]
     fn write_u64(&mut self, i: u64) {
         self.write(&i.to_ne_bytes())
     }
-    /// 向这个 hasher 写入一个 `u128`。
+    /// Writes a single `u128` into this hasher.
     #[inline]
     #[stable(feature = "i128", since = "1.26.0")]
     fn write_u128(&mut self, i: u128) {
         self.write(&i.to_ne_bytes())
     }
-    /// 向这个 hasher 写入一个 `usize`。
+    /// Writes a single `usize` into this hasher.
     #[inline]
     #[stable(feature = "hasher_write", since = "1.3.0")]
     fn write_usize(&mut self, i: usize) {
         self.write(&i.to_ne_bytes())
     }
 
-    /// 向这个 hasher 写入一个 `i8`。
+    /// Writes a single `i8` into this hasher.
     #[inline]
     #[stable(feature = "hasher_write", since = "1.3.0")]
     fn write_i8(&mut self, i: i8) {
         self.write_u8(i as u8)
     }
-    /// 向这个 hasher 写入一个 `i16`。
+    /// Writes a single `i16` into this hasher.
     #[inline]
     #[stable(feature = "hasher_write", since = "1.3.0")]
     fn write_i16(&mut self, i: i16) {
         self.write_u16(i as u16)
     }
-    /// 向这个 hasher 写入一个 `i32`。
+    /// Writes a single `i32` into this hasher.
     #[inline]
     #[stable(feature = "hasher_write", since = "1.3.0")]
     fn write_i32(&mut self, i: i32) {
         self.write_u32(i as u32)
     }
-    /// 向这个 hasher 写入一个 `i64`。
+    /// Writes a single `i64` into this hasher.
     #[inline]
     #[stable(feature = "hasher_write", since = "1.3.0")]
     fn write_i64(&mut self, i: i64) {
         self.write_u64(i as u64)
     }
-    /// 向这个 hasher 写入一个 `i128`。
+    /// Writes a single `i128` into this hasher.
     #[inline]
     #[stable(feature = "i128", since = "1.26.0")]
     fn write_i128(&mut self, i: i128) {
         self.write_u128(i as u128)
     }
-    /// 向这个 hasher 写入一个 `isize`。
+    /// Writes a single `isize` into this hasher.
     #[inline]
     #[stable(feature = "hasher_write", since = "1.3.0")]
     fn write_isize(&mut self, i: isize) {
         self.write_usize(i as usize)
     }
 
-    /// 向这个 hasher 写入长度前缀，用作 prefix-free 编码的一部分。
+    /// Writes a length prefix into this hasher, as part of being prefix-free.
     ///
-    /// 如果正在为自定义集合实现 [`Hash`]，应在写入集合元素之前调用此方法。这样
-    /// `(collection![1, 2, 3], collection![4, 5])` 和
-    /// `(collection![1, 2], collection![3, 4, 5])` 会向 `Hasher` 提供不同的值序列。
+    /// If you're implementing [`Hash`] for a custom collection, call this before
+    /// writing its contents to this `Hasher`.  That way
+    /// `(collection![1, 2, 3], collection![4, 5])` and
+    /// `(collection![1, 2], collection![3, 4, 5])` will provide different
+    /// sequences of values to the `Hasher`
     ///
-    /// `impl<T> Hash for [T]` 已经包含对此方法的调用。因此，如果通过切片、数组或 `Vec`
-    /// 自身的 `Hash::hash` 方法进行哈希，调用方 **不应** 再手动调用此方法。
+    /// The `impl<T> Hash for [T]` includes a call to this method, so if you're
+    /// hashing a slice (or array or vector) via its `Hash::hash` method,
+    /// you should **not** call this yourself.
     ///
-    /// 此方法只用于提供 domain separation。如果要哈希的 `usize` 本身就是*数据*的一部分，
-    /// 必须把它传给 [`Hasher::write_usize`]，而不是传给此方法；否则长度前缀和普通数据会
-    /// 落入同一个语义域，破坏 `Hash` 实现的可推理性。
+    /// This method is only for providing domain separation.  If you want to
+    /// hash a `usize` that represents part of the *data*, then it's important
+    /// that you pass it to [`Hasher::write_usize`] instead of to this method.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// #![feature(hasher_prefixfree_extras)]
-    /// # // 这些桩定义只用于让下面的 `impl` 通过编译
+    /// # // Stubs to make the `impl` below pass the compiler
     /// # #![allow(non_local_definitions)]
     /// # struct MyCollection<T>(Option<T>);
     /// # impl<T> MyCollection<T> {
@@ -474,33 +474,34 @@ pub trait Hasher {
     /// }
     /// ```
     ///
-    /// # 实现者注意
+    /// # Note to Implementers
     ///
-    /// 如果你的 `Hasher` 有意接受 Hash-DoS 攻击风险，以换取更高性能，可以考虑忽略传入的
-    /// `len` 的一部分或全部。不过这样做会削弱长度前缀作为 domain separator 的强度，适用
-    /// 范围应由具体 hasher 的安全和性能目标决定。
+    /// If you've decided that your `Hasher` is willing to be susceptible to
+    /// Hash-DoS attacks, then you might consider skipping hashing some or all
+    /// of the `len` provided in the name of increased performance.
     #[inline]
     #[unstable(feature = "hasher_prefixfree_extras", issue = "96762")]
     fn write_length_prefix(&mut self, len: usize) {
         self.write_usize(len);
     }
 
-    /// 向这个 hasher 写入一个 `str`。
+    /// Writes a single `str` into this hasher.
     ///
-    /// 如果正在实现 [`Hash`]，通常不需要直接调用此方法；`impl Hash for str` 已经会这样做，
-    /// 因而优先让 `str` 自己的 `Hash` 实现负责写入。
+    /// If you're implementing [`Hash`], you generally do not need to call this,
+    /// as the `impl Hash for str` does, so you should prefer that instead.
     ///
-    /// 此方法已经包含用于 prefix-free 的 domain separator，因此调用它之前 **不应** 再调用
-    /// `Self::write_length_prefix`。
+    /// This includes the domain separator for prefix-freedom, so you should
+    /// **not** call `Self::write_length_prefix` before calling this.
     ///
-    /// # 实现者注意
+    /// # Note to Implementers
     ///
-    /// 至少有两种合理的默认实现方式。哪一种会成为最终默认实现尚未决定，所以当前自定义
-    /// `Hasher` 往往应当显式覆盖此方法。
+    /// There are at least two reasonable default ways to implement this.
+    /// Which one will be the default is not yet decided, so for now
+    /// you probably want to override it specifically.
     ///
-    /// ## 通用做法
+    /// ## The general answer
     ///
-    /// 使用长度前缀实现此方法总是正确的：
+    /// It's always correct to implement this with a length prefix:
     ///
     /// ```
     /// # #![feature(hasher_prefixfree_extras)]
@@ -515,13 +516,15 @@ pub trait Hasher {
     /// # }
     /// ```
     ///
-    /// 如果你的 `Hasher` 以 `usize` 块为工作单位，这通常也很高效；更复杂的方案很可能比
-    /// 直接把长度参与一轮压缩更慢。
+    /// And, if your `Hasher` works in `usize` chunks, this is likely a very
+    /// efficient way to do it, as anything more complicated may well end up
+    /// slower than just running the round with the length.
     ///
-    /// ## 按字节工作的 `Hasher`
+    /// ## If your `Hasher` works byte-wise
     ///
-    /// `str` 是 UTF-8 的一个好处是合法字符串中永远不会出现 `b'\xFF'` 字节。因此可以把
-    /// 该字节追加到参与 hash 的字节流末尾，用它维持 prefix-freedom：
+    /// One nice thing about `str` being UTF-8 is that the `b'\xFF'` byte
+    /// never happens.  That means that you can append that to the byte stream
+    /// being hashed and maintain prefix-freedom:
     ///
     /// ```
     /// # #![feature(hasher_prefixfree_extras)]
@@ -536,11 +539,13 @@ pub trait Hasher {
     /// # }
     /// ```
     ///
-    /// 这要求实现本身不要额外填充输入，因此通常需要维护缓冲区，只在缓冲区装满或调用
-    /// `finish` 时才执行一轮压缩。
+    /// This does require that your implementation not add extra padding, and
+    /// thus generally requires that you maintain a buffer, running a round
+    /// only once that buffer is full (or `finish` is called).
     ///
-    /// 原因是，如果 `write` 会把数据填充到固定块大小，它很可能让 `"a"` 和 `"a\x00"` 最终
-    /// 参与 hash 的块序列相同，从而引入冲突。
+    /// That's because if `write` pads data out to a fixed chunk size, it's
+    /// likely that it does it in such a way that `"a"` and `"a\x00"` would
+    /// end up hashing the same sequence of things, introducing conflicts.
     #[inline]
     #[unstable(feature = "hasher_prefixfree_extras", issue = "96762")]
     fn write_str(&mut self, s: &str) {
@@ -601,17 +606,17 @@ impl<H: Hasher + ?Sized> Hasher for &mut H {
     }
 }
 
-/// 用于创建 [`Hasher`] 实例的 trait。
+/// A trait for creating instances of [`Hasher`].
 ///
-/// `BuildHasher` 通常由 [`HashMap`] 这类集合使用，用来为每次键操作创建新的 [`Hasher`]。
-/// 由于 [`Hasher`] 带有可变状态，不能让不同键共享同一个正在写入的 hasher；集合会通过
-/// `BuildHasher` 取得相互独立但配置一致的 hasher 实例。
+/// A `BuildHasher` is typically used (e.g., by [`HashMap`]) to create
+/// [`Hasher`]s for each key such that they are hashed independently of one
+/// another, since [`Hasher`]s contain state.
 ///
-/// 对同一个 `BuildHasher` 实例而言，[`build_hasher`] 创建出的 [`Hasher`] 应当等价。也就是说，
-/// 如果向这些 hasher 写入完全相同的字节流，它们也应产生相同输出。这使 [`HashMap`] 能在
-/// 插入和后续查找时重新构造 hasher，而不必保存每个键的中间状态。
+/// For each instance of `BuildHasher`, the [`Hasher`]s created by
+/// [`build_hasher`] should be identical. That is, if the same stream of bytes
+/// is fed into each hasher, the same output will also be generated.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// use std::hash::{BuildHasher, Hasher, RandomState};
@@ -631,16 +636,16 @@ impl<H: Hasher + ?Sized> Hasher for &mut H {
 #[cfg_attr(not(test), rustc_diagnostic_item = "BuildHasher")]
 #[stable(since = "1.7.0", feature = "build_hasher")]
 pub trait BuildHasher {
-    /// 将被创建的 hasher 类型。
+    /// Type of the hasher that will be created.
     #[stable(since = "1.7.0", feature = "build_hasher")]
     type Hasher: Hasher;
 
-    /// 创建一个新的 hasher。
+    /// Creates a new hasher.
     ///
-    /// 对同一个 `BuildHasher` 实例，每次调用 `build_hasher` 都应产生配置相同的 [`Hasher`]。
-    /// 这里的“相同”指同一输入流会得到同一输出，而不是要求返回同一个对象。
+    /// Each call to `build_hasher` on the same instance should produce identical
+    /// [`Hasher`]s.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::hash::{BuildHasher, RandomState};
@@ -651,16 +656,18 @@ pub trait BuildHasher {
     #[stable(since = "1.7.0", feature = "build_hasher")]
     fn build_hasher(&self) -> Self::Hasher;
 
-    /// 计算单个值的 hash。
+    /// Calculates the hash of a single value.
     ///
-    /// 这是给*消费* hash 的代码使用的便利方法，例如哈希表实现，或者在单元测试中检查自定义
-    /// [`Hash`] 实现是否符合预期。
+    /// This is intended as a convenience for code which *consumes* hashes, such
+    /// as the implementation of a hash table or in unit tests that check
+    /// whether a custom [`Hash`] implementation behaves as expected.
     ///
-    /// 任何*创建*复合 hash 的代码都不应使用它，尤其是 [`Hash`] 的实现。多个值的组合 hash
-    /// 应通过同一个 [`Hasher`] 多次调用 [`Hash::hash`] 得到，而不是反复调用本方法再手动组合
-    /// 若干 `u64` 结果；后者会丢失 `Hasher` 的字节流顺序和 domain separation 语义。
+    /// This must not be used in any code which *creates* hashes, such as in an
+    /// implementation of [`Hash`].  The way to create a combined hash of
+    /// multiple values is to call [`Hash::hash`] multiple times using the same
+    /// [`Hasher`], not to call this method repeatedly and combine the results.
     ///
-    /// # 示例
+    /// # Example
     ///
     /// ```
     /// use std::cmp::{max, min};
@@ -673,7 +680,7 @@ pub trait BuildHasher {
     ///     }
     /// }
     ///
-    /// // 随后，在该类型的 `#[test]` 中...
+    /// // Then later, in a `#[test]` for the type...
     /// let bh = std::hash::RandomState::new();
     /// assert_eq!(
     ///     bh.hash_one(OrderAmbivalentPair(1, 2)),
@@ -696,19 +703,22 @@ pub trait BuildHasher {
     }
 }
 
-/// 为同时实现 [`Hasher`] 和 [`Default`] 的类型创建默认 [`BuildHasher`] 实例。
+/// Used to create a default [`BuildHasher`] instance for types that implement
+/// [`Hasher`] and [`Default`].
 ///
-/// 当类型 `H` 已经实现 [`Hasher`] 和 [`Default`]，但没有单独定义对应的 [`BuildHasher`] 时，
-/// 可以使用 `BuildHasherDefault<H>` 作为适配器。它把“如何创建 hasher”的职责简化为
-/// `H::default()`。
+/// `BuildHasherDefault<H>` can be used when a type `H` implements [`Hasher`] and
+/// [`Default`], and you need a corresponding [`BuildHasher`] instance, but none is
+/// defined.
 ///
-/// 任意 `BuildHasherDefault` 都是零大小([zero-sized])的。它可以用 [`default`][method.default]
-/// 创建。和 [`HashMap`] 或 [`HashSet`] 一起使用时通常不需要手动创建，因为这些集合会提供
-/// 合适的 [`Default`] 实现。
+/// Any `BuildHasherDefault` is [zero-sized]. It can be created with
+/// [`default`][method.default]. When using `BuildHasherDefault` with [`HashMap`] or
+/// [`HashSet`], this doesn't need to be done, since they implement appropriate
+/// [`Default`] instances themselves.
 ///
-/// # 示例
+/// # Examples
 ///
-/// 使用 `BuildHasherDefault` 为 [`HashMap`] 指定自定义 [`BuildHasher`]：
+/// Using `BuildHasherDefault` to specify a custom [`BuildHasher`] for
+/// [`HashMap`]:
 ///
 /// ```
 /// use std::collections::HashMap;
@@ -719,12 +729,12 @@ pub trait BuildHasher {
 ///
 /// impl Hasher for MyHasher {
 ///     fn write(&mut self, bytes: &[u8]) {
-///         // 在这里放入你的哈希算法！
+///         // Your hashing algorithm goes here!
 ///        unimplemented!()
 ///     }
 ///
 ///     fn finish(&self) -> u64 {
-///         // 在这里放入你的哈希算法！
+///         // Your hashing algorithm goes here!
 ///         unimplemented!()
 ///     }
 /// }
@@ -742,7 +752,7 @@ pub trait BuildHasher {
 pub struct BuildHasherDefault<H>(marker::PhantomData<fn() -> H>);
 
 impl<H> BuildHasherDefault<H> {
-    /// 为 hasher 类型 `H` 创建新的 `BuildHasherDefault`。
+    /// Creates a new BuildHasherDefault for Hasher `H`.
     #[stable(feature = "build_hasher_default_const_new", since = "1.85.0")]
     #[rustc_const_stable(feature = "build_hasher_default_const_new", since = "1.85.0")]
     pub const fn new() -> Self {
@@ -808,9 +818,10 @@ mod impls {
                 fn hash_slice<H: Hasher>(data: &[$ty], state: &mut H) {
                     let newlen = size_of_val(data);
                     let ptr = data.as_ptr() as *const u8;
-                    // SAFETY: `ptr` 有效且满足对齐要求，因为这个宏只用于没有 padding 的
-                    // 数值基本类型。新切片只覆盖原始 `data` 的同一段内存，并且不会被修改；
-                    // 它的总字节数与原始 `data` 相同，因此不会超过 `isize::MAX`。
+                    // SAFETY: `ptr` is valid and aligned, as this macro is only used
+                    // for numeric primitives which have no padding. The new slice only
+                    // spans across `data` and is never mutated, and its total size is the
+                    // same as the original `data` so it can't be over `isize::MAX`.
                     state.write(unsafe { slice::from_raw_parts(ptr, newlen) })
                 }
             }

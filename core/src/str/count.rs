@@ -1,17 +1,22 @@
-//! 高效统计 UTF-8 编码字符串中 `char` 数量的代码。
+//! Code for efficiently counting the number of `char`s in a UTF-8 encoded
+//! string.
 //!
-//! 从结构上看，UTF-8 把每个 `char` 编码为一个“起始”字节，
-//! 后面跟随若干个（可能为 0 个）continuation byte。
+//! Broadly, UTF-8 encodes `char`s as a "leading" byte which begins the `char`,
+//! followed by some number (possibly 0) of continuation bytes.
 //!
-//! 起始字节有多种位模式，具体模式表示后面跟随多少 continuation byte；
-//! continuation byte 的格式始终是 `0b10XX_XXXX`（`X` 可为任意值）。
-//! 也就是说，最高位为 1，次高位为 0。
+//! The leading byte can have a number of bit-patterns (with the specific
+//! pattern indicating how many continuation bytes follow), but the continuation
+//! bytes are always in the format `0b10XX_XXXX` (where the `X`s can take any
+//! value). That is, the most significant bit is set, and the second most
+//! significant bit is unset.
 //!
-//! 因此，在已经满足 UTF-8 有效性不变量的 `&str` 中，统计字符数等价于统计
-//! “不是 continuation byte 的字节”数量。这个判定可以按机器字批量完成。
+//! To count the number of characters, we can just count the number of bytes in
+//! the string which are not continuation bytes, which can be done many bytes at
+//! a time fairly easily.
 //!
-//! 注意：“leading byte” 有时有歧义（例如也可能指切片的第一个字节），所以代码中通常使用
-//! “non-continuation byte” 指代这类字节。
+//! Note: Because the term "leading byte" can sometimes be ambiguous (for
+//! example, it could also refer to the first byte of a slice), we'll often use
+//! the term "non-continuation byte" to refer to these bytes in the code.
 
 use core::intrinsics::unlikely;
 
@@ -21,8 +26,10 @@ const UNROLL_INNER: usize = 4;
 #[inline]
 pub(super) fn count_chars(s: &str) -> usize {
     if cfg!(feature = "optimize_for_size") || s.len() < USIZE_SIZE * UNROLL_INNER {
-        // 对很短的字符串避免进入优化实现：此时差异不大，甚至可能更慢。
-        // 这里的阈值没有复杂调参，只取了一个看起来合理的值。
+        // Avoid entering the optimized implementation for strings where the
+        // difference is not likely to matter, or where it might even be slower.
+        // That said, a ton of thought was not spent on the particular threshold
+        // here, beyond "this value seems to make sense".
         char_count_general_case(s.as_bytes())
     } else {
         do_count_chars(s)
@@ -30,56 +37,65 @@ pub(super) fn count_chars(s: &str) -> usize {
 }
 
 fn do_count_chars(s: &str) -> usize {
-    // 为保证正确性，`CHUNK_SIZE` 必须满足：
+    // For correctness, `CHUNK_SIZE` must be:
     //
-    // - 小于等于 255，否则 `counts` 中的字节计数会溢出。
-    // - 是 `UNROLL_INNER` 的倍数，否则 `body.chunks(CHUNK_SIZE)` 循环内的 `break` 不再正确。
+    // - Less than or equal to 255, otherwise we'll overflow bytes in `counts`.
+    // - A multiple of `UNROLL_INNER`, otherwise our `break` inside the
+    //   `body.chunks(CHUNK_SIZE)` loop is incorrect.
     //
-    // 为保证性能，`CHUNK_SIZE` 应满足：
-    // - 除法相对便宜（例如若干 2 的幂之和）。
-    // - 足够大，避免过于频繁地支付 `sum_bytes_in_usize` 的成本。
+    // For performance, `CHUNK_SIZE` should be:
+    // - Relatively cheap to `/` against (so some simple sum of powers of two).
+    // - Large enough to avoid paying for the cost of the `sum_bytes_in_usize`
+    //   too often.
     const CHUNK_SIZE: usize = 192;
 
-    // 检查 `CHUNK_SIZE` 和 `UNROLL_INNER` 为正确性所需的性质。
+    // Check the properties of `CHUNK_SIZE` and `UNROLL_INNER` that are required
+    // for correctness.
     const _: () = assert!(CHUNK_SIZE < 256);
     const _: () = assert!(CHUNK_SIZE.is_multiple_of(UNROLL_INNER));
 
-    // SAFETY: `[u8]` 按 `usize` 重新分段的对齐和长度差异由 `align_to` 处理；
-    // 返回的 head/body/tail 分别覆盖原切片，不改变底层字节。
+    // SAFETY: transmuting `[u8]` to `[usize]` is safe except for size
+    // differences which are handled by `align_to`.
     let (head, body, tail) = unsafe { s.as_bytes().align_to::<usize>() };
 
-    // 这应当很少发生，主要用于处理 `align_to` 退化失败的情况，
-    // 以及 miri 在符号对齐模式下的情形。
+    // This should be quite rare, and basically exists to handle the degenerate
+    // cases where align_to fails (as well as miri under symbolic alignment
+    // mode).
     //
-    // `unlikely` 会降低 LLVM 内联该分支主体的倾向；这样无需把
-    // `char_count_general_case` 整个函数标为 cold。
+    // The `unlikely` helps discourage LLVM from inlining the body, which is
+    // nice, as we would rather not mark the `char_count_general_case` function
+    // as cold.
     if unlikely(body.is_empty() || head.len() > USIZE_SIZE || tail.len() > USIZE_SIZE) {
         return char_count_general_case(s.as_bytes());
     }
 
     let mut total = char_count_general_case(head) + char_count_general_case(tail);
-    // 将 `body` 切为 `CHUNK_SIZE` 大小的块，以降低调用 `sum_bytes_in_usize` 的频率。
+    // Split `body` into `CHUNK_SIZE` chunks to reduce the frequency with which
+    // we call `sum_bytes_in_usize`.
     for chunk in body.chunks(CHUNK_SIZE) {
-        // 中间和累积在 `counts` 中；其中每个字节都保存该块计数的一部分，
-        // 概念上类似 `[u8; size_of::<usize>()]`。
+        // We accumulate intermediate sums in `counts`, where each byte contains
+        // a subset of the sum of this chunk, like a `[u8; size_of::<usize>()]`.
         let mut counts = 0;
 
         let (unrolled_chunks, remainder) = chunk.as_chunks::<UNROLL_INNER>();
         for unrolled in unrolled_chunks {
             for &word in unrolled {
-                // 因为 `CHUNK_SIZE < 256`，该加法不会让任一字节中的计数溢出到后续字节。
+                // Because `CHUNK_SIZE` is < 256, this addition can't cause the
+                // count in any of the bytes to overflow into a subsequent byte.
                 counts += contains_non_continuation_byte(word);
             }
         }
 
-        // 对 `counts` 中各字节的值求和（它概念上仍是 `[u8; size_of::<usize>()]`），
-        // 并累加到 `total`。
+        // Sum the values in `counts` (which, again, is conceptually a `[u8;
+        // size_of::<usize>()]`), and accumulate the result into `total`.
         total += sum_bytes_in_usize(counts);
 
-        // 如果 `remainder` 中还有数据，就处理它。由于 `CHUNK_SIZE` 可被 `UNROLL_INNER` 整除，
-        // 这只会发生在 `body.chunks()` 的最后一个块中，所以末尾显式 `break`，这似乎有助于 LLVM。
+        // If there's any data in `remainder`, then handle it. This will only
+        // happen for the last `chunk` in `body.chunks()` (because `CHUNK_SIZE`
+        // is divisible by `UNROLL_INNER`), so we explicitly break at the end
+        // (which seems to help LLVM out).
         if !remainder.is_empty() {
-            // 累加 remainder 中的全部数据。
+            // Accumulate all the data in the remainder.
             let mut counts = 0;
             for &word in remainder {
                 counts += contains_non_continuation_byte(word);
@@ -91,16 +107,18 @@ fn do_count_chars(s: &str) -> usize {
     total
 }
 
-// 检查 `w` 的每个字节是否是 UTF-8 序列中的首字节。
-// continuation byte 会留下 `0x00`（相当于 false），non-continuation byte
-// 会留下 `0x01`（相当于 true）。
+// Checks each byte of `w` to see if it contains the first byte in a UTF-8
+// sequence. Bytes in `w` which are continuation bytes are left as `0x00` (e.g.
+// false), and bytes which are non-continuation bytes are left as `0x01` (e.g.
+// true)
 #[inline]
 fn contains_non_continuation_byte(w: usize) -> usize {
     const LSB: usize = usize::repeat_u8(0x01);
     ((!w >> 7) | (w >> 6)) & LSB
 }
 
-// 语义上等价于 `values.to_ne_bytes().into_iter().sum::<usize>()`，但效率更高。
+// Morally equivalent to `values.to_ne_bytes().into_iter().sum::<usize>()`, but
+// more efficient.
 #[inline]
 fn sum_bytes_in_usize(values: usize) -> usize {
     const LSB_SHORTS: usize = usize::repeat_u16(0x0001);
@@ -110,8 +128,10 @@ fn sum_bytes_in_usize(values: usize) -> usize {
     pair_sum.wrapping_mul(LSB_SHORTS) >> ((USIZE_SIZE - 2) * 8)
 }
 
-// 这是“统计字符串中不是 continuation byte 的字节数量”这一概念最直接的实现，
-// 用于输入字符串的 head 和 tail（即 `slice::align_to` 返回元组中的第一项和最后一项）。
+// This is the most direct implementation of the concept of "count the number of
+// bytes in the string which are not continuation bytes", and is used for the
+// head and tail of the input string (the first and last item in the tuple
+// returned by `slice::align_to`).
 fn char_count_general_case(s: &[u8]) -> usize {
     s.iter().filter(|&&byte| !super::validations::utf8_is_cont_byte(byte)).count()
 }

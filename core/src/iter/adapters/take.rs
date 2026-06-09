@@ -4,9 +4,10 @@ use crate::iter::{FusedIterator, InPlaceIterable, TrustedFused, TrustedLen, Trus
 use crate::num::NonZero;
 use crate::ops::{ControlFlow, Try};
 
-/// 只遍历 `iter` 前 `n` 次迭代结果的迭代器。
+/// An iterator that only iterates over the first `n` iterations of `iter`.
 ///
-/// 该 `struct` 由 [`Iterator`] 上的 [`take`] 方法创建。更多信息见该方法文档。
+/// This `struct` is created by the [`take`] method on [`Iterator`]. See its
+/// documentation for more.
 ///
 /// [`take`]: Iterator::take
 /// [`Iterator`]: trait.Iterator.html
@@ -135,7 +136,7 @@ where
 
     #[inline]
     unsafe fn as_inner(&mut self) -> &mut I::Source {
-        // SAFETY: 转发到具有相同要求的 unsafe 函数。
+        // SAFETY: unsafe function forwarding to unsafe function with the same requirements
         unsafe { SourceIter::as_inner(&mut self.iter) }
     }
 }
@@ -217,11 +218,12 @@ where
     #[inline]
     #[rustc_inherit_overflow_checks]
     fn advance_back_by(&mut self, n: usize) -> Result<(), NonZero<usize>> {
-        // 内层迭代器需要缩短的数量，使其长度至多等于 take() 的数量。
+        // The amount by which the inner iterator needs to be shortened for it to be
+        // at most as long as the take() amount.
         let trim_inner = self.iter.len().saturating_sub(self.n);
-        // 为满足调用方请求，需要推进内层迭代器的数量。
-        // take()、advance_by() 和 len() 都至多为 usize，因此这里无需担心推进超过
-        // usize::MAX。
+        // The amount we need to advance inner to fulfill the caller's request.
+        // take(), advance_by() and len() all can be at most usize, so we don't have to worry
+        // about having to advance more than usize::MAX here.
         let advance_by = trim_inner.saturating_add(n);
 
         let remainder = match self.iter.advance_back_by(advance_by) {
@@ -269,8 +271,9 @@ impl<I: Iterator> SpecTake for Take<I> {
 
     #[inline]
     default fn spec_for_each<F: FnMut(Self::Item)>(mut self, f: F) {
-        // 默认实现会使用 unit accumulator，因此这里改为在希望返回的剩余项数上 fold，
-        // 避免使用带状态闭包。
+        // The default implementation would use a unit accumulator, so we can
+        // avoid a stateful closure by folding over the remaining number
+        // of items we wish to return instead.
         fn check<'a, Item>(
             mut action: impl FnMut(Item) + 'a,
         ) -> impl FnMut(usize, Item) -> Option<usize> + 'a {
@@ -297,7 +300,7 @@ impl<I: Iterator + TrustedRandomAccess> SpecTake for Take<I> {
         let mut acc = init;
         let end = self.n.min(self.iter.size());
         for i in 0..end {
-            // SAFETY: i < end <= self.iter.size()，并且最后会丢弃该迭代器。
+            // SAFETY: i < end <= self.iter.size() and we discard the iterator at the end
             let val = unsafe { self.iter.__iterator_get_unchecked(i) };
             acc = f(acc, val);
         }
@@ -308,7 +311,7 @@ impl<I: Iterator + TrustedRandomAccess> SpecTake for Take<I> {
     fn spec_for_each<F: FnMut(Self::Item)>(mut self, mut f: F) {
         let end = self.n.min(self.iter.size());
         for i in 0..end {
-            // SAFETY: i < end <= self.iter.size()，并且最后会丢弃该迭代器。
+            // SAFETY: i < end <= self.iter.size() and we discard the iterator at the end
             let val = unsafe { self.iter.__iterator_get_unchecked(i) };
             f(val);
         }
@@ -353,9 +356,10 @@ impl<T: Clone> DoubleEndedIterator for Take<crate::iter::Repeat<T>> {
     }
 }
 
-// 注意: 可能会想为 Take<RepeatWith> 实现 DoubleEndedIterator。
-// 必须抵制这种诱惑，因为这样的实现并不正确: 如果不记住全部结果，就无法先返回
-// repeater 第 n 次调用的值，再返回第 n-1 次调用的值。
+// Note: It may be tempting to impl DoubleEndedIterator for Take<RepeatWith>.
+// One must fight that temptation since such implementation wouldn’t be correct
+// because we have no way to return value of nth invocation of repeater followed
+// by n-1st without remembering all results.
 
 #[stable(feature = "exact_size_take_repeat", since = "1.82.0")]
 impl<T: Clone> ExactSizeIterator for Take<crate::iter::Repeat<T>> {

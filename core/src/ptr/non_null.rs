@@ -10,43 +10,27 @@ use crate::slice::{self, SliceIndex};
 use crate::ub_checks::assert_unsafe_precondition;
 use crate::{fmt, hash, intrinsics, mem, ptr};
 
-/// 等价于 `*mut T`,但保证非零(非空)且[协变（covariant）][covariant]。
+/// `*mut T` but non-zero and [covariant].
 ///
-/// 在用裸指针构建数据结构时,这通常是正确的选择,但由于它附带了额外的属性,使用起来
-/// 终究更危险。如果你拿不准是否该用 `NonNull<T>`,那就直接用 `*mut T`!
+/// This is often the correct thing to use when building data structures using
+/// raw pointers, but is ultimately more dangerous to use because of its additional
+/// properties. If you're not sure if you should use `NonNull<T>`, just use `*mut T`!
 ///
-/// ## 非空不变量(non-null invariant）
+/// Unlike `*mut T`, the pointer must always be non-null, even if the pointer
+/// is never dereferenced. This is so that enums may use this forbidden value
+/// as a discriminant -- `Option<NonNull<T>>` has the same size as `*mut T`.
+/// However the pointer may still dangle if it isn't dereferenced.
 ///
-/// 与 `*mut T` 不同,这个指针必须始终非空,即便它从不会被解引用。这是为了让 enum 能把
-/// 这个被禁止的值(null)用作判别式(discriminant)—— 正因如此,`Option<NonNull<T>>`
-/// 与 `*mut T` 大小相同(参见下文“表示”一节)。不过,只要不解引用,该指针仍然可以悬垂
-/// (dangle)。
+/// Unlike `*mut T`, `NonNull<T>` is covariant over `T`. This is usually the correct
+/// choice for most data structures and safe abstractions, such as `Box`, `Rc`, `Arc`, `Vec`,
+/// and `LinkedList`.
 ///
-/// 这个非空不变量是整个类型的核心保证:
-/// - 安全构造函数 [`new`](NonNull::new) 会检查空指针,空时返回 `None`,从而把不变量的
-///   维护交给类型自身;
-/// - 而 `unsafe` 的 [`new_unchecked`](NonNull::new_unchecked) 跳过检查,要求调用方自行
-///   保证指针非空,否则即为未定义行为(UB)。
+/// In rare cases, if your type exposes a way to mutate the value of `T` through a `NonNull<T>`,
+/// and you need to prevent unsoundness from variance (for example, if `T` could be a reference
+/// with a shorter lifetime), you should add a field to make your type invariant, such as
+/// `PhantomData<Cell<T>>` or `PhantomData<&'a mut T>`.
 ///
-/// ## niche 优化
-///
-/// 由于指针保证非空,null 这个位模式便空了出来,可被用作 niche:`Option<NonNull<T>>`
-/// 会把 null 当作 `None` 的判别值,因此 `Option<NonNull<T>>` 与裸指针 `*mut T` 同大小、
-/// 同对齐,不会多占空间。这正是“表示”一节所演示的现象。
-///
-/// ## 协变(covariant）
-///
-/// 与 `*mut T`(对 `T` 不变,invariant)不同,`NonNull<T>` 对 `T` 是协变的。对绝大多数
-/// 数据结构和安全抽象(如 `Box`、`Rc`、`Arc`、`Vec`、`LinkedList`)而言,协变正是想要
-/// 的行为,这也使 `NonNull<T>` 更适合作为自定义集合的构建块。但代价是:协变不附带任何
-/// 借用检查,因此别名(aliasing)安全完全由调用方自行保证 —— 这一点和 `&mut`(有借用
-/// 检查器把关)截然不同。
-///
-/// 在少数情况下,如果你的类型对外暴露了通过 `NonNull<T>` 改写 `T` 值的途径,而你又需要
-/// 阻止协变带来的不健全(unsoundness)(例如 `T` 可能是一个生命周期更短的引用),你应当
-/// 添加一个字段把类型变为不变,例如 `PhantomData<Cell<T>>` 或 `PhantomData<&'a mut T>`。
-///
-/// 必须为不变(invariant）的类型示例:
+/// Example of a type that must be invariant:
 /// ```rust
 /// use std::cell::Cell;
 /// use std::marker::PhantomData;
@@ -56,15 +40,19 @@ use crate::{fmt, hash, intrinsics, mem, ptr};
 /// }
 /// ```
 ///
-/// 注意 `NonNull<T>` 为 `&T` 提供了 `From` 实现。但这并不改变如下事实:通过一个(由共享
-/// 引用派生而来的)指针进行改写是未定义行为,除非改写发生在 [`UnsafeCell<T>`] 内部。由
-/// 共享引用创建可变引用同理。在不借助 `UnsafeCell<T>` 的前提下使用这个 `From` 实现时,
-/// 确保 `as_mut` 永不被调用、`as_ptr` 永不用于改写,是你的责任。
+/// Notice that `NonNull<T>` has a `From` instance for `&T`. However, this does
+/// not change the fact that mutating through a (pointer derived from a) shared
+/// reference is undefined behavior unless the mutation happens inside an
+/// [`UnsafeCell<T>`]. The same goes for creating a mutable reference from a shared
+/// reference. When using this `From` instance without an `UnsafeCell<T>`,
+/// it is your responsibility to ensure that `as_mut` is never called, and `as_ptr`
+/// is never used for mutation.
 ///
-/// # 表示形式(Representation)
+/// # Representation
 ///
-/// 得益于 [null pointer optimization](即上文的 niche 优化),`NonNull<T>` 与
-/// `Option<NonNull<T>>` 保证具有相同的大小和对齐:
+/// Thanks to the [null pointer optimization],
+/// `NonNull<T>` and `Option<NonNull<T>>`
+/// are guaranteed to have the same size and alignment:
 ///
 /// ```
 /// use std::ptr::NonNull;
@@ -86,56 +74,55 @@ use crate::{fmt, hash, intrinsics, mem, ptr};
 #[rustc_nonnull_optimization_guaranteed]
 #[rustc_diagnostic_item = "NonNull"]
 pub struct NonNull<T: PointeeSized> {
-    // 记得使用 `.as_ptr()` 而非直接访问 `.pointer`,因为对该字段做字段投影
-    // (field projecting)是被禁止的,参见 <https://github.com/rust-lang/compiler-team/issues/807>。
+    // Remember to use `.as_ptr()` instead of `.pointer`, as field projecting to
+    // this is banned by <https://github.com/rust-lang/compiler-team/issues/807>.
     pointer: *const T,
 }
 
-/// `NonNull` 指针不是 `Send` 的,因为它们所引用的数据可能存在别名(aliased)。
-// 注:这个 impl 并非必要,但能提供更好的错误信息。
+/// `NonNull` pointers are not `Send` because the data they reference may be aliased.
+// N.B., this impl is unnecessary, but should provide better error messages.
 #[stable(feature = "nonnull", since = "1.25.0")]
 impl<T: PointeeSized> !Send for NonNull<T> {}
 
-/// `NonNull` 指针不是 `Sync` 的,因为它们所引用的数据可能存在别名(aliased)。
-// 注:这个 impl 并非必要,但能提供更好的错误信息。
+/// `NonNull` pointers are not `Sync` because the data they reference may be aliased.
+// N.B., this impl is unnecessary, but should provide better error messages.
 #[stable(feature = "nonnull", since = "1.25.0")]
 impl<T: PointeeSized> !Sync for NonNull<T> {}
 
 impl<T: Sized> NonNull<T> {
-    /// 用给定的地址创建一个指针,该指针不携带任何 [provenance][crate::ptr#provenance]。
+    /// Creates a pointer with the given address and no [provenance][crate::ptr#provenance].
     ///
-    /// 更多细节请参见裸指针上的等价方法 [`ptr::without_provenance_mut`]。
+    /// For more details, see the equivalent method on a raw pointer, [`ptr::without_provenance_mut`].
     ///
-    /// 这是一个 [Strict Provenance][crate::ptr#strict-provenance] API。
+    /// This is a [Strict Provenance][crate::ptr#strict-provenance] API.
     #[stable(feature = "nonnull_provenance", since = "1.89.0")]
     #[rustc_const_stable(feature = "nonnull_provenance", since = "1.89.0")]
     #[must_use]
     #[inline]
     pub const fn without_provenance(addr: NonZero<usize>) -> Self {
         let pointer = crate::ptr::without_provenance(addr.get());
-        // SAFETY: 我们已知 `addr` 非零。
+        // SAFETY: we know `addr` is non-zero.
         unsafe { NonNull { pointer } }
     }
 
-    /// 创建一个悬垂(dangling)但已正确对齐的新 `NonNull`。
+    /// Creates a new `NonNull` that is dangling, but well-aligned.
     ///
-    /// 这在初始化“惰性分配”的类型时很有用,例如 `Vec::new` 就是这么做的:尚未分配内存
-    /// 时用一个对齐的悬垂指针作占位。
+    /// This is useful for initializing types which lazily allocate, like
+    /// `Vec::new` does.
     ///
-    /// 注意:返回指针的地址有可能恰好与某个有效指针的地址相同,因此**绝不能**把它当作
-    /// “尚未初始化”的哨兵值(sentinel)来使用。需要惰性分配的类型必须借助其他手段来追踪
-    /// 初始化状态。
+    /// Note that the address of the returned pointer may potentially
+    /// be that of a valid pointer, which means this must not be used
+    /// as a "not yet initialized" sentinel value.
+    /// Types that lazily allocate must track initialization by some other means.
     ///
-    /// 该指针**不可解引用**:它只是对齐的,并不指向任何有效的已分配内存。
-    ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::ptr::NonNull;
     ///
     /// let ptr = NonNull::<u32>::dangling();
-    /// // 重要提示:在初始化之前,不要试图访问 `ptr` 所指的值!
-    /// // 这个指针非空,但同样也不是有效的!
+    /// // Important: don't try to access the value of `ptr` without
+    /// // initializing it first! The pointer is not null but isn't valid either!
     /// ```
     #[stable(feature = "nonnull", since = "1.25.0")]
     #[rustc_const_stable(feature = "const_nonnull_dangling", since = "1.36.0")]
@@ -146,67 +133,69 @@ impl<T: Sized> NonNull<T> {
         NonNull::without_provenance(align.as_nonzero())
     }
 
-    /// 把一个地址转换回可变指针,并拾取此前“暴露(exposed)”过的
-    /// [provenance][crate::ptr#provenance]。
+    /// Converts an address back to a mutable pointer, picking up some previously 'exposed'
+    /// [provenance][crate::ptr#provenance].
     ///
-    /// 更多细节请参见裸指针上的等价方法 [`ptr::with_exposed_provenance_mut`]。
+    /// For more details, see the equivalent method on a raw pointer, [`ptr::with_exposed_provenance_mut`].
     ///
-    /// 这是一个 [Exposed Provenance][crate::ptr#exposed-provenance] API。
+    /// This is an [Exposed Provenance][crate::ptr#exposed-provenance] API.
     #[stable(feature = "nonnull_provenance", since = "1.89.0")]
     #[inline]
     pub fn with_exposed_provenance(addr: NonZero<usize>) -> Self {
-        // SAFETY: 我们已知 `addr` 非零。
+        // SAFETY: we know `addr` is non-zero.
         unsafe {
             let ptr = crate::ptr::with_exposed_provenance_mut(addr.get());
             NonNull::new_unchecked(ptr)
         }
     }
 
-    /// 返回指向该值的共享引用。与 [`as_ref`] 不同,本方法不要求该值已经初始化。
+    /// Returns a shared references to the value. In contrast to [`as_ref`], this does not require
+    /// that the value has to be initialized.
     ///
-    /// 可变版本参见 [`as_uninit_mut`]。
+    /// For the mutable counterpart see [`as_uninit_mut`].
     ///
     /// [`as_ref`]: NonNull::as_ref
     /// [`as_uninit_mut`]: NonNull::as_uninit_mut
     ///
-    /// # 安全性(Safety）
+    /// # Safety
     ///
-    /// 调用本方法时,调用方必须保证该指针
-    /// [可转换为引用](crate::ptr#pointer-to-reference-conversion)。
-    /// 注意:由于所创建的引用指向的是 `MaybeUninit<T>`,源指针可以指向未初始化的内存。
-    /// 此外,返回引用的生命周期 `'a` 由调用方任意选择,调用方需保证在该引用存活期间
-    /// 遵守 Rust 的别名(aliasing)规则。
+    /// When calling this method, you have to ensure that
+    /// the pointer is [convertible to a reference](crate::ptr#pointer-to-reference-conversion).
+    /// Note that because the created reference is to `MaybeUninit<T>`, the
+    /// source pointer can point to uninitialized memory.
     #[inline]
     #[must_use]
     #[unstable(feature = "ptr_as_uninit", issue = "75402")]
     pub const unsafe fn as_uninit_ref<'a>(self) -> &'a MaybeUninit<T> {
-        // SAFETY: 调用方必须保证 `self` 满足引用的全部要求。
+        // SAFETY: the caller must guarantee that `self` meets all the
+        // requirements for a reference.
         unsafe { &*self.cast().as_ptr() }
     }
 
-    /// 返回指向该值的独占(unique)引用。与 [`as_mut`] 不同,本方法不要求该值已经初始化。
+    /// Returns a unique references to the value. In contrast to [`as_mut`], this does not require
+    /// that the value has to be initialized.
     ///
-    /// 共享版本参见 [`as_uninit_ref`]。
+    /// For the shared counterpart see [`as_uninit_ref`].
     ///
     /// [`as_mut`]: NonNull::as_mut
     /// [`as_uninit_ref`]: NonNull::as_uninit_ref
     ///
-    /// # 安全性(Safety）
+    /// # Safety
     ///
-    /// 调用本方法时,调用方必须保证该指针
-    /// [可转换为引用](crate::ptr#pointer-to-reference-conversion)。
-    /// 注意:由于所创建的引用指向的是 `MaybeUninit<T>`,源指针可以指向未初始化的内存。
-    /// 此外,返回引用的生命周期 `'a` 由调用方任意选择;由于这是一个可变(独占)引用,
-    /// 调用方必须保证在该引用存活期间,不存在任何其他指向同一内存的引用或别名访问。
+    /// When calling this method, you have to ensure that
+    /// the pointer is [convertible to a reference](crate::ptr#pointer-to-reference-conversion).
+    /// Note that because the created reference is to `MaybeUninit<T>`, the
+    /// source pointer can point to uninitialized memory.
     #[inline]
     #[must_use]
     #[unstable(feature = "ptr_as_uninit", issue = "75402")]
     pub const unsafe fn as_uninit_mut<'a>(self) -> &'a mut MaybeUninit<T> {
-        // SAFETY: 调用方必须保证 `self` 满足引用的全部要求。
+        // SAFETY: the caller must guarantee that `self` meets all the
+        // requirements for a reference.
         unsafe { &mut *self.cast().as_ptr() }
     }
 
-    /// 从指向 `T` 的指针转换为指向 `[T; N]` 的指针。
+    /// Casts from a pointer-to-`T` to a pointer-to-`[T; N]`.
     #[inline]
     #[unstable(feature = "ptr_cast_array", issue = "144514")]
     pub const fn cast_array<const N: usize>(self) -> NonNull<[T; N]> {
@@ -215,14 +204,13 @@ impl<T: Sized> NonNull<T> {
 }
 
 impl<T: PointeeSized> NonNull<T> {
-    /// 创建一个新的 `NonNull`。
+    /// Creates a new `NonNull`.
     ///
-    /// # 安全性(Safety）
+    /// # Safety
     ///
-    /// `ptr` 必须非空。这是本方法跳过空指针检查所必须依赖的不变量:若传入空指针,
-    /// 将破坏 `NonNull` 的非空不变量,构成未定义行为(UB)。
+    /// `ptr` must be non-null.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::ptr::NonNull;
@@ -231,12 +219,12 @@ impl<T: PointeeSized> NonNull<T> {
     /// let ptr = unsafe { NonNull::new_unchecked(&mut x as *mut _) };
     /// ```
     ///
-    /// 本函数的*错误*用法:
+    /// *Incorrect* usage of this function:
     ///
     /// ```rust,no_run
     /// use std::ptr::NonNull;
     ///
-    /// // 千万别这么做!!!这是未定义行为。⚠️
+    /// // NEVER DO THAT!!! This is undefined behavior. ⚠️
     /// let ptr = unsafe { NonNull::<u32>::new_unchecked(std::ptr::null_mut()) };
     /// ```
     #[stable(feature = "nonnull", since = "1.25.0")]
@@ -244,7 +232,7 @@ impl<T: PointeeSized> NonNull<T> {
     #[inline]
     #[track_caller]
     pub const unsafe fn new_unchecked(ptr: *mut T) -> Self {
-        // SAFETY: 调用方必须保证 `ptr` 非空。
+        // SAFETY: the caller must guarantee that `ptr` is non-null.
         unsafe {
             assert_unsafe_precondition!(
                 check_language_ub,
@@ -255,18 +243,16 @@ impl<T: PointeeSized> NonNull<T> {
         }
     }
 
-    /// 当 `ptr` 非空时创建一个新的 `NonNull`,否则返回 `None`。
+    /// Creates a new `NonNull` if `ptr` is non-null.
     ///
-    /// 这是安全的构造方式:空指针检查由本方法完成,从而把非空不变量的维护交给类型自身。
+    /// # Panics during const evaluation
     ///
-    /// # Panics
-    ///
-    /// 在 const 求值期间,如果无法判定指针是否为空,本方法将 panic。更多信息参见
-    /// [`is_null`]。
+    /// This method will panic during const evaluation if the pointer cannot be
+    /// determined to be null or not. See [`is_null`] for more information.
     ///
     /// [`is_null`]: ../primitive.pointer.html#method.is_null-1
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::ptr::NonNull;
@@ -283,35 +269,35 @@ impl<T: PointeeSized> NonNull<T> {
     #[inline]
     pub const fn new(ptr: *mut T) -> Option<Self> {
         if !ptr.is_null() {
-            // SAFETY: 该指针已被检查过,确定不是 null。
+            // SAFETY: The pointer is already checked and is not null
             Some(unsafe { Self::new_unchecked(ptr) })
         } else {
             None
         }
     }
 
-    /// 将一个共享引用转换为 `NonNull` 指针。
+    /// Converts a reference to a `NonNull` pointer.
     #[stable(feature = "non_null_from_ref", since = "1.89.0")]
     #[rustc_const_stable(feature = "non_null_from_ref", since = "1.89.0")]
     #[inline]
     pub const fn from_ref(r: &T) -> Self {
-        // SAFETY: 引用不可能为 null。
+        // SAFETY: A reference cannot be null.
         unsafe { NonNull { pointer: r as *const T } }
     }
 
-    /// 将一个可变引用转换为 `NonNull` 指针。
+    /// Converts a mutable reference to a `NonNull` pointer.
     #[stable(feature = "non_null_from_ref", since = "1.89.0")]
     #[rustc_const_stable(feature = "non_null_from_ref", since = "1.89.0")]
     #[inline]
     pub const fn from_mut(r: &mut T) -> Self {
-        // SAFETY: 可变引用不可能为 null。
+        // SAFETY: A mutable reference cannot be null.
         unsafe { NonNull { pointer: r as *mut T } }
     }
 
-    /// 功能与 [`std::ptr::from_raw_parts`] 相同,区别在于本方法返回的是 `NonNull` 指针,
-    /// 而非裸的 `*const` 指针。
+    /// Performs the same functionality as [`std::ptr::from_raw_parts`], except that a
+    /// `NonNull` pointer is returned, as opposed to a raw `*const` pointer.
     ///
-    /// 更多细节请参见 [`std::ptr::from_raw_parts`] 的文档。
+    /// See the documentation of [`std::ptr::from_raw_parts`] for more details.
     ///
     /// [`std::ptr::from_raw_parts`]: crate::ptr::from_raw_parts
     #[unstable(feature = "ptr_metadata", issue = "81513")]
@@ -320,15 +306,15 @@ impl<T: PointeeSized> NonNull<T> {
         data_pointer: NonNull<impl super::Thin>,
         metadata: <T as super::Pointee>::Metadata,
     ) -> NonNull<T> {
-        // SAFETY: `ptr::from::raw_parts_mut` 的结果非空,因为 `data_pointer` 非空。
+        // SAFETY: The result of `ptr::from::raw_parts_mut` is non-null because `data_pointer` is.
         unsafe {
             NonNull::new_unchecked(super::from_raw_parts_mut(data_pointer.as_ptr(), metadata))
         }
     }
 
-    /// 将一个(可能是宽指针的)指针分解为它的数据指针和元数据(metadata)两部分。
+    /// Decompose a (possibly wide) pointer into its data pointer and metadata components.
     ///
-    /// 之后可用 [`NonNull::from_raw_parts`] 把它重新组合回来。
+    /// The pointer can be later reconstructed with [`NonNull::from_raw_parts`].
     #[unstable(feature = "ptr_metadata", issue = "81513")]
     #[must_use = "this returns the result of the operation, \
                   without modifying the original"]
@@ -337,52 +323,53 @@ impl<T: PointeeSized> NonNull<T> {
         (self.cast(), super::metadata(self.as_ptr()))
     }
 
-    /// 获取指针的“地址(address)”部分。
+    /// Gets the "address" portion of the pointer.
     ///
-    /// 更多细节请参见裸指针上的等价方法 [`pointer::addr`]。
+    /// For more details, see the equivalent method on a raw pointer, [`pointer::addr`].
     ///
-    /// 这是一个 [Strict Provenance][crate::ptr#strict-provenance] API。
+    /// This is a [Strict Provenance][crate::ptr#strict-provenance] API.
     #[must_use]
     #[inline]
     #[stable(feature = "strict_provenance", since = "1.84.0")]
     pub fn addr(self) -> NonZero<usize> {
-        // SAFETY: 该指针由类型保证非空,意味着其地址必然非零。
+        // SAFETY: The pointer is guaranteed by the type to be non-null,
+        // meaning that the address will be non-zero.
         unsafe { NonZero::new_unchecked(self.as_ptr().addr()) }
     }
 
-    /// 暴露(expose)指针的 ["provenance"][crate::ptr#provenance] 部分,以便日后在
-    /// [`with_exposed_provenance`][NonNull::with_exposed_provenance] 中使用,并返回其
-    /// “地址(address)”部分。
+    /// Exposes the ["provenance"][crate::ptr#provenance] part of the pointer for future use in
+    /// [`with_exposed_provenance`][NonNull::with_exposed_provenance] and returns the "address" portion.
     ///
-    /// 更多细节请参见裸指针上的等价方法 [`pointer::expose_provenance`]。
+    /// For more details, see the equivalent method on a raw pointer, [`pointer::expose_provenance`].
     ///
-    /// 这是一个 [Exposed Provenance][crate::ptr#exposed-provenance] API。
+    /// This is an [Exposed Provenance][crate::ptr#exposed-provenance] API.
     #[stable(feature = "nonnull_provenance", since = "1.89.0")]
     pub fn expose_provenance(self) -> NonZero<usize> {
-        // SAFETY: 该指针由类型保证非空,意味着其地址必然非零。
+        // SAFETY: The pointer is guaranteed by the type to be non-null,
+        // meaning that the address will be non-zero.
         unsafe { NonZero::new_unchecked(self.as_ptr().expose_provenance()) }
     }
 
-    /// 创建一个新指针,使用给定的地址,并保留 `self` 的
-    /// [provenance][crate::ptr#provenance]。
+    /// Creates a new pointer with the given address and the [provenance][crate::ptr#provenance] of
+    /// `self`.
     ///
-    /// 更多细节请参见裸指针上的等价方法 [`pointer::with_addr`]。
+    /// For more details, see the equivalent method on a raw pointer, [`pointer::with_addr`].
     ///
-    /// 这是一个 [Strict Provenance][crate::ptr#strict-provenance] API。
+    /// This is a [Strict Provenance][crate::ptr#strict-provenance] API.
     #[must_use]
     #[inline]
     #[stable(feature = "strict_provenance", since = "1.84.0")]
     pub fn with_addr(self, addr: NonZero<usize>) -> Self {
-        // SAFETY: `ptr::with_addr` 的结果非空,因为 `addr` 保证非零。
+        // SAFETY: The result of `ptr::from::with_addr` is non-null because `addr` is guaranteed to be non-zero.
         unsafe { NonNull::new_unchecked(self.as_ptr().with_addr(addr.get()) as *mut _) }
     }
 
-    /// 通过把 `self` 的地址映射为一个新地址来创建一个新指针,同时保留 `self` 的
-    /// [provenance][crate::ptr#provenance]。
+    /// Creates a new pointer by mapping `self`'s address to a new one, preserving the
+    /// [provenance][crate::ptr#provenance] of `self`.
     ///
-    /// 更多细节请参见裸指针上的等价方法 [`pointer::map_addr`]。
+    /// For more details, see the equivalent method on a raw pointer, [`pointer::map_addr`].
     ///
-    /// 这是一个 [Strict Provenance][crate::ptr#strict-provenance] API。
+    /// This is a [Strict Provenance][crate::ptr#strict-provenance] API.
     #[must_use]
     #[inline]
     #[stable(feature = "strict_provenance", since = "1.84.0")]
@@ -390,9 +377,9 @@ impl<T: PointeeSized> NonNull<T> {
         self.with_addr(f(self.addr()))
     }
 
-    /// 获取底层的 `*mut` 指针。
+    /// Acquires the underlying `*mut` pointer.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::ptr::NonNull;
@@ -413,30 +400,28 @@ impl<T: PointeeSized> NonNull<T> {
     #[must_use]
     #[inline(always)]
     pub const fn as_ptr(self) -> *mut T {
-        // 出于与 `NonZero::get` 相同的原因,这里采用 transmute。
+        // This is a transmute for the same reasons as `NonZero::get`.
 
-        // SAFETY: `NonNull` 在 `*const T` 之上是 `transparent` 的,而 `*const T`
-        // 与 `*mut T` 具有相同的布局,因此可以传递地把 `NonNull` 直接 transmute 为 `*mut T`。
+        // SAFETY: `NonNull` is `transparent` over a `*const T`, and `*const T`
+        // and `*mut T` have the same layout, so transitively we can transmute
+        // our `NonNull` to a `*mut T` directly.
         unsafe { mem::transmute::<Self, *mut T>(self) }
     }
 
-    /// 返回指向该值的共享引用。如果该值可能未初始化,则必须改用 [`as_uninit_ref`]。
+    /// Returns a shared reference to the value. If the value may be uninitialized, [`as_uninit_ref`]
+    /// must be used instead.
     ///
-    /// 可变版本参见 [`as_mut`]。
+    /// For the mutable counterpart see [`as_mut`].
     ///
     /// [`as_uninit_ref`]: NonNull::as_uninit_ref
     /// [`as_mut`]: NonNull::as_mut
     ///
-    /// # 安全性(Safety）
+    /// # Safety
     ///
-    /// 调用本方法时,调用方必须保证该指针
-    /// [可转换为引用](crate::ptr#pointer-to-reference-conversion)。这意味着:指针必须
-    /// 已正确对齐、所指内存对 `T` 有效且已初始化;并且返回引用的生命周期 `'a` 由调用方
-    /// 任意选择,调用方需保证在该引用存活期间所指数据始终有效,且遵守 Rust 的别名
-    /// (aliasing)规则(在该共享引用存活期间,该内存不得被改写,除非位于 `UnsafeCell`
-    /// 内部)。
+    /// When calling this method, you have to ensure that
+    /// the pointer is [convertible to a reference](crate::ptr#pointer-to-reference-conversion).
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::ptr::NonNull;
@@ -454,27 +439,25 @@ impl<T: PointeeSized> NonNull<T> {
     #[must_use]
     #[inline(always)]
     pub const unsafe fn as_ref<'a>(&self) -> &'a T {
-        // SAFETY: 调用方必须保证 `self` 满足引用的全部要求。
-        // `cast_const` 避免对可变裸指针做解引用。
+        // SAFETY: the caller must guarantee that `self` meets all the
+        // requirements for a reference.
+        // `cast_const` avoids a mutable raw pointer deref.
         unsafe { &*self.as_ptr().cast_const() }
     }
 
-    /// 返回指向该值的独占(unique)引用。如果该值可能未初始化,则必须改用 [`as_uninit_mut`]。
+    /// Returns a unique reference to the value. If the value may be uninitialized, [`as_uninit_mut`]
+    /// must be used instead.
     ///
-    /// 共享版本参见 [`as_ref`]。
+    /// For the shared counterpart see [`as_ref`].
     ///
     /// [`as_uninit_mut`]: NonNull::as_uninit_mut
     /// [`as_ref`]: NonNull::as_ref
     ///
-    /// # 安全性(Safety）
+    /// # Safety
     ///
-    /// 调用本方法时,调用方必须保证该指针
-    /// [可转换为引用](crate::ptr#pointer-to-reference-conversion)。这意味着:指针必须
-    /// 已正确对齐、所指内存对 `T` 有效且已初始化;返回引用的生命周期 `'a` 由调用方任意
-    /// 选择,调用方需保证在该引用存活期间所指数据始终有效。由于这是一个可变引用,调用方
-    /// 还必须保证在该引用存活期间对该内存拥有**独占**访问权——不存在任何其他指向同一内存
-    /// 的引用或别名访问(读或写)。
-    /// # 示例
+    /// When calling this method, you have to ensure that
+    /// the pointer is [convertible to a reference](crate::ptr#pointer-to-reference-conversion).
+    /// # Examples
     ///
     /// ```
     /// use std::ptr::NonNull;
@@ -494,13 +477,14 @@ impl<T: PointeeSized> NonNull<T> {
     #[must_use]
     #[inline(always)]
     pub const unsafe fn as_mut<'a>(&mut self) -> &'a mut T {
-        // SAFETY: 调用方必须保证 `self` 满足可变引用的全部要求。
+        // SAFETY: the caller must guarantee that `self` meets all the
+        // requirements for a mutable reference.
         unsafe { &mut *self.as_ptr() }
     }
 
-    /// 转换为指向另一种类型的指针。
+    /// Casts to a pointer of another type.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::ptr::NonNull;
@@ -517,15 +501,16 @@ impl<T: PointeeSized> NonNull<T> {
                   without modifying the original"]
     #[inline]
     pub const fn cast<U>(self) -> NonNull<U> {
-        // SAFETY: `self` 是一个 `NonNull` 指针,因而必然非空。
+        // SAFETY: `self` is a `NonNull` pointer which is necessarily non-null
         unsafe { NonNull { pointer: self.as_ptr() as *mut U } }
     }
 
-    /// 尝试通过检查对齐来转换为指向另一种类型的指针。
+    /// Try to cast to a pointer of another type by checking alignment.
     ///
-    /// 如果该指针对目标类型已正确对齐,则转换为目标类型;否则返回 `None`。
+    /// If the pointer is properly aligned to the target type, it will be
+    /// cast to the target type. Otherwise, `None` is returned.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```rust
     /// #![feature(pointer_try_cast_aligned)]
@@ -547,27 +532,30 @@ impl<T: PointeeSized> NonNull<T> {
         if self.is_aligned_to(align_of::<U>()) { Some(self.cast()) } else { None }
     }
 
-    /// 给指针加上一个偏移量。
+    /// Adds an offset to a pointer.
     ///
-    /// `count` 以 T 为单位计量;例如 `count` 为 3 表示指针偏移 `3 * size_of::<T>()` 个字节。
+    /// `count` is in units of T; e.g., a `count` of 3 represents a pointer
+    /// offset of `3 * size_of::<T>()` bytes.
     ///
-    /// # 安全性(Safety）
+    /// # Safety
     ///
-    /// 如果违反以下任一条件,结果即为未定义行为(Undefined Behavior):
+    /// If any of the following conditions are violated, the result is Undefined Behavior:
     ///
-    /// * 计算出的偏移量(`count * size_of::<T>()` 字节)不得溢出 `isize`。
+    /// * The computed offset, `count * size_of::<T>()` bytes, must not overflow `isize`.
     ///
-    /// * 如果计算出的偏移量非零,那么 `self` 必须派生自指向某个 [allocation] 的指针,且
-    ///   从 `self` 到结果指针之间的整段内存范围都必须落在该 allocation 的边界(in bounds)
-    ///   之内。特别地,这段范围不得“绕回(wrap around)”地址空间的边界。
+    /// * If the computed offset is non-zero, then `self` must be derived from a pointer to some
+    ///   [allocation], and the entire memory range between `self` and the result must be in
+    ///   bounds of that allocation. In particular, this range must not "wrap around" the edge
+    ///   of the address space.
     ///
-    /// allocation 的大小永远不会超过 `isize::MAX` 字节,因此只要计算出的偏移量停留在该
-    /// allocation 的边界之内,就一定满足上面第一条要求。这意味着,举例来说,
-    /// `vec.as_ptr().add(vec.len())`(对 `vec: Vec<T>`)总是安全的。
+    /// Allocations can never be larger than `isize::MAX` bytes, so if the computed offset
+    /// stays in bounds of the allocation, it is guaranteed to satisfy the first requirement.
+    /// This implies, for instance, that `vec.as_ptr().add(vec.len())` (for `vec: Vec<T>`) is always
+    /// safe.
     ///
     /// [allocation]: crate::ptr#allocation
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::ptr::NonNull;
@@ -581,7 +569,7 @@ impl<T: PointeeSized> NonNull<T> {
     /// }
     /// ```
     #[inline(always)]
-    #[cfg_attr(miri, track_caller)] // 即便没有 panic,这也有助于 Miri 的回溯(backtrace)
+    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
     #[must_use = "returns a new pointer rather than modifying its argument"]
     #[stable(feature = "non_null_convenience", since = "1.80.0")]
     #[rustc_const_stable(feature = "non_null_convenience", since = "1.80.0")]
@@ -589,54 +577,61 @@ impl<T: PointeeSized> NonNull<T> {
     where
         T: Sized,
     {
-        // SAFETY: 调用方必须遵守 `offset` 的安全约定。
-        // 此外,`offset` 的安全约定保证了结果指针指向某个 allocation,而 null 处不可能存在
-        // allocation,因此可以安全地构造 `NonNull`。
+        // SAFETY: the caller must uphold the safety contract for `offset`.
+        // Additionally safety contract of `offset` guarantees that the resulting pointer is
+        // pointing to an allocation, there can't be an allocation at null, thus it's safe to
+        // construct `NonNull`.
         unsafe { NonNull { pointer: intrinsics::offset(self.as_ptr(), count) } }
     }
 
-    /// 以字节为单位计算指针的偏移。
+    /// Calculates the offset from a pointer in bytes.
     ///
-    /// `count` 以**字节**为单位计量。
+    /// `count` is in units of **bytes**.
     ///
-    /// 这纯粹是“先转换为 `u8` 指针,再在其上使用 [offset][pointer::offset]”的便捷封装。
-    /// 文档与安全要求请参见该方法。
+    /// This is purely a convenience for casting to a `u8` pointer and
+    /// using [offset][pointer::offset] on it. See that method for documentation
+    /// and safety requirements.
     ///
-    /// 对于非 `Sized` 的被指对象(pointee),本操作只改变数据指针,元数据(metadata)
-    /// 保持不变。
+    /// For non-`Sized` pointees this operation changes only the data pointer,
+    /// leaving the metadata untouched.
     #[must_use]
     #[inline(always)]
-    #[cfg_attr(miri, track_caller)] // 即便没有 panic,这也有助于 Miri 的回溯(backtrace)
+    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
     #[stable(feature = "non_null_convenience", since = "1.80.0")]
     #[rustc_const_stable(feature = "non_null_convenience", since = "1.80.0")]
     pub const unsafe fn byte_offset(self, count: isize) -> Self {
-        // SAFETY: 调用方必须遵守 `offset` 的安全约定,而 `byte_offset` 的安全约定与之相同。
-        // 此外,`offset` 的安全约定保证了结果指针指向某个 allocation,而 null 处不可能存在
-        // allocation,因此可以安全地构造 `NonNull`。
+        // SAFETY: the caller must uphold the safety contract for `offset` and `byte_offset` has
+        // the same safety contract.
+        // Additionally safety contract of `offset` guarantees that the resulting pointer is
+        // pointing to an allocation, there can't be an allocation at null, thus it's safe to
+        // construct `NonNull`.
         unsafe { NonNull { pointer: self.as_ptr().byte_offset(count) } }
     }
 
-    /// 给指针加上一个偏移量(等价于 `.offset(count as isize)` 的便捷写法)。
+    /// Adds an offset to a pointer (convenience for `.offset(count as isize)`).
     ///
-    /// `count` 以 T 为单位计量;例如 `count` 为 3 表示指针偏移 `3 * size_of::<T>()` 个字节。
+    /// `count` is in units of T; e.g., a `count` of 3 represents a pointer
+    /// offset of `3 * size_of::<T>()` bytes.
     ///
-    /// # 安全性(Safety）
+    /// # Safety
     ///
-    /// 如果违反以下任一条件,结果即为未定义行为(Undefined Behavior):
+    /// If any of the following conditions are violated, the result is Undefined Behavior:
     ///
-    /// * 计算出的偏移量(`count * size_of::<T>()` 字节)不得溢出 `isize`。
+    /// * The computed offset, `count * size_of::<T>()` bytes, must not overflow `isize`.
     ///
-    /// * 如果计算出的偏移量非零,那么 `self` 必须派生自指向某个 [allocation] 的指针,且
-    ///   从 `self` 到结果指针之间的整段内存范围都必须落在该 allocation 的边界(in bounds)
-    ///   之内。特别地,这段范围不得“绕回(wrap around)”地址空间的边界。
+    /// * If the computed offset is non-zero, then `self` must be derived from a pointer to some
+    ///   [allocation], and the entire memory range between `self` and the result must be in
+    ///   bounds of that allocation. In particular, this range must not "wrap around" the edge
+    ///   of the address space.
     ///
-    /// allocation 的大小永远不会超过 `isize::MAX` 字节,因此只要计算出的偏移量停留在该
-    /// allocation 的边界之内,就一定满足上面第一条要求。这意味着,举例来说,
-    /// `vec.as_ptr().add(vec.len())`(对 `vec: Vec<T>`)总是安全的。
+    /// Allocations can never be larger than `isize::MAX` bytes, so if the computed offset
+    /// stays in bounds of the allocation, it is guaranteed to satisfy the first requirement.
+    /// This implies, for instance, that `vec.as_ptr().add(vec.len())` (for `vec: Vec<T>`) is always
+    /// safe.
     ///
     /// [allocation]: crate::ptr#allocation
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::ptr::NonNull;
@@ -650,7 +645,7 @@ impl<T: PointeeSized> NonNull<T> {
     /// }
     /// ```
     #[inline(always)]
-    #[cfg_attr(miri, track_caller)] // 即便没有 panic,这也有助于 Miri 的回溯(backtrace)
+    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
     #[must_use = "returns a new pointer rather than modifying its argument"]
     #[stable(feature = "non_null_convenience", since = "1.80.0")]
     #[rustc_const_stable(feature = "non_null_convenience", since = "1.80.0")]
@@ -658,55 +653,62 @@ impl<T: PointeeSized> NonNull<T> {
     where
         T: Sized,
     {
-        // SAFETY: 调用方必须遵守 `offset` 的安全约定。
-        // 此外,`offset` 的安全约定保证了结果指针指向某个 allocation,而 null 处不可能存在
-        // allocation,因此可以安全地构造 `NonNull`。
+        // SAFETY: the caller must uphold the safety contract for `offset`.
+        // Additionally safety contract of `offset` guarantees that the resulting pointer is
+        // pointing to an allocation, there can't be an allocation at null, thus it's safe to
+        // construct `NonNull`.
         unsafe { NonNull { pointer: intrinsics::offset(self.as_ptr(), count) } }
     }
 
-    /// 以字节为单位计算指针的偏移(等价于 `.byte_offset(count as isize)` 的便捷写法)。
+    /// Calculates the offset from a pointer in bytes (convenience for `.byte_offset(count as isize)`).
     ///
-    /// `count` 以字节为单位计量。
+    /// `count` is in units of bytes.
     ///
-    /// 这纯粹是“先转换为 `u8` 指针,再在其上使用 [`add`][NonNull::add]”的便捷封装。
-    /// 文档与安全要求请参见该方法。
+    /// This is purely a convenience for casting to a `u8` pointer and
+    /// using [`add`][NonNull::add] on it. See that method for documentation
+    /// and safety requirements.
     ///
-    /// 对于非 `Sized` 的被指对象(pointee),本操作只改变数据指针,元数据(metadata)
-    /// 保持不变。
+    /// For non-`Sized` pointees this operation changes only the data pointer,
+    /// leaving the metadata untouched.
     #[must_use]
     #[inline(always)]
-    #[cfg_attr(miri, track_caller)] // 即便没有 panic,这也有助于 Miri 的回溯(backtrace)
+    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
     #[stable(feature = "non_null_convenience", since = "1.80.0")]
     #[rustc_const_stable(feature = "non_null_convenience", since = "1.80.0")]
     pub const unsafe fn byte_add(self, count: usize) -> Self {
-        // SAFETY: 调用方必须遵守 `add` 的安全约定,而 `byte_add` 的安全约定与之相同。
-        // 此外,`add` 的安全约定保证了结果指针指向某个 allocation,而 null 处不可能存在
-        // allocation,因此可以安全地构造 `NonNull`。
+        // SAFETY: the caller must uphold the safety contract for `add` and `byte_add` has the same
+        // safety contract.
+        // Additionally safety contract of `add` guarantees that the resulting pointer is pointing
+        // to an allocation, there can't be an allocation at null, thus it's safe to construct
+        // `NonNull`.
         unsafe { NonNull { pointer: self.as_ptr().byte_add(count) } }
     }
 
-    /// 从指针减去一个偏移量(等价于
-    /// `.offset((count as isize).wrapping_neg())` 的便捷写法)。
+    /// Subtracts an offset from a pointer (convenience for
+    /// `.offset((count as isize).wrapping_neg())`).
     ///
-    /// `count` 以 T 为单位计量;例如 `count` 为 3 表示指针偏移 `3 * size_of::<T>()` 个字节。
+    /// `count` is in units of T; e.g., a `count` of 3 represents a pointer
+    /// offset of `3 * size_of::<T>()` bytes.
     ///
-    /// # 安全性(Safety）
+    /// # Safety
     ///
-    /// 如果违反以下任一条件,结果即为未定义行为(Undefined Behavior):
+    /// If any of the following conditions are violated, the result is Undefined Behavior:
     ///
-    /// * 计算出的偏移量(`count * size_of::<T>()` 字节)不得溢出 `isize`。
+    /// * The computed offset, `count * size_of::<T>()` bytes, must not overflow `isize`.
     ///
-    /// * 如果计算出的偏移量非零,那么 `self` 必须派生自指向某个 [allocation] 的指针,且
-    ///   从 `self` 到结果指针之间的整段内存范围都必须落在该 allocation 的边界(in bounds)
-    ///   之内。特别地,这段范围不得“绕回(wrap around)”地址空间的边界。
+    /// * If the computed offset is non-zero, then `self` must be derived from a pointer to some
+    ///   [allocation], and the entire memory range between `self` and the result must be in
+    ///   bounds of that allocation. In particular, this range must not "wrap around" the edge
+    ///   of the address space.
     ///
-    /// allocation 的大小永远不会超过 `isize::MAX` 字节,因此只要计算出的偏移量停留在该
-    /// allocation 的边界之内,就一定满足上面第一条要求。这意味着,举例来说,
-    /// `vec.as_ptr().add(vec.len())`(对 `vec: Vec<T>`)总是安全的。
+    /// Allocations can never be larger than `isize::MAX` bytes, so if the computed offset
+    /// stays in bounds of the allocation, it is guaranteed to satisfy the first requirement.
+    /// This implies, for instance, that `vec.as_ptr().add(vec.len())` (for `vec: Vec<T>`) is always
+    /// safe.
     ///
     /// [allocation]: crate::ptr#allocation
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::ptr::NonNull;
@@ -720,7 +722,7 @@ impl<T: PointeeSized> NonNull<T> {
     /// }
     /// ```
     #[inline(always)]
-    #[cfg_attr(miri, track_caller)] // 即便没有 panic,这也有助于 Miri 的回溯(backtrace)
+    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
     #[must_use = "returns a new pointer rather than modifying its argument"]
     #[stable(feature = "non_null_convenience", since = "1.80.0")]
     #[rustc_const_stable(feature = "non_null_convenience", since = "1.80.0")]
@@ -729,84 +731,93 @@ impl<T: PointeeSized> NonNull<T> {
         T: Sized,
     {
         if T::IS_ZST {
-            // 当被指对象是 ZST(零大小类型)时,指针算术不做任何事。
+            // Pointer arithmetic does nothing when the pointee is a ZST.
             self
         } else {
-            // SAFETY: 调用方必须遵守 `offset` 的安全约定。
-            // 因为被指对象*不是* ZST,这意味着 `count` 至多为 `isize::MAX`,因此取负
-            // 不会溢出。
+            // SAFETY: the caller must uphold the safety contract for `offset`.
+            // Because the pointee is *not* a ZST, that means that `count` is
+            // at most `isize::MAX`, and thus the negation cannot overflow.
             unsafe { self.offset((count as isize).unchecked_neg()) }
         }
     }
 
-    /// 以字节为单位计算指针的偏移(等价于
-    /// `.byte_offset((count as isize).wrapping_neg())` 的便捷写法)。
+    /// Calculates the offset from a pointer in bytes (convenience for
+    /// `.byte_offset((count as isize).wrapping_neg())`).
     ///
-    /// `count` 以字节为单位计量。
+    /// `count` is in units of bytes.
     ///
-    /// 这纯粹是“先转换为 `u8` 指针,再在其上使用 [`sub`][NonNull::sub]”的便捷封装。
-    /// 文档与安全要求请参见该方法。
+    /// This is purely a convenience for casting to a `u8` pointer and
+    /// using [`sub`][NonNull::sub] on it. See that method for documentation
+    /// and safety requirements.
     ///
-    /// 对于非 `Sized` 的被指对象(pointee),本操作只改变数据指针,元数据(metadata)
-    /// 保持不变。
+    /// For non-`Sized` pointees this operation changes only the data pointer,
+    /// leaving the metadata untouched.
     #[must_use]
     #[inline(always)]
-    #[cfg_attr(miri, track_caller)] // 即便没有 panic,这也有助于 Miri 的回溯(backtrace)
+    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
     #[stable(feature = "non_null_convenience", since = "1.80.0")]
     #[rustc_const_stable(feature = "non_null_convenience", since = "1.80.0")]
     pub const unsafe fn byte_sub(self, count: usize) -> Self {
-        // SAFETY: 调用方必须遵守 `sub` 的安全约定,而 `byte_sub` 的安全约定与之相同。
-        // 此外,`sub` 的安全约定保证了结果指针指向某个 allocation,而 null 处不可能存在
-        // allocation,因此可以安全地构造 `NonNull`。
+        // SAFETY: the caller must uphold the safety contract for `sub` and `byte_sub` has the same
+        // safety contract.
+        // Additionally safety contract of `sub` guarantees that the resulting pointer is pointing
+        // to an allocation, there can't be an allocation at null, thus it's safe to construct
+        // `NonNull`.
         unsafe { NonNull { pointer: self.as_ptr().byte_sub(count) } }
     }
 
-    /// 计算同一 allocation 内两个指针之间的距离。返回值以 T 为单位:即字节距离除以
-    /// `size_of::<T>()`。
+    /// Calculates the distance between two pointers within the same allocation. The returned value is in
+    /// units of T: the distance in bytes divided by `size_of::<T>()`.
     ///
-    /// 它等价于 `(self as isize - origin as isize) / (size_of::<T>() as isize)`,区别在于
-    /// 它有多得多的引发 UB 的可能性,作为交换,编译器能更好地理解你的意图。
+    /// This is equivalent to `(self as isize - origin as isize) / (size_of::<T>() as isize)`,
+    /// except that it has a lot more opportunities for UB, in exchange for the compiler
+    /// better understanding what you are doing.
     ///
-    /// 本方法的主要动机是计算某个 `T` 数组/切片的 `len`,而你当前正用一对“起始(start)”
-    /// 与“结束(end)”指针来表示该数组(其中“end”是“数组末尾的下一个位置”,one past the
-    /// end)。在这种情形下,`end.offset_from(start)` 即可得到数组的长度。
+    /// The primary motivation of this method is for computing the `len` of an array/slice
+    /// of `T` that you are currently representing as a "start" and "end" pointer
+    /// (and "end" is "one past the end" of the array).
+    /// In that case, `end.offset_from(start)` gets you the length of the array.
     ///
-    /// 对于上述用例,下面所有的安全要求都自然得到满足。
+    /// All of the following safety requirements are trivially satisfied for this usecase.
     ///
     /// [`offset`]: #method.offset
     ///
-    /// # 安全性(Safety）
+    /// # Safety
     ///
-    /// 如果违反以下任一条件,结果即为未定义行为(Undefined Behavior):
+    /// If any of the following conditions are violated, the result is Undefined Behavior:
     ///
-    /// * `self` 和 `origin` 必须满足以下之一:
+    /// * `self` and `origin` must either
     ///
-    ///   * 指向同一地址,或者
-    ///   * 二者都*派生自*指向同一 [allocation] 的指针,且两指针之间的内存范围必须落在该
-    ///     对象的边界(in bounds)之内。(参见下文示例。)
+    ///   * point to the same address, or
+    ///   * both be *derived from* a pointer to the same [allocation], and the memory range between
+    ///     the two pointers must be in bounds of that object. (See below for an example.)
     ///
-    /// * 两指针之间的距离(以字节计)必须是 `T` 大小的精确整数倍。
+    /// * The distance between the pointers, in bytes, must be an exact multiple
+    ///   of the size of `T`.
     ///
-    /// 作为推论,两指针在数学整数意义上(不“绕回”)的绝对距离(以字节计)不会溢出 `isize`。
-    /// 这一点由“in bounds”要求以及“任何 allocation 都不会大于 `isize::MAX` 字节”这一事实
-    /// 共同保证。
+    /// As a consequence, the absolute distance between the pointers, in bytes, computed on
+    /// mathematical integers (without "wrapping around"), cannot overflow an `isize`. This is
+    /// implied by the in-bounds requirement, and the fact that no allocation can be larger
+    /// than `isize::MAX` bytes.
     ///
-    /// “两指针必须派生自同一 allocation”这条要求主要是出于 `const` 兼容性:指向*不同*
-    /// 已分配对象的两个指针之间的距离在编译期是未知的。不过,该要求在运行期同样存在,并可
-    /// 能被优化所利用。如果你想计算并不保证来自同一 allocation 的两个指针之差,请改用
-    /// `(self as isize - origin as isize) / size_of::<T>()`。
-    // FIXME: 一旦 `addr()` 稳定,就推荐用它替代 `as usize`。
+    /// The requirement for pointers to be derived from the same allocation is primarily
+    /// needed for `const`-compatibility: the distance between pointers into *different* allocated
+    /// objects is not known at compile-time. However, the requirement also exists at
+    /// runtime and may be exploited by optimizations. If you wish to compute the difference between
+    /// pointers that are not guaranteed to be from the same allocation, use `(self as isize -
+    /// origin as isize) / size_of::<T>()`.
+    // FIXME: recommend `addr()` instead of `as usize` once that is stable.
     ///
     /// [`add`]: #method.add
     /// [allocation]: crate::ptr#allocation
     ///
     /// # Panics
     ///
-    /// 如果 `T` 是零大小类型(Zero-Sized Type,"ZST"),本函数会 panic。
+    /// This function panics if `T` is a Zero-Sized Type ("ZST").
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 基本用法:
+    /// Basic usage:
     ///
     /// ```
     /// use std::ptr::NonNull;
@@ -822,7 +833,7 @@ impl<T: PointeeSized> NonNull<T> {
     /// }
     /// ```
     ///
-    /// *错误*用法:
+    /// *Incorrect* usage:
     ///
     /// ```rust,no_run
     /// use std::ptr::NonNull;
@@ -830,56 +841,63 @@ impl<T: PointeeSized> NonNull<T> {
     /// let ptr1 = NonNull::new(Box::into_raw(Box::new(0u8))).unwrap();
     /// let ptr2 = NonNull::new(Box::into_raw(Box::new(1u8))).unwrap();
     /// let diff = (ptr2.addr().get() as isize).wrapping_sub(ptr1.addr().get() as isize);
-    /// // 让 ptr2_other 成为 ptr2.add(1) 的“别名(alias)”,但它派生自 ptr1。
+    /// // Make ptr2_other an "alias" of ptr2.add(1), but derived from ptr1.
     /// let diff_plus_1 = diff.wrapping_add(1);
     /// let ptr2_other = NonNull::new(ptr1.as_ptr().wrapping_byte_offset(diff_plus_1)).unwrap();
     /// assert_eq!(ptr2.addr(), ptr2_other.addr());
-    /// // 由于 ptr2_other 与 ptr2 派生自指向不同对象的指针,
-    /// // 计算它们之间的偏移是未定义行为,哪怕它们
-    /// // 指向的地址都落在同一对象的边界之内!
+    /// // Since ptr2_other and ptr2 are derived from pointers to different objects,
+    /// // computing their offset is undefined behavior, even though
+    /// // they point to addresses that are in-bounds of the same object!
     ///
-    /// let one = unsafe { ptr2_other.offset_from(ptr2) }; // 未定义行为!⚠️
+    /// let one = unsafe { ptr2_other.offset_from(ptr2) }; // Undefined Behavior! ⚠️
     /// ```
     #[inline]
-    #[cfg_attr(miri, track_caller)] // 即便没有 panic,这也有助于 Miri 的回溯(backtrace)
+    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
     #[stable(feature = "non_null_convenience", since = "1.80.0")]
     #[rustc_const_stable(feature = "non_null_convenience", since = "1.80.0")]
     pub const unsafe fn offset_from(self, origin: NonNull<T>) -> isize
     where
         T: Sized,
     {
-        // SAFETY: 调用方必须遵守 `offset_from` 的安全约定。
+        // SAFETY: the caller must uphold the safety contract for `offset_from`.
         unsafe { self.as_ptr().offset_from(origin.as_ptr()) }
     }
 
-    /// 计算同一 allocation 内两个指针之间的距离。返回值以**字节**为单位。
+    /// Calculates the distance between two pointers within the same allocation. The returned value is in
+    /// units of **bytes**.
     ///
-    /// 这纯粹是“先转换为 `u8` 指针,再在其上使用
-    /// [`offset_from`][NonNull::offset_from]”的便捷封装。文档与安全要求请参见该方法。
+    /// This is purely a convenience for casting to a `u8` pointer and
+    /// using [`offset_from`][NonNull::offset_from] on it. See that method for
+    /// documentation and safety requirements.
     ///
-    /// 对于非 `Sized` 的被指对象(pointee),本操作只考虑数据指针,忽略元数据(metadata)。
+    /// For non-`Sized` pointees this operation considers only the data pointers,
+    /// ignoring the metadata.
     #[inline(always)]
-    #[cfg_attr(miri, track_caller)] // 即便没有 panic,这也有助于 Miri 的回溯(backtrace)
+    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
     #[stable(feature = "non_null_convenience", since = "1.80.0")]
     #[rustc_const_stable(feature = "non_null_convenience", since = "1.80.0")]
     pub const unsafe fn byte_offset_from<U: ?Sized>(self, origin: NonNull<U>) -> isize {
-        // SAFETY: 调用方必须遵守 `byte_offset_from` 的安全约定。
+        // SAFETY: the caller must uphold the safety contract for `byte_offset_from`.
         unsafe { self.as_ptr().byte_offset_from(origin.as_ptr()) }
     }
 
-    // 注:`wrapping_offset`、`wrapping_add` 等方法没有实现,因为它们可能绕回(wrap)到 null。
+    // N.B. `wrapping_offset``, `wrapping_add`, etc are not implemented because they can wrap to null
 
-    /// 计算同一 allocation 内两个指针之间的距离,*前提是已知 `self` 大于或等于 `origin`*。
-    /// 返回值以 T 为单位:即字节距离除以 `size_of::<T>()`。
+    /// Calculates the distance between two pointers within the same allocation, *where it's known that
+    /// `self` is equal to or greater than `origin`*. The returned value is in
+    /// units of T: the distance in bytes is divided by `size_of::<T>()`.
     ///
-    /// 它计算出的值与 [`offset_from`](#method.offset_from) 相同,但附加了一条前置条件:
-    /// 偏移量保证非负。本方法等价于
-    /// `usize::try_from(self.offset_from(origin)).unwrap_unchecked()`,但它能向优化器提供
-    /// 略多的信息,在某些后端上有时可带来略好的优化。
+    /// This computes the same value that [`offset_from`](#method.offset_from)
+    /// would compute, but with the added precondition that the offset is
+    /// guaranteed to be non-negative.  This method is equivalent to
+    /// `usize::try_from(self.offset_from(origin)).unwrap_unchecked()`,
+    /// but it provides slightly more information to the optimizer, which can
+    /// sometimes allow it to optimize slightly better with some backends.
     ///
-    /// 本方法可以理解为“恢复”出此前传给 [`add`](#method.add) 的那个 `count`(或者,把两个
-    /// 参数交换顺序,则是传给 [`sub`](#method.sub) 的 `count`)。在满足各自安全前置条件的
-    /// 前提下,以下表达式全都等价:
+    /// This method can be though of as recovering the `count` that was passed
+    /// to [`add`](#method.add) (or, with the parameters in the other order,
+    /// to [`sub`](#method.sub)).  The following are all equivalent, assuming
+    /// that their safety preconditions are met:
     /// ```rust
     /// # unsafe fn blah(ptr: std::ptr::NonNull<u32>, origin: std::ptr::NonNull<u32>, count: usize) -> bool { unsafe {
     /// ptr.offset_from_unsigned(origin) == count
@@ -890,21 +908,23 @@ impl<T: PointeeSized> NonNull<T> {
     /// # } }
     /// ```
     ///
-    /// # 安全性(Safety）
+    /// # Safety
     ///
-    /// - 两指针之间的距离必须非负(`self >= origin`)
+    /// - The distance between the pointers must be non-negative (`self >= origin`)
     ///
-    /// - [`offset_from`](#method.offset_from) 的*所有*安全条件同样适用于本方法;完整细节
-    ///   请参见该方法。
+    /// - *All* the safety conditions of [`offset_from`](#method.offset_from)
+    ///   apply to this method as well; see it for the full details.
     ///
-    /// 重点提示:尽管本方法的返回类型能表示更大的偏移量,但仍然*不允许*传入相差超过
-    /// `isize::MAX` *字节*的指针。因此,本方法的结果将始终小于或等于 `isize::MAX as usize`。
+    /// Importantly, despite the return type of this method being able to represent
+    /// a larger offset, it's still *not permitted* to pass pointers which differ
+    /// by more than `isize::MAX` *bytes*.  As such, the result of this method will
+    /// always be less than or equal to `isize::MAX as usize`.
     ///
     /// # Panics
     ///
-    /// 如果 `T` 是零大小类型(Zero-Sized Type,"ZST"),本函数会 panic。
+    /// This function panics if `T` is a Zero-Sized Type ("ZST").
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::ptr::NonNull;
@@ -919,172 +939,182 @@ impl<T: PointeeSized> NonNull<T> {
     ///     assert_eq!(ptr2.offset_from_unsigned(ptr2), 0);
     /// }
     ///
-    /// // 下面这样写是错误的,因为两个指针的顺序不正确:
+    /// // This would be incorrect, as the pointers are not correctly ordered:
     /// // ptr1.offset_from_unsigned(ptr2)
     /// ```
     #[inline]
-    #[cfg_attr(miri, track_caller)] // 即便没有 panic,这也有助于 Miri 的回溯(backtrace)
+    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
     #[stable(feature = "ptr_sub_ptr", since = "1.87.0")]
     #[rustc_const_stable(feature = "const_ptr_sub_ptr", since = "1.87.0")]
     pub const unsafe fn offset_from_unsigned(self, subtracted: NonNull<T>) -> usize
     where
         T: Sized,
     {
-        // SAFETY: 调用方必须遵守 `offset_from_unsigned` 的安全约定。
+        // SAFETY: the caller must uphold the safety contract for `offset_from_unsigned`.
         unsafe { self.as_ptr().offset_from_unsigned(subtracted.as_ptr()) }
     }
 
-    /// 计算同一 allocation 内两个指针之间的距离,*前提是已知 `self` 大于或等于 `origin`*。
-    /// 返回值以**字节**为单位。
+    /// Calculates the distance between two pointers within the same allocation, *where it's known that
+    /// `self` is equal to or greater than `origin`*. The returned value is in
+    /// units of **bytes**.
     ///
-    /// 这纯粹是“先转换为 `u8` 指针,再在其上使用
-    /// [`offset_from_unsigned`][NonNull::offset_from_unsigned]”的便捷封装。
-    /// 文档与安全要求请参见该方法。
+    /// This is purely a convenience for casting to a `u8` pointer and
+    /// using [`offset_from_unsigned`][NonNull::offset_from_unsigned] on it.
+    /// See that method for documentation and safety requirements.
     ///
-    /// 对于非 `Sized` 的被指对象(pointee),本操作只考虑数据指针,忽略元数据(metadata)。
+    /// For non-`Sized` pointees this operation considers only the data pointers,
+    /// ignoring the metadata.
     #[inline(always)]
-    #[cfg_attr(miri, track_caller)] // 即便没有 panic,这也有助于 Miri 的回溯(backtrace)
+    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
     #[stable(feature = "ptr_sub_ptr", since = "1.87.0")]
     #[rustc_const_stable(feature = "const_ptr_sub_ptr", since = "1.87.0")]
     pub const unsafe fn byte_offset_from_unsigned<U: ?Sized>(self, origin: NonNull<U>) -> usize {
-        // SAFETY: 调用方必须遵守 `byte_offset_from_unsigned` 的安全约定。
+        // SAFETY: the caller must uphold the safety contract for `byte_offset_from_unsigned`.
         unsafe { self.as_ptr().byte_offset_from_unsigned(origin.as_ptr()) }
     }
 
-    /// 从 `self` 读出该值,但不移动它。这使 `self` 处的内存保持不变。
+    /// Reads the value from `self` without moving it. This leaves the
+    /// memory in `self` unchanged.
     ///
-    /// 安全方面的注意事项与示例参见 [`ptr::read`]。
+    /// See [`ptr::read`] for safety concerns and examples.
     ///
     /// [`ptr::read`]: crate::ptr::read()
     #[inline]
-    #[cfg_attr(miri, track_caller)] // 即便没有 panic,这也有助于 Miri 的回溯(backtrace)
+    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
     #[stable(feature = "non_null_convenience", since = "1.80.0")]
     #[rustc_const_stable(feature = "non_null_convenience", since = "1.80.0")]
     pub const unsafe fn read(self) -> T
     where
         T: Sized,
     {
-        // SAFETY: 调用方必须遵守 `read` 的安全约定。
+        // SAFETY: the caller must uphold the safety contract for `read`.
         unsafe { ptr::read(self.as_ptr()) }
     }
 
-    /// 对 `self` 处的值执行 volatile(易变)读取,但不移动它。这使 `self` 处的内存保持不变。
+    /// Performs a volatile read of the value from `self` without moving it. This
+    /// leaves the memory in `self` unchanged.
     ///
-    /// volatile 操作意在作用于 I/O 内存,并保证编译器不会把它们消除,也不会让它们与其他
-    /// volatile 操作发生重排。
+    /// Volatile operations are intended to act on I/O memory, and are guaranteed
+    /// to not be elided or reordered by the compiler across other volatile
+    /// operations.
     ///
-    /// 安全方面的注意事项与示例参见 [`ptr::read_volatile`]。
+    /// See [`ptr::read_volatile`] for safety concerns and examples.
     ///
     /// [`ptr::read_volatile`]: crate::ptr::read_volatile()
     #[inline]
-    #[cfg_attr(miri, track_caller)] // 即便没有 panic,这也有助于 Miri 的回溯(backtrace)
+    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
     #[stable(feature = "non_null_convenience", since = "1.80.0")]
     pub unsafe fn read_volatile(self) -> T
     where
         T: Sized,
     {
-        // SAFETY: 调用方必须遵守 `read_volatile` 的安全约定。
+        // SAFETY: the caller must uphold the safety contract for `read_volatile`.
         unsafe { ptr::read_volatile(self.as_ptr()) }
     }
 
-    /// 从 `self` 读出该值,但不移动它。这使 `self` 处的内存保持不变。
+    /// Reads the value from `self` without moving it. This leaves the
+    /// memory in `self` unchanged.
     ///
-    /// 与 `read` 不同,本方法允许指针未对齐(unaligned)。
+    /// Unlike `read`, the pointer may be unaligned.
     ///
-    /// 安全方面的注意事项与示例参见 [`ptr::read_unaligned`]。
+    /// See [`ptr::read_unaligned`] for safety concerns and examples.
     ///
     /// [`ptr::read_unaligned`]: crate::ptr::read_unaligned()
     #[inline]
-    #[cfg_attr(miri, track_caller)] // 即便没有 panic,这也有助于 Miri 的回溯(backtrace)
+    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
     #[stable(feature = "non_null_convenience", since = "1.80.0")]
     #[rustc_const_stable(feature = "non_null_convenience", since = "1.80.0")]
     pub const unsafe fn read_unaligned(self) -> T
     where
         T: Sized,
     {
-        // SAFETY: 调用方必须遵守 `read_unaligned` 的安全约定。
+        // SAFETY: the caller must uphold the safety contract for `read_unaligned`.
         unsafe { ptr::read_unaligned(self.as_ptr()) }
     }
 
-    /// 将 `count * size_of::<T>()` 个字节从 `self` 拷贝到 `dest`。源与目标可以重叠。
+    /// Copies `count * size_of::<T>()` bytes from `self` to `dest`. The source
+    /// and destination may overlap.
     ///
-    /// 注意:本方法的参数顺序与 [`ptr::copy`] *相同*。
+    /// NOTE: this has the *same* argument order as [`ptr::copy`].
     ///
-    /// 安全方面的注意事项与示例参见 [`ptr::copy`]。
+    /// See [`ptr::copy`] for safety concerns and examples.
     ///
     /// [`ptr::copy`]: crate::ptr::copy()
     #[inline(always)]
-    #[cfg_attr(miri, track_caller)] // 即便没有 panic,这也有助于 Miri 的回溯(backtrace)
+    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
     #[stable(feature = "non_null_convenience", since = "1.80.0")]
     #[rustc_const_stable(feature = "const_intrinsic_copy", since = "1.83.0")]
     pub const unsafe fn copy_to(self, dest: NonNull<T>, count: usize)
     where
         T: Sized,
     {
-        // SAFETY: 调用方必须遵守 `copy` 的安全约定。
+        // SAFETY: the caller must uphold the safety contract for `copy`.
         unsafe { ptr::copy(self.as_ptr(), dest.as_ptr(), count) }
     }
 
-    /// 将 `count * size_of::<T>()` 个字节从 `self` 拷贝到 `dest`。源与目标*不得*重叠。
+    /// Copies `count * size_of::<T>()` bytes from `self` to `dest`. The source
+    /// and destination may *not* overlap.
     ///
-    /// 注意:本方法的参数顺序与 [`ptr::copy_nonoverlapping`] *相同*。
+    /// NOTE: this has the *same* argument order as [`ptr::copy_nonoverlapping`].
     ///
-    /// 安全方面的注意事项与示例参见 [`ptr::copy_nonoverlapping`]。
+    /// See [`ptr::copy_nonoverlapping`] for safety concerns and examples.
     ///
     /// [`ptr::copy_nonoverlapping`]: crate::ptr::copy_nonoverlapping()
     #[inline(always)]
-    #[cfg_attr(miri, track_caller)] // 即便没有 panic,这也有助于 Miri 的回溯(backtrace)
+    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
     #[stable(feature = "non_null_convenience", since = "1.80.0")]
     #[rustc_const_stable(feature = "const_intrinsic_copy", since = "1.83.0")]
     pub const unsafe fn copy_to_nonoverlapping(self, dest: NonNull<T>, count: usize)
     where
         T: Sized,
     {
-        // SAFETY: 调用方必须遵守 `copy_nonoverlapping` 的安全约定。
+        // SAFETY: the caller must uphold the safety contract for `copy_nonoverlapping`.
         unsafe { ptr::copy_nonoverlapping(self.as_ptr(), dest.as_ptr(), count) }
     }
 
-    /// 将 `count * size_of::<T>()` 个字节从 `src` 拷贝到 `self`。源与目标可以重叠。
+    /// Copies `count * size_of::<T>()` bytes from `src` to `self`. The source
+    /// and destination may overlap.
     ///
-    /// 注意:本方法的参数顺序与 [`ptr::copy`] *相反*。
+    /// NOTE: this has the *opposite* argument order of [`ptr::copy`].
     ///
-    /// 安全方面的注意事项与示例参见 [`ptr::copy`]。
+    /// See [`ptr::copy`] for safety concerns and examples.
     ///
     /// [`ptr::copy`]: crate::ptr::copy()
     #[inline(always)]
-    #[cfg_attr(miri, track_caller)] // 即便没有 panic,这也有助于 Miri 的回溯(backtrace)
+    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
     #[stable(feature = "non_null_convenience", since = "1.80.0")]
     #[rustc_const_stable(feature = "const_intrinsic_copy", since = "1.83.0")]
     pub const unsafe fn copy_from(self, src: NonNull<T>, count: usize)
     where
         T: Sized,
     {
-        // SAFETY: 调用方必须遵守 `copy` 的安全约定。
+        // SAFETY: the caller must uphold the safety contract for `copy`.
         unsafe { ptr::copy(src.as_ptr(), self.as_ptr(), count) }
     }
 
-    /// 将 `count * size_of::<T>()` 个字节从 `src` 拷贝到 `self`。源与目标*不得*重叠。
+    /// Copies `count * size_of::<T>()` bytes from `src` to `self`. The source
+    /// and destination may *not* overlap.
     ///
-    /// 注意:本方法的参数顺序与 [`ptr::copy_nonoverlapping`] *相反*。
+    /// NOTE: this has the *opposite* argument order of [`ptr::copy_nonoverlapping`].
     ///
-    /// 安全方面的注意事项与示例参见 [`ptr::copy_nonoverlapping`]。
+    /// See [`ptr::copy_nonoverlapping`] for safety concerns and examples.
     ///
     /// [`ptr::copy_nonoverlapping`]: crate::ptr::copy_nonoverlapping()
     #[inline(always)]
-    #[cfg_attr(miri, track_caller)] // 即便没有 panic,这也有助于 Miri 的回溯(backtrace)
+    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
     #[stable(feature = "non_null_convenience", since = "1.80.0")]
     #[rustc_const_stable(feature = "const_intrinsic_copy", since = "1.83.0")]
     pub const unsafe fn copy_from_nonoverlapping(self, src: NonNull<T>, count: usize)
     where
         T: Sized,
     {
-        // SAFETY: 调用方必须遵守 `copy_nonoverlapping` 的安全约定。
+        // SAFETY: the caller must uphold the safety contract for `copy_nonoverlapping`.
         unsafe { ptr::copy_nonoverlapping(src.as_ptr(), self.as_ptr(), count) }
     }
 
-    /// 执行被指向值的析构函数(如果有的话)。
+    /// Executes the destructor (if any) of the pointed-to value.
     ///
-    /// 安全方面的注意事项与示例参见 [`ptr::drop_in_place`]。
+    /// See [`ptr::drop_in_place`] for safety concerns and examples.
     ///
     /// [`ptr::drop_in_place`]: crate::ptr::drop_in_place()
     #[inline(always)]
@@ -1094,87 +1124,92 @@ impl<T: PointeeSized> NonNull<T> {
     where
         T: [const] Destruct,
     {
-        // SAFETY: 调用方必须遵守 `drop_in_place` 的安全约定。
+        // SAFETY: the caller must uphold the safety contract for `drop_in_place`.
         unsafe { ptr::drop_in_place(self.as_ptr()) }
     }
 
-    /// 用给定的值覆写某个内存位置,既不读取也不 drop 旧值。
+    /// Overwrites a memory location with the given value without reading or
+    /// dropping the old value.
     ///
-    /// 安全方面的注意事项与示例参见 [`ptr::write`]。
+    /// See [`ptr::write`] for safety concerns and examples.
     ///
     /// [`ptr::write`]: crate::ptr::write()
     #[inline(always)]
-    #[cfg_attr(miri, track_caller)] // 即便没有 panic,这也有助于 Miri 的回溯(backtrace)
+    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
     #[stable(feature = "non_null_convenience", since = "1.80.0")]
     #[rustc_const_stable(feature = "const_ptr_write", since = "1.83.0")]
     pub const unsafe fn write(self, val: T)
     where
         T: Sized,
     {
-        // SAFETY: 调用方必须遵守 `write` 的安全约定。
+        // SAFETY: the caller must uphold the safety contract for `write`.
         unsafe { ptr::write(self.as_ptr(), val) }
     }
 
-    /// 在指定的指针上调用 memset,把从 `self` 开始的 `count * size_of::<T>()` 个字节
-    /// 全部设为 `val`。
+    /// Invokes memset on the specified pointer, setting `count * size_of::<T>()`
+    /// bytes of memory starting at `self` to `val`.
     ///
-    /// 安全方面的注意事项与示例参见 [`ptr::write_bytes`]。
+    /// See [`ptr::write_bytes`] for safety concerns and examples.
     ///
     /// [`ptr::write_bytes`]: crate::ptr::write_bytes()
     #[inline(always)]
     #[doc(alias = "memset")]
-    #[cfg_attr(miri, track_caller)] // 即便没有 panic,这也有助于 Miri 的回溯(backtrace)
+    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
     #[stable(feature = "non_null_convenience", since = "1.80.0")]
     #[rustc_const_stable(feature = "const_ptr_write", since = "1.83.0")]
     pub const unsafe fn write_bytes(self, val: u8, count: usize)
     where
         T: Sized,
     {
-        // SAFETY: 调用方必须遵守 `write_bytes` 的安全约定。
+        // SAFETY: the caller must uphold the safety contract for `write_bytes`.
         unsafe { ptr::write_bytes(self.as_ptr(), val, count) }
     }
 
-    /// 用给定的值对某个内存位置执行 volatile(易变)写入,既不读取也不 drop 旧值。
+    /// Performs a volatile write of a memory location with the given value without
+    /// reading or dropping the old value.
     ///
-    /// volatile 操作意在作用于 I/O 内存,并保证编译器不会把它们消除,也不会让它们与其他
-    /// volatile 操作发生重排。
+    /// Volatile operations are intended to act on I/O memory, and are guaranteed
+    /// to not be elided or reordered by the compiler across other volatile
+    /// operations.
     ///
-    /// 安全方面的注意事项与示例参见 [`ptr::write_volatile`]。
+    /// See [`ptr::write_volatile`] for safety concerns and examples.
     ///
     /// [`ptr::write_volatile`]: crate::ptr::write_volatile()
     #[inline(always)]
-    #[cfg_attr(miri, track_caller)] // 即便没有 panic,这也有助于 Miri 的回溯(backtrace)
+    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
     #[stable(feature = "non_null_convenience", since = "1.80.0")]
     pub unsafe fn write_volatile(self, val: T)
     where
         T: Sized,
     {
-        // SAFETY: 调用方必须遵守 `write_volatile` 的安全约定。
+        // SAFETY: the caller must uphold the safety contract for `write_volatile`.
         unsafe { ptr::write_volatile(self.as_ptr(), val) }
     }
 
-    /// 用给定的值覆写某个内存位置,既不读取也不 drop 旧值。
+    /// Overwrites a memory location with the given value without reading or
+    /// dropping the old value.
     ///
-    /// 与 `write` 不同,本方法允许指针未对齐(unaligned)。
+    /// Unlike `write`, the pointer may be unaligned.
     ///
-    /// 安全方面的注意事项与示例参见 [`ptr::write_unaligned`]。
+    /// See [`ptr::write_unaligned`] for safety concerns and examples.
     ///
     /// [`ptr::write_unaligned`]: crate::ptr::write_unaligned()
     #[inline(always)]
-    #[cfg_attr(miri, track_caller)] // 即便没有 panic,这也有助于 Miri 的回溯(backtrace)
+    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
     #[stable(feature = "non_null_convenience", since = "1.80.0")]
     #[rustc_const_stable(feature = "const_ptr_write", since = "1.83.0")]
     pub const unsafe fn write_unaligned(self, val: T)
     where
         T: Sized,
     {
-        // SAFETY: 调用方必须遵守 `write_unaligned` 的安全约定。
+        // SAFETY: the caller must uphold the safety contract for `write_unaligned`.
         unsafe { ptr::write_unaligned(self.as_ptr(), val) }
     }
 
-    /// 用 `src` 替换 `self` 处的值,返回旧值,二者都不会被 drop。
+    /// Replaces the value at `self` with `src`, returning the old
+    /// value, without dropping either.
     ///
-    /// 安全方面的注意事项与示例参见 [`ptr::replace`]。
+    /// See [`ptr::replace`] for safety concerns and examples.
     ///
     /// [`ptr::replace`]: crate::ptr::replace()
     #[inline(always)]
@@ -1184,14 +1219,15 @@ impl<T: PointeeSized> NonNull<T> {
     where
         T: Sized,
     {
-        // SAFETY: 调用方必须遵守 `replace` 的安全约定。
+        // SAFETY: the caller must uphold the safety contract for `replace`.
         unsafe { ptr::replace(self.as_ptr(), src) }
     }
 
-    /// 交换两个同类型可变内存位置上的值,二者都不会被反初始化(deinitialize)。它们可以
-    /// 重叠,这一点与在其他方面等价的 `mem::swap` 不同。
+    /// Swaps the values at two mutable locations of the same type, without
+    /// deinitializing either. They may overlap, unlike `mem::swap` which is
+    /// otherwise equivalent.
     ///
-    /// 安全方面的注意事项与示例参见 [`ptr::swap`]。
+    /// See [`ptr::swap`] for safety concerns and examples.
     ///
     /// [`ptr::swap`]: crate::ptr::swap()
     #[inline(always)]
@@ -1201,32 +1237,38 @@ impl<T: PointeeSized> NonNull<T> {
     where
         T: Sized,
     {
-        // SAFETY: 调用方必须遵守 `swap` 的安全约定。
+        // SAFETY: the caller must uphold the safety contract for `swap`.
         unsafe { ptr::swap(self.as_ptr(), with.as_ptr()) }
     }
 
-    /// 计算为使指针对齐到 `align`,需要施加给它的偏移量。
+    /// Computes the offset that needs to be applied to the pointer in order to make it aligned to
+    /// `align`.
     ///
-    /// 如果无法使指针对齐,实现会返回 `usize::MAX`。
+    /// If it is not possible to align the pointer, the implementation returns
+    /// `usize::MAX`.
     ///
-    /// 偏移量以 `T` 元素的个数表示,而非字节数。
+    /// The offset is expressed in number of `T` elements, and not bytes.
     ///
-    /// 本方法绝不保证按此偏移指针后不会溢出、也不会越出指针所指向的 allocation。确保返回
-    /// 的偏移量在对齐以外的所有方面都正确,是调用方的责任。
+    /// There are no guarantees whatsoever that offsetting the pointer will not overflow or go
+    /// beyond the allocation that the pointer points into. It is up to the caller to ensure that
+    /// the returned offset is correct in all terms other than alignment.
     ///
-    /// 在编译期求值(目前 unstable)期间调用本方法时,实现可能在“运行期绝不会发生”的情形
-    /// 下返回 `usize::MAX`。这是因为指针的实际对齐在编译期尚不可知,因此有时无法计算出一个
-    /// 保证对齐的偏移量。例如,一个声明为 `[u8; N]` 的缓冲区可能被分配在奇地址或偶地址上,
-    /// 但编译期还不知道是哪一种,因此执行必须对两种选择都正确。于是就不可能找到一个保证
-    /// 2 字节对齐的偏移量。(与所有 unstable API 一样,这一行为可能会变化。)
+    /// When this is called during compile-time evaluation (which is unstable), the implementation
+    /// may return `usize::MAX` in cases where that can never happen at runtime. This is because the
+    /// actual alignment of pointers is not known yet during compile-time, so an offset with
+    /// guaranteed alignment can sometimes not be computed. For example, a buffer declared as `[u8;
+    /// N]` might be allocated at an odd or an even address, but at compile-time this is not yet
+    /// known, so the execution has to be correct for either choice. It is therefore impossible to
+    /// find an offset that is guaranteed to be 2-aligned. (This behavior is subject to change, as usual
+    /// for unstable APIs.)
     ///
     /// # Panics
     ///
-    /// 如果 `align` 不是 2 的幂,本函数会 panic。
+    /// The function panics if `align` is not a power-of-two.
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 把相邻的若干 `u8` 当作 `u16` 来访问:
+    /// Accessing adjacent `u8` as `u16`
     ///
     /// ```
     /// use std::ptr::NonNull;
@@ -1240,8 +1282,8 @@ impl<T: PointeeSized> NonNull<T> {
     ///     let u16_ptr = ptr.add(offset).cast::<u16>();
     ///     assert!(u16_ptr.read() == u16::from_ne_bytes([5, 6]) || u16_ptr.read() == u16::from_ne_bytes([6, 7]));
     /// } else {
-    ///     // 虽然指针可以通过 `offset` 被对齐,但对齐后它会
-    ///     // 指向 allocation 之外
+    ///     // while the pointer can be aligned via `offset`, it would point
+    ///     // outside the allocation
     /// }
     /// # }
     /// ```
@@ -1257,19 +1299,19 @@ impl<T: PointeeSized> NonNull<T> {
         }
 
         {
-            // SAFETY: 上面已检查过 `align` 是 2 的幂。
+            // SAFETY: `align` has been checked to be a power of 2 above.
             unsafe { ptr::align_offset(self.as_ptr(), align) }
         }
     }
 
-    /// 返回该指针是否对 `T` 正确对齐。
+    /// Returns whether the pointer is properly aligned for `T`.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::ptr::NonNull;
     ///
-    /// // 在某些平台上,i32 的对齐小于 4。
+    /// // On some platforms, the alignment of i32 is less than 4.
     /// #[repr(align(4))]
     /// struct AlignedI32(i32);
     ///
@@ -1289,20 +1331,21 @@ impl<T: PointeeSized> NonNull<T> {
         self.as_ptr().is_aligned()
     }
 
-    /// 返回该指针是否对齐到 `align`。
+    /// Returns whether the pointer is aligned to `align`.
     ///
-    /// 对于非 `Sized` 的被指对象(pointee),本操作只考虑数据指针,忽略元数据(metadata)。
+    /// For non-`Sized` pointees this operation considers only the data pointer,
+    /// ignoring the metadata.
     ///
     /// # Panics
     ///
-    /// 如果 `align` 不是 2 的幂(这也包括 0),本函数会 panic。
+    /// The function panics if `align` is not a power-of-two (this includes 0).
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// #![feature(pointer_is_aligned_to)]
     ///
-    /// // 在某些平台上,i32 的对齐小于 4。
+    /// // On some platforms, the alignment of i32 is less than 4.
     /// #[repr(align(4))]
     /// struct AlignedI32(i32);
     ///
@@ -1327,7 +1370,7 @@ impl<T: PointeeSized> NonNull<T> {
 }
 
 impl<T> NonNull<T> {
-    /// 从某类型转换为它的“可能未初始化(maybe-uninitialized)”版本。
+    /// Casts from a type to its maybe-uninitialized version.
     #[must_use]
     #[inline(always)]
     #[unstable(feature = "cast_maybe_uninit", issue = "145036")]
@@ -1336,9 +1379,10 @@ impl<T> NonNull<T> {
     }
 }
 impl<T> NonNull<MaybeUninit<T>> {
-    /// 从“可能未初始化(maybe-uninitialized)”类型转换为它的已初始化版本。
+    /// Casts from a maybe-uninitialized type to its initialized version.
     ///
-    /// 这总是安全的,因为只有当指针在初始化之前被读取时才可能发生 UB。
+    /// This is always safe, since UB can only occur if the pointer is read
+    /// before being initialized.
     #[must_use]
     #[inline(always)]
     #[unstable(feature = "cast_maybe_uninit", issue = "145036")]
@@ -1348,43 +1392,44 @@ impl<T> NonNull<MaybeUninit<T>> {
 }
 
 impl<T> NonNull<[T]> {
-    /// 从一个细指针(thin pointer)和一个长度创建一个非空的裸切片指针。
+    /// Creates a non-null raw slice from a thin pointer and a length.
     ///
-    /// `len` 参数是**元素**的个数,而非字节数。
+    /// The `len` argument is the number of **elements**, not the number of bytes.
     ///
-    /// 本函数是安全的,但解引用其返回值是 unsafe 的。切片的安全要求参见
-    /// [`slice::from_raw_parts`] 的文档。
+    /// This function is safe, but dereferencing the return value is unsafe.
+    /// See the documentation of [`slice::from_raw_parts`] for slice safety requirements.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```rust
     /// use std::ptr::NonNull;
     ///
-    /// // 当手头只有指向首元素的指针时,据此创建一个切片指针
+    /// // create a slice pointer when starting out with a pointer to the first element
     /// let mut x = [5, 6, 7];
     /// let nonnull_pointer = NonNull::new(x.as_mut_ptr()).unwrap();
     /// let slice = NonNull::slice_from_raw_parts(nonnull_pointer, 3);
     /// assert_eq!(unsafe { slice.as_ref()[2] }, 7);
     /// ```
     ///
-    /// (注意这个示例只是人为地演示本方法的用法,实际写这类代码时
-    /// `let slice = NonNull::from(&x[..]);` 是更好的写法。)
+    /// (Note that this example artificially demonstrates a use of this method,
+    /// but `let slice = NonNull::from(&x[..]);` would be a better way to write code like this.)
     #[stable(feature = "nonnull_slice_from_raw_parts", since = "1.70.0")]
     #[rustc_const_stable(feature = "const_slice_from_raw_parts_mut", since = "1.83.0")]
     #[must_use]
     #[inline]
     pub const fn slice_from_raw_parts(data: NonNull<T>, len: usize) -> Self {
-        // SAFETY: `data` 是一个 `NonNull` 指针,因而必然非空。
+        // SAFETY: `data` is a `NonNull` pointer which is necessarily non-null
         unsafe { Self::new_unchecked(super::slice_from_raw_parts_mut(data.as_ptr(), len)) }
     }
 
-    /// 返回非空裸切片的长度。
+    /// Returns the length of a non-null raw slice.
     ///
-    /// 返回值是**元素**的个数,而非字节数。
+    /// The returned value is the number of **elements**, not the number of bytes.
     ///
-    /// 本函数是安全的,即便该非空裸切片因指针地址无效而无法被解引用为一个切片。
+    /// This function is safe, even when the non-null raw slice cannot be dereferenced to a slice
+    /// because the pointer does not have a valid address.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```rust
     /// use std::ptr::NonNull;
@@ -1400,9 +1445,9 @@ impl<T> NonNull<[T]> {
         self.as_ptr().len()
     }
 
-    /// 如果非空裸切片的长度为 0,返回 `true`。
+    /// Returns `true` if the non-null raw slice has a length of 0.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```rust
     /// use std::ptr::NonNull;
@@ -1418,9 +1463,9 @@ impl<T> NonNull<[T]> {
         self.len() == 0
     }
 
-    /// 返回指向该切片缓冲区的非空指针。
+    /// Returns a non-null pointer to the slice's buffer.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```rust
     /// #![feature(slice_ptr_get)]
@@ -1436,9 +1481,9 @@ impl<T> NonNull<[T]> {
         self.cast()
     }
 
-    /// 返回指向该切片缓冲区的裸指针。
+    /// Returns a raw pointer to the slice's buffer.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```rust
     /// #![feature(slice_ptr_get)]
@@ -1455,84 +1500,90 @@ impl<T> NonNull<[T]> {
         self.as_non_null_ptr().as_ptr()
     }
 
-    /// 返回指向一段可能未初始化值的共享切片引用。与 [`as_ref`] 不同,本方法不要求该值
-    /// 已经初始化。
+    /// Returns a shared reference to a slice of possibly uninitialized values. In contrast to
+    /// [`as_ref`], this does not require that the value has to be initialized.
     ///
-    /// 可变版本参见 [`as_uninit_slice_mut`]。
+    /// For the mutable counterpart see [`as_uninit_slice_mut`].
     ///
     /// [`as_ref`]: NonNull::as_ref
     /// [`as_uninit_slice_mut`]: NonNull::as_uninit_slice_mut
     ///
-    /// # 安全性(Safety）
+    /// # Safety
     ///
-    /// 调用本方法时,调用方必须保证以下各项全部成立:
+    /// When calling this method, you have to ensure that all of the following is true:
     ///
-    /// * 指针必须对读取(reads)[有效][valid],可读 `ptr.len() * size_of::<T>()` 个字节,
-    ///   且必须已正确对齐。具体而言:
+    /// * The pointer must be [valid] for reads for `ptr.len() * size_of::<T>()` many bytes,
+    ///   and it must be properly aligned. This means in particular:
     ///
-    ///     * 该切片的整段内存范围必须包含在单个 allocation 之内!切片绝不能跨越多个
-    ///       allocation。
+    ///     * The entire memory range of this slice must be contained within a single allocation!
+    ///       Slices can never span across multiple allocations.
     ///
-    ///     * 即便是零长度切片,指针也必须对齐。原因之一是:enum 的布局优化可能依赖于引用
-    ///       (包括任意长度的切片)是对齐且非空的,以此把它们与其他数据区分开。可以用
-    ///       [`NonNull::dangling()`] 获取一个可用作零长度切片 `data` 的指针。
+    ///     * The pointer must be aligned even for zero-length slices. One
+    ///       reason for this is that enum layout optimizations may rely on references
+    ///       (including slices of any length) being aligned and non-null to distinguish
+    ///       them from other data. You can obtain a pointer that is usable as `data`
+    ///       for zero-length slices using [`NonNull::dangling()`].
     ///
-    /// * 切片的总大小 `ptr.len() * size_of::<T>()` 不得大于 `isize::MAX`。
-    ///   参见 [`pointer::offset`] 的安全文档。
+    /// * The total size `ptr.len() * size_of::<T>()` of the slice must be no larger than `isize::MAX`.
+    ///   See the safety documentation of [`pointer::offset`].
     ///
-    /// * 你必须遵守 Rust 的别名(aliasing)规则,因为返回的生命周期 `'a` 是任意选择的,
-    ///   未必反映数据的实际生命周期。特别地,在该引用存活期间,指针所指的内存不得被改写
-    ///   (除非位于 `UnsafeCell` 内部)。
+    /// * You must enforce Rust's aliasing rules, since the returned lifetime `'a` is
+    ///   arbitrarily chosen and does not necessarily reflect the actual lifetime of the data.
+    ///   In particular, while this reference exists, the memory the pointer points to must
+    ///   not get mutated (except inside `UnsafeCell`).
     ///
-    /// 即便本方法的结果未被使用,以上要求依然适用!
+    /// This applies even if the result of this method is unused!
     ///
-    /// 另请参见 [`slice::from_raw_parts`]。
+    /// See also [`slice::from_raw_parts`].
     ///
     /// [valid]: crate::ptr#safety
     #[inline]
     #[must_use]
     #[unstable(feature = "ptr_as_uninit", issue = "75402")]
     pub const unsafe fn as_uninit_slice<'a>(self) -> &'a [MaybeUninit<T>] {
-        // SAFETY: 调用方必须遵守 `as_uninit_slice` 的安全约定。
+        // SAFETY: the caller must uphold the safety contract for `as_uninit_slice`.
         unsafe { slice::from_raw_parts(self.cast().as_ptr(), self.len()) }
     }
 
-    /// 返回指向一段可能未初始化值的独占(unique)切片引用。与 [`as_mut`] 不同,本方法
-    /// 不要求该值已经初始化。
+    /// Returns a unique reference to a slice of possibly uninitialized values. In contrast to
+    /// [`as_mut`], this does not require that the value has to be initialized.
     ///
-    /// 共享版本参见 [`as_uninit_slice`]。
+    /// For the shared counterpart see [`as_uninit_slice`].
     ///
     /// [`as_mut`]: NonNull::as_mut
     /// [`as_uninit_slice`]: NonNull::as_uninit_slice
     ///
-    /// # 安全性(Safety）
+    /// # Safety
     ///
-    /// 调用本方法时,调用方必须保证以下各项全部成立:
+    /// When calling this method, you have to ensure that all of the following is true:
     ///
-    /// * 指针必须对读取与写入(reads and writes)[有效][valid],可读写
-    ///   `ptr.len() * size_of::<T>()` 个字节,且必须已正确对齐。具体而言:
+    /// * The pointer must be [valid] for reads and writes for `ptr.len() * size_of::<T>()`
+    ///   many bytes, and it must be properly aligned. This means in particular:
     ///
-    ///     * 该切片的整段内存范围必须包含在单个 allocation 之内!切片绝不能跨越多个
-    ///       allocation。
+    ///     * The entire memory range of this slice must be contained within a single allocation!
+    ///       Slices can never span across multiple allocations.
     ///
-    ///     * 即便是零长度切片,指针也必须对齐。原因之一是:enum 的布局优化可能依赖于引用
-    ///       (包括任意长度的切片)是对齐且非空的,以此把它们与其他数据区分开。可以用
-    ///       [`NonNull::dangling()`] 获取一个可用作零长度切片 `data` 的指针。
+    ///     * The pointer must be aligned even for zero-length slices. One
+    ///       reason for this is that enum layout optimizations may rely on references
+    ///       (including slices of any length) being aligned and non-null to distinguish
+    ///       them from other data. You can obtain a pointer that is usable as `data`
+    ///       for zero-length slices using [`NonNull::dangling()`].
     ///
-    /// * 切片的总大小 `ptr.len() * size_of::<T>()` 不得大于 `isize::MAX`。
-    ///   参见 [`pointer::offset`] 的安全文档。
+    /// * The total size `ptr.len() * size_of::<T>()` of the slice must be no larger than `isize::MAX`.
+    ///   See the safety documentation of [`pointer::offset`].
     ///
-    /// * 你必须遵守 Rust 的别名(aliasing)规则,因为返回的生命周期 `'a` 是任意选择的,
-    ///   未必反映数据的实际生命周期。特别地,在该引用存活期间,指针所指的内存不得通过
-    ///   任何其他指针被访问(读或写)。
+    /// * You must enforce Rust's aliasing rules, since the returned lifetime `'a` is
+    ///   arbitrarily chosen and does not necessarily reflect the actual lifetime of the data.
+    ///   In particular, while this reference exists, the memory the pointer points to must
+    ///   not get accessed (read or written) through any other pointer.
     ///
-    /// 即便本方法的结果未被使用,以上要求依然适用!
+    /// This applies even if the result of this method is unused!
     ///
-    /// 另请参见 [`slice::from_raw_parts_mut`]。
+    /// See also [`slice::from_raw_parts_mut`].
     ///
     /// [valid]: crate::ptr#safety
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```rust
     /// #![feature(allocator_api, ptr_as_uninit)]
@@ -1542,11 +1593,11 @@ impl<T> NonNull<[T]> {
     /// use std::ptr::NonNull;
     ///
     /// let memory: NonNull<[u8]> = Global.allocate(Layout::new::<[u8; 32]>())?;
-    /// // 这是安全的,因为 `memory` 对其 `memory.len()` 个字节的读取与写入都有效。
-    /// // 注意:这里不允许调用 `memory.as_mut()`,因为其内容可能尚未初始化。
+    /// // This is safe as `memory` is valid for reads and writes for `memory.len()` many bytes.
+    /// // Note that calling `memory.as_mut()` is not allowed here as the content may be uninitialized.
     /// # #[allow(unused_variables)]
     /// let slice: &mut [MaybeUninit<u8>] = unsafe { memory.as_uninit_slice_mut() };
-    /// # // 防止在 Miri 下发生内存泄漏。
+    /// # // Prevent leaks for Miri.
     /// # unsafe { Global.deallocate(memory.cast(), Layout::new::<[u8; 32]>()); }
     /// # Ok::<_, std::alloc::AllocError>(())
     /// ```
@@ -1554,18 +1605,19 @@ impl<T> NonNull<[T]> {
     #[must_use]
     #[unstable(feature = "ptr_as_uninit", issue = "75402")]
     pub const unsafe fn as_uninit_slice_mut<'a>(self) -> &'a mut [MaybeUninit<T>] {
-        // SAFETY: 调用方必须遵守 `as_uninit_slice_mut` 的安全约定。
+        // SAFETY: the caller must uphold the safety contract for `as_uninit_slice_mut`.
         unsafe { slice::from_raw_parts_mut(self.cast().as_ptr(), self.len()) }
     }
 
-    /// 返回指向某个元素或子切片的裸指针,不做边界检查。
+    /// Returns a raw pointer to an element or subslice, without doing bounds
+    /// checking.
     ///
-    /// 用越界的索引调用本方法,或在 `self` 不可解引用(dereferenceable)时调用本方法,
-    /// 都是*[未定义行为][undefined behavior]*,即便所得到的指针并未被使用。
+    /// Calling this method with an out-of-bounds index or when `self` is not dereferenceable
+    /// is *[undefined behavior]* even if the resulting pointer is not used.
     ///
     /// [undefined behavior]: https://doc.rust-lang.org/reference/behavior-considered-undefined.html
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// #![feature(slice_ptr_get)]
@@ -1585,8 +1637,8 @@ impl<T> NonNull<[T]> {
     where
         I: [const] SliceIndex<[T]>,
     {
-        // SAFETY: 调用方保证 `self` 可解引用且 `index` 在边界内(in-bounds)。
-        // 由此可知,所得到的指针不可能为 null。
+        // SAFETY: the caller ensures that `self` is dereferenceable and `index` in-bounds.
+        // As a consequence, the resulting pointer cannot be null.
         unsafe { NonNull::new_unchecked(self.as_ptr().get_unchecked_mut(index)) }
     }
 }
@@ -1679,9 +1731,9 @@ impl<T: PointeeSized> const From<Unique<T>> for NonNull<T> {
 #[stable(feature = "nonnull", since = "1.25.0")]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
 impl<T: PointeeSized> const From<&mut T> for NonNull<T> {
-    /// 把 `&mut T` 转换为 `NonNull<T>`。
+    /// Converts a `&mut T` to a `NonNull<T>`.
     ///
-    /// 这个转换安全且不会失败,因为引用不可能为 null。
+    /// This conversion is safe and infallible since references cannot be null.
     #[inline]
     fn from(r: &mut T) -> Self {
         NonNull::from_mut(r)
@@ -1691,9 +1743,9 @@ impl<T: PointeeSized> const From<&mut T> for NonNull<T> {
 #[stable(feature = "nonnull", since = "1.25.0")]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
 impl<T: PointeeSized> const From<&T> for NonNull<T> {
-    /// 把 `&T` 转换为 `NonNull<T>`。
+    /// Converts a `&T` to a `NonNull<T>`.
     ///
-    /// 这个转换安全且不会失败,因为引用不可能为 null。
+    /// This conversion is safe and infallible since references cannot be null.
     #[inline]
     fn from(r: &T) -> Self {
         NonNull::from_ref(r)

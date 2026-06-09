@@ -1,13 +1,14 @@
-/// 加法运算符 `+`。
+/// The addition operator `+`.
 ///
-/// 注意 `Rhs` 默认是 `Self`,但这并非强制。例如 [`std::time::SystemTime`] 实现了
-/// `Add<Duration>`,从而允许形如 `SystemTime = SystemTime + Duration` 的运算。
+/// Note that `Rhs` is `Self` by default, but this is not mandatory. For
+/// example, [`std::time::SystemTime`] implements `Add<Duration>`, which permits
+/// operations of the form `SystemTime = SystemTime + Duration`.
 ///
 /// [`std::time::SystemTime`]: ../../std/time/struct.SystemTime.html
 ///
-/// # 示例
+/// # Examples
 ///
-/// ## 可做 `Add`(加法)的点
+/// ## `Add`able points
 ///
 /// ```
 /// use std::ops::Add;
@@ -33,9 +34,10 @@
 ///            Point { x: 3, y: 3 });
 /// ```
 ///
-/// ## 用泛型实现 `Add`
+/// ## Implementing `Add` with generics
 ///
-/// 下面是同一个 `Point` 结构体使用泛型实现 `Add` trait 的示例。
+/// Here is an example of the same `Point` struct implementing the `Add` trait
+/// using generics.
 ///
 /// ```
 /// use std::ops::Add;
@@ -46,7 +48,7 @@
 ///     y: T,
 /// }
 ///
-/// // 注意该实现使用了关联类型 `Output`。
+/// // Notice that the implementation uses the associated type `Output`.
 /// impl<T: Add<Output = T>> Add for Point<T> {
 ///     type Output = Self;
 ///
@@ -73,13 +75,13 @@
 )]
 #[doc(alias = "+")]
 pub const trait Add<Rhs = Self> {
-    /// 应用 `+` 运算符之后得到的结果类型。
+    /// The resulting type after applying the `+` operator.
     #[stable(feature = "rust1", since = "1.0.0")]
     type Output;
 
-    /// 执行 `+` 操作。
+    /// Performs the `+` operation.
     ///
-    /// # 示例
+    /// # Example
     ///
     /// ```
     /// assert_eq!(12 + 1, 13);
@@ -111,16 +113,17 @@ macro_rules! add_impl {
 
 add_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f64 f128 }
 
-/// 减法运算符 `-`。
+/// The subtraction operator `-`.
 ///
-/// 注意 `Rhs` 默认是 `Self`,但这并非强制。例如 [`std::time::SystemTime`] 实现了
-/// `Sub<Duration>`,从而允许形如 `SystemTime = SystemTime - Duration` 的运算。
+/// Note that `Rhs` is `Self` by default, but this is not mandatory. For
+/// example, [`std::time::SystemTime`] implements `Sub<Duration>`, which permits
+/// operations of the form `SystemTime = SystemTime - Duration`.
 ///
 /// [`std::time::SystemTime`]: ../../std/time/struct.SystemTime.html
 ///
-/// # 示例
+/// # Examples
 ///
-/// ## 可做 `Sub`(减法)的点
+/// ## `Sub`tractable points
 ///
 /// ```
 /// use std::ops::Sub;
@@ -146,9 +149,10 @@ add_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f64 f128
 ///            Point { x: 1, y: 0 });
 /// ```
 ///
-/// ## 用泛型实现 `Sub`
+/// ## Implementing `Sub` with generics
 ///
-/// 下面是同一个 `Point` 结构体使用泛型实现 `Sub` trait 的示例。
+/// Here is an example of the same `Point` struct implementing the `Sub` trait
+/// using generics.
 ///
 /// ```
 /// use std::ops::Sub;
@@ -159,7 +163,7 @@ add_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f64 f128
 ///     y: T,
 /// }
 ///
-/// // 注意该实现使用了关联类型 `Output`。
+/// // Notice that the implementation uses the associated type `Output`.
 /// impl<T: Sub<Output = T>> Sub for Point<T> {
 ///     type Output = Self;
 ///
@@ -184,13 +188,13 @@ add_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f64 f128
 )]
 #[doc(alias = "-")]
 pub const trait Sub<Rhs = Self> {
-    /// 应用 `-` 运算符之后得到的结果类型。
+    /// The resulting type after applying the `-` operator.
     #[stable(feature = "rust1", since = "1.0.0")]
     type Output;
 
-    /// 执行 `-` 操作。
+    /// Performs the `-` operation.
     ///
-    /// # 示例
+    /// # Example
     ///
     /// ```
     /// assert_eq!(12 - 1, 11);
@@ -222,19 +226,20 @@ macro_rules! sub_impl {
 
 sub_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f64 f128 }
 
-/// 乘法运算符 `*`。
+/// The multiplication operator `*`.
 ///
-/// 注意 `Rhs` 默认是 `Self`,但这并非强制。
+/// Note that `Rhs` is `Self` by default, but this is not mandatory.
 ///
-/// # 示例
+/// # Examples
 ///
-/// ## 可做 `Mul`(乘法)的有理数
+/// ## `Mul`tipliable rational numbers
 ///
 /// ```
 /// use std::ops::Mul;
 ///
-/// // 根据算术基本定理,化为最简形式的有理数是唯一的。因此,只要让 `Rational`
-/// // 始终保持约分后的形式,我们就能 derive `Eq` 和 `PartialEq`。
+/// // By the fundamental theorem of arithmetic, rational numbers in lowest
+/// // terms are unique. So, by keeping `Rational`s in reduced form, we can
+/// // derive `Eq` and `PartialEq`.
 /// #[derive(Debug, Eq, PartialEq)]
 /// struct Rational {
 ///     numerator: usize,
@@ -247,7 +252,8 @@ sub_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f64 f128
 ///             panic!("Zero is an invalid denominator!");
 ///         }
 ///
-///         // 通过除以最大公约数来约分到最简形式。
+///         // Reduce to lowest terms by dividing by the greatest common
+///         // divisor.
 ///         let gcd = gcd(numerator, denominator);
 ///         Self {
 ///             numerator: numerator / gcd,
@@ -257,7 +263,7 @@ sub_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f64 f128
 /// }
 ///
 /// impl Mul for Rational {
-///     // 有理数的乘法是一个封闭运算。
+///     // The multiplication of rational numbers is a closed operation.
 ///     type Output = Self;
 ///
 ///     fn mul(self, rhs: Self) -> Self {
@@ -267,7 +273,8 @@ sub_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f64 f128
 ///     }
 /// }
 ///
-/// // 欧几里得用于求最大公约数的两千年前的算法。
+/// // Euclid's two-thousand-year-old algorithm for finding the greatest common
+/// // divisor.
 /// fn gcd(x: usize, y: usize) -> usize {
 ///     let mut x = x;
 ///     let mut y = y;
@@ -284,7 +291,7 @@ sub_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f64 f128
 ///            Rational::new(1, 2));
 /// ```
 ///
-/// ## 像线性代数那样用标量去乘向量
+/// ## Multiplying vectors by scalars as in linear algebra
 ///
 /// ```
 /// use std::ops::Mul;
@@ -315,13 +322,13 @@ sub_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f64 f128
 )]
 #[doc(alias = "*")]
 pub const trait Mul<Rhs = Self> {
-    /// 应用 `*` 运算符之后得到的结果类型。
+    /// The resulting type after applying the `*` operator.
     #[stable(feature = "rust1", since = "1.0.0")]
     type Output;
 
-    /// 执行 `*` 操作。
+    /// Performs the `*` operation.
     ///
-    /// # 示例
+    /// # Example
     ///
     /// ```
     /// assert_eq!(12 * 2, 24);
@@ -353,19 +360,20 @@ macro_rules! mul_impl {
 
 mul_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f64 f128 }
 
-/// 除法运算符 `/`。
+/// The division operator `/`.
 ///
-/// 注意 `Rhs` 默认是 `Self`,但这并非强制。
+/// Note that `Rhs` is `Self` by default, but this is not mandatory.
 ///
-/// # 示例
+/// # Examples
 ///
-/// ## 可做 `Div`(除法)的有理数
+/// ## `Div`idable rational numbers
 ///
 /// ```
 /// use std::ops::Div;
 ///
-/// // 根据算术基本定理,化为最简形式的有理数是唯一的。因此,只要让 `Rational`
-/// // 始终保持约分后的形式,我们就能 derive `Eq` 和 `PartialEq`。
+/// // By the fundamental theorem of arithmetic, rational numbers in lowest
+/// // terms are unique. So, by keeping `Rational`s in reduced form, we can
+/// // derive `Eq` and `PartialEq`.
 /// #[derive(Debug, Eq, PartialEq)]
 /// struct Rational {
 ///     numerator: usize,
@@ -378,7 +386,8 @@ mul_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f64 f128
 ///             panic!("Zero is an invalid denominator!");
 ///         }
 ///
-///         // 通过除以最大公约数来约分到最简形式。
+///         // Reduce to lowest terms by dividing by the greatest common
+///         // divisor.
 ///         let gcd = gcd(numerator, denominator);
 ///         Self {
 ///             numerator: numerator / gcd,
@@ -388,7 +397,7 @@ mul_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f64 f128
 /// }
 ///
 /// impl Div for Rational {
-///     // 有理数的除法是一个封闭运算。
+///     // The division of rational numbers is a closed operation.
 ///     type Output = Self;
 ///
 ///     fn div(self, rhs: Self) -> Self::Output {
@@ -402,7 +411,8 @@ mul_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f64 f128
 ///     }
 /// }
 ///
-/// // 欧几里得用于求最大公约数的两千年前的算法。
+/// // Euclid's two-thousand-year-old algorithm for finding the greatest common
+/// // divisor.
 /// fn gcd(x: usize, y: usize) -> usize {
 ///     let mut x = x;
 ///     let mut y = y;
@@ -419,7 +429,7 @@ mul_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f64 f128
 ///            Rational::new(2, 3));
 /// ```
 ///
-/// ## 像线性代数那样用标量去除向量
+/// ## Dividing vectors by scalars as in linear algebra
 ///
 /// ```
 /// use std::ops::Div;
@@ -450,13 +460,13 @@ mul_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f64 f128
 )]
 #[doc(alias = "/")]
 pub const trait Div<Rhs = Self> {
-    /// 应用 `/` 运算符之后得到的结果类型。
+    /// The resulting type after applying the `/` operator.
     #[stable(feature = "rust1", since = "1.0.0")]
     type Output;
 
-    /// 执行 `/` 操作。
+    /// Performs the `/` operation.
     ///
-    /// # 示例
+    /// # Example
     ///
     /// ```
     /// assert_eq!(12 / 2, 6);
@@ -469,7 +479,8 @@ pub const trait Div<Rhs = Self> {
 
 macro_rules! div_impl_integer {
     ($(($($t:ty)*) => $panic:expr),*) => ($($(
-        /// 此运算向零取整(round towards zero),即截断精确结果中所有的小数部分。
+        /// This operation rounds towards zero, truncating any
+        /// fractional part of the exact result.
         ///
         /// # Panics
         ///
@@ -491,8 +502,8 @@ macro_rules! div_impl_integer {
 }
 
 div_impl_integer! {
-    (usize u8 u16 u32 u64 u128) => "若 `other == 0`,此运算会 panic。",
-    (isize i8 i16 i32 i64 i128) => "若 `other == 0`,或者除法结果发生溢出,此运算会 panic。"
+    (usize u8 u16 u32 u64 u128) => "This operation will panic if `other == 0`.",
+    (isize i8 i16 i32 i64 i128) => "This operation will panic if `other == 0` or the division results in overflow."
 }
 
 macro_rules! div_impl_float {
@@ -514,14 +525,16 @@ macro_rules! div_impl_float {
 
 div_impl_float! { f16 f32 f64 f128 }
 
-/// 求余运算符 `%`。
+/// The remainder operator `%`.
 ///
-/// 注意 `Rhs` 默认是 `Self`,但这并非强制。
+/// Note that `Rhs` is `Self` by default, but this is not mandatory.
 ///
-/// # 示例
+/// # Examples
 ///
-/// 本示例为一个 `SplitSlice` 对象实现了 `Rem`。实现 `Rem` 之后,就能用 `%`
-/// 运算符求出:在把切片切成若干个给定长度的等长子切片之后,剩余的元素会是什么。
+/// This example implements `Rem` on a `SplitSlice` object. After `Rem` is
+/// implemented, one can use the `%` operator to find out what the remaining
+/// elements of the slice would be after splitting it into equal slices of a
+/// given length.
 ///
 /// ```
 /// use std::ops::Rem;
@@ -542,8 +555,8 @@ div_impl_float! { f16 f32 f64 f128 }
 ///     }
 /// }
 ///
-/// // 如果我们把 &[0, 1, 2, 3, 4, 5, 6, 7] 切成大小为 3 的子切片,
-/// // 余下的部分会是 &[6, 7]。
+/// // If we were to divide &[0, 1, 2, 3, 4, 5, 6, 7] into slices of size 3,
+/// // the remainder would be &[6, 7].
 /// assert_eq!(SplitSlice { slice: &[0, 1, 2, 3, 4, 5, 6, 7] } % 3,
 ///            SplitSlice { slice: &[6, 7] });
 /// ```
@@ -556,13 +569,13 @@ div_impl_float! { f16 f32 f64 f128 }
 )]
 #[doc(alias = "%")]
 pub const trait Rem<Rhs = Self> {
-    /// 应用 `%` 运算符之后得到的结果类型。
+    /// The resulting type after applying the `%` operator.
     #[stable(feature = "rust1", since = "1.0.0")]
     type Output;
 
-    /// 执行 `%` 操作。
+    /// Performs the `%` operation.
     ///
-    /// # 示例
+    /// # Example
     ///
     /// ```
     /// assert_eq!(12 % 10, 2);
@@ -575,7 +588,8 @@ pub const trait Rem<Rhs = Self> {
 
 macro_rules! rem_impl_integer {
     ($(($($t:ty)*) => $panic:expr),*) => ($($(
-        /// 此运算满足 `n % d == n - (n / d) * d`。其结果与左操作数符号相同。
+        /// This operation satisfies `n % d == n - (n / d) * d`. The
+        /// result has the same sign as the left operand.
         ///
         /// # Panics
         ///
@@ -597,24 +611,25 @@ macro_rules! rem_impl_integer {
 }
 
 rem_impl_integer! {
-    (usize u8 u16 u32 u64 u128) => "若 `other == 0`,此运算会 panic。",
-    (isize i8 i16 i32 i64 i128) => "若 `other == 0`,或者 `self / other` 发生溢出,此运算会 panic。"
+    (usize u8 u16 u32 u64 u128) => "This operation will panic if `other == 0`.",
+    (isize i8 i16 i32 i64 i128) => "This operation will panic if `other == 0` or if `self / other` results in overflow."
 }
 
 macro_rules! rem_impl_float {
     ($($t:ty)*) => ($(
 
-        /// 两个浮点数相除得到的余数。
+        /// The remainder from the division of two floats.
         ///
-        /// 该余数与被除数符号相同,按 `x - (x / y).trunc() * y` 计算。
+        /// The remainder has the same sign as the dividend and is computed as:
+        /// `x - (x / y).trunc() * y`.
         ///
-        /// # 示例
+        /// # Examples
         /// ```
         /// let x: f32 = 50.50;
         /// let y: f32 = 8.125;
         /// let remainder = x - (x / y).trunc() * y;
         ///
-        /// // 两种运算的结果都是 1.75
+        /// // The answer to both operations is 1.75
         /// assert_eq!(x % y, remainder);
         /// ```
         #[stable(feature = "rust1", since = "1.0.0")]
@@ -634,11 +649,12 @@ macro_rules! rem_impl_float {
 
 rem_impl_float! { f16 f32 f64 f128 }
 
-/// 一元取负运算符 `-`。
+/// The unary negation operator `-`.
 ///
-/// # 示例
+/// # Examples
 ///
-/// 为 `Sign` 实现 `Neg`,从而允许用 `-` 对其取负。
+/// An implementation of `Neg` for `Sign`, which allows the use of `-` to
+/// negate its value.
 ///
 /// ```
 /// use std::ops::Neg;
@@ -662,11 +678,11 @@ rem_impl_float! { f16 f32 f64 f128 }
 ///     }
 /// }
 ///
-/// // 正的相反数是负的。
+/// // A negative positive is a negative.
 /// assert_eq!(-Sign::Positive, Sign::Negative);
-/// // 负负得正。
+/// // A double negative is a positive.
 /// assert_eq!(-Sign::Negative, Sign::Positive);
-/// // 零的相反数还是它自己。
+/// // Zero is its own negation.
 /// assert_eq!(-Sign::Zero, Sign::Zero);
 /// ```
 #[lang = "neg"]
@@ -674,13 +690,13 @@ rem_impl_float! { f16 f32 f64 f128 }
 #[rustc_const_unstable(feature = "const_ops", issue = "143802")]
 #[doc(alias = "-")]
 pub const trait Neg {
-    /// 应用 `-` 运算符之后得到的结果类型。
+    /// The resulting type after applying the `-` operator.
     #[stable(feature = "rust1", since = "1.0.0")]
     type Output;
 
-    /// 执行一元 `-` 操作。
+    /// Performs the unary `-` operation.
     ///
-    /// # 示例
+    /// # Example
     ///
     /// ```
     /// let x: i32 = 12;
@@ -712,12 +728,12 @@ macro_rules! neg_impl {
 
 neg_impl! { isize i8 i16 i32 i64 i128 f16 f32 f64 f128 }
 
-/// 加法赋值运算符 `+=`。
+/// The addition assignment operator `+=`.
 ///
-/// # 示例
+/// # Examples
 ///
-/// 本示例创建了一个实现了 `AddAssign` trait 的 `Point` 结构体,然后演示对一个
-/// 可变的 `Point` 做加法赋值。
+/// This example creates a `Point` struct that implements the `AddAssign`
+/// trait, and then demonstrates add-assigning to a mutable `Point`.
 ///
 /// ```
 /// use std::ops::AddAssign;
@@ -751,9 +767,9 @@ neg_impl! { isize i8 i16 i32 i64 i128 f16 f32 f64 f128 }
 #[doc(alias = "+")]
 #[doc(alias = "+=")]
 pub const trait AddAssign<Rhs = Self> {
-    /// 执行 `+=` 操作。
+    /// Performs the `+=` operation.
     ///
-    /// # 示例
+    /// # Example
     ///
     /// ```
     /// let mut x: u32 = 12;
@@ -783,12 +799,12 @@ macro_rules! add_assign_impl {
 
 add_assign_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f64 f128 }
 
-/// 减法赋值运算符 `-=`。
+/// The subtraction assignment operator `-=`.
 ///
-/// # 示例
+/// # Examples
 ///
-/// 本示例创建了一个实现了 `SubAssign` trait 的 `Point` 结构体,然后演示对一个
-/// 可变的 `Point` 做减法赋值。
+/// This example creates a `Point` struct that implements the `SubAssign`
+/// trait, and then demonstrates sub-assigning to a mutable `Point`.
 ///
 /// ```
 /// use std::ops::SubAssign;
@@ -822,9 +838,9 @@ add_assign_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f
 #[doc(alias = "-")]
 #[doc(alias = "-=")]
 pub const trait SubAssign<Rhs = Self> {
-    /// 执行 `-=` 操作。
+    /// Performs the `-=` operation.
     ///
-    /// # 示例
+    /// # Example
     ///
     /// ```
     /// let mut x: u32 = 12;
@@ -854,9 +870,9 @@ macro_rules! sub_assign_impl {
 
 sub_assign_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f64 f128 }
 
-/// 乘法赋值运算符 `*=`。
+/// The multiplication assignment operator `*=`.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// use std::ops::MulAssign;
@@ -884,9 +900,9 @@ sub_assign_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f
 #[doc(alias = "*")]
 #[doc(alias = "*=")]
 pub const trait MulAssign<Rhs = Self> {
-    /// 执行 `*=` 操作。
+    /// Performs the `*=` operation.
     ///
-    /// # 示例
+    /// # Example
     ///
     /// ```
     /// let mut x: u32 = 12;
@@ -916,9 +932,9 @@ macro_rules! mul_assign_impl {
 
 mul_assign_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f64 f128 }
 
-/// 除法赋值运算符 `/=`。
+/// The division assignment operator `/=`.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// use std::ops::DivAssign;
@@ -946,9 +962,9 @@ mul_assign_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f
 #[doc(alias = "/")]
 #[doc(alias = "/=")]
 pub const trait DivAssign<Rhs = Self> {
-    /// 执行 `/=` 操作。
+    /// Performs the `/=` operation.
     ///
-    /// # 示例
+    /// # Example
     ///
     /// ```
     /// let mut x: u32 = 12;
@@ -977,9 +993,9 @@ macro_rules! div_assign_impl {
 
 div_assign_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f64 f128 }
 
-/// 求余赋值运算符 `%=`。
+/// The remainder assignment operator `%=`.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// use std::ops::RemAssign;
@@ -1011,9 +1027,9 @@ div_assign_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 f16 f32 f
 #[doc(alias = "%")]
 #[doc(alias = "%=")]
 pub const trait RemAssign<Rhs = Self> {
-    /// 执行 `%=` 操作。
+    /// Performs the `%=` operation.
     ///
-    /// # 示例
+    /// # Example
     ///
     /// ```
     /// let mut x: u32 = 12;

@@ -4,20 +4,23 @@ use crate::ops::{CoerceUnsized, DispatchFromDyn};
 use crate::pin::Pin;
 use crate::{fmt, ptr};
 
-/// 此类型提供了一种完全 opt-out（退出）典型别名（aliasing）规则的方式；具体而言，
-/// `&mut UnsafePinned<T>` 不保证是一个唯一指针。它还涵盖了 `UnsafeCell` 的效果，即
-/// `&UnsafePinned<T>` 可能指向正在被修改的数据。
+/// This type provides a way to entirely opt-out of typical aliasing rules;
+/// specifically, `&mut UnsafePinned<T>` is not guaranteed to be a unique pointer.
+/// This also subsumes the effects of `UnsafeCell`, i.e., `&UnsafePinned<T>` may point to data
+/// that is being mutated.
 ///
-/// 然而，即便你把你的类型定义成 `pub struct Wrapper(UnsafePinned<...>)`，让一个 `&mut Wrapper`
-/// 与任何其他东西形成别名仍然是非常危险的。许多在 `&mut T` 上泛型工作的函数都假定存储 `T` 的那块
-/// 内存是被唯一拥有的（例如 `mem::swap`）。换句话说，虽然让 `&mut Wrapper` 形成别名不会立即构成
-/// 未定义行为，但把这样一个可变引用暴露给你无法控制的代码仍然是不健全的！要确保健全性，需要诸如
-/// 通过 [`Pin`] 进行固定之类的技术。
+/// However, even if you define your type like `pub struct Wrapper(UnsafePinned<...>)`, it is still
+/// very risky to have an `&mut Wrapper` that aliases anything else. Many functions that work
+/// generically on `&mut T` assume that the memory that stores `T` is uniquely owned (such as
+/// `mem::swap`). In other words, while having aliasing with `&mut Wrapper` is not immediate
+/// Undefined Behavior, it is still unsound to expose such a mutable reference to code you do not
+/// control! Techniques such as pinning via [`Pin`] are needed to ensure soundness.
 ///
-/// 与 [`UnsafeCell`](crate::cell::UnsafeCell) 类似，`UnsafePinned` 通常不会出现在某个库的公开
-/// API 中。它是那些需要支持别名可变引用的库的内部实现细节。
+/// Similar to [`UnsafeCell`](crate::cell::UnsafeCell), `UnsafePinned` will not usually show up in
+/// the public API of a library. It is an internal implementation detail of libraries that need to
+/// support aliasing mutable references.
 ///
-/// 此类型像 `UnsafeCell` 一样阻止壁龛（niche）。
+/// This type blocks niches the same way `UnsafeCell` does.
 #[lang = "unsafe_pinned"]
 #[repr(transparent)]
 #[unstable(feature = "unsafe_pinned", issue = "125735")]
@@ -25,26 +28,26 @@ pub struct UnsafePinned<T: ?Sized> {
     value: UnsafeCell<T>,
 }
 
-// 覆盖（override）`UnsafeCell` 中那个手动的 `!Sync`。
+// Override the manual `!Sync` in `UnsafeCell`.
 #[unstable(feature = "unsafe_pinned", issue = "125735")]
 unsafe impl<T: ?Sized + Sync> Sync for UnsafePinned<T> {}
 
-/// 当此类型被使用时，几乎可以肯定这意味着安全 API 需要使用固定，以避免那些别名失效。因此让我们
-/// 把它标记为 `!Unpin`。只要你的 API 在未固定时仍然是健全的，你总是可以用一个 `impl` 块来重新
-/// opt-in（加入）`Unpin`。
+/// When this type is used, that almost certainly means safe APIs need to use pinning to avoid the
+/// aliases from becoming invalidated. Therefore let's mark this as `!Unpin`. You can always opt
+/// back in to `Unpin` with an `impl` block, provided your API is still sound while unpinned.
 #[unstable(feature = "unsafe_pinned", issue = "125735")]
 impl<T: ?Sized> !Unpin for UnsafePinned<T> {}
 
-// `Send` 和 `Sync` 从 `T` 继承。这与 `SyncUnsafeCell` 类似，因为我们最终得出结论：`UnsafeCell`
-// 隐式地让东西变成 `!Sync` 有时在人体工程学上很糟糕。一个需要 `!Send`/`!Sync` 的类型，真正应当
-// 自己显式地 opt-out，例如通过一个 `PhantomData<*mut T>`，或者（将来某天）通过
-// `impl !Send`/`impl !Sync`。
+// `Send` and `Sync` are inherited from `T`. This is similar to `SyncUnsafeCell`, since
+// we eventually concluded that `UnsafeCell` implicitly making things `!Sync` is sometimes
+// unergonomic. A type that needs to be `!Send`/`!Sync` should really have an explicit
+// opt-out itself, e.g. via an `PhantomData<*mut T>` or (one day) via `impl !Send`/`impl !Sync`.
 
 impl<T> UnsafePinned<T> {
-    /// 构造一个新的 `UnsafePinned` 实例，它将包装指定的值。
+    /// Constructs a new instance of `UnsafePinned` which will wrap the specified value.
     ///
-    /// 所有通过 `&UnsafePinned<T>`、`&mut UnsafePinned<T>` 或 `Pin<&mut UnsafePinned<T>>` 对内部值
-    /// 的访问都需要 `unsafe` 代码。
+    /// All access to the inner value through `&UnsafePinned<T>` or `&mut UnsafePinned<T>` or
+    /// `Pin<&mut UnsafePinned<T>>` requires `unsafe` code.
     #[inline(always)]
     #[must_use]
     #[unstable(feature = "unsafe_pinned", issue = "125735")]
@@ -52,7 +55,7 @@ impl<T> UnsafePinned<T> {
         UnsafePinned { value: UnsafeCell::new(value) }
     }
 
-    /// 解包（unwrap）该值，消耗这个 `UnsafePinned`。
+    /// Unwraps the value, consuming this `UnsafePinned`.
     #[inline(always)]
     #[must_use]
     #[unstable(feature = "unsafe_pinned", issue = "125735")]
@@ -63,18 +66,19 @@ impl<T> UnsafePinned<T> {
 }
 
 impl<T: ?Sized> UnsafePinned<T> {
-    /// 获取对一个被固定的 `UnsafePinned` 内容的读写访问。
+    /// Get read-write access to the contents of a pinned `UnsafePinned`.
     #[inline(always)]
     #[must_use]
     #[unstable(feature = "unsafe_pinned", issue = "125735")]
     pub const fn get_mut_pinned(self: Pin<&mut Self>) -> *mut T {
-        // SAFETY: 我们并没有用 `get_unchecked_mut` 来 unpin 任何东西
+        // SAFETY: we're not using `get_unchecked_mut` to unpin anything
         unsafe { self.get_unchecked_mut() }.get_mut_unchecked()
     }
 
-    /// 获取对一个 `UnsafePinned` 内容的读写访问。
+    /// Get read-write access to the contents of an `UnsafePinned`.
     ///
-    /// 你通常应当改用 `get_mut_pinned`，以显式地追踪“由于存在别名，这块内存是‘被固定的’”这一事实。
+    /// You should usually be using `get_mut_pinned` instead to explicitly track the fact that this
+    /// memory is "pinned" due to there being aliases.
     #[inline(always)]
     #[must_use]
     #[unstable(feature = "unsafe_pinned", issue = "125735")]
@@ -82,10 +86,10 @@ impl<T: ?Sized> UnsafePinned<T> {
         ptr::from_mut(self) as *mut T
     }
 
-    /// 获取对一个共享的 `UnsafePinned` 内容的可变访问。
+    /// Get mutable access to the contents of a shared `UnsafePinned`.
     ///
-    /// 这可以被转换（cast）为任意种类的指针。在创建引用时，你必须维护别名规则；更多讨论与注意事项
-    /// 参见 [`UnsafeCell`]。
+    /// This can be cast to a pointer of any kind. When creating references, you must uphold the
+    /// aliasing rules; see [`UnsafeCell`] for more discussion and caveats.
     ///
     /// [`UnsafeCell`]: crate::cell::UnsafeCell#aliasing-rules
     ///
@@ -107,9 +111,10 @@ impl<T: ?Sized> UnsafePinned<T> {
         self.value.get()
     }
 
-    /// 获取一个指向被包装值的不可变指针。
+    /// Gets an immutable pointer to the wrapped value.
     ///
-    /// 与 [`get`] 的区别在于，此函数接受一个裸指针，这对于避免创建临时引用很有用。
+    /// The difference from [`get`] is that this function accepts a raw pointer, which is useful to
+    /// avoid the creation of temporary references.
     ///
     /// [`get`]: UnsafePinned::get
     #[inline(always)]
@@ -119,10 +124,10 @@ impl<T: ?Sized> UnsafePinned<T> {
         this as *const T as *mut T
     }
 
-    /// 获取一个指向被包装值的可变指针。
+    /// Gets a mutable pointer to the wrapped value.
     ///
-    /// 与 [`get_mut_pinned`] 和 [`get_mut_unchecked`] 的区别在于，此函数接受一个裸指针，这对于避免
-    /// 创建临时引用很有用。
+    /// The difference from [`get_mut_pinned`] and [`get_mut_unchecked`] is that this function
+    /// accepts a raw pointer, which is useful to avoid the creation of temporary references.
     ///
     /// [`get_mut_pinned`]: UnsafePinned::get_mut_pinned
     /// [`get_mut_unchecked`]: UnsafePinned::get_mut_unchecked
@@ -136,7 +141,7 @@ impl<T: ?Sized> UnsafePinned<T> {
 
 #[unstable(feature = "unsafe_pinned", issue = "125735")]
 impl<T: Default> Default for UnsafePinned<T> {
-    /// 用 T 的 `Default` 值创建一个 `UnsafePinned`。
+    /// Creates an `UnsafePinned`, with the `Default` value for T.
     fn default() -> Self {
         UnsafePinned::new(T::default())
     }
@@ -145,7 +150,7 @@ impl<T: Default> Default for UnsafePinned<T> {
 #[unstable(feature = "unsafe_pinned", issue = "125735")]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
 impl<T> const From<T> for UnsafePinned<T> {
-    /// 创建一个包含给定值的新 `UnsafePinned<T>`。
+    /// Creates a new `UnsafePinned<T>` containing the given value.
     fn from(value: T) -> Self {
         UnsafePinned::new(value)
     }
@@ -162,15 +167,16 @@ impl<T: ?Sized> fmt::Debug for UnsafePinned<T> {
 // #[unstable(feature = "unsafe_pinned", issue = "125735")]
 impl<T: CoerceUnsized<U>, U> CoerceUnsized<UnsafePinned<U>> for UnsafePinned<T> {}
 
-// 允许那些包装了 `UnsafePinned` 的类型也实现 `DispatchFromDyn`，从而成为 dyn 兼容的方法接收者
-// （也就是方法的 `self` 参数）。
-// 注意，目前 `UnsafePinned` 本身还不能作为方法接收者，因为它没有实现 Deref。
-// 换句话说：
-// `self: UnsafePinned<&Self>` 不行
-// `self: UnsafePinned<Self>` 变得可行
-// FIXME(unsafe_pinned) 这段逻辑是从 UnsafeCell 复制来的，它现在还健全吗？
+// Allow types that wrap `UnsafePinned` to also implement `DispatchFromDyn`
+// and become dyn-compatible method receivers.
+// Note that currently `UnsafePinned` itself cannot be a method receiver
+// because it does not implement Deref.
+// In other words:
+// `self: UnsafePinned<&Self>` won't work
+// `self: UnsafePinned<Self>` becomes possible
+// FIXME(unsafe_pinned) this logic is copied from UnsafeCell, is it still sound?
 #[unstable(feature = "dispatch_from_dyn", issue = "none")]
 // #[unstable(feature = "unsafe_pinned", issue = "125735")]
 impl<T: DispatchFromDyn<U>, U> DispatchFromDyn<UnsafePinned<U>> for UnsafePinned<T> {}
 
-// FIXME(unsafe_pinned): 为 UnsafePinned<T> 实现 PinCoerceUnsized？
+// FIXME(unsafe_pinned): impl PinCoerceUnsized for UnsafePinned<T>?

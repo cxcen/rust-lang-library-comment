@@ -1,25 +1,25 @@
-// 文档见 core/src/primitive_docs.rs。
+// See core/src/primitive_docs.rs for documentation.
 
 use crate::cell::CloneFromCell;
 use crate::cmp::Ordering::{self, *};
 use crate::marker::{ConstParamTy_, StructuralPartialEq};
 use crate::ops::ControlFlow::{self, Break, Continue};
 
-// 递归宏，用于为 n 元组实现函数和操作。
+// Recursive macro for implementing n-ary tuple functions and operations
 //
-// 也会为更低 arity 的元组提供实现。例如，tuple_impls!(A B C)
-// 会为 (A, B, C)、(A, B) 和 (A,) 实现所有内容。
+// Also provides implementations for tuples with lesser arity. For example, tuple_impls!(A B C)
+// will implement everything for (A, B, C), (A, B) and (A,).
 macro_rules! tuple_impls {
-    // 停止条件（1 元组）
+    // Stopping criteria (1-ary tuple)
     ($T:ident) => {
         tuple_impls!(@impl $T);
     };
-    // 递归条件（n 元组，n >= 2）
+    // Running criteria (n-ary tuple, with n >= 2)
     ($T:ident $( $U:ident )+) => {
         tuple_impls!($( $U )+);
         tuple_impls!(@impl $T $( $U )+);
     };
-    // “私有”内部实现
+    // "Private" internal implementation
     (@impl $( $T:ident )+) => {
         maybe_tuple_doc! {
             $($T)+ @
@@ -132,7 +132,7 @@ macro_rules! tuple_impls {
         maybe_tuple_doc! {
             $($T)+ @
             #[stable(feature = "array_tuple_conv", since = "1.71.0")]
-            // 由于 https://github.com/rust-lang/rust/issues/144280，目前不能实现 const From。
+            // can't do const From due to https://github.com/rust-lang/rust/issues/144280
             impl<T> From<[T; ${count($T)}]> for ($(${ignore($T)} T,)+) {
                 #[inline]
                 #[allow(non_snake_case)]
@@ -146,7 +146,7 @@ macro_rules! tuple_impls {
         maybe_tuple_doc! {
             $($T)+ @
             #[stable(feature = "array_tuple_conv", since = "1.71.0")]
-            // 由于 https://github.com/rust-lang/rust/issues/144280，目前不能实现 const From。
+            // can't do const From due to https://github.com/rust-lang/rust/issues/144280
             impl<T> From<($(${ignore($T)} T,)+)> for [T; ${count($T)}] {
                 #[inline]
                 #[allow(non_snake_case)]
@@ -159,7 +159,8 @@ macro_rules! tuple_impls {
 
         maybe_tuple_doc! {
             $($T)+ @
-            // SAFETY: 元组不会引入额外间接层，所以只要 T 可复制，元组也可复制。
+            // SAFETY: tuples introduce no additional indirection, so they can be copied whenever T
+            // can.
             #[unstable(feature = "cell_get_cloned", issue = "145329")]
             unsafe impl<$($T: CloneFromCell),+> CloneFromCell for ($($T,)+)
             {}
@@ -167,12 +168,12 @@ macro_rules! tuple_impls {
     }
 }
 
-// 如果这是 1 元组，则添加文档注释。
-// 否则完全隐藏文档。
+// If this is a unary tuple, it adds a doc comment.
+// Otherwise, it hides the docs entirely.
 macro_rules! maybe_tuple_doc {
     ($a:ident @ #[$meta:meta] $item:item) => {
         #[doc(fake_variadic)]
-        #[doc = "该 trait 为长度最多十二项的元组实现。"]
+        #[doc = "This trait is implemented for tuples up to twelve items long."]
         #[$meta]
         $item
     };
@@ -183,13 +184,13 @@ macro_rules! maybe_tuple_doc {
     };
 }
 
-// 构造一个表达式，使用方法 `$rel` 执行词典序比较。
-// 值按交错顺序排列，因此针对
-// `(a1, a2, a3) < (b1, b2, b3)` 的宏调用会是 `lexical_ord!(lt, opt_is_lt, a1, b1,
-// a2, b2, a3, b3)`（`lexical_cmp` 同理）。
+// Constructs an expression that performs a lexical ordering using method `$rel`.
+// The values are interleaved, so the macro invocation for
+// `(a1, a2, a3) < (b1, b2, b3)` would be `lexical_ord!(lt, opt_is_lt, a1, b1,
+// a2, b2, a3, b3)` (and similarly for `lexical_cmp`)
 //
-// `$chain_rel` 是来自 `PartialOrd` 的链式方法，会用于除最后一个值以外的所有值，
-// 以便为简单 primitive 产生更好的结果。
+// `$chain_rel` is the chaining method from `PartialOrd` to use for all but the
+// final value, to produce better results for simple primitives.
 macro_rules! lexical_ord {
     ($rel: ident, $chain_rel: ident, $a:expr, $b:expr, $($rest_a:expr, $rest_b:expr),+) => {{
         match PartialOrd::$chain_rel(&$a, &$b) {
@@ -198,12 +199,12 @@ macro_rules! lexical_ord {
         }
     }};
     ($rel: ident, $chain_rel: ident, $a:expr, $b:expr) => {
-        // 对最后一个元素使用具体方法
+        // Use the specific method for the last element
         PartialOrd::$rel(&$a, &$b)
     };
 }
 
-// 参数交错方式同上方 `lexical_ord`。
+// Same parameter interleaving as `lexical_ord` above
 macro_rules! lexical_chain {
     ($chain_rel: ident, $a:expr, $b:expr $(,$rest_a:expr, $rest_b:expr)*) => {{
         PartialOrd::$chain_rel(&$a, &$b)?;

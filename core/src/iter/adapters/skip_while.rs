@@ -4,9 +4,10 @@ use crate::iter::{FusedIterator, InPlaceIterable, TrustedFused};
 use crate::num::NonZero;
 use crate::ops::Try;
 
-/// 当 `predicate` 返回 `true` 时拒绝元素的迭代器。
+/// An iterator that rejects elements while `predicate` returns `true`.
 ///
-/// 该 `struct` 由 [`Iterator`] 上的 [`skip_while`] 方法创建。更多信息见该方法文档。
+/// This `struct` is created by the [`skip_while`] method on [`Iterator`]. See its
+/// documentation for more.
 ///
 /// [`skip_while`]: Iterator::skip_while
 /// [`Iterator`]: trait.Iterator.html
@@ -63,7 +64,7 @@ where
     #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         let (_, upper) = self.iter.size_hint();
-        (0, upper) // 由于 predicate 的存在，无法知道下界。
+        (0, upper) // can't know a lower bound, due to the predicate
     }
 
     #[inline]
@@ -117,7 +118,7 @@ where
 
     #[inline]
     unsafe fn as_inner(&mut self) -> &mut I::Source {
-        // SAFETY: 转发到具有相同要求的 unsafe 函数。
+        // SAFETY: unsafe function forwarding to unsafe function with the same requirements
         unsafe { SourceIter::as_inner(&mut self.iter) }
     }
 }

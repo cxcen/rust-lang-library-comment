@@ -1,4 +1,4 @@
-//! `core` I/O 功能的 trait、辅助工具和类型定义。
+//! Traits, helpers, and type definitions for core I/O functionality.
 
 mod borrowed_buf;
 

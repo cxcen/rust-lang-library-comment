@@ -1,14 +1,21 @@
-本目录存放的是那些原本会在可变指针(mutable)与不可变指针(immutable)之间
-重复出现的方法文档。
+This directory holds method documentation that otherwise
+would be duplicated across mutable and immutable pointers.
 
-注意:这里的大多数文档**并不是**其对应方法的完整文档。原因有几点:
+Note that most of the docs here are not the complete docs
+for their corresponding method. This is for a few reasons:
 
-1. 示例(Examples)对于可变/不可变指针必须有所不同,才能真正调用到正确的方法。
-2. 链接引用定义(link reference definitions)在可变/不可变指针之间也常常不同,
-   以便链接到正确的方法。
-   例如,`<*const T>::as_ref` 链接到 `<*const T>::is_null`,而
-   `<*mut T>::as_ref` 链接到 `<*mut T>::is_null`。
-3. 许多可变指针上的方法会链接到一个返回可变引用(而非共享引用)的替代版本。
+1. Examples need to be different for mutable/immutable
+   pointers, in order to actually call the correct method.
+2. Link reference definitions are frequently different
+   between mutable/immutable pointers, in order to link to
+   the correct method.
+   For example, `<*const T>::as_ref` links to
+   `<*const T>::is_null`, while `<*mut T>::as_ref` links to
+   `<*mut T>::is_null`.
+3. Many methods on mutable pointers link to an alternate
+   version that returns a mutable reference instead of
+   a shared reference.
 
-每当修改这些文件时,请务必手动检查渲染后的文档,以确保你没有意外地把某个章节
-拆散。
+Always review the rendered docs manually when making
+changes to these files to make sure you're not accidentally
+splitting up a section.

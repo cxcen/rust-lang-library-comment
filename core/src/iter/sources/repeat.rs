@@ -1,32 +1,35 @@
 use crate::iter::{FusedIterator, TrustedLen};
 use crate::num::NonZero;
 
-/// 创建一个新的迭代器，永远重复产出单个元素。
+/// Creates a new iterator that endlessly repeats a single element.
 ///
-/// `repeat()` 函数会一遍又一遍重复同一个值。
+/// The `repeat()` function repeats a single value over and over again.
 ///
-/// 像 `repeat()` 这样的无限迭代器通常会配合 [`Iterator::take()`] 等适配器使用，
-/// 从而把它们限制为有限迭代器。
+/// Infinite iterators like `repeat()` are often used with adapters like
+/// [`Iterator::take()`], in order to make them finite.
 ///
-/// 如果预先知道重复次数，考虑改用 [`repeat_n()`]，因为它更高效，也能更清楚地表达意图。
+/// If you know the number of repetitions in advance, consider using [`repeat_n()`]
+/// instead, as it is more efficient and conveys the intent more clearly.
 ///
-/// 如果只是想把 char/string 重复 `n` 次，请使用 [`str::repeat()`] 而不是本函数。
+/// Use [`str::repeat()`] instead of this function if you just want to repeat
+/// a char/string `n` times.
 ///
-/// 如果所需迭代器的元素类型没有实现 `Clone`，或者不想把被重复的元素保存在内存中，
-/// 可以改用 [`repeat_with()`] 函数。
+/// If the element type of the iterator you need does not implement `Clone`,
+/// or if you do not want to keep the repeated element in memory, you can
+/// instead use the [`repeat_with()`] function.
 ///
 /// [`repeat_n()`]: crate::iter::repeat_n
 /// [`repeat_with()`]: crate::iter::repeat_with
 /// [`str::repeat()`]: ../../std/primitive.str.html#method.repeat
 ///
-/// # 示例
+/// # Examples
 ///
-/// 基本用法:
+/// Basic usage:
 ///
 /// ```
 /// use std::iter;
 ///
-/// // 永远产出数字四:
+/// // the number four 4ever:
 /// let mut fours = iter::repeat(4);
 ///
 /// assert_eq!(Some(4), fours.next());
@@ -35,16 +38,16 @@ use crate::num::NonZero;
 /// assert_eq!(Some(4), fours.next());
 /// assert_eq!(Some(4), fours.next());
 ///
-/// // 没错，仍然是四。
+/// // yup, still four
 /// assert_eq!(Some(4), fours.next());
 /// ```
 ///
-/// 使用 [`Iterator::take()`] 限制为有限迭代:
+/// Going finite with [`Iterator::take()`]:
 ///
 /// ```
 /// use std::iter;
 ///
-/// // 上个例子里的四太多了。这里只取四个四。
+/// // that last example was too many fours. Let's only have four fours.
 /// let mut four_fours = iter::repeat(4).take(4);
 ///
 /// assert_eq!(Some(4), four_fours.next());
@@ -52,7 +55,7 @@ use crate::num::NonZero;
 /// assert_eq!(Some(4), four_fours.next());
 /// assert_eq!(Some(4), four_fours.next());
 ///
-/// // ...现在结束。
+/// // ... and now we're done
 /// assert_eq!(None, four_fours.next());
 /// ```
 #[inline]
@@ -62,9 +65,9 @@ pub fn repeat<T: Clone>(elt: T) -> Repeat<T> {
     Repeat { element: elt }
 }
 
-/// 无限重复某个元素的迭代器。
+/// An iterator that repeats an element endlessly.
 ///
-/// 该 `struct` 由 [`repeat()`] 函数创建。更多信息见该函数文档。
+/// This `struct` is created by the [`repeat()`] function. See its documentation for more.
 #[derive(Clone, Debug)]
 #[stable(feature = "rust1", since = "1.0.0")]
 pub struct Repeat<A> {
@@ -87,7 +90,7 @@ impl<A: Clone> Iterator for Repeat<A> {
 
     #[inline]
     fn advance_by(&mut self, n: usize) -> Result<(), NonZero<usize>> {
-        // 推进单元素无限迭代器是无操作。
+        // Advancing an infinite iterator of a single element is a no-op.
         let _ = n;
         Ok(())
     }
@@ -118,7 +121,7 @@ impl<A: Clone> DoubleEndedIterator for Repeat<A> {
 
     #[inline]
     fn advance_back_by(&mut self, n: usize) -> Result<(), NonZero<usize>> {
-        // 推进单元素无限迭代器是无操作。
+        // Advancing an infinite iterator of a single element is a no-op.
         let _ = n;
         Ok(())
     }

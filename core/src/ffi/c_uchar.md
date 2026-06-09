@@ -1,5 +1,5 @@
-等价于 C 的 `unsigned char` 类型。
+Equivalent to C's `unsigned char` type.
 
-本类型始终是 [`u8`],保留它是为了完整覆盖 C ABI 类型。它定义为与 C [`char`] 大小相同的无符号整数。
+This type will always be [`u8`], but is included for completeness. It is defined as being an unsigned integer the same size as a C [`char`].
 
 [`char`]: c_char

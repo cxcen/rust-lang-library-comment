@@ -1,6 +1,6 @@
-等价于 C 的 `double` 类型。
+Equivalent to C's `double` type.
 
-本类型几乎总是 [`f64`],而 [`f64`] 在 Rust 中保证为 [IEEE 754 double-precision float]。不过从 C 标准角度看,它只要求是精度至少不低于 [`float`] 的浮点数;在某些平台上它可能是 `f32`,也可能是完全不同于 IEEE-754 的表示。
+This type will almost always be [`f64`], which is guaranteed to be an [IEEE 754 double-precision float] in Rust. That said, the standard technically only guarantees that it be a floating-point number with at least the precision of a [`float`], and it may be `f32` or something entirely different from the IEEE-754 standard.
 
 [IEEE 754 double-precision float]: https://en.wikipedia.org/wiki/IEEE_754
 [`float`]: c_float

@@ -1,16 +1,16 @@
-/// 允许把一个值以独占(exclusive)方式重新借用(reborrow),创建该值的一份副本,
-/// 并在这份副本的生命周期内禁止源值进行读写。
+/// Allows value to be reborrowed as exclusive, creating a copy of the value
+/// that disables the source for reads and writes for the lifetime of the copy.
 #[lang = "reborrow"]
 #[unstable(feature = "reborrow", issue = "145612")]
 pub trait Reborrow {
-    // 空。
+    // Empty.
 }
 
-/// 允许把一个可重新借用的值以共享(shared)方式重新借用,创建一份副本,并在这份
-/// 副本的生命周期内禁止源值进行写入。
+/// Allows reborrowable value to be reborrowed as shared, creating a copy
+/// that disables the source for writes for the lifetime of the copy.
 #[lang = "coerce_shared"]
 #[unstable(feature = "reborrow", issue = "145612")]
 pub trait CoerceShared: Reborrow {
-    /// 该值以共享方式重新借用之后的类型。
+    /// The type of this value when reborrowed as shared.
     type Target: Copy;
 }

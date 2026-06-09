@@ -1,62 +1,49 @@
-//! 编译器 intrinsic（编译器内建操作）。
+//! Compiler intrinsics.
 //!
-//! 本模块中的函数是 `core` 的实现细节，不应在标准库之外使用。我们通常通过稳定的封装函数来提供
-//! 对 intrinsic 的访问，请改用那些封装。
+//! The functions in this module are implementation details of `core` and should
+//! not be used outside of the standard library. We generally provide access to
+//! intrinsics via stable wrapper functions. Use these instead.
 //!
-//! 设计背景：intrinsic 是编译器内建操作，是 std/core 与编译器（rustc/LLVM）之间的**契约层**。
-//! 它们大多不稳定（unstable），稳定的对外 API 由上层封装后才暴露给用户（例如 `u32::wrapping_add`、
-//! `ptr::copy`）。许多 intrinsic 是 `unsafe`，带有严格的前置条件，**误用直接导致 UB（未定义行为）**；
-//! 而且正因为它们是 intrinsic，编译器会基于这些前置条件做激进优化，一旦违反，后果往往更加隐蔽。
+//! These are the imports making intrinsics available to Rust code. The actual implementations live in the compiler.
+//! Some of these intrinsics are lowered to MIR in <https://github.com/rust-lang/rust/blob/HEAD/compiler/rustc_mir_transform/src/lower_intrinsics.rs>.
+//! The remaining intrinsics are implemented for the LLVM backend in <https://github.com/rust-lang/rust/blob/HEAD/compiler/rustc_codegen_ssa/src/mir/intrinsic.rs>
+//! and <https://github.com/rust-lang/rust/blob/HEAD/compiler/rustc_codegen_llvm/src/intrinsic.rs>,
+//! and for const evaluation in <https://github.com/rust-lang/rust/blob/HEAD/compiler/rustc_const_eval/src/interpret/intrinsics.rs>.
 //!
-//! 这里只是把 intrinsic 声明（import）出来供 Rust 代码调用，真正的实现位于编译器内部。
-//! 其中一部分 intrinsic 会被降级（lower）为 MIR，见
-//! <https://github.com/rust-lang/rust/blob/HEAD/compiler/rustc_mir_transform/src/lower_intrinsics.rs>。
-//! 其余的 intrinsic，针对 LLVM 后端的实现见
-//! <https://github.com/rust-lang/rust/blob/HEAD/compiler/rustc_codegen_ssa/src/mir/intrinsic.rs>
-//! 与 <https://github.com/rust-lang/rust/blob/HEAD/compiler/rustc_codegen_llvm/src/intrinsic.rs>，
-//! 针对 const 求值（编译期求值）的实现见
-//! <https://github.com/rust-lang/rust/blob/HEAD/compiler/rustc_const_eval/src/interpret/intrinsics.rs>。
+//! # Const intrinsics
 //!
-//! # 编译期 intrinsic（const intrinsic）
+//! In order to make an intrinsic unstable usable at compile-time, copy the implementation from
+//! <https://github.com/rust-lang/miri/blob/master/src/intrinsics> to
+//! <https://github.com/rust-lang/rust/blob/HEAD/compiler/rustc_const_eval/src/interpret/intrinsics.rs>
+//! and make the intrinsic declaration below a `const fn`. This should be done in coordination with
+//! wg-const-eval.
 //!
-//! 想让一个不稳定的 intrinsic 可在编译期使用，需要把实现从
-//! <https://github.com/rust-lang/miri/blob/master/src/intrinsics> 拷贝到
-//! <https://github.com/rust-lang/rust/blob/HEAD/compiler/rustc_const_eval/src/interpret/intrinsics.rs>，
-//! 并把下面的 intrinsic 声明改成 `const fn`。这一步应当与 wg-const-eval 工作组协调进行。
+//! If an intrinsic is supposed to be used from a `const fn` with a `rustc_const_stable` attribute,
+//! `#[rustc_intrinsic_const_stable_indirect]` needs to be added to the intrinsic. Such a change requires
+//! T-lang approval, because it may bake a feature into the language that cannot be replicated in
+//! user code without compiler support.
 //!
-//! 如果某个 intrinsic 打算被一个带 `rustc_const_stable` 属性的 `const fn` 使用，
-//! 则需要给该 intrinsic 加上 `#[rustc_intrinsic_const_stable_indirect]`。这类改动需要 T-lang 团队批准，
-//! 因为它可能把一项特性固化进语言中，而用户代码在没有编译器支持的情况下无法复刻该特性。
+//! # Volatiles
 //!
-//! # 易变访问（volatile）
+//! The volatile intrinsics provide operations intended to act on I/O
+//! memory, which are guaranteed to not be reordered by the compiler
+//! across other volatile intrinsics. See [`read_volatile`][ptr::read_volatile]
+//! and [`write_volatile`][ptr::write_volatile].
 //!
-//! volatile 系列 intrinsic 提供的操作意在作用于 I/O 内存（MMIO）或其他需要“每次访问都真实发生”的位置。
-//! 它们把一次读写标记为可被外部观察的副作用，因而编译器不能把它删除，也不能把它随意跨过其他外部可观察事件重排。
-//! 参见 [`read_volatile`][ptr::read_volatile] 与 [`write_volatile`][ptr::write_volatile]。
+//! # Atomics
 //!
-//! volatile 只约束编译器优化，不改变 Rust 的指针有效性规则：指针仍必须有正确 provenance、指向足够大的内存，
-//! 对齐要求也仍由具体 intrinsic 决定。它也不保证原子性，不建立 happens-before 关系，不能用来修复数据竞争；
-//! 需要跨线程同步时应使用原子类型或锁。
+//! The atomic intrinsics provide common atomic operations on machine
+//! words, with multiple possible memory orderings. See the
+//! [atomic types][atomic] docs for details.
 //!
-//! # 原子操作（atomics）
+//! # Unwinding
 //!
-//! 原子系列 intrinsic 提供针对机器字的常见原子操作，并支持多种可能的内存序（memory ordering）。
-//! 这些 intrinsic 是稳定原子类型方法的底层入口，编译器会把内存序常量直接降级到目标后端的原子指令或栅栏。
-//! 调用方必须传入适合该操作的内存序：例如 load 不能使用 `Release`/`AcqRel`，store 不能使用 `Acquire`/`AcqRel`，
-//! `compare_exchange` 的失败内存序不能是 `Release`/`AcqRel`，而栅栏也只能使用有意义的同步内存序。
+//! Rust intrinsics may, in general, unwind. If an intrinsic can never unwind, add the
+//! `#[rustc_nounwind]` attribute so that the compiler can make use of this fact.
 //!
-//! 与稳定的原子类型不同，这里的函数直接接收裸指针。调用方必须保证该指针非空、正确对齐、指向已初始化且对
-//! `T` 大小有效的内存，并且目标平台支持该宽度的原子操作。对同一内存位置混用非原子访问和原子访问时，
-//! 仍必须遵守 Rust/C++20 风格内存模型的数据竞争边界；`Relaxed` 只保证单个原子位置上的原子性，
-//! 不提供跨线程的发布/获取同步。详见[原子类型][atomic]的文档。
-//!
-//! # 栈展开（unwinding）
-//!
-//! Rust 的 intrinsic 一般而言是可以栈展开（unwind）的。如果某个 intrinsic 永远不会展开，
-//! 就给它加上 `#[rustc_nounwind]` 属性，以便编译器利用这一事实。
-//!
-//! 不过，即便对那些可能展开的 intrinsic，rustc 也会假定 Rust 的 intrinsic 永远不会发起一次
-//! 外部（非 Rust）的展开；因此对于 panic=abort，我们总可以假定这些 intrinsic 不会展开。
+//! However, even for intrinsics that may unwind, rustc assumes that a Rust intrinsics will never
+//! initiate a foreign (non-Rust) unwind, and thus for panic=abort we can always assume that these
+//! intrinsics cannot unwind.
 
 #![unstable(
     feature = "core_intrinsics",
@@ -77,44 +64,34 @@ pub mod gpu;
 pub mod mir;
 pub mod simd;
 
-// 这些导入用于简化文档内的链接（intra-doc links）
+// These imports are used for simplifying intra-doc links
 #[allow(unused_imports)]
 #[cfg(all(target_has_atomic = "8", target_has_atomic = "32", target_has_atomic = "ptr"))]
 use crate::sync::atomic::{self, AtomicBool, AtomicI32, AtomicIsize, AtomicU32, Ordering};
 
-/// 用作 intrinsic 内存序参数的类型。它与 `atomic::Ordering` 是两个不同的类型，
-/// 这样我们就能把它标成 `ConstParamTy` 并固定这里使用的取值，而不必担心把这些细节泄漏到 stable 代码中。
+/// A type for atomic ordering parameters for intrinsics. This is a separate type from
+/// `atomic::Ordering` so that we can make it `ConstParamTy` and fix the values used here without a
+/// risk of leaking that to stable code.
 #[derive(Debug, ConstParamTy, PartialEq, Eq)]
 pub enum AtomicOrdering {
-    // 这些取值必须与编译器中 `rustc_middle/src/ty/consts/int.rs` 里定义的 `AtomicOrdering` 保持一致！
-    /// `Relaxed` 只保证本次操作本身是原子的，不建立跨线程的同步关系。
+    // These values must match the compiler's `AtomicOrdering` defined in
+    // `rustc_middle/src/ty/consts/int.rs`!
     Relaxed = 0,
-    /// `Release` 用于发布当前线程此前的写入，通常只对 store、读改写操作或 fence 有意义。
     Release = 1,
-    /// `Acquire` 用于获取另一线程发布的写入，通常只对 load、读改写操作或 fence 有意义。
     Acquire = 2,
-    /// `AcqRel` 同时具备 acquire 与 release 语义，适用于成功的读改写操作或 fence。
     AcqRel = 3,
-    /// `SeqCst` 在 acquire/release 之外还参与全局顺序，是最强也通常最昂贵的内存序。
     SeqCst = 4,
 }
 
-// 注意：这些 intrinsic 之所以接收裸指针，是因为它们会改写可能存在别名（aliased）的内存，
-// 而这对 `&` 或 `&mut` 来说都是不合法的。调用方必须自行维护裸指针的有效性、对齐、初始化状态
-// 以及内存序约束；这些要求与稳定原子类型方法相同，只是这里没有类型系统替你检查。
+// N.B., these intrinsics take raw pointers because they mutate aliased
+// memory, which is not valid for either `&` or `&mut`.
 
-/// 当“当前值”与给定的 `old` 值相同时，才存入新值（比较并交换，compare-and-exchange）。
-/// `T` 必须是整数或指针类型。
+/// Stores a value if the current value is the same as the `old` value.
+/// `T` must be an integer or pointer type.
 ///
-/// 本 intrinsic 的稳定版本可通过[原子类型][`atomic`]上的 `compare_exchange` 方法使用，
-/// 例如 [`AtomicBool::compare_exchange`]。
-///
-/// # 安全性（Safety）
-///
-/// `dst` 必须非空、按 `T` 的原子访问要求正确对齐，并指向一块对 `T` 大小有效且已初始化的内存。
-/// 该内存位置必须能用目标平台支持的原子宽度访问。`ORD_SUCC` 与 `ORD_FAIL` 必须满足稳定
-/// `compare_exchange` 的内存序规则：成功内存序描述实际读改写操作，失败内存序只描述加载，
-/// 因而失败内存序只能是 `SeqCst`、`Acquire` 或 `Relaxed`，不能是 `Release` 或 `AcqRel`。
+/// The stabilized version of this intrinsic is available on the
+/// [`atomic`] types via the `compare_exchange` method.
+/// For example, [`AtomicBool::compare_exchange`].
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn atomic_cxchg<
@@ -127,17 +104,12 @@ pub unsafe fn atomic_cxchg<
     src: T,
 ) -> (T, bool);
 
-/// 当“当前值”与给定的 `old` 值相同时，才存入新值。
-/// `T` 必须是整数或指针类型。该比较可能伪失败（spuriously fail，即在值相等时也可能返回失败）。
+/// Stores a value if the current value is the same as the `old` value.
+/// `T` must be an integer or pointer type. The comparison may spuriously fail.
 ///
-/// 本 intrinsic 的稳定版本可通过[原子类型][`atomic`]上的 `compare_exchange_weak` 方法使用，
-/// 例如 [`AtomicBool::compare_exchange_weak`]。
-///
-/// # 安全性（Safety）
-///
-/// `dst` 必须满足与 [`atomic_cxchg`] 相同的裸指针、初始化、对齐和内存序要求。
-/// 额外需要注意：weak 版本允许伪失败，因此调用方不得把“失败”解释为值一定不同；
-/// 需要循环重试的算法必须把这种伪失败纳入内存序设计。
+/// The stabilized version of this intrinsic is available on the
+/// [`atomic`] types via the `compare_exchange_weak` method.
+/// For example, [`AtomicBool::compare_exchange_weak`].
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn atomic_cxchgweak<
@@ -150,345 +122,294 @@ pub unsafe fn atomic_cxchgweak<
     _src: T,
 ) -> (T, bool);
 
-/// 加载指针处的当前值。
-/// `T` 必须是整数或指针类型。
+/// Loads the current value of the pointer.
+/// `T` must be an integer or pointer type.
 ///
-/// 本 intrinsic 的稳定版本可通过[原子类型][`atomic`]上的 `load` 方法使用，例如 [`AtomicBool::load`]。
-///
-/// # 安全性（Safety）
-///
-/// `src` 必须非空、正确对齐，并指向一块对 `T` 大小有效且已初始化的内存；
-/// 该内存位置必须能被目标平台以原子方式加载。`ORD` 是加载内存序，不能是 `Release` 或 `AcqRel`。
+/// The stabilized version of this intrinsic is available on the
+/// [`atomic`] types via the `load` method. For example, [`AtomicBool::load`].
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn atomic_load<T: Copy, const ORD: AtomicOrdering>(src: *const T) -> T;
 
-/// 把值存入指定的内存位置。
-/// `T` 必须是整数或指针类型。
+/// Stores the value at the specified memory location.
+/// `T` must be an integer or pointer type.
 ///
-/// 本 intrinsic 的稳定版本可通过[原子类型][`atomic`]上的 `store` 方法使用，例如 [`AtomicBool::store`]。
-///
-/// # 安全性（Safety）
-///
-/// `dst` 必须非空、正确对齐，并指向一块对 `T` 大小有效且可写的内存；
-/// 该内存位置必须能被目标平台以原子方式存储。`ORD` 是存储内存序，不能是 `Acquire` 或 `AcqRel`。
+/// The stabilized version of this intrinsic is available on the
+/// [`atomic`] types via the `store` method. For example, [`AtomicBool::store`].
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn atomic_store<T: Copy, const ORD: AtomicOrdering>(dst: *mut T, val: T);
 
-/// 把值存入指定的内存位置，并返回旧值（原子交换，swap）。
-/// `T` 必须是整数或指针类型。
+/// Stores the value at the specified memory location, returning the old value.
+/// `T` must be an integer or pointer type.
 ///
-/// 本 intrinsic 的稳定版本可通过[原子类型][`atomic`]上的 `swap` 方法使用，例如 [`AtomicBool::swap`]。
-///
-/// # 安全性（Safety）
-///
-/// `dst` 必须满足原子读改写操作的要求：非空、正确对齐、指向对 `T` 大小有效且已初始化的可写内存，
-/// 并且不能与非原子访问形成数据竞争。`ORD` 的含义与稳定 `swap` 相同；例如 `Acquire` 只获取加载部分，
-/// `Release` 只发布存储部分。
+/// The stabilized version of this intrinsic is available on the
+/// [`atomic`] types via the `swap` method. For example, [`AtomicBool::swap`].
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn atomic_xchg<T: Copy, const ORD: AtomicOrdering>(dst: *mut T, src: T) -> T;
 
-/// 在当前值上做加法，并返回加法之前的旧值。
-/// `T` 必须是整数或指针类型。
-/// 若 `T` 是整数类型，则 `U` 必须与 `T` 相同；若 `T` 是指针类型，则 `U` 必须是 `usize`。
+/// Adds to the current value, returning the previous value.
+/// `T` must be an integer or pointer type.
+/// `U` must be the same as `T` if that is an integer type, or `usize` if `T` is a pointer type.
 ///
-/// 本 intrinsic 的稳定版本可通过[原子类型][`atomic`]上的 `fetch_add` 方法使用，例如 [`AtomicIsize::fetch_add`]。
-///
-/// # 安全性（Safety）
-///
-/// `dst` 必须满足原子读改写操作的裸指针要求：非空、正确对齐、指向有效且已初始化的可写内存。
-/// `ORD` 的发布/获取语义只约束这次 fetch-add 与其他原子操作之间的同步；它不会放宽整数或指针类型约束。
+/// The stabilized version of this intrinsic is available on the
+/// [`atomic`] types via the `fetch_add` method. For example, [`AtomicIsize::fetch_add`].
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn atomic_xadd<T: Copy, U: Copy, const ORD: AtomicOrdering>(dst: *mut T, src: U) -> T;
 
-/// 在当前值上做减法，并返回减法之前的旧值。
-/// `T` 必须是整数或指针类型。
-/// 若 `T` 是整数类型，则 `U` 必须与 `T` 相同；若 `T` 是指针类型，则 `U` 必须是 `usize`。
+/// Subtract from the current value, returning the previous value.
+/// `T` must be an integer or pointer type.
+/// `U` must be the same as `T` if that is an integer type, or `usize` if `T` is a pointer type.
 ///
-/// 本 intrinsic 的稳定版本可通过[原子类型][`atomic`]上的 `fetch_sub` 方法使用，例如 [`AtomicIsize::fetch_sub`]。
-///
-/// # 安全性（Safety）
-///
-/// `dst` 必须满足原子读改写操作的裸指针要求：非空、正确对齐、指向有效且已初始化的可写内存。
-/// `ORD` 的语义与稳定 `fetch_sub` 相同，不能被用来掩盖同一位置上的非原子数据竞争。
+/// The stabilized version of this intrinsic is available on the
+/// [`atomic`] types via the `fetch_sub` method. For example, [`AtomicIsize::fetch_sub`].
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn atomic_xsub<T: Copy, U: Copy, const ORD: AtomicOrdering>(dst: *mut T, src: U) -> T;
 
-/// 与当前值做按位与，并返回操作之前的旧值。
-/// `T` 必须是整数或指针类型。
-/// 若 `T` 是整数类型，则 `U` 必须与 `T` 相同；若 `T` 是指针类型，则 `U` 必须是 `usize`。
+/// Bitwise and with the current value, returning the previous value.
+/// `T` must be an integer or pointer type.
+/// `U` must be the same as `T` if that is an integer type, or `usize` if `T` is a pointer type.
 ///
-/// 本 intrinsic 的稳定版本可通过[原子类型][`atomic`]上的 `fetch_and` 方法使用，例如 [`AtomicBool::fetch_and`]。
-///
-/// # 安全性（Safety）
-///
-/// `dst` 必须满足原子读改写操作的裸指针要求：非空、正确对齐、指向有效且已初始化的可写内存。
-/// `ORD` 只描述本次按位与操作参与同步的方式，不改变 `T` 与 `U` 的类型匹配要求。
+/// The stabilized version of this intrinsic is available on the
+/// [`atomic`] types via the `fetch_and` method. For example, [`AtomicBool::fetch_and`].
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn atomic_and<T: Copy, U: Copy, const ORD: AtomicOrdering>(dst: *mut T, src: U) -> T;
 
-/// 与当前值做按位与非（nand），并返回操作之前的旧值。
-/// `T` 必须是整数或指针类型。
-/// 若 `T` 是整数类型，则 `U` 必须与 `T` 相同；若 `T` 是指针类型，则 `U` 必须是 `usize`。
+/// Bitwise nand with the current value, returning the previous value.
+/// `T` must be an integer or pointer type.
+/// `U` must be the same as `T` if that is an integer type, or `usize` if `T` is a pointer type.
 ///
-/// 本 intrinsic 的稳定版本可通过 [`AtomicBool`] 类型上的 `fetch_nand` 方法使用，例如 [`AtomicBool::fetch_nand`]。
-///
-/// # 安全性（Safety）
-///
-/// `dst` 必须满足原子读改写操作的裸指针要求：非空、正确对齐、指向有效且已初始化的可写内存。
-/// `ORD` 的含义与稳定 `fetch_nand` 相同，发布/获取语义只发生在这一个原子位置上。
+/// The stabilized version of this intrinsic is available on the
+/// [`AtomicBool`] type via the `fetch_nand` method. For example, [`AtomicBool::fetch_nand`].
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn atomic_nand<T: Copy, U: Copy, const ORD: AtomicOrdering>(dst: *mut T, src: U) -> T;
 
-/// 与当前值做按位或，并返回操作之前的旧值。
-/// `T` 必须是整数或指针类型。
-/// 若 `T` 是整数类型，则 `U` 必须与 `T` 相同；若 `T` 是指针类型，则 `U` 必须是 `usize`。
+/// Bitwise or with the current value, returning the previous value.
+/// `T` must be an integer or pointer type.
+/// `U` must be the same as `T` if that is an integer type, or `usize` if `T` is a pointer type.
 ///
-/// 本 intrinsic 的稳定版本可通过[原子类型][`atomic`]上的 `fetch_or` 方法使用，例如 [`AtomicBool::fetch_or`]。
-///
-/// # 安全性（Safety）
-///
-/// `dst` 必须满足原子读改写操作的裸指针要求：非空、正确对齐、指向有效且已初始化的可写内存。
-/// 若需要跨线程传递数据，调用方必须选择能建立对应 happens-before 关系的 `ORD`。
+/// The stabilized version of this intrinsic is available on the
+/// [`atomic`] types via the `fetch_or` method. For example, [`AtomicBool::fetch_or`].
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn atomic_or<T: Copy, U: Copy, const ORD: AtomicOrdering>(dst: *mut T, src: U) -> T;
 
-/// 与当前值做按位异或，并返回操作之前的旧值。
-/// `T` 必须是整数或指针类型。
-/// 若 `T` 是整数类型，则 `U` 必须与 `T` 相同；若 `T` 是指针类型，则 `U` 必须是 `usize`。
+/// Bitwise xor with the current value, returning the previous value.
+/// `T` must be an integer or pointer type.
+/// `U` must be the same as `T` if that is an integer type, or `usize` if `T` is a pointer type.
 ///
-/// 本 intrinsic 的稳定版本可通过[原子类型][`atomic`]上的 `fetch_xor` 方法使用，例如 [`AtomicBool::fetch_xor`]。
-///
-/// # 安全性（Safety）
-///
-/// `dst` 必须满足原子读改写操作的裸指针要求：非空、正确对齐、指向有效且已初始化的可写内存。
-/// `ORD` 只影响同步语义，不影响按位异或本身的数值规则。
+/// The stabilized version of this intrinsic is available on the
+/// [`atomic`] types via the `fetch_xor` method. For example, [`AtomicBool::fetch_xor`].
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn atomic_xor<T: Copy, U: Copy, const ORD: AtomicOrdering>(dst: *mut T, src: U) -> T;
 
-/// 用有符号比较取当前值与给定值的较大者（并写回），返回旧值。
-/// `T` 必须是有符号整数类型。
+/// Maximum with the current value using a signed comparison.
+/// `T` must be a signed integer type.
 ///
-/// 本 intrinsic 的稳定版本可通过有符号[原子整数类型][`atomic`]上的 `fetch_max` 方法使用，例如 [`AtomicI32::fetch_max`]。
-///
-/// # 安全性（Safety）
-///
-/// `dst` 必须满足原子读改写操作的裸指针要求：非空、正确对齐、指向有效且已初始化的可写内存。
-/// `T` 必须是目标平台支持原子访问的有符号整数类型，`ORD` 与稳定 `fetch_max` 的语义一致。
+/// The stabilized version of this intrinsic is available on the
+/// [`atomic`] signed integer types via the `fetch_max` method. For example, [`AtomicI32::fetch_max`].
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn atomic_max<T: Copy, const ORD: AtomicOrdering>(dst: *mut T, src: T) -> T;
 
-/// 用有符号比较取当前值与给定值的较小者（并写回），返回旧值。
-/// `T` 必须是有符号整数类型。
+/// Minimum with the current value using a signed comparison.
+/// `T` must be a signed integer type.
 ///
-/// 本 intrinsic 的稳定版本可通过有符号[原子整数类型][`atomic`]上的 `fetch_min` 方法使用，例如 [`AtomicI32::fetch_min`]。
-///
-/// # 安全性（Safety）
-///
-/// `dst` 必须满足原子读改写操作的裸指针要求：非空、正确对齐、指向有效且已初始化的可写内存。
-/// `T` 必须是目标平台支持原子访问的有符号整数类型，`ORD` 与稳定 `fetch_min` 的语义一致。
+/// The stabilized version of this intrinsic is available on the
+/// [`atomic`] signed integer types via the `fetch_min` method. For example, [`AtomicI32::fetch_min`].
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn atomic_min<T: Copy, const ORD: AtomicOrdering>(dst: *mut T, src: T) -> T;
 
-/// 用无符号比较取当前值与给定值的较小者（并写回），返回旧值。
-/// `T` 必须是无符号整数类型。
+/// Minimum with the current value using an unsigned comparison.
+/// `T` must be an unsigned integer type.
 ///
-/// 本 intrinsic 的稳定版本可通过无符号[原子整数类型][`atomic`]上的 `fetch_min` 方法使用，例如 [`AtomicU32::fetch_min`]。
-///
-/// # 安全性（Safety）
-///
-/// `dst` 必须满足原子读改写操作的裸指针要求：非空、正确对齐、指向有效且已初始化的可写内存。
-/// `T` 必须是目标平台支持原子访问的无符号整数类型，`ORD` 与稳定 `fetch_min` 的语义一致。
+/// The stabilized version of this intrinsic is available on the
+/// [`atomic`] unsigned integer types via the `fetch_min` method. For example, [`AtomicU32::fetch_min`].
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn atomic_umin<T: Copy, const ORD: AtomicOrdering>(dst: *mut T, src: T) -> T;
 
-/// 用无符号比较取当前值与给定值的较大者（并写回），返回旧值。
-/// `T` 必须是无符号整数类型。
+/// Maximum with the current value using an unsigned comparison.
+/// `T` must be an unsigned integer type.
 ///
-/// 本 intrinsic 的稳定版本可通过无符号[原子整数类型][`atomic`]上的 `fetch_max` 方法使用，例如 [`AtomicU32::fetch_max`]。
-///
-/// # 安全性（Safety）
-///
-/// `dst` 必须满足原子读改写操作的裸指针要求：非空、正确对齐、指向有效且已初始化的可写内存。
-/// `T` 必须是目标平台支持原子访问的无符号整数类型，`ORD` 与稳定 `fetch_max` 的语义一致。
+/// The stabilized version of this intrinsic is available on the
+/// [`atomic`] unsigned integer types via the `fetch_max` method. For example, [`AtomicU32::fetch_max`].
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn atomic_umax<T: Copy, const ORD: AtomicOrdering>(dst: *mut T, src: T) -> T;
 
-/// 一道原子栅栏（fence）。
+/// An atomic fence.
 ///
-/// 本 intrinsic 的稳定版本是 [`atomic::fence`]。
-///
-/// # 安全性（Safety）
-///
-/// `ORD` 必须是对栅栏有意义的同步内存序。栅栏不访问某个具体指针，但它会约束本线程前后原子操作
-/// 与其他线程之间的可见性；如果周围操作没有使用匹配的 release/acquire 关系，栅栏本身不能创造同步。
+/// The stabilized version of this intrinsic is available in
+/// [`atomic::fence`].
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn atomic_fence<const ORD: AtomicOrdering>();
 
-/// 一道仅用于单线程内部同步的原子栅栏（编译器栅栏）。
+/// An atomic fence for synchronization within a single thread.
 ///
-/// 本 intrinsic 的稳定版本是 [`atomic::compiler_fence`]。
-///
-/// # 安全性（Safety）
-///
-/// `ORD` 必须是对编译器栅栏有意义的同步内存序。它只限制编译器重排，不要求硬件发出 CPU 栅栏；
-/// 因此它适合与信号处理器、内联汇编或设备协议配合使用，不能单独替代跨线程原子同步。
+/// The stabilized version of this intrinsic is available in
+/// [`atomic::compiler_fence`].
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn atomic_singlethreadfence<const ORD: AtomicOrdering>();
 
-/// `prefetch`（预取）intrinsic 是给代码生成器的一个提示：若目标支持，就为给定地址插入一条预取指令；
-/// 否则它是一个空操作（no-op）。
-/// 预取不影响程序的行为，但可能改变其性能特征。
+/// The `prefetch` intrinsic is a hint to the code generator to insert a prefetch instruction
+/// for the given address if supported; otherwise, it is a no-op.
+/// Prefetches have no effect on the behavior of the program but can change its performance
+/// characteristics.
 ///
-/// `LOCALITY` 参数是一个时间局部性（temporal locality）说明符，取值范围从 (0) — 无局部性，
-/// 到 (3) — 极强局部性、应保留在缓存中。
+/// The `LOCALITY` argument is a temporal locality specifier ranging from (0) - no locality,
+/// to (3) - extremely local keep in cache.
 ///
-/// 本 intrinsic 没有稳定的对应物。
+/// This intrinsic does not have a stable counterpart.
 #[rustc_intrinsic]
 #[rustc_nounwind]
 #[miri::intrinsic_fallback_is_spec]
 pub const fn prefetch_read_data<T, const LOCALITY: i32>(data: *const T) {
-    // 除非被后端覆盖实现，否则本操作是一个空操作（no-op）。
+    // This operation is a no-op, unless it is overridden by the backend.
     let _ = data;
 }
 
-/// `prefetch`（预取）intrinsic 是给代码生成器的一个提示：若目标支持，就为给定地址插入一条预取指令；
-/// 否则它是一个空操作（no-op）。
-/// 预取不影响程序的行为，但可能改变其性能特征。
+/// The `prefetch` intrinsic is a hint to the code generator to insert a prefetch instruction
+/// for the given address if supported; otherwise, it is a no-op.
+/// Prefetches have no effect on the behavior of the program but can change its performance
+/// characteristics.
 ///
-/// `LOCALITY` 参数是一个时间局部性（temporal locality）说明符，取值范围从 (0) — 无局部性，
-/// 到 (3) — 极强局部性、应保留在缓存中。
+/// The `LOCALITY` argument is a temporal locality specifier ranging from (0) - no locality,
+/// to (3) - extremely local keep in cache.
 ///
-/// 本 intrinsic 没有稳定的对应物。
+/// This intrinsic does not have a stable counterpart.
 #[rustc_intrinsic]
 #[rustc_nounwind]
 #[miri::intrinsic_fallback_is_spec]
 pub const fn prefetch_write_data<T, const LOCALITY: i32>(data: *const T) {
-    // 除非被后端覆盖实现，否则本操作是一个空操作（no-op）。
+    // This operation is a no-op, unless it is overridden by the backend.
     let _ = data;
 }
 
-/// `prefetch`（预取）intrinsic 是给代码生成器的一个提示：若目标支持，就为给定地址插入一条预取指令；
-/// 否则它是一个空操作（no-op）。
-/// 预取不影响程序的行为，但可能改变其性能特征。
+/// The `prefetch` intrinsic is a hint to the code generator to insert a prefetch instruction
+/// for the given address if supported; otherwise, it is a no-op.
+/// Prefetches have no effect on the behavior of the program but can change its performance
+/// characteristics.
 ///
-/// `LOCALITY` 参数是一个时间局部性（temporal locality）说明符，取值范围从 (0) — 无局部性，
-/// 到 (3) — 极强局部性、应保留在缓存中。
+/// The `LOCALITY` argument is a temporal locality specifier ranging from (0) - no locality,
+/// to (3) - extremely local keep in cache.
 ///
-/// 本 intrinsic 没有稳定的对应物。
+/// This intrinsic does not have a stable counterpart.
 #[rustc_intrinsic]
 #[rustc_nounwind]
 #[miri::intrinsic_fallback_is_spec]
 pub const fn prefetch_read_instruction<T, const LOCALITY: i32>(data: *const T) {
-    // 除非被后端覆盖实现，否则本操作是一个空操作（no-op）。
+    // This operation is a no-op, unless it is overridden by the backend.
     let _ = data;
 }
 
-/// `prefetch`（预取）intrinsic 是给代码生成器的一个提示：若目标支持，就为给定地址插入一条预取指令；
-/// 否则它是一个空操作（no-op）。
-/// 预取不影响程序的行为，但可能改变其性能特征。
+/// The `prefetch` intrinsic is a hint to the code generator to insert a prefetch instruction
+/// for the given address if supported; otherwise, it is a no-op.
+/// Prefetches have no effect on the behavior of the program but can change its performance
+/// characteristics.
 ///
-/// `LOCALITY` 参数是一个时间局部性（temporal locality）说明符，取值范围从 (0) — 无局部性，
-/// 到 (3) — 极强局部性、应保留在缓存中。
+/// The `LOCALITY` argument is a temporal locality specifier ranging from (0) - no locality,
+/// to (3) - extremely local keep in cache.
 ///
-/// 本 intrinsic 没有稳定的对应物。
+/// This intrinsic does not have a stable counterpart.
 #[rustc_intrinsic]
 #[rustc_nounwind]
 #[miri::intrinsic_fallback_is_spec]
 pub const fn prefetch_write_instruction<T, const LOCALITY: i32>(data: *const T) {
-    // 除非被后端覆盖实现，否则本操作是一个空操作（no-op）。
+    // This operation is a no-op, unless it is overridden by the backend.
     let _ = data;
 }
 
-/// 执行一次断点陷阱（breakpoint trap），供调试器检查。
+/// Executes a breakpoint trap, for inspection by a debugger.
 ///
-/// 本 intrinsic 没有稳定的对应物。
+/// This intrinsic does not have a stable counterpart.
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub fn breakpoint();
 
-/// 一个“魔法” intrinsic，其含义来自附加在函数上的各种属性。
+/// Magic intrinsic that derives its meaning from attributes
+/// attached to the function.
 ///
-/// 例如，数据流分析（dataflow）用它来注入静态断言，这样 `rustc_peek(potentially_uninitialized)`
-/// 就会真正地复核：在控制流的那个点上，数据流分析确实算出了该值是未初始化的。
+/// For example, dataflow uses this to inject static assertions so
+/// that `rustc_peek(potentially_uninitialized)` would actually
+/// double-check that dataflow did indeed compute that it is
+/// uninitialized at that point in the control flow.
 ///
-/// 本 intrinsic 不应在编译器之外使用。
+/// This intrinsic should not be used outside of the compiler.
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub fn rustc_peek<T>(_: T) -> T;
 
-/// 中止（abort）进程的执行。
+/// Aborts the execution of the process.
 ///
-/// 注意，与大多数 intrinsic 不同，调用它是安全的；它不需要 `unsafe` 块。
-/// 因此，实现绝不能要求用户去维护任何安全不变量。
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
 ///
-/// 如果可能，应优先使用 [`std::process::abort`](../../std/process/fn.abort.html)，
-/// 因为它的行为对用户更友好、也更稳定。
+/// [`std::process::abort`](../../std/process/fn.abort.html) is to be preferred if possible,
+/// as its behavior is more user-friendly and more stable.
 ///
-/// 在大多数平台上，`intrinsics::abort` 当前的实现是执行一条非法指令。
-/// 在 Unix 上，进程多半会以 `SIGABRT`、`SIGILL`、`SIGTRAP`、`SIGSEGV` 或 `SIGBUS` 之类的信号终止。
-/// 其确切行为既不被保证、也不稳定。
+/// The current implementation of `intrinsics::abort` is to invoke an invalid instruction,
+/// on most platforms.
+/// On Unix, the
+/// process will probably terminate with a signal like `SIGABRT`, `SIGILL`, `SIGTRAP`, `SIGSEGV` or
+/// `SIGBUS`.  The precise behavior is not guaranteed and not stable.
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub fn abort() -> !;
 
-/// 告知优化器：代码中的这个点不可达（not reachable），从而启用进一步的优化。
+/// Informs the optimizer that this point in the code is not reachable,
+/// enabling further optimizations.
 ///
-/// 注意，这与 `unreachable!()` 宏非常不同：那个宏在执行时会 panic，而抵达本函数所标记的代码
-/// 则是*未定义行为（UB）*。
+/// N.B., this is very different from the `unreachable!()` macro: Unlike the
+/// macro, which panics when it is executed, it is *undefined behavior* to
+/// reach code marked with this function.
 ///
-/// 本 intrinsic 的稳定版本是 [`core::hint::unreachable_unchecked`]。
+/// The stabilized version of this intrinsic is [`core::hint::unreachable_unchecked`].
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const unsafe fn unreachable() -> !;
 
-/// 告知优化器：某个条件恒为真。
-/// 如果该条件为假，行为即未定义（UB）。
+/// Informs the optimizer that a condition is always true.
+/// If the condition is false, the behavior is undefined.
 ///
-/// 本 intrinsic 不生成任何代码，但优化器会试图在各 pass 之间保留它（及其条件），
-/// 这可能干扰周围代码的优化、降低性能。如果该不变量本就能被优化器自行发现，
-/// 或者它并不能启用任何显著的优化，就不应使用它。
+/// No code is generated for this intrinsic, but the optimizer will try
+/// to preserve it (and its condition) between passes, which may interfere
+/// with optimization of surrounding code and reduce performance. It should
+/// not be used if the invariant can be discovered by the optimizer on its
+/// own, or if it does not enable any significant optimizations.
 ///
-/// # 安全性（Safety）
-///
-/// 调用方必须保证 `b` 在所有实际执行到本调用的路径上都为 `true`。`assume(false)` 不是一次失败的断言，
-/// 而是向编译器承诺“这条路径不可能发生”；优化器可以据此删除后续分支、边界检查或别名检查，
-/// 也可以把依赖该条件的代码改写成只在条件为真的世界里才正确的形式。若该承诺为假，程序已经进入 UB，
-/// 后续表现不受源代码中显式控制流的约束。
-///
-/// 本 intrinsic 的稳定版本是 [`core::hint::assert_unchecked`]。
+/// The stabilized version of this intrinsic is [`core::hint::assert_unchecked`].
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_nounwind]
 #[unstable(feature = "core_intrinsics", issue = "none")]
 #[rustc_intrinsic]
 pub const unsafe fn assume(b: bool) {
     if !b {
-        // SAFETY: 调用方必须保证参数永远不为 `false`；若为 `false`，抵达此处即为 UB。
+        // SAFETY: the caller must guarantee the argument is never `false`
         unsafe { unreachable() }
     }
 }
 
-/// 向编译器提示：当前代码路径是冷路径（cold，很少被执行到）。
+/// Hints to the compiler that current code path is cold.
 ///
-/// 注意，与大多数 intrinsic 不同，调用它是安全的；它不需要 `unsafe` 块。
-/// 因此，实现绝不能要求用户去维护任何安全不变量。
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
 ///
-/// 本 intrinsic 没有稳定的对应物。
+/// This intrinsic does not have a stable counterpart.
 #[unstable(feature = "core_intrinsics", issue = "none")]
 #[rustc_intrinsic]
 #[rustc_nounwind]
@@ -496,15 +417,17 @@ pub const unsafe fn assume(b: bool) {
 #[cold]
 pub const fn cold_path() {}
 
-/// 向编译器提示：分支条件很可能为真。返回传入的那个值。
+/// Hints to the compiler that branch condition is likely to be true.
+/// Returns the value passed to it.
 ///
-/// 在 `if` 语句以外的任何用法都很可能不起作用。
-/// 这只是性能提示，不是 `assume`：即使预测错误也不会产生 UB，最多影响生成代码和性能。
+/// Any use other than with `if` statements will probably not have an effect.
 ///
-/// 注意，与大多数 intrinsic 不同，调用它是安全的；它不需要 `unsafe` 块。
-/// 因此，实现绝不能要求用户去维护任何安全不变量。
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
 ///
-/// 本 intrinsic 没有稳定的对应物。
+/// This intrinsic does not have a stable counterpart.
 #[unstable(feature = "core_intrinsics", issue = "none")]
 #[rustc_nounwind]
 #[inline(always)]
@@ -517,15 +440,17 @@ pub const fn likely(b: bool) -> bool {
     }
 }
 
-/// 向编译器提示：分支条件很可能为假。返回传入的那个值。
+/// Hints to the compiler that branch condition is likely to be false.
+/// Returns the value passed to it.
 ///
-/// 在 `if` 语句以外的任何用法都很可能不起作用。
-/// 这只是性能提示，不是 `assume`：即使预测错误也不会产生 UB，最多影响生成代码和性能。
+/// Any use other than with `if` statements will probably not have an effect.
 ///
-/// 注意，与大多数 intrinsic 不同，调用它是安全的；它不需要 `unsafe` 块。
-/// 因此，实现绝不能要求用户去维护任何安全不变量。
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
 ///
-/// 本 intrinsic 没有稳定的对应物。
+/// This intrinsic does not have a stable counterpart.
 #[unstable(feature = "core_intrinsics", issue = "none")]
 #[rustc_nounwind]
 #[inline(always)]
@@ -538,16 +463,20 @@ pub const fn unlikely(b: bool) -> bool {
     }
 }
 
-/// 根据条件 `b` 返回 `true_val` 或 `false_val`，并向编译器提示：该条件不太可能被 CPU 的分支预测器
-/// 正确预测（例如二分查找中的判断）。
+/// Returns either `true_val` or `false_val` depending on condition `b` with a
+/// hint to the compiler that this condition is unlikely to be correctly
+/// predicted by a CPU's branch predictor (e.g. a binary search).
 ///
-/// 在其他方面，它的功能等价于 `if b { true_val } else { false_val }`。
+/// This is otherwise functionally equivalent to `if b { true_val } else { false_val }`.
 ///
-/// 注意，与大多数 intrinsic 不同，调用它是安全的；它不需要 `unsafe` 块。
-/// 因此，实现绝不能要求用户去维护任何安全不变量。
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
 ///
-/// 本 intrinsic 的公开形式是 [`core::hint::select_unpredictable`]。
-/// 但与公开形式不同，本 intrinsic 不会 drop 那个未被选中的值。
+/// The public form of this intrinsic is [`core::hint::select_unpredictable`].
+/// However unlike the public form, the intrinsic will not drop the value that
+/// is not selected.
 #[unstable(feature = "core_intrinsics", issue = "none")]
 #[rustc_const_unstable(feature = "const_select_unpredictable", issue = "145938")]
 #[rustc_intrinsic]
@@ -561,116 +490,139 @@ where
     if b { true_val } else { false_val }
 }
 
-/// 一个守卫（guard）：当 `T` 是无人居住类型（uninhabited，没有任何合法值，如 `!` 或空枚举）时，
-/// 对应的 unsafe 函数就永远不可能被执行。它要么在编译期 panic，要么什么也不做。
-/// 它*不保证*一定会 panic，只应在“断言失败即意味着后续代码触发语言级 UB”的场合调用。
+/// A guard for unsafe functions that cannot ever be executed if `T` is uninhabited:
+/// This will statically either panic, or do nothing. It does not *guarantee* to ever panic,
+/// and should only be called if an assertion failure will imply language UB in the following code.
 ///
-/// 本 intrinsic 没有稳定的对应物。
+/// This intrinsic does not have a stable counterpart.
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const fn assert_inhabited<T>();
 
-/// 一个守卫（guard）：当 `T` 不允许零初始化时，对应的 unsafe 函数就永远不可能被执行。
-/// 它要么在编译期 panic，要么什么也不做。它*不保证*一定会 panic，
-/// 只应在“断言失败即意味着后续代码触发语言级 UB”的场合调用。
+/// A guard for unsafe functions that cannot ever be executed if `T` does not permit
+/// zero-initialization: This will statically either panic, or do nothing. It does not *guarantee*
+/// to ever panic, and should only be called if an assertion failure will imply language UB in the
+/// following code.
 ///
-/// 本 intrinsic 没有稳定的对应物。
+/// This intrinsic does not have a stable counterpart.
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const fn assert_zero_valid<T>();
 
-/// `std::mem::uninitialized` 的守卫（guard）。它要么在编译期 panic，要么什么也不做。
-/// 它*不保证*一定会 panic，只应在“断言失败即意味着后续代码触发语言级 UB”的场合调用。
+/// A guard for `std::mem::uninitialized`. This will statically either panic, or do nothing. It does
+/// not *guarantee* to ever panic, and should only be called if an assertion failure will imply
+/// language UB in the following code.
 ///
-/// 本 intrinsic 没有稳定的对应物。
+/// This intrinsic does not have a stable counterpart.
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const fn assert_mem_uninitialized_valid<T>();
 
-/// 获取一个指向静态 `Location` 的引用，指明本函数是在何处被调用的。
+/// Gets a reference to a static `Location` indicating where it was called.
 ///
-/// 注意，与大多数 intrinsic 不同，调用它是安全的；它不需要 `unsafe` 块。
-/// 因此，实现绝不能要求用户去维护任何安全不变量。
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
 ///
-/// 请考虑改用 [`core::panic::Location::caller`]。
+/// Consider using [`core::panic::Location::caller`] instead.
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const fn caller_location() -> &'static crate::panic::Location<'static>;
 
-/// 把一个值移出作用域，但不运行其 drop 胶水代码（即不调用析构）。
+/// Moves a value out of scope without running drop glue.
 ///
-/// 它的存在仅仅是为了 [`crate::mem::forget_unsized`]；普通的 `forget` 改用 `ManuallyDrop`。
+/// This exists solely for [`crate::mem::forget_unsized`]; normal `forget` uses
+/// `ManuallyDrop` instead.
 ///
-/// 注意，与大多数 intrinsic 不同，调用它是安全的；它不需要 `unsafe` 块。
-/// 因此，实现绝不能要求用户去维护任何安全不变量。
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const fn forget<T: ?Sized>(_: T);
 
-/// 把一个类型的值的比特位，重新解释（reinterpret）为另一个类型。
+/// Reinterprets the bits of a value of one type as another type.
 ///
-/// 两个类型必须大小相同。如果无法保证这一点，编译将失败。
+/// Both types must have the same size. Compilation will fail if this is not guaranteed.
 ///
-/// 在语义上，`transmute` 等价于把一个类型按位移动（bitwise move）到另一个类型。它把源值的比特位
-/// 拷贝到目标值中，然后 forget（遗忘）掉原值。注意：源和目标都是按值传递的，这意味着如果 `Src` 或 `Dst`
-/// 含有填充（padding）字节，那么这些填充*不*保证会被 `transmute` 保留。
+/// `transmute` is semantically equivalent to a bitwise move of one type
+/// into another. It copies the bits from the source value into the
+/// destination value, then forgets the original. Note that source and destination
+/// are passed by-value, which means if `Src` or `Dst` contain padding, that padding
+/// is *not* guaranteed to be preserved by `transmute`.
 ///
-/// 参数和结果都必须在各自给定的类型下是[有效的（valid）](../../nomicon/what-unsafe-does.html)。
-/// 违反这一条件会导致[未定义行为][ub]。编译器生成代码时，会*假定你这个程序员已经确保了永远不会发生
-/// 未定义行为*。因此，保证传给 `transmute` 的每个值在 `Src` 和 `Dst` 两个类型下都有效，是你的责任。
-/// 不能维护这一条件可能导致意料之外、且不稳定的编译结果。这使得 `transmute` **极其不安全（unsafe）**。
-/// `transmute` 应当是万不得已时的最后手段。
+/// Both the argument and the result must be [valid](../../nomicon/what-unsafe-does.html) at
+/// their given type. Violating this condition leads to [undefined behavior][ub]. The compiler
+/// will generate code *assuming that you, the programmer, ensure that there will never be
+/// undefined behavior*. It is therefore your responsibility to guarantee that every value
+/// passed to `transmute` is valid at both types `Src` and `Dst`. Failing to uphold this condition
+/// may lead to unexpected and unstable compilation results. This makes `transmute` **incredibly
+/// unsafe**. `transmute` should be the absolute last resort.
 ///
-/// 因为 `transmute` 是按值（by-value）操作，所以*被转换的值本身*的对齐不成问题。和任何其他函数一样，
-/// 编译器已经确保了 `Src` 和 `Dst` 都被正确对齐。然而，当转换的值是*指向别处*的（例如指针、引用、box 等）时，
-/// 调用方必须自行确保被指向的那些值的对齐。
+/// Because `transmute` is a by-value operation, alignment of the *transmuted values
+/// themselves* is not a concern. As with any other function, the compiler already ensures
+/// both `Src` and `Dst` are properly aligned. However, when transmuting values that *point
+/// elsewhere* (such as pointers, references, boxes…), the caller has to ensure proper
+/// alignment of the pointed-to values.
 ///
-/// [nomicon](../../nomicon/transmutes.html) 中有补充文档。
+/// The [nomicon](../../nomicon/transmutes.html) has additional documentation.
 ///
 /// [ub]: ../../reference/behavior-considered-undefined.html
 ///
-/// # 指针与整数之间的转换（transmute）
+/// # Transmutation between pointers and integers
 ///
-/// 在指针与整数之间做 transmute 时必须格外小心，例如在 `*const ()` 与 `usize` 之间转换。
+/// Special care has to be taken when transmuting between pointers and integers, e.g.
+/// transmuting between `*const ()` and `usize`.
 ///
-/// 在 `const`（编译期）上下文中把*指针 transmute 成整数*是[未定义行为][ub]，除非该指针最初就是
-/// *从*一个整数创建出来的。（这包括本函数本身、整数到指针的 cast、以及像 [`dangling`][crate::ptr::dangling]
-/// 这样的辅助函数，但也包括语义上等价的转换，比如通过 `repr(C)` union 字段做“类型双关”punning。）
-/// 任何试图把转换结果用于整数运算的行为，都会中止 const 求值。（即便在 `const` 之外，
-/// 这类转换也触及了 Rust 内存模型中许多未规定的方面，应当避免。替代方案见下文。）
+/// Transmuting *pointers to integers* in a `const` context is [undefined behavior][ub], unless
+/// the pointer was originally created *from* an integer. (That includes this function
+/// specifically, integer-to-pointer casts, and helpers like [`dangling`][crate::ptr::dangling],
+/// but also semantically-equivalent conversions such as punning through `repr(C)` union
+/// fields.) Any attempt to use the resulting value for integer operations will abort
+/// const-evaluation. (And even outside `const`, such transmutation is touching on many
+/// unspecified aspects of the Rust memory model and should be avoided. See below for
+/// alternatives.)
 ///
-/// 把*整数 transmute 成指针*则在很大程度上是一个未规定的操作。它很可能*不*等价于 `as` cast。
-/// 用这样构造出来的指针去做非零大小的内存访问，目前被视为未定义行为。
+/// Transmuting *integers to pointers* is a largely unspecified operation. It is likely *not*
+/// equivalent to an `as` cast. Doing non-zero-sized memory accesses with a pointer constructed
+/// this way is currently considered undefined behavior.
 ///
-/// 当整数嵌套在数组、元组、结构体或枚举内部时，上述规则同样适用。
-/// 不过，就本节而言，`MaybeUninit<usize>` 不被视为整数类型。把 `*const ()` transmute 成
-/// `MaybeUninit<usize>` 是没问题的——但随后对结果调用 `assume_init()` 则被视为完成了那次
-/// “指针转整数”的 transmute，于是又会撞上上面讨论的问题。
+/// All this also applies when the integer is nested inside an array, tuple, struct, or enum.
+/// However, `MaybeUninit<usize>` is not considered an integer type for the purpose of this
+/// section. Transmuting `*const ()` to `MaybeUninit<usize>` is fine---but then calling
+/// `assume_init()` on that result is considered as completing the pointer-to-integer transmute
+/// and thus runs into the issues discussed above.
 ///
-/// 特别地，通过 `transmute` 做一次“指针→整数→指针”的往返*并非*无损过程。如果你想让指针经过整数往返一圈
-/// 之后还能拿回原来的指针，就需要使用 `as` cast，或者把整数类型换成 `MaybeUninit<$int>`
-/// （且永远不要调用 `assume_init()`）。如果你想找一种方式来存放任意类型的数据，也请使用 `MaybeUninit<T>`
-/// （它还能处理因填充而产生的未初始化内存）。如果你确实需要存放“要么是整数、要么是指针”的东西，
-/// 请使用 `*mut ()`：整数可以无损地与指针来回转换（通过 `as` cast 或通过 `transmute`）。
+/// In particular, doing a pointer-to-integer-to-pointer roundtrip via `transmute` is *not* a
+/// lossless process. If you want to round-trip a pointer through an integer in a way that you
+/// can get back the original pointer, you need to use `as` casts, or replace the integer type
+/// by `MaybeUninit<$int>` (and never call `assume_init()`). If you are looking for a way to
+/// store data of arbitrary type, also use `MaybeUninit<T>` (that will also handle uninitialized
+/// memory due to padding). If you specifically need to store something that is "either an
+/// integer or a pointer", use `*mut ()`: integers can be converted to pointers and back without
+/// any loss (via `as` casts or via `transmute`).
 ///
-/// # 示例
+/// # Examples
 ///
-/// `transmute` 有几样确实很有用的用途。
+/// There are a few things that `transmute` is really useful for.
 ///
-/// 把一个指针转成函数指针。这*不*能移植到“函数指针与数据指针大小不同”的机器上。
+/// Turning a pointer into a function pointer. This is *not* portable to
+/// machines where function pointers and data pointers have different sizes.
 ///
 /// ```
 /// fn foo() -> i32 {
 ///     0
 /// }
-/// // 关键之处：在 `transmute` 成函数指针之前，我们先 `as`-cast 成裸指针。
-/// // 这避免了“整数转指针”的 `transmute`，那种转换可能引发问题。
-/// // 在裸指针与函数指针之间（即两个指针类型之间）做 transmute 是没问题的。
+/// // Crucially, we `as`-cast to a raw pointer before `transmute`ing to a function pointer.
+/// // This avoids an integer-to-pointer `transmute`, which can be problematic.
+/// // Transmuting between raw pointers and function pointers (i.e., two pointer types) is fine.
 /// let pointer = foo as fn() -> i32 as *const ();
 /// let function = unsafe {
 ///     std::mem::transmute::<*const (), fn() -> i32>(pointer)
@@ -678,7 +630,8 @@ pub const fn forget<T: ?Sized>(_: T);
 /// assert_eq!(function(), 0);
 /// ```
 ///
-/// 延长一个生命周期，或缩短一个不变（invariant）生命周期。这是高级而非常 unsafe 的 Rust！
+/// Extending a lifetime, or shortening an invariant lifetime. This is
+/// advanced, very unsafe Rust!
 ///
 /// ```
 /// struct R<'a>(&'a i32);
@@ -692,12 +645,13 @@ pub const fn forget<T: ?Sized>(_: T);
 /// }
 /// ```
 ///
-/// # 替代方案
+/// # Alternatives
 ///
-/// 不必绝望：`transmute` 的许多用途都能通过其他手段达成。下面列出一些 `transmute` 的常见应用，
-/// 它们都可以用更安全的构造来替代。
+/// Don't despair: many uses of `transmute` can be achieved through other means.
+/// Below are common applications of `transmute` which can be replaced with safer
+/// constructs.
 ///
-/// 把原始字节（`[u8; SZ]`）转成 `u32`、`f64` 等：
+/// Turning raw bytes (`[u8; SZ]`) into `u32`, `f64`, etc.:
 ///
 /// ```
 /// # #![allow(unnecessary_transmutes)]
@@ -707,16 +661,16 @@ pub const fn forget<T: ?Sized>(_: T);
 ///     std::mem::transmute::<[u8; 4], u32>(raw_bytes)
 /// };
 ///
-/// // 改用 `u32::from_ne_bytes`
+/// // use `u32::from_ne_bytes` instead
 /// let num = u32::from_ne_bytes(raw_bytes);
-/// // 或者用 `u32::from_le_bytes`、`u32::from_be_bytes` 来指定字节序
+/// // or use `u32::from_le_bytes` or `u32::from_be_bytes` to specify the endianness
 /// let num = u32::from_le_bytes(raw_bytes);
 /// assert_eq!(num, 0x12345678);
 /// let num = u32::from_be_bytes(raw_bytes);
 /// assert_eq!(num, 0x78563412);
 /// ```
 ///
-/// 把一个指针转成 `usize`：
+/// Turning a pointer into a `usize`:
 ///
 /// ```no_run
 /// let ptr = &0;
@@ -724,18 +678,21 @@ pub const fn forget<T: ?Sized>(_: T);
 ///     std::mem::transmute::<&i32, usize>(ptr)
 /// };
 ///
-/// // 改用 `as` cast
+/// // Use an `as` cast instead
 /// let ptr_num_cast = ptr as *const i32 as usize;
 /// ```
 ///
-/// 注意，用 `transmute` 把指针转成 `usize`（如上文所述）在 `const` 上下文中是[未定义行为][ub]。
-/// 即便在 const 之外，这个操作也可能不会按预期行事——它触及了 Rust 内存模型中许多未规定的方面。
-/// 视代码要做的事情而定，以下替代方案优于“指针转整数”的 transmute：
-/// - 如果代码只是想把任意类型的数据存进某个缓冲区、并需要为该缓冲区选一个类型，
-///   它可以使用 [`MaybeUninit`][crate::mem::MaybeUninit]。
-/// - 如果代码实际上想处理的是指针所指向的那个地址，它可以使用 `as` cast 或 [`ptr.addr()`][pointer::addr]。
+/// Note that using `transmute` to turn a pointer to a `usize` is (as noted above) [undefined
+/// behavior][ub] in `const` contexts. Also outside of consts, this operation might not behave
+/// as expected -- this is touching on many unspecified aspects of the Rust memory model.
+/// Depending on what the code is doing, the following alternatives are preferable to
+/// pointer-to-integer transmutation:
+/// - If the code just wants to store data of arbitrary type in some buffer and needs to pick a
+///   type for that buffer, it can use [`MaybeUninit`][crate::mem::MaybeUninit].
+/// - If the code actually wants to work on the address the pointer points to, it can use `as`
+///   casts or [`ptr.addr()`][pointer::addr].
 ///
-/// 把 `*mut T` 转成 `&mut T`：
+/// Turning a `*mut T` into a `&mut T`:
 ///
 /// ```
 /// let ptr: *mut i32 = &mut 0;
@@ -743,11 +700,11 @@ pub const fn forget<T: ?Sized>(_: T);
 ///     std::mem::transmute::<*mut i32, &mut i32>(ptr)
 /// };
 ///
-/// // 改用 reborrow（重新借用）
+/// // Use a reborrow instead
 /// let ref_casted = unsafe { &mut *ptr };
 /// ```
 ///
-/// 把 `&mut T` 转成 `&mut U`：
+/// Turning a `&mut T` into a `&mut U`:
 ///
 /// ```
 /// let ptr = &mut 0;
@@ -755,59 +712,64 @@ pub const fn forget<T: ?Sized>(_: T);
 ///     std::mem::transmute::<&mut i32, &mut u32>(ptr)
 /// };
 ///
-/// // 这次把 `as` 与 reborrow 组合起来——注意 `as` 的链式写法
-/// // `as` 不具传递性
+/// // Now, put together `as` and reborrowing - note the chaining of `as`
+/// // `as` is not transitive
 /// let val_casts = unsafe { &mut *(ptr as *mut i32 as *mut u32) };
 /// ```
 ///
-/// 把 `&str` 转成 `&[u8]`：
+/// Turning a `&str` into a `&[u8]`:
 ///
 /// ```
-/// // 这并不是做这件事的好办法。
+/// // this is not a good way to do this.
 /// let slice = unsafe { std::mem::transmute::<&str, &[u8]>("Rust") };
 /// assert_eq!(slice, &[82, 117, 115, 116]);
 ///
-/// // 你可以用 `str::as_bytes`
+/// // You could use `str::as_bytes`
 /// let slice = "Rust".as_bytes();
 /// assert_eq!(slice, &[82, 117, 115, 116]);
 ///
-/// // 或者，如果你能控制那个字符串字面量，干脆直接用字节串字面量
+/// // Or, just use a byte string, if you have control over the string
+/// // literal
 /// assert_eq!(b"Rust", &[82, 117, 115, 116]);
 /// ```
 ///
-/// 把 `Vec<&T>` 转成 `Vec<Option<&T>>`。
+/// Turning a `Vec<&T>` into a `Vec<Option<&T>>`.
 ///
-/// 要转换容器内容的内部类型，你必须确保不违反该容器的任何不变量。对 `Vec` 而言，
-/// 这意味着内部类型的大小*和对齐*都必须匹配。其他容器可能依赖类型的大小、对齐，
-/// 甚至 `TypeId`，那种情况下若不违反容器不变量就根本无法进行 transmute。
+/// To transmute the inner type of the contents of a container, you must make sure to not
+/// violate any of the container's invariants. For `Vec`, this means that both the size
+/// *and alignment* of the inner types have to match. Other containers might rely on the
+/// size of the type, alignment, or even the `TypeId`, in which case transmuting wouldn't
+/// be possible at all without violating the container invariants.
 ///
 /// ```
 /// let store = [0, 1, 2, 3];
 /// let v_orig = store.iter().collect::<Vec<&i32>>();
 ///
-/// // 克隆这个 vector，因为我们稍后还要复用它们
+/// // clone the vector as we will reuse them later
 /// let v_clone = v_orig.clone();
 ///
-/// // 使用 transmute：这依赖于 `Vec` 未规定的数据布局，是个糟糕的主意，可能引发未定义行为。
-/// // 不过，它是零拷贝的。
+/// // Using transmute: this relies on the unspecified data layout of `Vec`, which is a
+/// // bad idea and could cause Undefined Behavior.
+/// // However, it is no-copy.
 /// let v_transmuted = unsafe {
 ///     std::mem::transmute::<Vec<&i32>, Vec<Option<&i32>>>(v_clone)
 /// };
 ///
 /// let v_clone = v_orig.clone();
 ///
-/// // 这是推荐的、安全的方式。
-/// // 不过它可能会把整个 vector 拷贝进一个新的 vector，也可能不会。
+/// // This is the suggested, safe way.
+/// // It may copy the entire vector into a new one though, but also may not.
 /// let v_collected = v_clone.into_iter()
 ///                          .map(Some)
 ///                          .collect::<Vec<Option<&i32>>>();
 ///
 /// let v_clone = v_orig.clone();
 ///
-/// // 这是正确的、零拷贝、不依赖数据布局的 unsafe 方式来“transmute”一个 `Vec`。
-/// // 我们不字面调用 `transmute`，而是做一次指针 cast；但就把原内部类型（`&i32`）转换成
-/// // 新内部类型（`Option<&i32>`）这一点而言，它具有完全相同的注意事项。除了上面提供的信息，
-/// // 还请查阅 [`from_raw_parts`] 的文档。
+/// // This is the proper no-copy, unsafe way of "transmuting" a `Vec`, without relying on the
+/// // data layout. Instead of literally calling `transmute`, we perform a pointer cast, but
+/// // in terms of converting the original inner type (`&i32`) to the new one (`Option<&i32>`),
+/// // this has all the same caveats. Besides the information provided above, also consult the
+/// // [`from_raw_parts`] documentation.
 /// let (ptr, len, capacity) = v_clone.into_raw_parts();
 /// let v_from_raw = unsafe {
 ///     Vec::from_raw_parts(ptr.cast::<*mut Option<&i32>>(), len, capacity)
@@ -816,46 +778,53 @@ pub const fn forget<T: ?Sized>(_: T);
 ///
 /// [`from_raw_parts`]: ../../std/vec/struct.Vec.html#method.from_raw_parts
 ///
-/// 实现 `split_at_mut`：
+/// Implementing `split_at_mut`:
 ///
 /// ```
 /// use std::{slice, mem};
 ///
-/// // 有多种方式可以做到这一点，而下面这种（transmute）方式有多个问题。
+/// // There are multiple ways to do this, and there are multiple problems
+/// // with the following (transmute) way.
 /// fn split_at_mut_transmute<T>(slice: &mut [T], mid: usize)
 ///                              -> (&mut [T], &mut [T]) {
 ///     let len = slice.len();
 ///     assert!(mid <= len);
 ///     unsafe {
 ///         let slice2 = mem::transmute::<&mut [T], &mut [T]>(slice);
-///         // 第一，transmute 不是类型安全的；它只检查 T 和 U 大小相同。
-///         // 第二，就在这里，你有了两个指向同一块内存的可变引用。
+///         // first: transmute is not type safe; all it checks is that T and
+///         // U are of the same size. Second, right here, you have two
+///         // mutable references pointing to the same memory.
 ///         (&mut slice[0..mid], &mut slice2[mid..len])
 ///     }
 /// }
 ///
-/// // 这样就消除了类型安全问题；`&mut *` *只*会从 `&mut T` 或 `*mut T` 给你一个 `&mut T`。
+/// // This gets rid of the type safety problems; `&mut *` will *only* give
+/// // you a `&mut T` from a `&mut T` or `*mut T`.
 /// fn split_at_mut_casts<T>(slice: &mut [T], mid: usize)
 ///                          -> (&mut [T], &mut [T]) {
 ///     let len = slice.len();
 ///     assert!(mid <= len);
 ///     unsafe {
 ///         let slice2 = &mut *(slice as *mut [T]);
-///         // 然而，你仍然有两个指向同一块内存的可变引用。
+///         // however, you still have two mutable references pointing to
+///         // the same memory.
 ///         (&mut slice[0..mid], &mut slice2[mid..len])
 ///     }
 /// }
 ///
-/// // 这是标准库的做法。如果你需要做类似的事情，这是最佳方法。
+/// // This is how the standard library does it. This is the best method, if
+/// // you need to do something like this
 /// fn split_at_stdlib<T>(slice: &mut [T], mid: usize)
 ///                       -> (&mut [T], &mut [T]) {
 ///     let len = slice.len();
 ///     assert!(mid <= len);
 ///     unsafe {
 ///         let ptr = slice.as_mut_ptr();
-///         // 现在有三个可变引用指向同一块内存：`slice`、右值 ret.0、以及右值 ret.1。
-///         // 在 `let ptr = ...` 之后 `slice` 就再也没被用过，因此可以把它视为“已死”，
-///         // 于是你实际上只有两个真正的可变切片。
+///         // This now has three mutable references pointing at the same
+///         // memory. `slice`, the rvalue ret.0, and the rvalue ret.1.
+///         // `slice` is never used after `let ptr = ...`, and so one can
+///         // treat it as "dead", and therefore, you only have two real
+///         // mutable slices.
 ///         (slice::from_raw_parts_mut(ptr, mid),
 ///          slice::from_raw_parts_mut(ptr.add(mid), len - mid))
 ///     }
@@ -869,80 +838,94 @@ pub const fn forget<T: ?Sized>(_: T);
 #[rustc_intrinsic]
 pub const unsafe fn transmute<Src, Dst>(src: Src) -> Dst;
 
-/// 与 [`transmute`] 类似，但在编译期检查得更少：对于 `size_of::<Src>() != size_of::<Dst>()`，
-/// 它不会给出编译错误，而是在运行时构成**未定义行为（UB）**。
+/// Like [`transmute`], but even less checked at compile-time: rather than
+/// giving an error for `size_of::<Src>() != size_of::<Dst>()`, it's
+/// **Undefined Behavior** at runtime.
 ///
-/// 在可能的情况下，优先使用常规的 `transmute`，以获得那项额外检查；因为只要两者都能编译通过，
-/// 它们在运行时做的事情是完全一样的。
+/// Prefer normal `transmute` where possible, for the extra checking, since
+/// both do exactly the same thing at runtime, if they both compile.
 ///
-/// 预计它永远不会直接暴露给用户，而是最终可能通过某种约束更强的 API 暴露出来。
+/// This is not expected to ever be exposed directly to users, rather it
+/// may eventually be exposed through some more-constrained API.
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const unsafe fn transmute_unchecked<Src, Dst>(src: Src) -> Dst;
 
-/// 如果作为 `T` 传入的实际类型需要 drop 胶水代码（析构），返回 `true`；
-/// 如果为 `T` 提供的实际类型实现了 `Copy`，返回 `false`。
+/// Returns `true` if the actual type given as `T` requires drop
+/// glue; returns `false` if the actual type provided for `T`
+/// implements `Copy`.
 ///
-/// 如果实际类型既不需要 drop 胶水代码、又没有实现 `Copy`，那么本函数的返回值未规定。
+/// If the actual type neither requires drop glue nor implements
+/// `Copy`, then the return value of this function is unspecified.
 ///
-/// 注意，与大多数 intrinsic 不同，它只能在编译期调用，因为各后端并没有为它提供实现。
-/// 它唯一的调用方（即它的稳定对应物）会把这次 intrinsic 调用包进一个 `const` 块里，
-/// 这样后端看到的就只是一个已经求值好的常量。
+/// Note that, unlike most intrinsics, this can only be called at compile-time
+/// as backends do not have an implementation for it. The only caller (its
+/// stable counterpart) wraps this intrinsic call in a `const` block so that
+/// backends only see an evaluated constant.
 ///
-/// 本 intrinsic 的稳定版本是 [`mem::needs_drop`](crate::mem::needs_drop)。
+/// The stabilized version of this intrinsic is [`mem::needs_drop`](crate::mem::needs_drop).
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const fn needs_drop<T: ?Sized>() -> bool;
 
-/// 从一个指针计算偏移。
+/// Calculates the offset from a pointer.
 ///
-/// 之所以实现成 intrinsic，是为了避免在指针与整数之间来回转换，因为那种转换会丢弃别名（aliasing）信息。
+/// This is implemented as an intrinsic to avoid converting to and from an
+/// integer, since the conversion would throw away aliasing information.
 ///
-/// 它只能用于：`Ptr` 是指向 `Sized` 被指物的裸指针类型（`*mut` 或 `*const`），且 `Delta` 是
-/// `usize` 或 `isize`。任何其他实例化都可能任意地行为异常，而那*并非*编译器 bug。
+/// This can only be used with `Ptr` as a raw pointer type (`*mut` or `*const`)
+/// to a `Sized` pointee and with `Delta` as `usize` or `isize`.  Any other
+/// instantiations may arbitrarily misbehave, and that's *not* a compiler bug.
 ///
-/// # 安全性（Safety）
+/// # Safety
 ///
-/// 如果计算出的偏移非零，那么起始指针与结果指针都必须位于某个分配（allocation）的边界内、
-/// 或恰好位于其末尾。如果任一指针越界、或发生算术溢出，则本操作是未定义行为（UB）。
+/// If the computed offset is non-zero, then both the starting and resulting pointer must be
+/// either in bounds or at the end of an allocation. If either pointer is out
+/// of bounds or arithmetic overflow occurs then this operation is undefined behavior.
 ///
-/// 本 intrinsic 的稳定版本是 [`pointer::offset`]。
+/// The stabilized version of this intrinsic is [`pointer::offset`].
 #[must_use = "returns a new pointer rather than modifying its argument"]
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const unsafe fn offset<Ptr: bounds::BuiltinDeref, Delta>(dst: Ptr, offset: Delta) -> Ptr;
 
-/// 从一个指针计算偏移，可能发生回绕（wrapping）。
+/// Calculates the offset from a pointer, potentially wrapping.
 ///
-/// 之所以实现成 intrinsic，是为了避免在指针与整数之间来回转换，因为那种转换会妨碍某些优化。
+/// This is implemented as an intrinsic to avoid converting to and from an
+/// integer, since the conversion inhibits certain optimizations.
 ///
-/// # 安全性（Safety）
+/// # Safety
 ///
-/// 与 `offset` intrinsic 不同，本 intrinsic 不要求结果指针指向某个已分配对象的边界内或末尾，
-/// 并且它按二进制补码算术进行回绕。其结果值不一定能被合法地用于真正访问内存。
+/// Unlike the `offset` intrinsic, this intrinsic does not restrict the
+/// resulting pointer to point into or at the end of an allocated
+/// object, and it wraps with two's complement arithmetic. The resulting
+/// value is not necessarily valid to be used to actually access memory.
 ///
-/// 本 intrinsic 的稳定版本是 [`pointer::wrapping_offset`]。
+/// The stabilized version of this intrinsic is [`pointer::wrapping_offset`].
 #[must_use = "returns a new pointer rather than modifying its argument"]
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const unsafe fn arith_offset<T>(dst: *const T, offset: isize) -> *const T;
 
-/// 投影到 `slice_ptr` 的第 `index` 个元素，并保持与传入切片相同种类的指针——
-/// 也就是 `&mut [T] → &mut T`、`&[T] → &T`、`*mut [T] → *mut T` 或 `*const [T] → *const T`——
-/// 且不做边界检查。
+/// Projects to the `index`-th element of `slice_ptr`, as the same kind of pointer
+/// as the slice was provided -- so `&mut [T] → &mut T`, `&[T] → &T`,
+/// `*mut [T] → *mut T`, or `*const [T] → *const T` -- without a bounds check.
 ///
-/// 它通过 `<usize as SliceIndex>::get(_unchecked)(_mut)` 暴露，不打算在别处使用。
+/// This is exposed via `<usize as SliceIndex>::get(_unchecked)(_mut)`,
+/// and isn't intended to be used elsewhere.
 ///
-/// 在 MIR 中视所涉类型展开为 `{&, &mut, &raw const, &raw mut} (*slice_ptr)[index]`，因此无需后端支持。
+/// Expands in MIR to `{&, &mut, &raw const, &raw mut} (*slice_ptr)[index]`,
+/// depending on the types involved, so no backend support is needed.
 ///
-/// # 安全性（Safety）
+/// # Safety
 ///
-/// - `index < PtrMetadata(slice_ptr)`，从而对该切片的索引落在边界内；
-/// - 由此产生的偏移落在分配（allocation）的边界内——对引用而言这总是成立的，但对指针则需手动保证。
+/// - `index < PtrMetadata(slice_ptr)`, so the indexing is in-bounds for the slice
+/// - the resulting offsetting is in-bounds of the allocation, which is
+///   always the case for references, but needs to be upheld manually for pointers
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const unsafe fn slice_get_unchecked<
@@ -954,740 +937,744 @@ pub const unsafe fn slice_get_unchecked<
     index: usize,
 ) -> ItemPtr;
 
-/// 按掩码（mask）把指针的某些 bit 掩掉。
+/// Masks out bits of the pointer according to a mask.
 ///
-/// 注意，与大多数 intrinsic 不同，调用它是安全的；它不需要 `unsafe` 块。
-/// 因此，实现绝不能要求用户去维护任何安全不变量。
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
 ///
-/// 请考虑改用 [`pointer::mask`]。
+/// Consider using [`pointer::mask`] instead.
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub fn ptr_mask<T>(ptr: *const T, mask: usize) -> *const T;
 
-/// 等价于对应的 `llvm.memcpy.p0i8.0i8.*` intrinsic，其大小为 `count` * `size_of::<T>()`、
-/// 对齐为 `align_of::<T>()`。
+/// Equivalent to the appropriate `llvm.memcpy.p0i8.0i8.*` intrinsic, with
+/// a size of `count` * `size_of::<T>()` and an alignment of `align_of::<T>()`.
 ///
-/// 本 intrinsic 没有稳定的对应物。
-/// # 安全性（Safety）
+/// This intrinsic does not have a stable counterpart.
+/// # Safety
 ///
-/// 其安全要求与 [`copy_nonoverlapping`] 一致，但读写行为是 volatile（易变）的，
-/// 这意味着除非 `_count` 或 `size_of::<T>()` 等于零，否则它不会被优化掉。
-/// 源区间与目标区间仍不得重叠；volatile 只改变访问的可观察性，不改变 `copy_nonoverlapping` 的别名规则。
+/// The safety requirements are consistent with [`copy_nonoverlapping`]
+/// while the read and write behaviors are volatile,
+/// which means it will not be optimized out unless `_count` or `size_of::<T>()` is equal to zero.
 ///
 /// [`copy_nonoverlapping`]: ptr::copy_nonoverlapping
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn volatile_copy_nonoverlapping_memory<T>(dst: *mut T, src: *const T, count: usize);
-/// 等价于对应的 `llvm.memmove.p0i8.0i8.*` intrinsic，其大小为 `count * size_of::<T>()`、
-/// 对齐为 `align_of::<T>()`。
+/// Equivalent to the appropriate `llvm.memmove.p0i8.0i8.*` intrinsic, with
+/// a size of `count * size_of::<T>()` and an alignment of `align_of::<T>()`.
 ///
-/// volatile 参数被设为 `true`，所以除非大小等于零，否则它不会被优化掉。
+/// The volatile parameter is set to `true`, so it will not be optimized out
+/// unless size is equal to zero.
 ///
-/// 本 intrinsic 没有稳定的对应物。
-/// # 安全性（Safety）
-///
-/// 其安全要求与 [`copy`] 一致：`src` 与 `dst` 都必须对 `count * size_of::<T>()` 字节有效，
-/// `src` 可读、`dst` 可写，且二者必须满足 `T` 的对齐要求。源区间和目标区间可以重叠，
-/// 因为这是 memmove 语义；但 volatile 并不提供原子性或线程同步。
-///
-/// [`copy`]: ptr::copy
+/// This intrinsic does not have a stable counterpart.
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn volatile_copy_memory<T>(dst: *mut T, src: *const T, count: usize);
-/// 等价于对应的 `llvm.memset.p0i8.*` intrinsic，其大小为 `count * size_of::<T>()`、
-/// 对齐为 `align_of::<T>()`。
+/// Equivalent to the appropriate `llvm.memset.p0i8.*` intrinsic, with a
+/// size of `count * size_of::<T>()` and an alignment of `align_of::<T>()`.
 ///
-/// 本 intrinsic 没有稳定的对应物。
-/// # 安全性（Safety）
+/// This intrinsic does not have a stable counterpart.
+/// # Safety
 ///
-/// 其安全要求与 [`write_bytes`] 一致，但写行为是 volatile（易变）的，
-/// 这意味着除非 `_count` 或 `size_of::<T>()` 等于零，否则它不会被优化掉。
-/// 调用方仍要保证目标区间可写、有效并满足 `T` 的对齐要求。
+/// The safety requirements are consistent with [`write_bytes`] while the write behavior is volatile,
+/// which means it will not be optimized out unless `_count` or `size_of::<T>()` is equal to zero.
 ///
 /// [`write_bytes`]: ptr::write_bytes
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn volatile_set_memory<T>(dst: *mut T, val: u8, count: usize);
 
-/// 从 `src` 指针处执行一次 volatile（易变）加载。
+/// Performs a volatile load from the `src` pointer.
 ///
-/// 本 intrinsic 的稳定版本是 [`core::ptr::read_volatile`]。
-///
-/// # 安全性（Safety）
-///
-/// `src` 必须非空、按 `T` 对齐、指向已初始化且对 `T` 大小有效的内存。volatile 加载不会取得所有权，
-/// 但会按位读出一个 `T` 值；因此被读出的 bit 模式也必须是 `T` 的有效值。volatile 不提供原子性，
-/// 若该位置可能被其他线程同时访问，仍需额外同步。
+/// The stabilized version of this intrinsic is [`core::ptr::read_volatile`].
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn volatile_load<T>(src: *const T) -> T;
-/// 向 `dst` 指针处执行一次 volatile（易变）存储。
+/// Performs a volatile store to the `dst` pointer.
 ///
-/// 本 intrinsic 的稳定版本是 [`core::ptr::write_volatile`]。
-///
-/// # 安全性（Safety）
-///
-/// `dst` 必须非空、按 `T` 对齐、指向对 `T` 大小有效且可写的内存。volatile 存储会把 `val` 写入目标位置，
-/// 但不负责运行旧值的析构，也不建立线程间同步关系；调用方必须保证别名和并发访问不会违反 Rust 的内存模型。
+/// The stabilized version of this intrinsic is [`core::ptr::write_volatile`].
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn volatile_store<T>(dst: *mut T, val: T);
 
-/// 从 `src` 指针处执行一次 volatile（易变）加载。
-/// 该指针不要求对齐。
+/// Performs a volatile load from the `src` pointer
+/// The pointer is not required to be aligned.
 ///
-/// 本 intrinsic 没有稳定的对应物。
-///
-/// # 安全性（Safety）
-///
-/// `src` 可以未对齐，但仍必须非空、指向已初始化且对 `T` 大小有效的内存，并且读出的 bit 模式必须是 `T` 的有效值。
-/// “未对齐”只放宽 alignment 要求，不放宽 provenance、生命周期或并发访问要求。
+/// This intrinsic does not have a stable counterpart.
 #[rustc_intrinsic]
 #[rustc_nounwind]
 #[rustc_diagnostic_item = "intrinsics_unaligned_volatile_load"]
 pub unsafe fn unaligned_volatile_load<T>(src: *const T) -> T;
-/// 向 `dst` 指针处执行一次 volatile（易变）存储。
-/// 该指针不要求对齐。
+/// Performs a volatile store to the `dst` pointer.
+/// The pointer is not required to be aligned.
 ///
-/// 本 intrinsic 没有稳定的对应物。
-///
-/// # 安全性（Safety）
-///
-/// `dst` 可以未对齐，但仍必须非空、指向对 `T` 大小有效且可写的内存。
-/// “未对齐”只放宽 alignment 要求，不放宽 provenance、生命周期、可写性或并发访问要求。
+/// This intrinsic does not have a stable counterpart.
 #[rustc_intrinsic]
 #[rustc_nounwind]
 #[rustc_diagnostic_item = "intrinsics_unaligned_volatile_store"]
 pub unsafe fn unaligned_volatile_store<T>(dst: *mut T, val: T);
 
-/// 返回一个 `f16` 的平方根。
+/// Returns the square root of an `f16`
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f16::sqrt`](../../std/primitive.f16.html#method.sqrt)
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub fn sqrtf16(x: f16) -> f16;
-/// 返回一个 `f32` 的平方根。
+/// Returns the square root of an `f32`
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f32::sqrt`](../../std/primitive.f32.html#method.sqrt)
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub fn sqrtf32(x: f32) -> f32;
-/// 返回一个 `f64` 的平方根。
+/// Returns the square root of an `f64`
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f64::sqrt`](../../std/primitive.f64.html#method.sqrt)
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub fn sqrtf64(x: f64) -> f64;
-/// 返回一个 `f128` 的平方根。
+/// Returns the square root of an `f128`
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f128::sqrt`](../../std/primitive.f128.html#method.sqrt)
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub fn sqrtf128(x: f128) -> f128;
 
-/// 把一个 `f16` 提升到整数次幂。
+/// Raises an `f16` to an integer power.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f16::powi`](../../std/primitive.f16.html#method.powi)
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub fn powif16(a: f16, x: i32) -> f16;
-/// 把一个 `f32` 提升到整数次幂。
+/// Raises an `f32` to an integer power.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f32::powi`](../../std/primitive.f32.html#method.powi)
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub fn powif32(a: f32, x: i32) -> f32;
-/// 把一个 `f64` 提升到整数次幂。
+/// Raises an `f64` to an integer power.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f64::powi`](../../std/primitive.f64.html#method.powi)
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub fn powif64(a: f64, x: i32) -> f64;
-/// 把一个 `f128` 提升到整数次幂。
+/// Raises an `f128` to an integer power.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f128::powi`](../../std/primitive.f128.html#method.powi)
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub fn powif128(a: f128, x: i32) -> f128;
 
-/// 返回一个 `f16` 的正弦。
+/// Returns the sine of an `f16`.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f16::sin`](../../std/primitive.f16.html#method.sin)
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub fn sinf16(x: f16) -> f16;
-/// 返回一个 `f32` 的正弦。
+/// Returns the sine of an `f32`.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f32::sin`](../../std/primitive.f32.html#method.sin)
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub fn sinf32(x: f32) -> f32;
-/// 返回一个 `f64` 的正弦。
+/// Returns the sine of an `f64`.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f64::sin`](../../std/primitive.f64.html#method.sin)
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub fn sinf64(x: f64) -> f64;
-/// 返回一个 `f128` 的正弦。
+/// Returns the sine of an `f128`.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f128::sin`](../../std/primitive.f128.html#method.sin)
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub fn sinf128(x: f128) -> f128;
 
-/// 返回一个 `f16` 的余弦。
+/// Returns the cosine of an `f16`.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f16::cos`](../../std/primitive.f16.html#method.cos)
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub fn cosf16(x: f16) -> f16;
-/// 返回一个 `f32` 的余弦。
+/// Returns the cosine of an `f32`.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f32::cos`](../../std/primitive.f32.html#method.cos)
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub fn cosf32(x: f32) -> f32;
-/// 返回一个 `f64` 的余弦。
+/// Returns the cosine of an `f64`.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f64::cos`](../../std/primitive.f64.html#method.cos)
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub fn cosf64(x: f64) -> f64;
-/// 返回一个 `f128` 的余弦。
+/// Returns the cosine of an `f128`.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f128::cos`](../../std/primitive.f128.html#method.cos)
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub fn cosf128(x: f128) -> f128;
 
-/// 把一个 `f16` 提升到 `f16` 次幂。
+/// Raises an `f16` to an `f16` power.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f16::powf`](../../std/primitive.f16.html#method.powf)
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub fn powf16(a: f16, x: f16) -> f16;
-/// 把一个 `f32` 提升到 `f32` 次幂。
+/// Raises an `f32` to an `f32` power.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f32::powf`](../../std/primitive.f32.html#method.powf)
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub fn powf32(a: f32, x: f32) -> f32;
-/// 把一个 `f64` 提升到 `f64` 次幂。
+/// Raises an `f64` to an `f64` power.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f64::powf`](../../std/primitive.f64.html#method.powf)
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub fn powf64(a: f64, x: f64) -> f64;
-/// 把一个 `f128` 提升到 `f128` 次幂。
+/// Raises an `f128` to an `f128` power.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f128::powf`](../../std/primitive.f128.html#method.powf)
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub fn powf128(a: f128, x: f128) -> f128;
 
-/// 返回一个 `f16` 的指数（e 的幂）。
+/// Returns the exponential of an `f16`.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f16::exp`](../../std/primitive.f16.html#method.exp)
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub fn expf16(x: f16) -> f16;
-/// 返回一个 `f32` 的指数（e 的幂）。
+/// Returns the exponential of an `f32`.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f32::exp`](../../std/primitive.f32.html#method.exp)
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub fn expf32(x: f32) -> f32;
-/// 返回一个 `f64` 的指数（e 的幂）。
+/// Returns the exponential of an `f64`.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f64::exp`](../../std/primitive.f64.html#method.exp)
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub fn expf64(x: f64) -> f64;
-/// 返回一个 `f128` 的指数（e 的幂）。
+/// Returns the exponential of an `f128`.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f128::exp`](../../std/primitive.f128.html#method.exp)
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub fn expf128(x: f128) -> f128;
 
-/// 返回 2 的 `f16` 次幂。
+/// Returns 2 raised to the power of an `f16`.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f16::exp2`](../../std/primitive.f16.html#method.exp2)
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub fn exp2f16(x: f16) -> f16;
-/// 返回 2 的 `f32` 次幂。
+/// Returns 2 raised to the power of an `f32`.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f32::exp2`](../../std/primitive.f32.html#method.exp2)
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub fn exp2f32(x: f32) -> f32;
-/// 返回 2 的 `f64` 次幂。
+/// Returns 2 raised to the power of an `f64`.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f64::exp2`](../../std/primitive.f64.html#method.exp2)
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub fn exp2f64(x: f64) -> f64;
-/// 返回 2 的 `f128` 次幂。
+/// Returns 2 raised to the power of an `f128`.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f128::exp2`](../../std/primitive.f128.html#method.exp2)
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub fn exp2f128(x: f128) -> f128;
 
-/// 返回一个浮点值的自然对数（以 e 为底）。
+/// Returns the natural logarithm of an `f16`.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f16::ln`](../../std/primitive.f16.html#method.ln)
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub fn logf16(x: f16) -> f16;
-/// 返回一个浮点值的自然对数（以 e 为底）。
+/// Returns the natural logarithm of an `f32`.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f32::ln`](../../std/primitive.f32.html#method.ln)
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub fn logf32(x: f32) -> f32;
-/// 返回一个浮点值的自然对数（以 e 为底）。
+/// Returns the natural logarithm of an `f64`.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f64::ln`](../../std/primitive.f64.html#method.ln)
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub fn logf64(x: f64) -> f64;
-/// 返回一个浮点值的自然对数（以 e 为底）。
+/// Returns the natural logarithm of an `f128`.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f128::ln`](../../std/primitive.f128.html#method.ln)
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub fn logf128(x: f128) -> f128;
 
-/// 返回一个 `f16` 以 10 为底的对数。
+/// Returns the base 10 logarithm of an `f16`.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f16::log10`](../../std/primitive.f16.html#method.log10)
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub fn log10f16(x: f16) -> f16;
-/// 返回一个 `f32` 以 10 为底的对数。
+/// Returns the base 10 logarithm of an `f32`.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f32::log10`](../../std/primitive.f32.html#method.log10)
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub fn log10f32(x: f32) -> f32;
-/// 返回一个 `f64` 以 10 为底的对数。
+/// Returns the base 10 logarithm of an `f64`.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f64::log10`](../../std/primitive.f64.html#method.log10)
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub fn log10f64(x: f64) -> f64;
-/// 返回一个 `f128` 以 10 为底的对数。
+/// Returns the base 10 logarithm of an `f128`.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f128::log10`](../../std/primitive.f128.html#method.log10)
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub fn log10f128(x: f128) -> f128;
 
-/// 返回一个 `f16` 以 2 为底的对数。
+/// Returns the base 2 logarithm of an `f16`.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f16::log2`](../../std/primitive.f16.html#method.log2)
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub fn log2f16(x: f16) -> f16;
-/// 返回一个 `f32` 以 2 为底的对数。
+/// Returns the base 2 logarithm of an `f32`.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f32::log2`](../../std/primitive.f32.html#method.log2)
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub fn log2f32(x: f32) -> f32;
-/// 返回一个 `f64` 以 2 为底的对数。
+/// Returns the base 2 logarithm of an `f64`.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f64::log2`](../../std/primitive.f64.html#method.log2)
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub fn log2f64(x: f64) -> f64;
-/// 返回一个 `f128` 以 2 为底的对数。
+/// Returns the base 2 logarithm of an `f128`.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f128::log2`](../../std/primitive.f128.html#method.log2)
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub fn log2f128(x: f128) -> f128;
 
-/// 返回 `f16` 值的 `a * b + c`。
+/// Returns `a * b + c` for `f16` values.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f16::mul_add`](../../std/primitive.f16.html#method.mul_add)
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub const fn fmaf16(a: f16, b: f16, c: f16) -> f16;
-/// 返回 `f32` 值的 `a * b + c`。
+/// Returns `a * b + c` for `f32` values.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f32::mul_add`](../../std/primitive.f32.html#method.mul_add)
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub const fn fmaf32(a: f32, b: f32, c: f32) -> f32;
-/// 返回 `f64` 值的 `a * b + c`。
+/// Returns `a * b + c` for `f64` values.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f64::mul_add`](../../std/primitive.f64.html#method.mul_add)
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub const fn fmaf64(a: f64, b: f64, c: f64) -> f64;
-/// 返回 `f128` 值的 `a * b + c`。
+/// Returns `a * b + c` for `f128` values.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f128::mul_add`](../../std/primitive.f128.html#method.mul_add)
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub const fn fmaf128(a: f128, b: f128, c: f128) -> f128;
 
-/// 返回 `f16` 值的 `a * b + c`，
-/// 以非确定性的方式，要么执行融合乘加（fused multiply-add），要么执行两步运算并对中间结果做舍入。
+/// Returns `a * b + c` for `f16` values, non-deterministically executing
+/// either a fused multiply-add or two operations with rounding of the
+/// intermediate result.
 ///
-/// 当代码生成器判定目标指令集支持融合操作、且融合操作比等价的“分开的乘法 + 加法”两条指令更高效时，
-/// 才会做融合。是否选择融合操作并未被规定，且可能取决于优化级别、上下文等因素。
+/// The operation is fused if the code generator determines that target
+/// instruction set has support for a fused operation, and that the fused
+/// operation is more efficient than the equivalent, separate pair of mul
+/// and add instructions. It is unspecified whether or not a fused operation
+/// is selected, and that may depend on optimization level and context, for
+/// example.
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub const fn fmuladdf16(a: f16, b: f16, c: f16) -> f16;
-/// 返回 `f32` 值的 `a * b + c`，
-/// 以非确定性的方式，要么执行融合乘加（fused multiply-add），要么执行两步运算并对中间结果做舍入。
+/// Returns `a * b + c` for `f32` values, non-deterministically executing
+/// either a fused multiply-add or two operations with rounding of the
+/// intermediate result.
 ///
-/// 当代码生成器判定目标指令集支持融合操作、且融合操作比等价的“分开的乘法 + 加法”两条指令更高效时，
-/// 才会做融合。是否选择融合操作并未被规定，且可能取决于优化级别、上下文等因素。
+/// The operation is fused if the code generator determines that target
+/// instruction set has support for a fused operation, and that the fused
+/// operation is more efficient than the equivalent, separate pair of mul
+/// and add instructions. It is unspecified whether or not a fused operation
+/// is selected, and that may depend on optimization level and context, for
+/// example.
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub const fn fmuladdf32(a: f32, b: f32, c: f32) -> f32;
-/// 返回 `f64` 值的 `a * b + c`，
-/// 以非确定性的方式，要么执行融合乘加（fused multiply-add），要么执行两步运算并对中间结果做舍入。
+/// Returns `a * b + c` for `f64` values, non-deterministically executing
+/// either a fused multiply-add or two operations with rounding of the
+/// intermediate result.
 ///
-/// 当代码生成器判定目标指令集支持融合操作、且融合操作比等价的“分开的乘法 + 加法”两条指令更高效时，
-/// 才会做融合。是否选择融合操作并未被规定，且可能取决于优化级别、上下文等因素。
+/// The operation is fused if the code generator determines that target
+/// instruction set has support for a fused operation, and that the fused
+/// operation is more efficient than the equivalent, separate pair of mul
+/// and add instructions. It is unspecified whether or not a fused operation
+/// is selected, and that may depend on optimization level and context, for
+/// example.
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub const fn fmuladdf64(a: f64, b: f64, c: f64) -> f64;
-/// 返回 `f128` 值的 `a * b + c`，
-/// 以非确定性的方式，要么执行融合乘加（fused multiply-add），要么执行两步运算并对中间结果做舍入。
+/// Returns `a * b + c` for `f128` values, non-deterministically executing
+/// either a fused multiply-add or two operations with rounding of the
+/// intermediate result.
 ///
-/// 当代码生成器判定目标指令集支持融合操作、且融合操作比等价的“分开的乘法 + 加法”两条指令更高效时，
-/// 才会做融合。是否选择融合操作并未被规定，且可能取决于优化级别、上下文等因素。
+/// The operation is fused if the code generator determines that target
+/// instruction set has support for a fused operation, and that the fused
+/// operation is more efficient than the equivalent, separate pair of mul
+/// and add instructions. It is unspecified whether or not a fused operation
+/// is selected, and that may depend on optimization level and context, for
+/// example.
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub const fn fmuladdf128(a: f128, b: f128, c: f128) -> f128;
 
-/// 返回不大于该 `f16` 的最大整数（向下取整 floor）。
+/// Returns the largest integer less than or equal to an `f16`.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f16::floor`](../../std/primitive.f16.html#method.floor)
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub const fn floorf16(x: f16) -> f16;
-/// 返回不大于该 `f32` 的最大整数（向下取整 floor）。
+/// Returns the largest integer less than or equal to an `f32`.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f32::floor`](../../std/primitive.f32.html#method.floor)
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub const fn floorf32(x: f32) -> f32;
-/// 返回不大于该 `f64` 的最大整数（向下取整 floor）。
+/// Returns the largest integer less than or equal to an `f64`.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f64::floor`](../../std/primitive.f64.html#method.floor)
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub const fn floorf64(x: f64) -> f64;
-/// 返回不大于该 `f128` 的最大整数（向下取整 floor）。
+/// Returns the largest integer less than or equal to an `f128`.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f128::floor`](../../std/primitive.f128.html#method.floor)
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub const fn floorf128(x: f128) -> f128;
 
-/// 返回不小于该 `f16` 的最小整数（向上取整 ceil）。
+/// Returns the smallest integer greater than or equal to an `f16`.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f16::ceil`](../../std/primitive.f16.html#method.ceil)
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub const fn ceilf16(x: f16) -> f16;
-/// 返回不小于该 `f32` 的最小整数（向上取整 ceil）。
+/// Returns the smallest integer greater than or equal to an `f32`.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f32::ceil`](../../std/primitive.f32.html#method.ceil)
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub const fn ceilf32(x: f32) -> f32;
-/// 返回不小于该 `f64` 的最小整数（向上取整 ceil）。
+/// Returns the smallest integer greater than or equal to an `f64`.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f64::ceil`](../../std/primitive.f64.html#method.ceil)
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub const fn ceilf64(x: f64) -> f64;
-/// 返回不小于该 `f128` 的最小整数（向上取整 ceil）。
+/// Returns the smallest integer greater than or equal to an `f128`.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f128::ceil`](../../std/primitive.f128.html#method.ceil)
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub const fn ceilf128(x: f128) -> f128;
 
-/// 返回一个 `f16` 的整数部分（向零截断 trunc）。
+/// Returns the integer part of an `f16`.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f16::trunc`](../../std/primitive.f16.html#method.trunc)
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub const fn truncf16(x: f16) -> f16;
-/// 返回一个 `f32` 的整数部分（向零截断 trunc）。
+/// Returns the integer part of an `f32`.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f32::trunc`](../../std/primitive.f32.html#method.trunc)
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub const fn truncf32(x: f32) -> f32;
-/// 返回一个 `f64` 的整数部分（向零截断 trunc）。
+/// Returns the integer part of an `f64`.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f64::trunc`](../../std/primitive.f64.html#method.trunc)
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub const fn truncf64(x: f64) -> f64;
-/// 返回一个 `f128` 的整数部分（向零截断 trunc）。
+/// Returns the integer part of an `f128`.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f128::trunc`](../../std/primitive.f128.html#method.trunc)
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub const fn truncf128(x: f128) -> f128;
 
-/// 返回最接近 `f16` 的整数。平局时舍入到最低有效位为偶数的那个数。
+/// Returns the nearest integer to an `f16`. Rounds half-way cases to the number with an even
+/// least significant digit.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f16::round_ties_even`](../../std/primitive.f16.html#method.round_ties_even)
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub const fn round_ties_even_f16(x: f16) -> f16;
 
-/// 返回最接近 `f32` 的整数。平局时舍入到最低有效位为偶数的那个数。
+/// Returns the nearest integer to an `f32`. Rounds half-way cases to the number with an even
+/// least significant digit.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f32::round_ties_even`](../../std/primitive.f32.html#method.round_ties_even)
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub const fn round_ties_even_f32(x: f32) -> f32;
 
-/// 返回最接近 `f64` 的整数。平局时舍入到最低有效位为偶数的那个数。
+/// Returns the nearest integer to an `f64`. Rounds half-way cases to the number with an even
+/// least significant digit.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f64::round_ties_even`](../../std/primitive.f64.html#method.round_ties_even)
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub const fn round_ties_even_f64(x: f64) -> f64;
 
-/// 返回最接近 `f128` 的整数。平局时舍入到最低有效位为偶数的那个数。
+/// Returns the nearest integer to an `f128`. Rounds half-way cases to the number with an even
+/// least significant digit.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f128::round_ties_even`](../../std/primitive.f128.html#method.round_ties_even)
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub const fn round_ties_even_f128(x: f128) -> f128;
 
-/// 返回最接近 `f16` 的整数。平局时向远离 0 的方向舍入。
+/// Returns the nearest integer to an `f16`. Rounds half-way cases away from zero.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f16::round`](../../std/primitive.f16.html#method.round)
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub const fn roundf16(x: f16) -> f16;
-/// 返回最接近 `f32` 的整数。平局时向远离 0 的方向舍入。
+/// Returns the nearest integer to an `f32`. Rounds half-way cases away from zero.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f32::round`](../../std/primitive.f32.html#method.round)
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub const fn roundf32(x: f32) -> f32;
-/// 返回最接近 `f64` 的整数。平局时向远离 0 的方向舍入。
+/// Returns the nearest integer to an `f64`. Rounds half-way cases away from zero.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f64::round`](../../std/primitive.f64.html#method.round)
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub const fn roundf64(x: f64) -> f64;
-/// 返回最接近 `f128` 的整数。平局时向远离 0 的方向舍入。
+/// Returns the nearest integer to an `f128`. Rounds half-way cases away from zero.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f128::round`](../../std/primitive.f128.html#method.round)
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub const fn roundf128(x: f128) -> f128;
 
-/// 允许基于代数规则进行优化的浮点加法。
-/// 要求该操作的输入与输出均为有限值，否则即 UB。
+/// Float addition that allows optimizations based on algebraic rules.
+/// Requires that inputs and output of the operation are finite, causing UB otherwise.
 ///
-/// 本 intrinsic 没有稳定的对应物。
+/// This intrinsic does not have a stable counterpart.
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn fadd_fast<T: Copy>(a: T, b: T) -> T;
 
-/// 允许基于代数规则进行优化的浮点减法。
-/// 要求该操作的输入与输出均为有限值，否则即 UB。
+/// Float subtraction that allows optimizations based on algebraic rules.
+/// Requires that inputs and output of the operation are finite, causing UB otherwise.
 ///
-/// 本 intrinsic 没有稳定的对应物。
+/// This intrinsic does not have a stable counterpart.
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn fsub_fast<T: Copy>(a: T, b: T) -> T;
 
-/// 允许基于代数规则进行优化的浮点乘法。
-/// 要求该操作的输入与输出均为有限值，否则即 UB。
+/// Float multiplication that allows optimizations based on algebraic rules.
+/// Requires that inputs and output of the operation are finite, causing UB otherwise.
 ///
-/// 本 intrinsic 没有稳定的对应物。
+/// This intrinsic does not have a stable counterpart.
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn fmul_fast<T: Copy>(a: T, b: T) -> T;
 
-/// 允许基于代数规则进行优化的浮点除法。
-/// 要求该操作的输入与输出均为有限值，否则即 UB。
+/// Float division that allows optimizations based on algebraic rules.
+/// Requires that inputs and output of the operation are finite, causing UB otherwise.
 ///
-/// 本 intrinsic 没有稳定的对应物。
+/// This intrinsic does not have a stable counterpart.
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn fdiv_fast<T: Copy>(a: T, b: T) -> T;
 
-/// 允许基于代数规则进行优化的浮点取余。
-/// 要求该操作的输入与输出均为有限值，否则即 UB。
+/// Float remainder that allows optimizations based on algebraic rules.
+/// Requires that inputs and output of the operation are finite, causing UB otherwise.
 ///
-/// 本 intrinsic 没有稳定的对应物。
+/// This intrinsic does not have a stable counterpart.
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn frem_fast<T: Copy>(a: T, b: T) -> T;
 
-/// 使用 LLVM 的 fptoui/fptosi 进行转换；对越界的值它可能返回 undef
-/// （<https://github.com/rust-lang/rust/issues/10184>）。
+/// Converts with LLVM’s fptoui/fptosi, which may return undef for values out of range
+/// (<https://github.com/rust-lang/rust/issues/10184>)
 ///
-/// 稳定版本为 [`f32::to_int_unchecked`] 与 [`f64::to_int_unchecked`]。
+/// Stabilized as [`f32::to_int_unchecked`] and [`f64::to_int_unchecked`].
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn float_to_int_unchecked<Float: Copy, Int: Copy>(value: Float) -> Int;
 
-/// 允许基于代数规则进行优化的浮点加法。
+/// Float addition that allows optimizations based on algebraic rules.
 ///
-/// 稳定版本为 [`f16::algebraic_add`]、[`f32::algebraic_add`]、[`f64::algebraic_add`] 与 [`f128::algebraic_add`]。
+/// Stabilized as [`f16::algebraic_add`], [`f32::algebraic_add`], [`f64::algebraic_add`] and [`f128::algebraic_add`].
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const fn fadd_algebraic<T: Copy>(a: T, b: T) -> T;
 
-/// 允许基于代数规则进行优化的浮点减法。
+/// Float subtraction that allows optimizations based on algebraic rules.
 ///
-/// 稳定版本为 [`f16::algebraic_sub`]、[`f32::algebraic_sub`]、[`f64::algebraic_sub`] 与 [`f128::algebraic_sub`]。
+/// Stabilized as [`f16::algebraic_sub`], [`f32::algebraic_sub`], [`f64::algebraic_sub`] and [`f128::algebraic_sub`].
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const fn fsub_algebraic<T: Copy>(a: T, b: T) -> T;
 
-/// 允许基于代数规则进行优化的浮点乘法。
+/// Float multiplication that allows optimizations based on algebraic rules.
 ///
-/// 稳定版本为 [`f16::algebraic_mul`]、[`f32::algebraic_mul`]、[`f64::algebraic_mul`] 与 [`f128::algebraic_mul`]。
+/// Stabilized as [`f16::algebraic_mul`], [`f32::algebraic_mul`], [`f64::algebraic_mul`] and [`f128::algebraic_mul`].
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const fn fmul_algebraic<T: Copy>(a: T, b: T) -> T;
 
-/// 允许基于代数规则进行优化的浮点除法。
+/// Float division that allows optimizations based on algebraic rules.
 ///
-/// 稳定版本为 [`f16::algebraic_div`]、[`f32::algebraic_div`]、[`f64::algebraic_div`] 与 [`f128::algebraic_div`]。
+/// Stabilized as [`f16::algebraic_div`], [`f32::algebraic_div`], [`f64::algebraic_div`] and [`f128::algebraic_div`].
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const fn fdiv_algebraic<T: Copy>(a: T, b: T) -> T;
 
-/// 允许基于代数规则进行优化的浮点取余。
+/// Float remainder that allows optimizations based on algebraic rules.
 ///
-/// 稳定版本为 [`f16::algebraic_rem`]、[`f32::algebraic_rem`]、[`f64::algebraic_rem`] 与 [`f128::algebraic_rem`]。
+/// Stabilized as [`f16::algebraic_rem`], [`f32::algebraic_rem`], [`f64::algebraic_rem`] and [`f128::algebraic_rem`].
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const fn frem_algebraic<T: Copy>(a: T, b: T) -> T;
 
-/// 返回整数类型 `T` 中被置 1 的位的个数。
+/// Returns the number of bits set in an integer type `T`
 ///
-/// 注意，与大多数 intrinsic 不同，调用它是安全的；它不需要 `unsafe` 块。
-/// 因此，实现绝不能要求用户去维护任何安全不变量。
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
 ///
-/// 本 intrinsic 的稳定版本可通过整数原始类型上的 `count_ones` 方法使用，例如
+/// The stabilized versions of this intrinsic are available on the integer
+/// primitives via the `count_ones` method. For example,
 /// [`u32::count_ones`]
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const fn ctpop<T: Copy>(x: T) -> u32;
 
-/// 返回整数类型 `T` 中前导未置位（即前导零）的个数。
+/// Returns the number of leading unset bits (zeroes) in an integer type `T`.
 ///
-/// 注意，与大多数 intrinsic 不同，调用它是安全的；它不需要 `unsafe` 块。
-/// 因此，实现绝不能要求用户去维护任何安全不变量。
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
 ///
-/// 本 intrinsic 的稳定版本可通过整数原始类型上的 `leading_zeros` 方法使用，例如
+/// The stabilized versions of this intrinsic are available on the integer
+/// primitives via the `leading_zeros` method. For example,
 /// [`u32::leading_zeros`]
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// #![feature(core_intrinsics)]
@@ -1700,7 +1687,7 @@ pub const fn ctpop<T: Copy>(x: T) -> u32;
 /// assert_eq!(num_leading, 3);
 /// ```
 ///
-/// 值为 `0` 的 `x` 会返回 `T` 的位宽。
+/// An `x` with value `0` will return the bit width of `T`.
 ///
 /// ```
 /// #![feature(core_intrinsics)]
@@ -1717,11 +1704,12 @@ pub const fn ctpop<T: Copy>(x: T) -> u32;
 #[rustc_intrinsic]
 pub const fn ctlz<T: Copy>(x: T) -> u32;
 
-/// 与 `ctlz` 类似，但格外不安全：当传入值为 `0` 的 `x` 时它返回 `undef`。
+/// Like `ctlz`, but extra-unsafe as it returns `undef` when
+/// given an `x` with value `0`.
 ///
-/// 本 intrinsic 没有稳定的对应物。
+/// This intrinsic does not have a stable counterpart.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// #![feature(core_intrinsics)]
@@ -1738,15 +1726,18 @@ pub const fn ctlz<T: Copy>(x: T) -> u32;
 #[rustc_intrinsic]
 pub const unsafe fn ctlz_nonzero<T: Copy>(x: T) -> u32;
 
-/// 返回整数类型 `T` 中尾随未置位（即尾随零）的个数。
+/// Returns the number of trailing unset bits (zeroes) in an integer type `T`.
 ///
-/// 注意，与大多数 intrinsic 不同，调用它是安全的；它不需要 `unsafe` 块。
-/// 因此，实现绝不能要求用户去维护任何安全不变量。
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
 ///
-/// 本 intrinsic 的稳定版本可通过整数原始类型上的 `trailing_zeros` 方法使用，例如
+/// The stabilized versions of this intrinsic are available on the integer
+/// primitives via the `trailing_zeros` method. For example,
 /// [`u32::trailing_zeros`]
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// #![feature(core_intrinsics)]
@@ -1759,7 +1750,7 @@ pub const unsafe fn ctlz_nonzero<T: Copy>(x: T) -> u32;
 /// assert_eq!(num_trailing, 3);
 /// ```
 ///
-/// 值为 `0` 的 `x` 会返回 `T` 的位宽：
+/// An `x` with value `0` will return the bit width of `T`:
 ///
 /// ```
 /// #![feature(core_intrinsics)]
@@ -1776,11 +1767,12 @@ pub const unsafe fn ctlz_nonzero<T: Copy>(x: T) -> u32;
 #[rustc_intrinsic]
 pub const fn cttz<T: Copy>(x: T) -> u32;
 
-/// 与 `cttz` 类似，但格外不安全：当传入值为 `0` 的 `x` 时它返回 `undef`。
+/// Like `cttz`, but extra-unsafe as it returns `undef` when
+/// given an `x` with value `0`.
 ///
-/// 本 intrinsic 没有稳定的对应物。
+/// This intrinsic does not have a stable counterpart.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// #![feature(core_intrinsics)]
@@ -1797,109 +1789,127 @@ pub const fn cttz<T: Copy>(x: T) -> u32;
 #[rustc_intrinsic]
 pub const unsafe fn cttz_nonzero<T: Copy>(x: T) -> u32;
 
-/// 反转整数类型 `T` 中的字节顺序。
+/// Reverses the bytes in an integer type `T`.
 ///
-/// 注意，与大多数 intrinsic 不同，调用它是安全的；它不需要 `unsafe` 块。
-/// 因此，实现绝不能要求用户去维护任何安全不变量。
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
 ///
-/// 本 intrinsic 的稳定版本可通过整数原始类型上的 `swap_bytes` 方法使用，例如
+/// The stabilized versions of this intrinsic are available on the integer
+/// primitives via the `swap_bytes` method. For example,
 /// [`u32::swap_bytes`]
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const fn bswap<T: Copy>(x: T) -> T;
 
-/// 反转整数类型 `T` 中的比特位。
+/// Reverses the bits in an integer type `T`.
 ///
-/// 注意，与大多数 intrinsic 不同，调用它是安全的；它不需要 `unsafe` 块。
-/// 因此，实现绝不能要求用户去维护任何安全不变量。
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
 ///
-/// 本 intrinsic 的稳定版本可通过整数原始类型上的 `reverse_bits` 方法使用，例如
+/// The stabilized versions of this intrinsic are available on the integer
+/// primitives via the `reverse_bits` method. For example,
 /// [`u32::reverse_bits`]
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const fn bitreverse<T: Copy>(x: T) -> T;
 
-/// 对两个参数做三路比较（three-way comparison）；这两个参数必须是字符或整数（有符号或无符号）类型。
+/// Does a three-way comparison between the two arguments,
+/// which must be of character or integer (signed or unsigned) type.
 ///
-/// 它最初被加入是因为它极大地简化了 `cmp` 各实现中的 MIR；后来 LLVM 20 也为它增加了一个后端 intrinsic。
+/// This was originally added because it greatly simplified the MIR in `cmp`
+/// implementations, and then LLVM 20 added a backend intrinsic for it too.
 ///
-/// 本 intrinsic 的稳定版本是 [`Ord::cmp`]。
+/// The stabilized version of this intrinsic is [`Ord::cmp`].
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const fn three_way_compare<T: Copy>(lhs: T, rhss: T) -> crate::cmp::Ordering;
 
-/// 合并两个没有任何公共置位 bit 的值。
+/// Combine two values which have no bits in common.
 ///
-/// 这允许后端把它实现为 `a + b` *或* `a | b`，取决于在特定目标上哪种更易实现。
+/// This allows the backend to implement it as `a + b` *or* `a | b`,
+/// depending which is easier to implement on a specific target.
 ///
-/// # 安全性（Safety）
+/// # Safety
 ///
-/// 要求 `(a & b) == 0`，或等价地要求 `(a | b) == (a + b)`。
+/// Requires that `(a & b) == 0`, or equivalently that `(a | b) == (a + b)`.
 ///
-/// 否则即为立即 UB。
+/// Otherwise it's immediate UB.
 #[rustc_const_unstable(feature = "disjoint_bitor", issue = "135758")]
 #[rustc_nounwind]
 #[rustc_intrinsic]
 #[track_caller]
-#[miri::intrinsic_fallback_is_spec] // 各 fallback 都用 `assume` 来告知 Miri
+#[miri::intrinsic_fallback_is_spec] // the fallbacks all `assume` to tell Miri
 pub const unsafe fn disjoint_bitor<T: [const] fallback::DisjointBitOr>(a: T, b: T) -> T {
-    // SAFETY: 与本函数的前置条件相同。
+    // SAFETY: same preconditions as this function.
     unsafe { fallback::DisjointBitOr::disjoint_bitor(a, b) }
 }
 
-/// 执行带溢出检查的整数加法。
+/// Performs checked integer addition.
 ///
-/// 注意，与大多数 intrinsic 不同，调用它是安全的；它不需要 `unsafe` 块。
-/// 因此，实现绝不能要求用户去维护任何安全不变量。
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
 ///
-/// 本 intrinsic 的稳定版本可通过整数原始类型上的 `overflowing_add` 方法使用，例如
+/// The stabilized versions of this intrinsic are available on the integer
+/// primitives via the `overflowing_add` method. For example,
 /// [`u32::overflowing_add`]
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const fn add_with_overflow<T: Copy>(x: T, y: T) -> (T, bool);
 
-/// 执行带溢出检查的整数减法。
+/// Performs checked integer subtraction
 ///
-/// 注意，与大多数 intrinsic 不同，调用它是安全的；它不需要 `unsafe` 块。
-/// 因此，实现绝不能要求用户去维护任何安全不变量。
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
 ///
-/// 本 intrinsic 的稳定版本可通过整数原始类型上的 `overflowing_sub` 方法使用，例如
+/// The stabilized versions of this intrinsic are available on the integer
+/// primitives via the `overflowing_sub` method. For example,
 /// [`u32::overflowing_sub`]
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const fn sub_with_overflow<T: Copy>(x: T, y: T) -> (T, bool);
 
-/// 执行带溢出检查的整数乘法。
+/// Performs checked integer multiplication
 ///
-/// 注意，与大多数 intrinsic 不同，调用它是安全的；它不需要 `unsafe` 块。
-/// 因此，实现绝不能要求用户去维护任何安全不变量。
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
 ///
-/// 本 intrinsic 的稳定版本可通过整数原始类型上的 `overflowing_mul` 方法使用，例如
+/// The stabilized versions of this intrinsic are available on the integer
+/// primitives via the `overflowing_mul` method. For example,
 /// [`u32::overflowing_mul`]
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const fn mul_with_overflow<T: Copy>(x: T, y: T) -> (T, bool);
 
-/// 执行全宽（full-width）的乘加并带进位（carry）：
-/// `multiplier * multiplicand + addend + carry`。
+/// Performs full-width multiplication and addition with a carry:
+/// `multiplier * multiplicand + addend + carry`.
 ///
-/// 这能在不发生任何溢出的情况下完成。对 `uN`：
+/// This is possible without any overflow.  For `uN`:
 ///    MAX * MAX + MAX + MAX
 /// => (2ⁿ-1) × (2ⁿ-1) + (2ⁿ-1) + (2ⁿ-1)
 /// => (2²ⁿ - 2ⁿ⁺¹ + 1) + (2ⁿ⁺¹ - 2)
 /// => 2²ⁿ - 1
 ///
-/// 对 `iN`，上界为 MIN * MIN + MAX + MAX => 2²ⁿ⁻² + 2ⁿ - 2，
-/// 下界为 MAX * MIN + MIN + MIN => -2²ⁿ⁻² - 2ⁿ + 2ⁿ⁺¹。
+/// For `iN`, the upper bound is MIN * MIN + MAX + MAX => 2²ⁿ⁻² + 2ⁿ - 2,
+/// and the lower bound is MAX * MIN + MIN + MIN => -2²ⁿ⁻² - 2ⁿ + 2ⁿ⁺¹.
 ///
-/// 目前*仅*支持无符号整数，不支持有符号整数。
-/// 本 intrinsic 的稳定版本可在各整数类型上使用。
+/// This currently supports unsigned integers *only*, no signed ones.
+/// The stabilized versions of this intrinsic are available on integers.
 #[unstable(feature = "core_intrinsics", issue = "none")]
 #[rustc_const_unstable(feature = "const_carrying_mul_add", issue = "85532")]
 #[rustc_nounwind]
@@ -1914,127 +1924,96 @@ pub const fn carrying_mul_add<T: [const] fallback::CarryingMulAdd<Unsigned = U>,
     multiplier.carrying_mul_add(multiplicand, addend, carry)
 }
 
-/// 执行精确除法（exact division）；当 `x % y != 0`、或 `y == 0`、或 `x == T::MIN && y == -1` 时，
-/// 即为未定义行为（UB）。
+/// Performs an exact division, resulting in undefined behavior where
+/// `x % y != 0` or `y == 0` or `x == T::MIN && y == -1`
 ///
-/// # 安全性（Safety）
-///
-/// 调用方必须保证除法是数学上精确且可表示的：除数非零、没有有符号最小值除以 `-1` 的溢出情形，
-/// 并且余数为零。编译器可以把这些条件当成已知事实来优化，违反任一条件都不是“得到一个任意结果”，
-/// 而是直接进入 UB。
-///
-/// 本 intrinsic 没有稳定的对应物。
+/// This intrinsic does not have a stable counterpart.
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const unsafe fn exact_div<T: Copy>(x: T, y: T) -> T;
 
-/// 执行不做检查的除法（unchecked division）；当 `y == 0` 或 `x == T::MIN && y == -1` 时，
-/// 即为未定义行为（UB）。
+/// Performs an unchecked division, resulting in undefined behavior
+/// where `y == 0` or `x == T::MIN && y == -1`
 ///
-/// # 安全性（Safety）
-///
-/// 调用方必须保证除数 `y` 非零，并且有符号整数不会出现 `T::MIN / -1` 这种溢出。
-/// 这里的 unchecked 表示编译器不会插入运行时检查，并会假定这些前置条件恒成立。
-///
-/// 本 intrinsic 的安全封装可通过整数原始类型上的 `checked_div` 方法使用，例如
+/// Safe wrappers for this intrinsic are available on the integer
+/// primitives via the `checked_div` method. For example,
 /// [`u32::checked_div`]
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const unsafe fn unchecked_div<T: Copy>(x: T, y: T) -> T;
-/// 返回不做检查的除法（unchecked division）的余数；当 `y == 0` 或 `x == T::MIN && y == -1` 时，
-/// 即为未定义行为（UB）。
+/// Returns the remainder of an unchecked division, resulting in
+/// undefined behavior when `y == 0` or `x == T::MIN && y == -1`
 ///
-/// # 安全性（Safety）
-///
-/// 调用方必须保证除数 `y` 非零，并且有符号整数不会出现 `T::MIN % -1` 对应的溢出情形。
-/// 优化器会把这些条件当成事实；违反时程序行为未定义。
-///
-/// 本 intrinsic 的安全封装可通过整数原始类型上的 `checked_rem` 方法使用，例如
+/// Safe wrappers for this intrinsic are available on the integer
+/// primitives via the `checked_rem` method. For example,
 /// [`u32::checked_rem`]
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const unsafe fn unchecked_rem<T: Copy>(x: T, y: T) -> T;
 
-/// 执行不做检查的左移（unchecked left shift）；当 `y < 0` 或 `y >= N`（N 为 T 的位宽）时，
-/// 即为未定义行为（UB）。
+/// Performs an unchecked left shift, resulting in undefined behavior when
+/// `y < 0` or `y >= N`, where N is the width of T in bits.
 ///
-/// # 安全性（Safety）
-///
-/// 调用方必须保证移位量 `y` 是非负且严格小于 `T` 的位宽。编译器可以据此省略移位范围检查；
-/// 若移位量越界，即使某些硬件会对移位量取模，Rust 层面的行为仍是 UB。
-///
-/// 本 intrinsic 的安全封装可通过整数原始类型上的 `checked_shl` 方法使用，例如
+/// Safe wrappers for this intrinsic are available on the integer
+/// primitives via the `checked_shl` method. For example,
 /// [`u32::checked_shl`]
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const unsafe fn unchecked_shl<T: Copy, U: Copy>(x: T, y: U) -> T;
-/// 执行不做检查的右移（unchecked right shift）；当 `y < 0` 或 `y >= N`（N 为 T 的位宽）时，
-/// 即为未定义行为（UB）。
+/// Performs an unchecked right shift, resulting in undefined behavior when
+/// `y < 0` or `y >= N`, where N is the width of T in bits.
 ///
-/// # 安全性（Safety）
-///
-/// 调用方必须保证移位量 `y` 是非负且严格小于 `T` 的位宽。编译器会把“移位量已在范围内”作为优化前提；
-/// 违反时不是得到目标硬件的自然结果，而是 UB。
-///
-/// 本 intrinsic 的安全封装可通过整数原始类型上的 `checked_shr` 方法使用，例如
+/// Safe wrappers for this intrinsic are available on the integer
+/// primitives via the `checked_shr` method. For example,
 /// [`u32::checked_shr`]
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const unsafe fn unchecked_shr<T: Copy, U: Copy>(x: T, y: U) -> T;
 
-/// 返回不做检查的加法（unchecked）的结果；当 `x + y > T::MAX` 或 `x + y < T::MIN` 时，
-/// 即为未定义行为（UB）。
+/// Returns the result of an unchecked addition, resulting in
+/// undefined behavior when `x + y > T::MAX` or `x + y < T::MIN`.
 ///
-/// # 安全性（Safety）
-///
-/// 调用方必须保证 `x + y` 在 `T` 的取值范围内，既不发生无符号回绕，也不发生有符号溢出。
-/// 编译器可以把“这次加法不会溢出”作为事实，用来消除分支或重写后续计算。
-///
-/// 本 intrinsic 的稳定对应物是各整数类型上的 `unchecked_add`，例如 [`u16::unchecked_add`] 与 [`i64::unchecked_add`]。
+/// The stable counterpart of this intrinsic is `unchecked_add` on the various
+/// integer types, such as [`u16::unchecked_add`] and [`i64::unchecked_add`].
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const unsafe fn unchecked_add<T: Copy>(x: T, y: T) -> T;
 
-/// 返回不做检查的减法（unchecked）的结果；当 `x - y > T::MAX` 或 `x - y < T::MIN` 时，
-/// 即为未定义行为（UB）。
+/// Returns the result of an unchecked subtraction, resulting in
+/// undefined behavior when `x - y > T::MAX` or `x - y < T::MIN`.
 ///
-/// # 安全性（Safety）
-///
-/// 调用方必须保证 `x - y` 在 `T` 的取值范围内。若实际发生回绕或有符号溢出，
-/// 违反的是 intrinsic 的前置条件，编译器此前基于“不会溢出”做出的优化仍然有效，程序因此进入 UB。
-///
-/// 本 intrinsic 的稳定对应物是各整数类型上的 `unchecked_sub`，例如 [`u16::unchecked_sub`] 与 [`i64::unchecked_sub`]。
+/// The stable counterpart of this intrinsic is `unchecked_sub` on the various
+/// integer types, such as [`u16::unchecked_sub`] and [`i64::unchecked_sub`].
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const unsafe fn unchecked_sub<T: Copy>(x: T, y: T) -> T;
 
-/// 返回不做检查的乘法（unchecked）的结果；当 `x * y > T::MAX` 或 `x * y < T::MIN` 时，
-/// 即为未定义行为（UB）。
+/// Returns the result of an unchecked multiplication, resulting in
+/// undefined behavior when `x * y > T::MAX` or `x * y < T::MIN`.
 ///
-/// # 安全性（Safety）
-///
-/// 调用方必须保证 `x * y` 在 `T` 的取值范围内。这个承诺会传递给优化器；
-/// 违反时不能依赖目标机器的回绕乘法结果，也不能把它当作 `wrapping_mul` 使用。
-///
-/// 本 intrinsic 的稳定对应物是各整数类型上的 `unchecked_mul`，例如 [`u16::unchecked_mul`] 与 [`i64::unchecked_mul`]。
+/// The stable counterpart of this intrinsic is `unchecked_mul` on the various
+/// integer types, such as [`u16::unchecked_mul`] and [`i64::unchecked_mul`].
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const unsafe fn unchecked_mul<T: Copy>(x: T, y: T) -> T;
 
-/// 执行循环左移（rotate left）。
+/// Performs rotate left.
 ///
-/// 注意，与大多数 intrinsic 不同，调用它是安全的；它不需要 `unsafe` 块。
-/// 因此，实现绝不能要求用户去维护任何安全不变量。
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
 ///
-/// 本 intrinsic 的稳定版本可通过整数原始类型上的 `rotate_left` 方法使用，例如
+/// The stabilized versions of this intrinsic are available on the integer
+/// primitives via the `rotate_left` method. For example,
 /// [`u32::rotate_left`]
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_nounwind]
@@ -2042,17 +2021,21 @@ pub const unsafe fn unchecked_mul<T: Copy>(x: T, y: T) -> T;
 #[rustc_allow_const_fn_unstable(const_trait_impl, funnel_shifts)]
 #[miri::intrinsic_fallback_is_spec]
 pub const fn rotate_left<T: [const] fallback::FunnelShift>(x: T, shift: u32) -> T {
-    // 确保调用的是 `funnel_shl` 对应的 intrinsic，而不是 fallback 实现。
-    // SAFETY: 我们对 `shift` 取模，保证结果一定小于 `T` 的位宽。
+    // Make sure to call the intrinsic for `funnel_shl`, not the fallback impl.
+    // SAFETY: we modulo `shift` so that the result is definitely less than the size of
+    // `T` in bits.
     unsafe { unchecked_funnel_shl(x, x, shift % (mem::size_of::<T>() as u32 * 8)) }
 }
 
-/// 执行循环右移（rotate right）。
+/// Performs rotate right.
 ///
-/// 注意，与大多数 intrinsic 不同，调用它是安全的；它不需要 `unsafe` 块。
-/// 因此，实现绝不能要求用户去维护任何安全不变量。
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
 ///
-/// 本 intrinsic 的稳定版本可通过整数原始类型上的 `rotate_right` 方法使用，例如
+/// The stabilized versions of this intrinsic are available on the integer
+/// primitives via the `rotate_right` method. For example,
 /// [`u32::rotate_right`]
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_nounwind]
@@ -2060,81 +2043,96 @@ pub const fn rotate_left<T: [const] fallback::FunnelShift>(x: T, shift: u32) -> 
 #[rustc_allow_const_fn_unstable(const_trait_impl, funnel_shifts)]
 #[miri::intrinsic_fallback_is_spec]
 pub const fn rotate_right<T: [const] fallback::FunnelShift>(x: T, shift: u32) -> T {
-    // 确保调用的是 `funnel_shr` 对应的 intrinsic，而不是 fallback 实现。
-    // SAFETY: 我们对 `shift` 取模，保证结果一定小于 `T` 的位宽。
+    // Make sure to call the intrinsic for `funnel_shr`, not the fallback impl.
+    // SAFETY: we modulo `shift` so that the result is definitely less than the size of
+    // `T` in bits.
     unsafe { unchecked_funnel_shr(x, x, shift % (mem::size_of::<T>() as u32 * 8)) }
 }
 
-/// 返回 (a + b) mod 2<sup>N</sup>，其中 N 为 T 的位宽（即回绕 wrapping 加法）。
+/// Returns (a + b) mod 2<sup>N</sup>, where N is the width of T in bits.
 ///
-/// 注意，与大多数 intrinsic 不同，调用它是安全的；它不需要 `unsafe` 块。
-/// 因此，实现绝不能要求用户去维护任何安全不变量。
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
 ///
-/// 本 intrinsic 的稳定版本可通过整数原始类型上的 `wrapping_add` 方法使用，例如
+/// The stabilized versions of this intrinsic are available on the integer
+/// primitives via the `wrapping_add` method. For example,
 /// [`u32::wrapping_add`]
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const fn wrapping_add<T: Copy>(a: T, b: T) -> T;
-/// 返回 (a - b) mod 2<sup>N</sup>，其中 N 为 T 的位宽（即回绕 wrapping 减法）。
+/// Returns (a - b) mod 2<sup>N</sup>, where N is the width of T in bits.
 ///
-/// 注意，与大多数 intrinsic 不同，调用它是安全的；它不需要 `unsafe` 块。
-/// 因此，实现绝不能要求用户去维护任何安全不变量。
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
 ///
-/// 本 intrinsic 的稳定版本可通过整数原始类型上的 `wrapping_sub` 方法使用，例如
+/// The stabilized versions of this intrinsic are available on the integer
+/// primitives via the `wrapping_sub` method. For example,
 /// [`u32::wrapping_sub`]
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const fn wrapping_sub<T: Copy>(a: T, b: T) -> T;
-/// 返回 (a * b) mod 2<sup>N</sup>，其中 N 为 T 的位宽（即回绕 wrapping 乘法）。
+/// Returns (a * b) mod 2<sup>N</sup>, where N is the width of T in bits.
 ///
-/// 注意，与大多数 intrinsic 不同，调用它是安全的；它不需要 `unsafe` 块。
-/// 因此，实现绝不能要求用户去维护任何安全不变量。
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
 ///
-/// 本 intrinsic 的稳定版本可通过整数原始类型上的 `wrapping_mul` 方法使用，例如
+/// The stabilized versions of this intrinsic are available on the integer
+/// primitives via the `wrapping_mul` method. For example,
 /// [`u32::wrapping_mul`]
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const fn wrapping_mul<T: Copy>(a: T, b: T) -> T;
 
-/// 计算 `a + b`，在数值边界处饱和（saturating）。
+/// Computes `a + b`, saturating at numeric bounds.
 ///
-/// 注意，与大多数 intrinsic 不同，调用它是安全的；它不需要 `unsafe` 块。
-/// 因此，实现绝不能要求用户去维护任何安全不变量。
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
 ///
-/// 本 intrinsic 的稳定版本可通过整数原始类型上的 `saturating_add` 方法使用，例如
+/// The stabilized versions of this intrinsic are available on the integer
+/// primitives via the `saturating_add` method. For example,
 /// [`u32::saturating_add`]
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const fn saturating_add<T: Copy>(a: T, b: T) -> T;
-/// 计算 `a - b`，在数值边界处饱和（saturating）。
+/// Computes `a - b`, saturating at numeric bounds.
 ///
-/// 注意，与大多数 intrinsic 不同，调用它是安全的；它不需要 `unsafe` 块。
-/// 因此，实现绝不能要求用户去维护任何安全不变量。
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
 ///
-/// 本 intrinsic 的稳定版本可通过整数原始类型上的 `saturating_sub` 方法使用，例如
+/// The stabilized versions of this intrinsic are available on the integer
+/// primitives via the `saturating_sub` method. For example,
 /// [`u32::saturating_sub`]
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const fn saturating_sub<T: Copy>(a: T, b: T) -> T;
 
-/// 漏斗左移（funnel shift left）。
+/// Funnel Shift left.
 ///
-/// 把 `a` 与 `b` 拼接（`a` 位于高位的那一半），得到一个位宽翻倍的整数。然后把该整数左移 `shift` 位，
-/// 再取出高位那一半。如果 `a` 与 `b` 相同，这就等价于一次循环左移（rotate left）。
+/// Concatenates `a` and `b` (with `a` in the most significant half),
+/// creating an integer twice as wide. Then shift this integer left
+/// by `shift`), and extract the most significant half. If `a` and `b`
+/// are the same, this is equivalent to a rotate left operation.
 ///
-/// 如果 `shift` 大于或等于 `T` 的位宽，即为未定义行为（UB）。
+/// It is undefined behavior if `shift` is greater than or equal to the
+/// bit size of `T`.
 ///
-/// # 安全性（Safety）
-///
-/// 调用方必须保证 `shift < T::BITS`。该前置条件用于让后端生成无额外检查的 funnel shift；
-/// 越界移位会破坏编译器关于位拼接与移位结果的优化假设。
-///
-/// 本 intrinsic 的安全版本可通过整数原始类型上的 `funnel_shl` 方法使用，例如 [`u32::funnel_shl`]。
+/// Safe versions of this intrinsic are available on the integer primitives
+/// via the `funnel_shl` method. For example, [`u32::funnel_shl`].
 #[rustc_intrinsic]
 #[rustc_nounwind]
 #[rustc_const_unstable(feature = "funnel_shifts", issue = "145686")]
@@ -2146,23 +2144,23 @@ pub const unsafe fn unchecked_funnel_shl<T: [const] fallback::FunnelShift>(
     b: T,
     shift: u32,
 ) -> T {
-    // SAFETY: 调用方保证 `shift` 在合法范围内。
+    // SAFETY: caller ensures that `shift` is in-range
     unsafe { a.unchecked_funnel_shl(b, shift) }
 }
 
-/// 漏斗右移（funnel shift right）。
+/// Funnel Shift right.
 ///
-/// 把 `a` 与 `b` 拼接（`a` 位于高位的那一半），得到一个位宽翻倍的整数。然后把该整数右移 `shift` 位
-/// （对 `T` 的位宽取模），再取出低位那一半。如果 `a` 与 `b` 相同，这就等价于一次循环右移（rotate right）。
+/// Concatenates `a` and `b` (with `a` in the most significant half),
+/// creating an integer twice as wide. Then shift this integer right
+/// by `shift` (taken modulo the bit size of `T`), and extract the
+/// least significant half. If `a` and `b` are the same, this is equivalent
+/// to a rotate right operation.
 ///
-/// 如果 `shift` 大于或等于 `T` 的位宽，即为未定义行为（UB）。
+/// It is undefined behavior if `shift` is greater than or equal to the
+/// bit size of `T`.
 ///
-/// # 安全性（Safety）
-///
-/// 调用方必须保证 `shift < T::BITS`。该前置条件用于让后端生成无额外检查的 funnel shift；
-/// 越界移位会破坏编译器关于位拼接与移位结果的优化假设。
-///
-/// 本 intrinsic 更安全的版本可通过整数原始类型上的 `funnel_shr` 方法使用，例如 [`u32::funnel_shr`]
+/// Safer versions of this intrinsic are available on the integer primitives
+/// via the `funnel_shr` method. For example, [`u32::funnel_shr`]
 #[rustc_intrinsic]
 #[rustc_nounwind]
 #[rustc_const_unstable(feature = "funnel_shifts", issue = "145686")]
@@ -2174,54 +2172,63 @@ pub const unsafe fn unchecked_funnel_shr<T: [const] fallback::FunnelShift>(
     b: T,
     shift: u32,
 ) -> T {
-    // SAFETY: 调用方保证 `shift` 在合法范围内。
+    // SAFETY: caller ensures that `shift` is in-range
     unsafe { a.unchecked_funnel_shr(b, shift) }
 }
 
-/// 这是 [`crate::ptr::read`] 的一个实现细节，不应在别处使用。它存在的原因见那里的注释。
+/// This is an implementation detail of [`crate::ptr::read`] and should
+/// not be used anywhere else.  See its comments for why this exists.
 ///
-/// 本 intrinsic *只能*在“指针是一个不带投影（projection）的局部变量”的地方调用
-/// （即 `read_via_copy(ptr)`，而非 `read_via_copy(*ptr)`），这样它就能平凡地遵守
-/// 运行期 MIR 关于“操作数中的解引用”的规则。
+/// This intrinsic can *only* be called where the pointer is a local without
+/// projections (`read_via_copy(ptr)`, not `read_via_copy(*ptr)`) so that it
+/// trivially obeys runtime-MIR rules about derefs in operands.
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const unsafe fn read_via_copy<T>(ptr: *const T) -> T;
 
-/// 这是 [`crate::ptr::write`] 的一个实现细节，不应在别处使用。它存在的原因见那里的注释。
+/// This is an implementation detail of [`crate::ptr::write`] and should
+/// not be used anywhere else.  See its comments for why this exists.
 ///
-/// 本 intrinsic *只能*在“指针是一个不带投影（projection）的局部变量”的地方调用
-/// （即 `write_via_move(ptr, x)`，而非 `write_via_move(*ptr, x)`），这样它就能平凡地遵守
-/// 运行期 MIR 关于“操作数中的解引用”的规则。
+/// This intrinsic can *only* be called where the pointer is a local without
+/// projections (`write_via_move(ptr, x)`, not `write_via_move(*ptr, x)`) so
+/// that it trivially obeys runtime-MIR rules about derefs in operands.
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const unsafe fn write_via_move<T>(ptr: *mut T, value: T);
 
-/// 返回 'v' 中所属变体的判别值（discriminant）；如果 `T` 没有判别值，返回 `0`。
+/// Returns the value of the discriminant for the variant in 'v';
+/// if `T` has no discriminant, returns `0`.
 ///
-/// 注意，与大多数 intrinsic 不同，调用它是安全的；它不需要 `unsafe` 块。
-/// 因此，实现绝不能要求用户去维护任何安全不变量。
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
 ///
-/// 本 intrinsic 的稳定版本是 [`core::mem::discriminant`]。
+/// The stabilized version of this intrinsic is [`core::mem::discriminant`].
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const fn discriminant_value<T>(v: &T) -> <T as DiscriminantKind>::Discriminant;
 
-/// Rust 用于栈展开（unwinding）的“try catch”构造。它用数据指针 `data` 去调用函数指针 `try_fn`，
-/// 如果在 `try_fn` 运行期间发生展开，就调用 `catch_fn`。
-/// 若发生了展开并调用了 `catch_fn`，返回 `1`；否则返回 `0`。
+/// Rust's "try catch" construct for unwinding. Invokes the function pointer `try_fn` with the
+/// data pointer `data`, and calls `catch_fn` if unwinding occurs while `try_fn` runs.
+/// Returns `1` if unwinding occurred and `catch_fn` was called; returns `0` otherwise.
 ///
-/// `catch_fn` 绝不能展开。
+/// `catch_fn` must not unwind.
 ///
-/// 第三个参数是一个函数，当发生展开（包括 Rust 的 `panic` 和外部展开）时被调用。该函数接收数据指针，
-/// 以及一个指向“被捕获的、目标平台与运行时特定的异常对象”的指针。
+/// The third argument is a function called if an unwind occurs (both Rust `panic` and foreign
+/// unwinds). This function takes the data pointer and a pointer to the target- and
+/// runtime-specific exception object that was caught.
 ///
-/// 注意，对于外部展开操作，异常对象数据可能无法在 Rust 中被安全使用，不应通过标准库直接暴露。
-/// 为防止不安全的访问，库的实现可以选择中止进程，或者向用户呈现一个不透明的错误类型。
+/// Note that in the case of a foreign unwinding operation, the exception object data may not be
+/// safely usable from Rust, and should not be directly exposed via the standard library. To
+/// prevent unsafe access, the library implementation may either abort the process or present an
+/// opaque error type to the user.
 ///
-/// 更多信息见编译器源码，以及本 intrinsic 的稳定版本 `std::panic::catch_unwind` 的文档。
+/// For more information, see the compiler's source, as well as the documentation for the stable
+/// version of this intrinsic, `std::panic::catch_unwind`.
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn catch_unwind(
@@ -2230,31 +2237,32 @@ pub unsafe fn catch_unwind(
     _catch_fn: fn(*mut u8, *mut u8),
 ) -> i32;
 
-/// 发出一次 `nontemporal`（非时序）存储，它给 CPU 一个提示：该数据不应被保留在缓存中。
-/// 除性能外，它与 `ptr.write(val)` 完全等价。
+/// Emits a `nontemporal` store, which gives a hint to the CPU that the data should not be held
+/// in cache. Except for performance, this is fully equivalent to `ptr.write(val)`.
 ///
-/// 并非所有架构都提供这样的操作。例如 x86 就没有：虽然有 `MOVNT`，但那个操作*不*等价于
-/// `ptr.write(val)`（`MOVNT` 写入可能以常规写入所不允许的方式被重排序）。
+/// Not all architectures provide such an operation. For instance, x86 does not: while `MOVNT`
+/// exists, that operation is *not* equivalent to `ptr.write(val)` (`MOVNT` writes can be reordered
+/// in ways that are not allowed for regular writes).
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn nontemporal_store<T>(ptr: *mut T, val: T);
 
-/// 细节见 `<*const T>::offset_from` 的文档。
+/// See documentation of `<*const T>::offset_from` for details.
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const unsafe fn ptr_offset_from<T>(ptr: *const T, base: *const T) -> isize;
 
-/// 细节见 `<*const T>::offset_from_unsigned` 的文档。
+/// See documentation of `<*const T>::offset_from_unsigned` for details.
 #[rustc_nounwind]
 #[rustc_intrinsic]
 #[rustc_intrinsic_const_stable_indirect]
 pub const unsafe fn ptr_offset_from_unsigned<T>(ptr: *const T, base: *const T) -> usize;
 
-/// 细节见 `<*const T>::guaranteed_eq` 的文档。
-/// 如果结果未知，返回 `2`。
-/// 如果两个指针保证相等，返回 `1`。
-/// 如果两个指针保证不等，返回 `0`。
+/// See documentation of `<*const T>::guaranteed_eq` for details.
+/// Returns `2` if the result is unknown.
+/// Returns `1` if the pointers are guaranteed equal.
+/// Returns `0` if the pointers are guaranteed inequal.
 #[rustc_intrinsic]
 #[rustc_nounwind]
 #[rustc_do_not_const_check]
@@ -2264,37 +2272,45 @@ pub const fn ptr_guaranteed_cmp<T>(ptr: *const T, other: *const T) -> u8 {
     (ptr == other) as u8
 }
 
-/// 判断两个值的原始字节是否相等。
+/// Determines whether the raw bytes of the two values are equal.
 ///
-/// 这对数组特别方便，因为它允许像“直接比较一个 `i96`”这样的做法，而不必为 `[6 x i16]` 强制使用 `alloca`。
+/// This is particularly handy for arrays, since it allows things like just
+/// comparing `i96`s instead of forcing `alloca`s for `[6 x i16]`.
 ///
-/// 超过某个由后端决定的阈值后，它会像切片相等比较那样发出对 `memcmp` 的调用，而不会造成庞大的代码体积。
+/// Above some backend-decided threshold this will emit calls to `memcmp`,
+/// like slice equality does, instead of causing massive code size.
 ///
-/// 由于它通过比较底层字节来工作，实际的 `T` 并不特别重要。它的大小和对齐会被用到，
-/// 但任何有效性（validity）限制都会被忽略，而不会被强制执行。
+/// Since this works by comparing the underlying bytes, the actual `T` is
+/// not particularly important.  It will be used for its size and alignment,
+/// but any validity restrictions will be ignored, not enforced.
 ///
-/// # 安全性（Safety）
+/// # Safety
 ///
-/// 如果 `*a` 或 `*b` 中任何*字节*是未初始化的，调用本函数即为 UB。
-/// 注意这是比“仅仅*值*被完全初始化”更严格的标准：如果 `T` 含有填充（padding），调用本 intrinsic 即为 UB。
+/// It's UB to call this if any of the *bytes* in `*a` or `*b` are uninitialized.
+/// Note that this is a stricter criterion than just the *values* being
+/// fully-initialized: if `T` has padding, it's UB to call this intrinsic.
 ///
-/// 在编译期，还有一条：如果 `*a` 或 `*b` 中任何字节带有 provenance（来源信息），调用本函数即为 UB。
+/// At compile-time, it is furthermore UB to call this if any of the bytes
+/// in `*a` or `*b` have provenance.
 ///
-/// （实现允许根据比较结果进行分支，而若其任一输入为 `undef`，这就是 UB。）
+/// (The implementation is allowed to branch on the results of comparisons,
+/// which is UB if any of their inputs are `undef`.)
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const unsafe fn raw_eq<T>(a: &T, b: &T) -> bool;
 
-/// 把 `[left, left + bytes)` 与 `[right, right + bytes)` 当作无符号字节做字典序比较：
-/// 若 `left` 较小返回负数，若所有字节都匹配返回零，若 `left` 较大返回正数。
+/// Lexicographically compare `[left, left + bytes)` and `[right, right + bytes)`
+/// as unsigned bytes, returning negative if `left` is less, zero if all the
+/// bytes match, or positive if `left` is greater.
 ///
-/// 它是 `<[u8]>::cmp` 之类操作的底层实现，通常会被降级（lower）为 `memcmp`。
+/// This underlies things like `<[u8]>::cmp`, and will usually lower to `memcmp`.
 ///
-/// # 安全性（Safety）
+/// # Safety
 ///
-/// `left` 与 `right` 都必须对读取 `bytes` 个字节[有效][valid]。
+/// `left` and `right` must each be [valid] for reads of `bytes` bytes.
 ///
-/// 注意这适用于整个范围，而不仅仅是到第一个不同的字节为止。这样才允许“按大块读取”的优化。
+/// Note that this applies to the whole range, not just until the first byte
+/// that differs.  That allows optimizations that can read in large chunks.
 ///
 /// [valid]: crate::ptr#safety
 #[rustc_nounwind]
@@ -2302,7 +2318,7 @@ pub const unsafe fn raw_eq<T>(a: &T, b: &T) -> bool;
 #[rustc_const_unstable(feature = "const_cmp", issue = "143800")]
 pub const unsafe fn compare_bytes(left: *const u8, right: *const u8, bytes: usize) -> i32;
 
-/// 细节见 [`std::hint::black_box`] 的文档。
+/// See documentation of [`std::hint::black_box`] for details.
 ///
 /// [`std::hint::black_box`]: crate::hint::black_box
 #[rustc_nounwind]
@@ -2310,50 +2326,58 @@ pub const unsafe fn compare_bytes(left: *const u8, right: *const u8, bytes: usiz
 #[rustc_intrinsic_const_stable_indirect]
 pub const fn black_box<T>(dummy: T) -> T;
 
-/// 根据上下文选择调用哪个函数。
+/// Selects which function to call depending on the context.
 ///
-/// 如果本函数在编译期被求值，那么对本 intrinsic 的调用会被替换为对 `called_in_const` 的调用；
-/// 否则被替换为对 `called_at_rt` 的调用。
+/// If this function is evaluated at compile-time, then a call to this
+/// intrinsic will be replaced with a call to `called_in_const`. It gets
+/// replaced with a call to `called_at_rt` otherwise.
 ///
-/// 调用本函数是安全的，但请注意下面关于稳定性的考量。
+/// This function is safe to call, but note the stability concerns below.
 ///
-/// # 类型要求
+/// # Type Requirements
 ///
-/// 这两个函数都必须是函数项（function item），不能是函数指针或闭包。第一个函数必须是 `const fn`。
+/// The two functions must be both function items. They cannot be function
+/// pointers or closures. The first function must be a `const fn`.
 ///
-/// `arg` 是将被传给两个函数之一的、打包成元组的实参；因此两个函数必须接受相同类型的参数，
-/// 且都必须返回 RET。
+/// `arg` will be the tupled arguments that will be passed to either one of
+/// the two functions, therefore, both functions must accept the same type of
+/// arguments. Both functions must return RET.
 ///
-/// # 稳定性考量
+/// # Stability concerns
 ///
-/// Rust 尚未决定允许 `const fn` 去判断自己是在编译期还是运行期执行。因此，在任何能从 stable 触达的地方
-/// 使用本 intrinsic 时，至关重要的一点是：那个稳定的 `const fn` 的端到端行为，在两种执行模式下必须相同。
-/// （这里，未定义行为被视为与任何其他行为“相同”，所以如果该函数在运行期表现出 UB，那么它在编译期
-/// 也可以为所欲为。）
+/// Rust has not yet decided that `const fn` are allowed to tell whether
+/// they run at compile-time or at runtime. Therefore, when using this
+/// intrinsic anywhere that can be reached from stable, it is crucial that
+/// the end-to-end behavior of the stable `const fn` is the same for both
+/// modes of execution. (Here, Undefined Behavior is considered "the same"
+/// as any other behavior, so if the function exhibits UB at runtime then
+/// it may do whatever it wants at compile-time.)
 ///
-/// 下面是一个说明这会如何引发问题的例子：
+/// Here is an example of how this could cause a problem:
 /// ```no_run
 /// #![feature(const_eval_select)]
 /// #![feature(core_intrinsics)]
 /// # #![allow(internal_features)]
 /// use std::intrinsics::const_eval_select;
 ///
-/// // 标准库
+/// // Standard library
 /// pub const fn inconsistent() -> i32 {
 ///     fn runtime() -> i32 { 1 }
 ///     const fn compiletime() -> i32 { 2 }
 ///
-///     // ⚠ 这段代码违反了 `compiletime` 与 `runtime` 之间必须保持的等价性。
+///     // ⚠ This code violates the required equivalence of `compiletime`
+///     // and `runtime`.
 ///     const_eval_select((), compiletime, runtime)
 /// }
 ///
-/// // 用户 crate
+/// // User Crate
 /// const X: i32 = inconsistent();
 /// let x = inconsistent();
 /// assert_eq!(x, X);
 /// ```
 ///
-/// 目前这样的断言总会成功；在 Rust 另行决定之前，这一原则不应被违反。
+/// Currently such an assertion would always succeed; until Rust decides
+/// otherwise, that principle should not be violated.
 #[rustc_const_unstable(feature = "const_eval_select", issue = "124625")]
 #[rustc_intrinsic]
 pub const fn const_eval_select<ARG: Tuple, F, G, RET>(
@@ -2365,22 +2389,23 @@ where
     G: FnOnce<ARG, Output = RET>,
     F: const FnOnce<ARG, Output = RET>;
 
-/// 一个让调用 const_eval_select 更方便的宏。用法如下：
-/// ```rust,ignore (仅作为宏示例)
+/// A macro to make it easier to invoke const_eval_select. Use as follows:
+/// ```rust,ignore (just a macro example)
 /// const_eval_select!(
 ///     @capture { arg1: i32 = some_expr, arg2: T = other_expr } -> U:
 ///     if const #[attributes_for_const_arm] {
-///         // 编译期代码写在这里。
+///         // Compile-time code goes here.
 ///     } else #[attributes_for_runtime_arm] {
-///         // 运行期代码写在这里。
+///         // Run-time code goes here.
 ///     }
 /// )
 /// ```
-/// `@capture` 块声明了哪些周围的变量/表达式可以在 `if const` 内部使用。
-/// 注意，这个 `if` 的两个分支臂实际上各自成为一个独立的函数，这正是该宏支持为这些函数设置属性的原因。
-/// 两个函数都被标记为 `#[inline]`。
+/// The `@capture` block declares which surrounding variables / expressions can be
+/// used inside the `if const`.
+/// Note that the two arms of this `if` really each become their own function, which is why the
+/// macro supports setting attributes for those functions. Both functions are marked as `#[inline]`.
 ///
-/// 关于该 intrinsic 的规则与要求，见 [`const_eval_select()`]。
+/// See [`const_eval_select()`] for the rules and requirements around that intrinsic.
 pub(crate) macro const_eval_select {
     (
         @capture$([$($binders:tt)*])? { $($arg:ident : $ty:ty = $val:expr),* $(,)? } $( -> $ret:ty )? :
@@ -2398,7 +2423,7 @@ pub(crate) macro const_eval_select {
         #[inline]
         $(#[$compiletime_attr])*
         const fn compiletime$(<$($binders)*>)?($($arg: $ty),*) $( -> $ret )? {
-            // 如果某个参数未被使用，不要发出警告。
+            // Don't warn if one of the arguments is unused.
             $(let _ = $arg;)*
 
             $compiletime
@@ -2406,8 +2431,8 @@ pub(crate) macro const_eval_select {
 
         const_eval_select(($($val,)*), compiletime, runtime)
     }},
-    // 我们支持对*所有*参数省略 `val` 表达式
-    // （但不支持只对*部分*参数省略，那太棘手了）。
+    // We support leaving away the `val` expressions for *all* arguments
+    // (but not for *some* arguments, that's too tricky).
     (
         @capture$([$($binders:tt)*])? { $($arg:ident : $ty:ty),* $(,)? } $( -> $ret:ty )? :
         if const
@@ -2425,14 +2450,18 @@ pub(crate) macro const_eval_select {
     },
 }
 
-/// 返回参数的值是否在编译期静态可知。
+/// Returns whether the argument's value is statically known at
+/// compile-time.
 ///
-/// 当存在这样一种写法：当某些变量取已知值时代码会*更快*、但一般情形下*更慢*时，本函数很有用：
-/// 可以用 `if is_val_statically_known(var)` 在这两种变体之间做选择。这个 `if` 会被优化掉，
-/// 只留下所需的那个分支。
+/// This is useful when there is a way of writing the code that will
+/// be *faster* when some variables have known values, but *slower*
+/// in the general case: an `if is_val_statically_known(var)` can be used
+/// to select between these two variants. The `if` will be optimized away
+/// and only the desired branch remains.
 ///
-/// 严格来说，本函数以非确定性的方式返回 `true` 或 `false`，调用方必须确保两种情形下的行为都是合理的（sound）。
-/// 换言之，下面这段代码具有*未定义行为（UB）*：
+/// Formally speaking, this function non-deterministically returns `true`
+/// or `false`, and the caller has to ensure sound behavior for both cases.
+/// In other words, the following code has *Undefined Behavior*:
 ///
 /// ```no_run
 /// #![feature(core_intrinsics)]
@@ -2443,7 +2472,8 @@ pub(crate) macro const_eval_select {
 /// if !is_val_statically_known(0) { unsafe { unreachable_unchecked(); } }
 /// ```
 ///
-/// 这也意味着下面这段代码的行为是未规定的；它可能 panic，也可能不 panic：
+/// This also means that the following code's behavior is unspecified; it
+/// may panic, or it may not:
 ///
 /// ```no_run
 /// #![feature(core_intrinsics)]
@@ -2453,23 +2483,29 @@ pub(crate) macro const_eval_select {
 /// assert_eq!(is_val_statically_known(0), is_val_statically_known(0));
 /// ```
 ///
-/// unsafe 代码永远不可依赖 `is_val_statically_known` 返回任何特定的值。不过，通常只有当参数的值
-/// 确实已知时，编译器才会让它返回 `true`。
+/// Unsafe code may not rely on `is_val_statically_known` returning any
+/// particular value, ever. However, the compiler will generally make it
+/// return `true` only if the value of the argument is actually known.
 ///
-/// # 稳定性考量
+/// # Stability concerns
 ///
-/// 虽然调用它是安全的，但本 intrinsic 在 `const` 上下文中的行为可能与其他情形不同。
-/// 关于这会引发的问题的解释，见 [`const_eval_select()`] 的文档。与 `const_eval_select` 不同，
-/// 本 intrinsic 即便在 `const` 上下文中也不保证表现得具有确定性。
+/// While it is safe to call, this intrinsic may behave differently in
+/// a `const` context than otherwise. See the [`const_eval_select()`]
+/// documentation for an explanation of the issues this can cause. Unlike
+/// `const_eval_select`, this intrinsic isn't guaranteed to behave
+/// deterministically even in a `const` context.
 ///
-/// # 类型要求
+/// # Type Requirements
 ///
-/// `T` 必须是 `bool`、`char`、某个原始数值类型（例如 `f32`，但不能是 `NonZeroISize`），
-/// 或任意瘦指针（thin pointer，例如 `*mut String`）。任何其他参数类型*都可能*导致编译错误。
+/// `T` must be either a `bool`, a `char`, a primitive numeric type (e.g. `f32`,
+/// but not `NonZeroISize`), or any thin pointer (e.g. `*mut String`).
+/// Any other argument types *may* cause a compiler error.
 ///
-/// ## 指针
+/// ## Pointers
 ///
-/// 当输入是指针时，只会考虑指针本身，被指物没有影响。目前，下面这两个函数行为完全相同：
+/// When the input is a pointer, only the pointer itself is
+/// ever considered. The pointee has no effect. Currently, these functions
+/// behave identically:
 ///
 /// ```
 /// #![feature(core_intrinsics)]
@@ -2496,22 +2532,24 @@ pub const fn is_val_statically_known<T: Copy>(_arg: T) -> bool {
     false
 }
 
-/// 对单个值进行的不重叠（non-overlapping）*带类型（typed）*交换。
+/// Non-overlapping *typed* swap of a single value.
 ///
-/// 当 `T` 是一个可作为立即数（immediate）加载和存储的简单类型时，代码生成后端会用更优的实现来替换它。
+/// The codegen backends will replace this with a better implementation when
+/// `T` is a simple type that can be loaded and stored as an immediate.
 ///
-/// 本 intrinsic 的稳定形式是 [`crate::mem::swap`]。
+/// The stabilized form of this intrinsic is [`crate::mem::swap`].
 ///
-/// # 安全性（Safety）
-/// 若违反下列任一条件，行为即未定义（UB）：
+/// # Safety
+/// Behavior is undefined if any of the following conditions are violated:
 ///
-/// * `x` 与 `y` 都必须对读和写都[有效][valid]。
+/// * Both `x` and `y` must be [valid] for both reads and writes.
 ///
-/// * `x` 与 `y` 都必须正确对齐。
+/// * Both `x` and `y` must be properly aligned.
 ///
-/// * 起始于 `x` 的那块内存区域*不*得与起始于 `y` 的那块内存区域重叠。
+/// * The region of memory beginning at `x` must *not* overlap with the region of memory
+///   beginning at `y`.
 ///
-/// * `x` 与 `y` 所指向的内存都必须含有 `T` 类型的值。
+/// * The memory pointed by `x` and `y` must both contain values of type `T`.
 ///
 /// [valid]: crate::ptr#safety
 #[rustc_nounwind]
@@ -2519,80 +2557,84 @@ pub const fn is_val_statically_known<T: Copy>(_arg: T) -> bool {
 #[rustc_intrinsic]
 #[rustc_intrinsic_const_stable_indirect]
 pub const unsafe fn typed_swap_nonoverlapping<T>(x: *mut T, y: *mut T) {
-    // SAFETY: 调用方在指针后面提供的是单个、互不重叠的项，所以用 `count: 1` 交换它们没有问题。
+    // SAFETY: The caller provided single non-overlapping items behind
+    // pointers, so swapping them with `count: 1` is fine.
     unsafe { ptr::swap_nonoverlapping(x, y, 1) };
 }
 
-/// 返回我们是否应当在运行期进行某些 UB 检查。它最终会求值为 `cfg!(ub_checks)`，但在混用以不同编译标志
-/// 构建的 crate 时，它的行为与 `cfg!` 不同：如果该 crate 启用了 UB 检查、或带有 `#[rustc_preserve_ub_checks]`
-/// 属性，求值会被推迟到单态化（monomorphization）时（或推迟到该调用被内联进一个不再继续推迟求值的 crate 时）；
-/// 否则求值可以在任何时候发生。
+/// Returns whether we should perform some UB-checking at runtime. This eventually evaluates to
+/// `cfg!(ub_checks)`, but behaves different from `cfg!` when mixing crates built with different
+/// flags: if the crate has UB checks enabled or carries the `#[rustc_preserve_ub_checks]`
+/// attribute, evaluation is delayed until monomorphization (or until the call gets inlined into
+/// a crate that does not delay evaluation further); otherwise it can happen any time.
 ///
-/// 这里的常见情形是：一个启用了 ub_checks 构建的用户程序，链接到分发的 sysroot，而后者是在不启用 ub_checks、
-/// 但带有 `#[rustc_preserve_ub_checks]` 的情况下构建的。
-/// 对于在用户 crate 中被单态化的代码（即泛型函数以及带 `#[inline]` 的函数），把断言的开关挂在 `ub_checks()`
-/// 上而非 `cfg!(ub_checks)` 上，意味着只要*用户 crate*启用了 UB 检查，这些断言就会被启用。然而，
-/// 如果用户禁用了 UB 检查，这些检查仍会被优化掉。本 intrinsic 主要被
-/// [`crate::ub_checks::assert_unsafe_precondition`] 使用。
-#[rustc_intrinsic_const_stable_indirect] // 仅用于 UB 检查
+/// The common case here is a user program built with ub_checks linked against the distributed
+/// sysroot which is built without ub_checks but with `#[rustc_preserve_ub_checks]`.
+/// For code that gets monomorphized in the user crate (i.e., generic functions and functions with
+/// `#[inline]`), gating assertions on `ub_checks()` rather than `cfg!(ub_checks)` means that
+/// assertions are enabled whenever the *user crate* has UB checks enabled. However, if the
+/// user has UB checks disabled, the checks will still get optimized out. This intrinsic is
+/// primarily used by [`crate::ub_checks::assert_unsafe_precondition`].
+#[rustc_intrinsic_const_stable_indirect] // just for UB checks
 #[inline(always)]
 #[rustc_intrinsic]
 pub const fn ub_checks() -> bool {
     cfg!(ub_checks)
 }
 
-/// 返回我们是否应当在运行期进行某些溢出检查。它最终会求值为
-/// `cfg!(overflow_checks)`，但在混用以不同编译标志构建的 crate 时，它的行为与 `cfg!` 不同：
-/// 如果该 crate 启用了溢出检查、或带有 `#[rustc_inherit_overflow_checks]` 属性，求值会被推迟到
-/// 单态化（monomorphization）时（或推迟到该调用被内联进一个不再继续推迟求值的 crate 时）；
-/// 否则求值可以在任何时候发生。
+/// Returns whether we should perform some overflow-checking at runtime. This eventually evaluates to
+/// `cfg!(overflow_checks)`, but behaves different from `cfg!` when mixing crates built with different
+/// flags: if the crate has overflow checks enabled or carries the `#[rustc_inherit_overflow_checks]`
+/// attribute, evaluation is delayed until monomorphization (or until the call gets inlined into
+/// a crate that does not delay evaluation further); otherwise it can happen any time.
 ///
-/// 这里的常见情形是：一个启用了 overflow_checks 构建的用户程序，链接到分发的 sysroot，而后者是在
-/// 不启用 overflow_checks、但带有 `#[rustc_inherit_overflow_checks]` 的情况下构建的。
-/// 对于在用户 crate 中被单态化的代码（即泛型函数以及带 `#[inline]` 的函数），把断言的开关挂在
-/// `overflow_checks()` 上而非 `cfg!(overflow_checks)` 上，意味着只要*用户 crate*启用了溢出检查，
-/// 这些断言就会被启用。然而，如果用户禁用了溢出检查，这些检查仍会被优化掉。
+/// The common case here is a user program built with overflow_checks linked against the distributed
+/// sysroot which is built without overflow_checks but with `#[rustc_inherit_overflow_checks]`.
+/// For code that gets monomorphized in the user crate (i.e., generic functions and functions with
+/// `#[inline]`), gating assertions on `overflow_checks()` rather than `cfg!(overflow_checks)` means that
+/// assertions are enabled whenever the *user crate* has overflow checks enabled. However if the
+/// user has overflow checks disabled, the checks will still get optimized out.
 #[inline(always)]
 #[rustc_intrinsic]
 pub const fn overflow_checks() -> bool {
     cfg!(debug_assertions)
 }
 
-/// 在编译期分配一块内存。
-/// 在运行期，仅返回一个空指针。
+/// Allocates a block of memory at compile time.
+/// At runtime, just returns a null pointer.
 ///
-/// # 安全性（Safety）
+/// # Safety
 ///
-/// - `align` 参数必须是 2 的幂。
-///    - 在编译期，若违反此约束会产生编译错误。
-///    - 在运行期，不做检查。
+/// - The `align` argument must be a power of two.
+///    - At compile time, a compile error occurs if this constraint is violated.
+///    - At runtime, it is not checked.
 #[rustc_const_unstable(feature = "const_heap", issue = "79597")]
 #[rustc_nounwind]
 #[rustc_intrinsic]
 #[miri::intrinsic_fallback_is_spec]
 pub const unsafe fn const_allocate(_size: usize, _align: usize) -> *mut u8 {
-    // const 求值会覆盖本函数，但运行期代码目前只返回空指针。
-    // 见 <https://github.com/rust-lang/rust/issues/93935>。
+    // const eval overrides this function, but runtime code for now just returns null pointers.
+    // See <https://github.com/rust-lang/rust/issues/93935>.
     crate::ptr::null_mut()
 }
 
-/// 在编译期释放一块由 `intrinsics::const_allocate` 分配的内存。
-/// 在运行期，什么也不做。
+/// Deallocates a memory which allocated by `intrinsics::const_allocate` at compile time.
+/// At runtime, does nothing.
 ///
-/// # 安全性（Safety）
+/// # Safety
 ///
-/// - `align` 参数必须是 2 的幂。
-///    - 在编译期，若违反此约束会产生编译错误。
-///    - 在运行期，不做检查。
-/// - 如果 `ptr` 是在另一个 const 中创建的，本 intrinsic 不会释放它。
-/// - 如果 `ptr` 指向一个局部变量，本 intrinsic 不会释放它。
+/// - The `align` argument must be a power of two.
+///    - At compile time, a compile error occurs if this constraint is violated.
+///    - At runtime, it is not checked.
+/// - If the `ptr` is created in an another const, this intrinsic doesn't deallocate it.
+/// - If the `ptr` is pointing to a local variable, this intrinsic doesn't deallocate it.
 #[rustc_const_unstable(feature = "const_heap", issue = "79597")]
 #[unstable(feature = "core_intrinsics", issue = "none")]
 #[rustc_nounwind]
 #[rustc_intrinsic]
 #[miri::intrinsic_fallback_is_spec]
 pub const unsafe fn const_deallocate(_ptr: *mut u8, _size: usize, _align: usize) {
-    // 运行期是空操作（NOP）。
+    // Runtime NOP
 }
 
 #[rustc_const_unstable(feature = "const_heap", issue = "79597")]
@@ -2600,19 +2642,21 @@ pub const unsafe fn const_deallocate(_ptr: *mut u8, _size: usize, _align: usize)
 #[rustc_intrinsic]
 #[miri::intrinsic_fallback_is_spec]
 pub const unsafe fn const_make_global(ptr: *mut u8) -> *const u8 {
-    // const 求值会覆盖本函数；在运行期它是空操作（NOP）。
+    // const eval overrides this function; at runtime, it is a NOP.
     ptr
 }
 
-/// 检查前置条件 `cond` 是否已满足。
+/// Check if the pre-condition `cond` has been met.
 ///
-/// 默认情况下，如果启用了 `contract_checks`，当条件返回 false 时它会以“不展开（no unwind）”的方式 panic。
+/// By default, if `contract_checks` is enabled, this will panic with no unwind if the condition
+/// returns false.
 ///
-/// 注意，本函数在常量求值（constant evaluation）期间是空操作（no-op）。
+/// Note that this function is a no-op during constant evaluation.
 #[unstable(feature = "contracts_internals", issue = "128044")]
-// 对本函数的调用由一个 AST 展开 pass 插入，该 pass 使用等价于 `#[allow_internal_unstable]` 的机制
-// 来允许使用 `contracts_internals` 函数。const 检查不遵守 `#[allow_internal_unstable]`，所以对于
-// const 特性门控，我们使用面向用户的 `contracts` 特性，而不是永久不稳定的 `contracts_internals`。
+// Calls to this function get inserted by an AST expansion pass, which uses the equivalent of
+// `#[allow_internal_unstable]` to allow using `contracts_internals` functions. Const-checking
+// doesn't honor `#[allow_internal_unstable]`, so for the const feature gate we use the user-facing
+// `contracts` feature rather than the perma-unstable `contracts_internals`
 #[rustc_const_unstable(feature = "contracts", issue = "128044")]
 #[lang = "contract_check_requires"]
 #[rustc_intrinsic]
@@ -2620,27 +2664,28 @@ pub const fn contract_check_requires<C: Fn() -> bool + Copy>(cond: C) {
     const_eval_select!(
         @capture[C: Fn() -> bool + Copy] { cond: C } :
         if const {
-                // 什么也不做
+                // Do nothing
         } else {
             if !cond() {
-                // 万一这是一项安全要求，发出不展开（no unwind）的 panic。
+                // Emit no unwind panic in case this was a safety requirement.
                 crate::panicking::panic_nounwind("failed requires check");
             }
         }
     )
 }
 
-/// 检查后置条件 `cond` 是否已满足。
+/// Check if the post-condition `cond` has been met.
 ///
-/// 默认情况下，如果启用了 `contract_checks`，当条件返回 false 时它会以“不展开（no unwind）”的方式 panic。
+/// By default, if `contract_checks` is enabled, this will panic with no unwind if the condition
+/// returns false.
 ///
-/// 如果 `cond` 是 `None`，则不进行后置条件检查。
+/// If `cond` is `None`, then no postcondition checking is performed.
 ///
-/// 注意，本函数在常量求值（constant evaluation）期间是空操作（no-op）。
+/// Note that this function is a no-op during constant evaluation.
 #[unstable(feature = "contracts_internals", issue = "128044")]
-// 与 `contract_check_requires` 类似，我们需要使用面向用户的 `contracts` 特性，
-// 而不是永久不稳定的 `contracts_internals`。const 检查不遵守 contract 展开所用的
-// allow_internal_unstable 逻辑。
+// Similar to `contract_check_requires`, we need to use the user-facing
+// `contracts` feature rather than the perma-unstable `contracts_internals`.
+// Const-checking doesn't honor allow_internal_unstable logic used by contract expansion.
 #[rustc_const_unstable(feature = "contracts", issue = "128044")]
 #[lang = "contract_check_ensures"]
 #[rustc_intrinsic]
@@ -2651,13 +2696,13 @@ pub const fn contract_check_ensures<C: Fn(&Ret) -> bool + Copy, Ret>(
     const_eval_select!(
         @capture[C: Fn(&Ret) -> bool + Copy, Ret] { cond: Option<C>, ret: Ret } -> Ret :
         if const {
-            // 什么也不做
+            // Do nothing
             ret
         } else {
             match cond {
                 crate::option::Option::Some(cond) => {
                     if !cond(&ret) {
-                        // 万一这是一项安全要求，发出不展开（no unwind）的 panic。
+                        // Emit no unwind panic in case this was a safety requirement.
                         crate::panicking::panic_nounwind("failed ensures check");
                     }
                 },
@@ -2668,80 +2713,91 @@ pub const fn contract_check_ensures<C: Fn(&Ret) -> bool + Copy, Ret>(
     )
 }
 
-/// 本 intrinsic 返回存储在该 vtable 中的大小（size）。
+/// The intrinsic will return the size stored in that vtable.
 ///
-/// # 安全性（Safety）
+/// # Safety
 ///
-/// `ptr` 必须指向一个 vtable。
+/// `ptr` must point to a vtable.
 #[rustc_nounwind]
 #[unstable(feature = "core_intrinsics", issue = "none")]
 #[rustc_intrinsic]
 pub unsafe fn vtable_size(ptr: *const ()) -> usize;
 
-/// 本 intrinsic 返回存储在该 vtable 中的对齐（alignment）。
+/// The intrinsic will return the alignment stored in that vtable.
 ///
-/// # 安全性（Safety）
+/// # Safety
 ///
-/// `ptr` 必须指向一个 vtable。
+/// `ptr` must point to a vtable.
 #[rustc_nounwind]
 #[unstable(feature = "core_intrinsics", issue = "none")]
 #[rustc_intrinsic]
 pub unsafe fn vtable_align(ptr: *const ()) -> usize;
 
-/// 如果 `T` 能被强制转换（coerce）为 trait 对象类型 `U`，本 intrinsic 返回 `T` 对应于 `U` 的 vtable。
+/// The intrinsic returns the `U` vtable for `T` if `T` can be coerced to the trait object type `U`.
 ///
-/// # 编译期失败
-/// 判断 `T` 能否被强制转换为 trait 对象类型 `U`，需要编译器进行 trait 求解（resolution）。
-/// 在某些情况下，该求解可能超出递归上限，于是编译会失败，而不是本函数返回 `None`。
+/// # Compile-time failures
+/// Determining whether `T` can be coerced to the trait object type `U` requires trait resolution by the compiler.
+/// In some cases, that resolution can exceed the recursion limit,
+/// and compilation will fail instead of this function returning `None`.
 #[rustc_nounwind]
 #[unstable(feature = "core_intrinsics", issue = "none")]
 #[rustc_intrinsic]
 pub const fn vtable_for<T, U: ptr::Pointee<Metadata = ptr::DynMetadata<U>> + ?Sized>()
 -> Option<ptr::DynMetadata<U>>;
 
-/// 一个类型以字节为单位的大小。
+/// The size of a type in bytes.
 ///
-/// 注意，与大多数 intrinsic 不同，调用它是安全的；它不需要 `unsafe` 块。
-/// 因此，实现绝不能要求用户去维护任何安全不变量。
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
 ///
-/// 更具体地说，这是同一类型相邻两项之间以字节为单位的偏移，包含对齐填充（alignment padding）在内。
+/// More specifically, this is the offset in bytes between successive
+/// items of the same type, including alignment padding.
 ///
-/// 注意，与大多数 intrinsic 不同，它只能在编译期调用，因为各后端并没有为它提供实现。
-/// 它唯一的调用方（即它的稳定对应物）会把这次 intrinsic 调用包进一个 `const` 块里，
-/// 这样后端看到的就只是一个已经求值好的常量。
+/// Note that, unlike most intrinsics, this can only be called at compile-time
+/// as backends do not have an implementation for it. The only caller (its
+/// stable counterpart) wraps this intrinsic call in a `const` block so that
+/// backends only see an evaluated constant.
 ///
-/// 本 intrinsic 的稳定版本是 [`core::mem::size_of`]。
+/// The stabilized version of this intrinsic is [`core::mem::size_of`].
 #[rustc_nounwind]
 #[unstable(feature = "core_intrinsics", issue = "none")]
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_intrinsic]
 pub const fn size_of<T>() -> usize;
 
-/// 一个类型的最小对齐。
+/// The minimum alignment of a type.
 ///
-/// 注意，与大多数 intrinsic 不同，调用它是安全的；它不需要 `unsafe` 块。
-/// 因此，实现绝不能要求用户去维护任何安全不变量。
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
 ///
-/// 注意，与大多数 intrinsic 不同，它只能在编译期调用，因为各后端并没有为它提供实现。
-/// 它唯一的调用方（即它的稳定对应物）会把这次 intrinsic 调用包进一个 `const` 块里，
-/// 这样后端看到的就只是一个已经求值好的常量。
+/// Note that, unlike most intrinsics, this can only be called at compile-time
+/// as backends do not have an implementation for it. The only caller (its
+/// stable counterpart) wraps this intrinsic call in a `const` block so that
+/// backends only see an evaluated constant.
 ///
-/// 本 intrinsic 的稳定版本是 [`core::mem::align_of`]。
+/// The stabilized version of this intrinsic is [`core::mem::align_of`].
 #[rustc_nounwind]
 #[unstable(feature = "core_intrinsics", issue = "none")]
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_intrinsic]
 pub const fn align_of<T>() -> usize;
 
-/// 某个字段在其所属类型内部的偏移。
+/// The offset of a field inside a type.
 ///
-/// 注意，与大多数 intrinsic 不同，调用它是安全的；它不需要 `unsafe` 块。
-/// 因此，实现绝不能要求用户去维护任何安全不变量。
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
 ///
-/// 本 intrinsic 只能在编译期求值，并且只应出现在常量或内联 const 块中。
+/// This intrinsic can only be evaluated at compile-time, and should only appear in
+/// constants or inline const blocks.
 ///
-/// 本 intrinsic 的稳定版本是 [`core::mem::offset_of`]。
-/// 本 intrinsic 同时也是一个 lang item，这样 `offset_of!` 就能脱糖（desugar）为对它的调用。
+/// The stabilized version of this intrinsic is [`core::mem::offset_of`].
+/// This intrinsic is also a lang item so `offset_of!` can desugar to calls to it.
 #[rustc_nounwind]
 #[unstable(feature = "core_intrinsics", issue = "none")]
 #[rustc_const_unstable(feature = "core_intrinsics", issue = "none")]
@@ -2750,81 +2806,88 @@ pub const fn align_of<T>() -> usize;
 #[lang = "offset_of"]
 pub const fn offset_of<T: PointeeSized>(variant: u32, field: u32) -> usize;
 
-/// 返回类型 `T` 的变体（variant）数量（转换为 `usize`）；如果 `T` 没有变体，返回 `0`。
-/// 无人居住的（uninhabited）变体也会被计入。
+/// Returns the number of variants of the type `T` cast to a `usize`;
+/// if `T` has no variants, returns `0`. Uninhabited variants will be counted.
 ///
-/// 注意，与大多数 intrinsic 不同，它只能在编译期调用，因为各后端并没有为它提供实现。
-/// 它唯一的调用方（即它的稳定对应物）会把这次 intrinsic 调用包进一个 `const` 块里，
-/// 这样后端看到的就只是一个已经求值好的常量。
+/// Note that, unlike most intrinsics, this can only be called at compile-time
+/// as backends do not have an implementation for it. The only caller (its
+/// stable counterpart) wraps this intrinsic call in a `const` block so that
+/// backends only see an evaluated constant.
 ///
-/// 本 intrinsic 即将稳定的版本是 [`crate::mem::variant_count`]。
+/// The to-be-stabilized version of this intrinsic is [`crate::mem::variant_count`].
 #[rustc_nounwind]
 #[unstable(feature = "core_intrinsics", issue = "none")]
 #[rustc_intrinsic]
 pub const fn variant_count<T>() -> usize;
 
-/// 被引用值以字节为单位的大小。
+/// The size of the referenced value in bytes.
 ///
-/// 本 intrinsic 的稳定版本是 [`core::mem::size_of_val`]。
+/// The stabilized version of this intrinsic is [`core::mem::size_of_val`].
 ///
-/// # 安全性（Safety）
+/// # Safety
 ///
-/// 安全条件见 [`crate::mem::size_of_val_raw`]。
+/// See [`crate::mem::size_of_val_raw`] for safety conditions.
 #[rustc_nounwind]
 #[unstable(feature = "core_intrinsics", issue = "none")]
 #[rustc_intrinsic]
 #[rustc_intrinsic_const_stable_indirect]
 pub const unsafe fn size_of_val<T: ?Sized>(ptr: *const T) -> usize;
 
-/// 被引用值所要求的对齐。
+/// The required alignment of the referenced value.
 ///
-/// 本 intrinsic 的稳定版本是 [`core::mem::align_of_val`]。
+/// The stabilized version of this intrinsic is [`core::mem::align_of_val`].
 ///
-/// # 安全性（Safety）
+/// # Safety
 ///
-/// 安全条件见 [`crate::mem::align_of_val_raw`]。
+/// See [`crate::mem::align_of_val_raw`] for safety conditions.
 #[rustc_nounwind]
 #[unstable(feature = "core_intrinsics", issue = "none")]
 #[rustc_intrinsic]
 #[rustc_intrinsic_const_stable_indirect]
 pub const unsafe fn align_of_val<T: ?Sized>(ptr: *const T) -> usize;
 
-/// 计算一个具体类型的类型信息。
-/// 它只能在编译期调用，各后端并未实现它。
+/// Compute the type information of a concrete type.
+/// It can only be called at compile time, the backends do
+/// not implement it.
 #[rustc_intrinsic]
 #[unstable(feature = "core_intrinsics", issue = "none")]
 pub const fn type_of(_id: crate::any::TypeId) -> crate::mem::type_info::Type {
     panic!("`TypeId::info` can only be called at compile-time")
 }
 
-/// 获取一个静态字符串切片，其内容是某个类型的名字。
+/// Gets a static string slice containing the name of a type.
 ///
-/// 注意，与大多数 intrinsic 不同，它只能在编译期调用，因为各后端并没有为它提供实现。
-/// 它唯一的调用方（即它的稳定对应物）会把这次 intrinsic 调用包进一个 `const` 块里，
-/// 这样后端看到的就只是一个已经求值好的常量。
+/// Note that, unlike most intrinsics, this can only be called at compile-time
+/// as backends do not have an implementation for it. The only caller (its
+/// stable counterpart) wraps this intrinsic call in a `const` block so that
+/// backends only see an evaluated constant.
 ///
-/// 本 intrinsic 的稳定版本是 [`core::any::type_name`]。
+/// The stabilized version of this intrinsic is [`core::any::type_name`].
 #[rustc_nounwind]
 #[unstable(feature = "core_intrinsics", issue = "none")]
 #[rustc_intrinsic]
 pub const fn type_name<T: ?Sized>() -> &'static str;
 
-/// 获取一个对指定类型而言全局唯一的标识符。无论在哪个 crate 中调用，本函数对同一类型都会返回相同的值。
+/// Gets an identifier which is globally unique to the specified type. This
+/// function will return the same value for a type regardless of whichever
+/// crate it is invoked in.
 ///
-/// 注意，与大多数 intrinsic 不同，它只能在编译期调用，因为各后端并没有为它提供实现。
-/// 它唯一的调用方（即它的稳定对应物）会把这次 intrinsic 调用包进一个 `const` 块里，
-/// 这样后端看到的就只是一个已经求值好的常量。
+/// Note that, unlike most intrinsics, this can only be called at compile-time
+/// as backends do not have an implementation for it. The only caller (its
+/// stable counterpart) wraps this intrinsic call in a `const` block so that
+/// backends only see an evaluated constant.
 ///
-/// 本 intrinsic 的稳定版本是 [`core::any::TypeId::of`]。
+/// The stabilized version of this intrinsic is [`core::any::TypeId::of`].
 #[rustc_nounwind]
 #[unstable(feature = "core_intrinsics", issue = "none")]
 #[rustc_intrinsic]
 pub const fn type_id<T: ?Sized + 'static>() -> crate::any::TypeId;
 
-/// （在编译期）测试两个 [`crate::any::TypeId`] 实例是否标识同一个类型。之所以需要它，是因为在 const 求值期间，
-/// 真正用于区分的数据是不透明的，无法直接检视。
+/// Tests (at compile-time) if two [`crate::any::TypeId`] instances identify the
+/// same type. This is necessary because at const-eval time the actual discriminating
+/// data is opaque and cannot be inspected directly.
 ///
-/// 本 intrinsic 的稳定版本是 [`core::any::TypeId`] 的 [PartialEq] 实现。
+/// The stabilized version of this intrinsic is the [PartialEq] impl for [`core::any::TypeId`].
 #[rustc_nounwind]
 #[unstable(feature = "core_intrinsics", issue = "none")]
 #[rustc_intrinsic]
@@ -2833,10 +2896,11 @@ pub const fn type_id_eq(a: crate::any::TypeId, b: crate::any::TypeId) -> bool {
     a.data == b.data
 }
 
-/// 在 MIR 中降级（lower）为带 `AggregateKind::RawPtr` 的 `Rvalue::Aggregate`。
+/// Lowers in MIR to `Rvalue::Aggregate` with `AggregateKind::RawPtr`.
 ///
-/// 它用于以一种“与编译器能够改变指针可能布局相兼容”的方式，实现 `slice::from_raw_parts_mut`
-/// 和 `ptr::from_raw_parts` 之类的函数。
+/// This is used to implement functions like `slice::from_raw_parts_mut` and
+/// `ptr::from_raw_parts` in a way compatible with the compiler being able to
+/// change the possible layouts of pointers.
 #[rustc_nounwind]
 #[unstable(feature = "core_intrinsics", issue = "none")]
 #[rustc_intrinsic_const_stable_indirect]
@@ -2845,27 +2909,19 @@ pub const fn aggregate_raw_ptr<P: bounds::BuiltinDeref, D, M>(data: D, meta: M) 
 where
     <P as bounds::BuiltinDeref>::Pointee: ptr::Pointee<Metadata = M>;
 
-/// 在 MIR 中降级（lower）为带 `UnOp::PtrMetadata` 的 `Rvalue::UnaryOp`。
+/// Lowers in MIR to `Rvalue::UnaryOp` with `UnOp::PtrMetadata`.
 ///
-/// 它用于实现 `ptr::metadata` 之类的函数。
+/// This is used to implement functions like `ptr::metadata`.
 #[rustc_nounwind]
 #[unstable(feature = "core_intrinsics", issue = "none")]
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_intrinsic]
 pub const fn ptr_metadata<P: ptr::Pointee<Metadata = M> + PointeeSized, M>(ptr: *const P) -> M;
 
-/// 这是 [`ptr::copy_nonoverlapping`] 一个意外稳定下来的别名；请改用那个。
-///
-/// # 安全性（Safety）
-///
-/// `src` 必须对 `count` 个 `T` 可读，`dst` 必须对 `count` 个 `T` 可写，二者都必须按 `T` 正确对齐。
-/// 即使 `count == 0`，指针也必须满足非空和对齐等基本要求。源区间与目标区间**不得重叠**；
-/// 如果可能重叠，应使用 [`copy`] 或稳定的 [`ptr::copy`]。本 intrinsic 是编译器底层入口，
-/// 不会像稳定封装那样额外插入 debug 断言。
-///
-/// [`ptr::copy`]: ptr::copy
-// 注意（特意不放进文档注释里）：`ptr::copy_nonoverlapping` 会额外加入一些 debug 断言；如果你在写编译器测试、
-// 或标准库内部那种想要避开这些 debug 断言的代码，请直接调用本 intrinsic。
+/// This is an accidentally-stable alias to [`ptr::copy_nonoverlapping`]; use that instead.
+// Note (intentionally not in the doc comment): `ptr::copy_nonoverlapping` adds some extra
+// debug assertions; if you are writing compiler tests or code inside the standard library
+// that wants to avoid those debug assertions, directly call this intrinsic instead.
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_allowed_through_unstable_modules = "import this function via `std::ptr` instead"]
 #[rustc_const_stable(feature = "const_intrinsic_copy", since = "1.83.0")]
@@ -2873,15 +2929,10 @@ pub const fn ptr_metadata<P: ptr::Pointee<Metadata = M> + PointeeSized, M>(ptr: 
 #[rustc_intrinsic]
 pub const unsafe fn copy_nonoverlapping<T>(src: *const T, dst: *mut T, count: usize);
 
-/// 这是 [`ptr::copy`] 一个意外稳定下来的别名；请改用那个。
-///
-/// # 安全性（Safety）
-///
-/// `src` 必须对 `count` 个 `T` 可读，`dst` 必须对 `count` 个 `T` 可写，二者都必须按 `T` 正确对齐。
-/// 源区间与目标区间可以重叠，因为本 intrinsic 是 memmove 语义；但指针有效性、初始化状态、
-/// provenance 和别名规则仍由调用方维护。
-// 注意（特意不放进文档注释里）：`ptr::copy` 会额外加入一些 debug 断言；如果你在写编译器测试、
-// 或标准库内部那种想要避开这些 debug 断言的代码，请直接调用本 intrinsic。
+/// This is an accidentally-stable alias to [`ptr::copy`]; use that instead.
+// Note (intentionally not in the doc comment): `ptr::copy` adds some extra
+// debug assertions; if you are writing compiler tests or code inside the standard library
+// that wants to avoid those debug assertions, directly call this intrinsic instead.
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_allowed_through_unstable_modules = "import this function via `std::ptr` instead"]
 #[rustc_const_stable(feature = "const_intrinsic_copy", since = "1.83.0")]
@@ -2889,15 +2940,10 @@ pub const unsafe fn copy_nonoverlapping<T>(src: *const T, dst: *mut T, count: us
 #[rustc_intrinsic]
 pub const unsafe fn copy<T>(src: *const T, dst: *mut T, count: usize);
 
-/// 这是 [`ptr::write_bytes`] 一个意外稳定下来的别名；请改用那个。
-///
-/// # 安全性（Safety）
-///
-/// `dst` 必须对 `count` 个 `T` 可写，并按 `T` 正确对齐。写入的是重复字节 `val`，调用方必须保证
-/// 随后按目标类型读取这些字节时得到的是该类型的有效值，或保证只把它们当作原始字节处理。
-/// 本 intrinsic 不会析构原位置上的值，也不会维护任何类型不变量。
-// 注意（特意不放进文档注释里）：`ptr::write_bytes` 会额外加入一些 debug 断言；如果你在写编译器测试、
-// 或标准库内部那种想要避开这些 debug 断言的代码，请直接调用本 intrinsic。
+/// This is an accidentally-stable alias to [`ptr::write_bytes`]; use that instead.
+// Note (intentionally not in the doc comment): `ptr::write_bytes` adds some extra
+// debug assertions; if you are writing compiler tests or code inside the standard library
+// that wants to avoid those debug assertions, directly call this intrinsic instead.
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_allowed_through_unstable_modules = "import this function via `std::ptr` instead"]
 #[rustc_const_stable(feature = "const_intrinsic_copy", since = "1.83.0")]
@@ -2905,68 +2951,82 @@ pub const unsafe fn copy<T>(src: *const T, dst: *mut T, count: usize);
 #[rustc_intrinsic]
 pub const unsafe fn write_bytes<T>(dst: *mut T, val: u8, count: usize);
 
-/// 返回两个 `f16` 值中的较小者，忽略 NaN。
+/// Returns the minimum of two `f16` values, ignoring NaN.
 ///
-/// 如果其中一个参数是 NaN（quiet 或 signaling），则返回另一个参数。如果两个参数都是 NaN，返回 NaN。
-/// 如果两个输入比较相等（例如 `+0.0` 与 `-0.0` 的情形），则可能以非确定性的方式返回任意一个输入。
+/// If one of the arguments is NaN (quiet or signaling), then the other argument is returned. If
+/// both arguments are NaN, returns NaN. If the inputs compare equal (such as for the case of `+0.0`
+/// and `-0.0`), either input may be returned non-deterministically.
 ///
-/// 注意，与大多数 intrinsic 不同，调用它是安全的；它不需要 `unsafe` 块。
-/// 因此，实现绝不能要求用户去维护任何安全不变量。
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
 ///
-/// 本 intrinsic 的稳定版本是 [`f16::min`]。
+/// The stabilized version of this intrinsic is [`f16::min`].
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const fn minnumf16(x: f16, y: f16) -> f16;
 
-/// 返回两个 `f32` 值中的较小者，忽略 NaN。
+/// Returns the minimum of two `f32` values, ignoring NaN.
 ///
-/// 如果其中一个参数是 NaN（quiet 或 signaling），则返回另一个参数。如果两个参数都是 NaN，返回 NaN。
-/// 如果两个输入比较相等（例如 `+0.0` 与 `-0.0` 的情形），则可能以非确定性的方式返回任意一个输入。
+/// If one of the arguments is NaN (quiet or signaling), then the other argument is returned. If
+/// both arguments are NaN, returns NaN. If the inputs compare equal (such as for the case of `+0.0`
+/// and `-0.0`), either input may be returned non-deterministically.
 ///
-/// 注意，与大多数 intrinsic 不同，调用它是安全的；它不需要 `unsafe` 块。
-/// 因此，实现绝不能要求用户去维护任何安全不变量。
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
 ///
-/// 本 intrinsic 的稳定版本是 [`f32::min`]。
+/// The stabilized version of this intrinsic is [`f32::min`].
 #[rustc_nounwind]
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_intrinsic]
 pub const fn minnumf32(x: f32, y: f32) -> f32;
 
-/// 返回两个 `f64` 值中的较小者，忽略 NaN。
+/// Returns the minimum of two `f64` values, ignoring NaN.
 ///
-/// 如果其中一个参数是 NaN（quiet 或 signaling），则返回另一个参数。如果两个参数都是 NaN，返回 NaN。
-/// 如果两个输入比较相等（例如 `+0.0` 与 `-0.0` 的情形），则可能以非确定性的方式返回任意一个输入。
+/// If one of the arguments is NaN (quiet or signaling), then the other argument is returned. If
+/// both arguments are NaN, returns NaN. If the inputs compare equal (such as for the case of `+0.0`
+/// and `-0.0`), either input may be returned non-deterministically.
 ///
-/// 注意，与大多数 intrinsic 不同，调用它是安全的；它不需要 `unsafe` 块。
-/// 因此，实现绝不能要求用户去维护任何安全不变量。
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
 ///
-/// 本 intrinsic 的稳定版本是 [`f64::min`]。
+/// The stabilized version of this intrinsic is [`f64::min`].
 #[rustc_nounwind]
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_intrinsic]
 pub const fn minnumf64(x: f64, y: f64) -> f64;
 
-/// 返回两个 `f128` 值中的较小者，忽略 NaN。
+/// Returns the minimum of two `f128` values, ignoring NaN.
 ///
-/// 如果其中一个参数是 NaN（quiet 或 signaling），则返回另一个参数。如果两个参数都是 NaN，返回 NaN。
-/// 如果两个输入比较相等（例如 `+0.0` 与 `-0.0` 的情形），则可能以非确定性的方式返回任意一个输入。
+/// If one of the arguments is NaN (quiet or signaling), then the other argument is returned. If
+/// both arguments are NaN, returns NaN. If the inputs compare equal (such as for the case of `+0.0`
+/// and `-0.0`), either input may be returned non-deterministically.
 ///
-/// 注意，与大多数 intrinsic 不同，调用它是安全的；它不需要 `unsafe` 块。
-/// 因此，实现绝不能要求用户去维护任何安全不变量。
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
 ///
-/// 本 intrinsic 的稳定版本是 [`f128::min`]。
+/// The stabilized version of this intrinsic is [`f128::min`].
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const fn minnumf128(x: f128, y: f128) -> f128;
 
-/// 返回两个 `f16` 值中的较小者，传播（propagate）NaN。
+/// Returns the minimum of two `f16` values, propagating NaN.
 ///
-/// 它的行为类似 IEEE 754-2019 的 minimum。特别地：
-/// 如果其中一个参数是 NaN，则按通常的 NaN 传播规则返回一个 NaN。
-/// 对本操作而言，-0.0 被视为严格小于 +0.0。
+/// This behaves like IEEE 754-2019 minimum. In particular:
+/// If one of the arguments is NaN, then a NaN is returned using the usual NaN propagation rules.
+/// For this operation, -0.0 is considered to be strictly less than +0.0.
 ///
-/// 注意，与大多数 intrinsic 不同，调用它是安全的；它不需要 `unsafe` 块。
-/// 因此，实现绝不能要求用户去维护任何安全不变量。
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const fn minimumf16(x: f16, y: f16) -> f16 {
@@ -2977,19 +3037,21 @@ pub const fn minimumf16(x: f16, y: f16) -> f16 {
     } else if x == y {
         if x.is_sign_negative() && y.is_sign_positive() { x } else { y }
     } else {
-        // 至少有一个输入是 NaN。用 `+` 来执行 NaN 的传播与“安静化”（quieting）。
+        // At least one input is NaN. Use `+` to perform NaN propagation and quieting.
         x + y
     }
 }
 
-/// 返回两个 `f32` 值中的较小者，传播（propagate）NaN。
+/// Returns the minimum of two `f32` values, propagating NaN.
 ///
-/// 它的行为类似 IEEE 754-2019 的 minimum。特别地：
-/// 如果其中一个参数是 NaN，则按通常的 NaN 传播规则返回一个 NaN。
-/// 对本操作而言，-0.0 被视为严格小于 +0.0。
+/// This behaves like IEEE 754-2019 minimum. In particular:
+/// If one of the arguments is NaN, then a NaN is returned using the usual NaN propagation rules.
+/// For this operation, -0.0 is considered to be strictly less than +0.0.
 ///
-/// 注意，与大多数 intrinsic 不同，调用它是安全的；它不需要 `unsafe` 块。
-/// 因此，实现绝不能要求用户去维护任何安全不变量。
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const fn minimumf32(x: f32, y: f32) -> f32 {
@@ -3000,19 +3062,21 @@ pub const fn minimumf32(x: f32, y: f32) -> f32 {
     } else if x == y {
         if x.is_sign_negative() && y.is_sign_positive() { x } else { y }
     } else {
-        // 至少有一个输入是 NaN。用 `+` 来执行 NaN 的传播与“安静化”（quieting）。
+        // At least one input is NaN. Use `+` to perform NaN propagation and quieting.
         x + y
     }
 }
 
-/// 返回两个 `f64` 值中的较小者，传播（propagate）NaN。
+/// Returns the minimum of two `f64` values, propagating NaN.
 ///
-/// 它的行为类似 IEEE 754-2019 的 minimum。特别地：
-/// 如果其中一个参数是 NaN，则按通常的 NaN 传播规则返回一个 NaN。
-/// 对本操作而言，-0.0 被视为严格小于 +0.0。
+/// This behaves like IEEE 754-2019 minimum. In particular:
+/// If one of the arguments is NaN, then a NaN is returned using the usual NaN propagation rules.
+/// For this operation, -0.0 is considered to be strictly less than +0.0.
 ///
-/// 注意，与大多数 intrinsic 不同，调用它是安全的；它不需要 `unsafe` 块。
-/// 因此，实现绝不能要求用户去维护任何安全不变量。
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const fn minimumf64(x: f64, y: f64) -> f64 {
@@ -3023,19 +3087,21 @@ pub const fn minimumf64(x: f64, y: f64) -> f64 {
     } else if x == y {
         if x.is_sign_negative() && y.is_sign_positive() { x } else { y }
     } else {
-        // 至少有一个输入是 NaN。用 `+` 来执行 NaN 的传播与“安静化”（quieting）。
+        // At least one input is NaN. Use `+` to perform NaN propagation and quieting.
         x + y
     }
 }
 
-/// 返回两个 `f128` 值中的较小者，传播（propagate）NaN。
+/// Returns the minimum of two `f128` values, propagating NaN.
 ///
-/// 它的行为类似 IEEE 754-2019 的 minimum。特别地：
-/// 如果其中一个参数是 NaN，则按通常的 NaN 传播规则返回一个 NaN。
-/// 对本操作而言，-0.0 被视为严格小于 +0.0。
+/// This behaves like IEEE 754-2019 minimum. In particular:
+/// If one of the arguments is NaN, then a NaN is returned using the usual NaN propagation rules.
+/// For this operation, -0.0 is considered to be strictly less than +0.0.
 ///
-/// 注意，与大多数 intrinsic 不同，调用它是安全的；它不需要 `unsafe` 块。
-/// 因此，实现绝不能要求用户去维护任何安全不变量。
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const fn minimumf128(x: f128, y: f128) -> f128 {
@@ -3046,73 +3112,87 @@ pub const fn minimumf128(x: f128, y: f128) -> f128 {
     } else if x == y {
         if x.is_sign_negative() && y.is_sign_positive() { x } else { y }
     } else {
-        // 至少有一个输入是 NaN。用 `+` 来执行 NaN 的传播与“安静化”（quieting）。
+        // At least one input is NaN. Use `+` to perform NaN propagation and quieting.
         x + y
     }
 }
 
-/// 返回两个 `f16` 值中的较大者，忽略 NaN。
+/// Returns the maximum of two `f16` values, ignoring NaN.
 ///
-/// 如果其中一个参数是 NaN（quiet 或 signaling），则返回另一个参数。如果两个参数都是 NaN，返回 NaN。
-/// 如果两个输入比较相等（例如 `+0.0` 与 `-0.0` 的情形），则可能以非确定性的方式返回任意一个输入。
+/// If one of the arguments is NaN (quiet or signaling), then the other argument is returned. If
+/// both arguments are NaN, returns NaN. If the inputs compare equal (such as for the case of `+0.0`
+/// and `-0.0`), either input may be returned non-deterministically.
 ///
-/// 注意，与大多数 intrinsic 不同，调用它是安全的；它不需要 `unsafe` 块。
-/// 因此，实现绝不能要求用户去维护任何安全不变量。
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
 ///
-/// 本 intrinsic 的稳定版本是 [`f16::max`]。
+/// The stabilized version of this intrinsic is [`f16::max`].
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const fn maxnumf16(x: f16, y: f16) -> f16;
 
-/// 返回两个 `f32` 值中的较大者，忽略 NaN。
+/// Returns the maximum of two `f32` values, ignoring NaN.
 ///
-/// 如果其中一个参数是 NaN（quiet 或 signaling），则返回另一个参数。如果两个参数都是 NaN，返回 NaN。
-/// 如果两个输入比较相等（例如 `+0.0` 与 `-0.0` 的情形），则可能以非确定性的方式返回任意一个输入。
+/// If one of the arguments is NaN (quiet or signaling), then the other argument is returned. If
+/// both arguments are NaN, returns NaN. If the inputs compare equal (such as for the case of `+0.0`
+/// and `-0.0`), either input may be returned non-deterministically.
 ///
-/// 注意，与大多数 intrinsic 不同，调用它是安全的；它不需要 `unsafe` 块。
-/// 因此，实现绝不能要求用户去维护任何安全不变量。
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
 ///
-/// 本 intrinsic 的稳定版本是 [`f32::max`]。
+/// The stabilized version of this intrinsic is [`f32::max`].
 #[rustc_nounwind]
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_intrinsic]
 pub const fn maxnumf32(x: f32, y: f32) -> f32;
 
-/// 返回两个 `f64` 值中的较大者，忽略 NaN。
+/// Returns the maximum of two `f64` values, ignoring NaN.
 ///
-/// 如果其中一个参数是 NaN（quiet 或 signaling），则返回另一个参数。如果两个参数都是 NaN，返回 NaN。
-/// 如果两个输入比较相等（例如 `+0.0` 与 `-0.0` 的情形），则可能以非确定性的方式返回任意一个输入。
+/// If one of the arguments is NaN (quiet or signaling), then the other argument is returned. If
+/// both arguments are NaN, returns NaN. If the inputs compare equal (such as for the case of `+0.0`
+/// and `-0.0`), either input may be returned non-deterministically.
 ///
-/// 注意，与大多数 intrinsic 不同，调用它是安全的；它不需要 `unsafe` 块。
-/// 因此，实现绝不能要求用户去维护任何安全不变量。
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
 ///
-/// 本 intrinsic 的稳定版本是 [`f64::max`]。
+/// The stabilized version of this intrinsic is [`f64::max`].
 #[rustc_nounwind]
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_intrinsic]
 pub const fn maxnumf64(x: f64, y: f64) -> f64;
 
-/// 返回两个 `f128` 值中的较大者，忽略 NaN。
+/// Returns the maximum of two `f128` values, ignoring NaN.
 ///
-/// 如果其中一个参数是 NaN（quiet 或 signaling），则返回另一个参数。如果两个参数都是 NaN，返回 NaN。
-/// 如果两个输入比较相等（例如 `+0.0` 与 `-0.0` 的情形），则可能以非确定性的方式返回任意一个输入。
+/// If one of the arguments is NaN (quiet or signaling), then the other argument is returned. If
+/// both arguments are NaN, returns NaN. If the inputs compare equal (such as for the case of `+0.0`
+/// and `-0.0`), either input may be returned non-deterministically.
 ///
-/// 注意，与大多数 intrinsic 不同，调用它是安全的；它不需要 `unsafe` 块。
-/// 因此，实现绝不能要求用户去维护任何安全不变量。
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
 ///
-/// 本 intrinsic 的稳定版本是 [`f128::max`]。
+/// The stabilized version of this intrinsic is [`f128::max`].
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const fn maxnumf128(x: f128, y: f128) -> f128;
 
-/// 返回两个 `f16` 值中的较大者，传播（propagate）NaN。
+/// Returns the maximum of two `f16` values, propagating NaN.
 ///
-/// 它的行为类似 IEEE 754-2019 的 maximum。特别地：
-/// 如果其中一个参数是 NaN，则按通常的 NaN 传播规则返回一个 NaN。
-/// 对本操作而言，-0.0 被视为严格小于 +0.0。
+/// This behaves like IEEE 754-2019 maximum. In particular:
+/// If one of the arguments is NaN, then a NaN is returned using the usual NaN propagation rules.
+/// For this operation, -0.0 is considered to be strictly less than +0.0.
 ///
-/// 注意，与大多数 intrinsic 不同，调用它是安全的；它不需要 `unsafe` 块。
-/// 因此，实现绝不能要求用户去维护任何安全不变量。
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const fn maximumf16(x: f16, y: f16) -> f16 {
@@ -3127,14 +3207,16 @@ pub const fn maximumf16(x: f16, y: f16) -> f16 {
     }
 }
 
-/// 返回两个 `f32` 值中的较大者，传播（propagate）NaN。
+/// Returns the maximum of two `f32` values, propagating NaN.
 ///
-/// 它的行为类似 IEEE 754-2019 的 maximum。特别地：
-/// 如果其中一个参数是 NaN，则按通常的 NaN 传播规则返回一个 NaN。
-/// 对本操作而言，-0.0 被视为严格小于 +0.0。
+/// This behaves like IEEE 754-2019 maximum. In particular:
+/// If one of the arguments is NaN, then a NaN is returned using the usual NaN propagation rules.
+/// For this operation, -0.0 is considered to be strictly less than +0.0.
 ///
-/// 注意，与大多数 intrinsic 不同，调用它是安全的；它不需要 `unsafe` 块。
-/// 因此，实现绝不能要求用户去维护任何安全不变量。
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const fn maximumf32(x: f32, y: f32) -> f32 {
@@ -3149,14 +3231,16 @@ pub const fn maximumf32(x: f32, y: f32) -> f32 {
     }
 }
 
-/// 返回两个 `f64` 值中的较大者，传播（propagate）NaN。
+/// Returns the maximum of two `f64` values, propagating NaN.
 ///
-/// 它的行为类似 IEEE 754-2019 的 maximum。特别地：
-/// 如果其中一个参数是 NaN，则按通常的 NaN 传播规则返回一个 NaN。
-/// 对本操作而言，-0.0 被视为严格小于 +0.0。
+/// This behaves like IEEE 754-2019 maximum. In particular:
+/// If one of the arguments is NaN, then a NaN is returned using the usual NaN propagation rules.
+/// For this operation, -0.0 is considered to be strictly less than +0.0.
 ///
-/// 注意，与大多数 intrinsic 不同，调用它是安全的；它不需要 `unsafe` 块。
-/// 因此，实现绝不能要求用户去维护任何安全不变量。
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const fn maximumf64(x: f64, y: f64) -> f64 {
@@ -3171,14 +3255,16 @@ pub const fn maximumf64(x: f64, y: f64) -> f64 {
     }
 }
 
-/// 返回两个 `f128` 值中的较大者，传播（propagate）NaN。
+/// Returns the maximum of two `f128` values, propagating NaN.
 ///
-/// 它的行为类似 IEEE 754-2019 的 maximum。特别地：
-/// 如果其中一个参数是 NaN，则按通常的 NaN 传播规则返回一个 NaN。
-/// 对本操作而言，-0.0 被视为严格小于 +0.0。
+/// This behaves like IEEE 754-2019 maximum. In particular:
+/// If one of the arguments is NaN, then a NaN is returned using the usual NaN propagation rules.
+/// For this operation, -0.0 is considered to be strictly less than +0.0.
 ///
-/// 注意，与大多数 intrinsic 不同，调用它是安全的；它不需要 `unsafe` 块。
-/// 因此，实现绝不能要求用户去维护任何安全不变量。
+/// Note that, unlike most intrinsics, this is safe to call;
+/// it does not require an `unsafe` block.
+/// Therefore, implementations must not require the user to uphold
+/// any safety invariants.
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const fn maximumf128(x: f128, y: f128) -> f128 {
@@ -3193,96 +3279,97 @@ pub const fn maximumf128(x: f128, y: f128) -> f128 {
     }
 }
 
-/// 返回一个 `f16` 的绝对值。
+/// Returns the absolute value of an `f16`.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f16::abs`](../../std/primitive.f16.html#method.abs)
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const fn fabsf16(x: f16) -> f16;
 
-/// 返回一个 `f32` 的绝对值。
+/// Returns the absolute value of an `f32`.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f32::abs`](../../std/primitive.f32.html#method.abs)
 #[rustc_nounwind]
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_intrinsic]
 pub const fn fabsf32(x: f32) -> f32;
 
-/// 返回一个 `f64` 的绝对值。
+/// Returns the absolute value of an `f64`.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f64::abs`](../../std/primitive.f64.html#method.abs)
 #[rustc_nounwind]
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_intrinsic]
 pub const fn fabsf64(x: f64) -> f64;
 
-/// 返回一个 `f128` 的绝对值。
+/// Returns the absolute value of an `f128`.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f128::abs`](../../std/primitive.f128.html#method.abs)
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const fn fabsf128(x: f128) -> f128;
 
-/// 对 `f16` 值，把 `y` 的符号复制到 `x` 上。
+/// Copies the sign from `y` to `x` for `f16` values.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f16::copysign`](../../std/primitive.f16.html#method.copysign)
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const fn copysignf16(x: f16, y: f16) -> f16;
 
-/// 对 `f32` 值，把 `y` 的符号复制到 `x` 上。
+/// Copies the sign from `y` to `x` for `f32` values.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f32::copysign`](../../std/primitive.f32.html#method.copysign)
 #[rustc_nounwind]
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_intrinsic]
 pub const fn copysignf32(x: f32, y: f32) -> f32;
-/// 对 `f64` 值，把 `y` 的符号复制到 `x` 上。
+/// Copies the sign from `y` to `x` for `f64` values.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f64::copysign`](../../std/primitive.f64.html#method.copysign)
 #[rustc_nounwind]
 #[rustc_intrinsic_const_stable_indirect]
 #[rustc_intrinsic]
 pub const fn copysignf64(x: f64, y: f64) -> f64;
 
-/// 对 `f128` 值，把 `y` 的符号复制到 `x` 上。
+/// Copies the sign from `y` to `x` for `f128` values.
 ///
-/// 本 intrinsic 的稳定版本是
+/// The stabilized version of this intrinsic is
 /// [`f128::copysign`](../../std/primitive.f128.html#method.copysign)
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const fn copysignf128(x: f128, y: f128) -> f128;
 
-/// 使用 Enzyme 为 `f` 的自动微分（automatic differentiation）生成 LLVM 函数体，
-/// 其中 `df` 是导函数、`args` 是它的参数。
+/// Generates the LLVM body for the automatic differentiation of `f` using Enzyme,
+/// with `df` as the derivative function and `args` as its arguments.
 ///
-/// 在展开 `#[autodiff_forward]` 与 `#[autodiff_reverse]` 属性宏时，内部用它作为 `df` 的函数体。
+/// Used internally as the body of `df` when expanding the `#[autodiff_forward]`
+/// and `#[autodiff_reverse]` attribute macros.
 ///
-/// 类型参数：
-/// - `F`：待微分的原函数。必须是函数项（function item）。
-/// - `G`：导函数。必须是函数项。
-/// - `T`：传给 `df` 的参数元组。
-/// - `R`：导函数的返回类型。
+/// Type Parameters:
+/// - `F`: The original function to differentiate. Must be a function item.
+/// - `G`: The derivative function. Must be a function item.
+/// - `T`: A tuple of arguments passed to `df`.
+/// - `R`: The return type of the derivative function.
 ///
-/// 下面展示了宏展开期间 `autodiff` intrinsic 用在何处：
+/// This shows where the `autodiff` intrinsic is used during macro expansion:
 ///
-/// ```rust,ignore (宏示例)
+/// ```rust,ignore (macro example)
 /// #[autodiff_forward(df1, Dual, Const, Dual)]
 /// pub fn f1(x: &[f64], y: f64) -> f64 {
 ///     unimplemented!()
 /// }
 /// ```
 ///
-/// 展开为：
+/// expands to:
 ///
-/// ```rust,ignore (宏示例)
+/// ```rust,ignore (macro example)
 /// #[rustc_autodiff]
 /// #[inline(never)]
 /// pub fn f1(x: &[f64], y: f64) -> f64 {
@@ -3297,22 +3384,22 @@ pub const fn copysignf128(x: f128, y: f128) -> f128;
 #[rustc_intrinsic]
 pub const fn autodiff<F, G, T: crate::marker::Tuple, R>(f: F, df: G, args: T) -> R;
 
-/// 生成一个包装函数的 LLVM 函数体，用于将内核（kernel）`f` 卸载（offload）出去执行。
+/// Generates the LLVM body of a wrapper function to offload a kernel `f`.
 ///
-/// 类型参数：
-/// - `F`：要卸载的内核。必须是函数项（function item）。
-/// - `T`：传给 `f` 的参数元组。
-/// - `R`：内核的返回类型。
+/// Type Parameters:
+/// - `F`: The kernel to offload. Must be a function item.
+/// - `T`: A tuple of arguments passed to `f`.
+/// - `R`: The return type of the kernel.
 ///
-/// 参数：
-/// - `f`：要卸载的内核函数。
-/// - `workgroup_dim`：一个三维尺寸，指定要启动的工作组（workgroup）数量。
-/// - `thread_dim`：一个三维尺寸，指定每个工作组的线程数量。
-/// - `args`：转发给 `f` 的参数元组。
+/// Arguments:
+/// - `f`: The kernel function to offload.
+/// - `workgroup_dim`: A 3D size specifying the number of workgroups to launch.
+/// - `thread_dim`: A 3D size specifying the number of threads per workgroup.
+/// - `args`: A tuple of arguments forwarded to `f`.
 ///
-/// 用法示例（伪代码）：
+/// Example usage (pseudocode):
 ///
-/// ```rust,ignore (伪代码)
+/// ```rust,ignore (pseudocode)
 /// fn kernel(x: *mut [f64; 128]) {
 ///     core::intrinsics::offload(kernel_1, [256, 1, 1], [32, 1, 1], (x,))
 /// }
@@ -3329,8 +3416,8 @@ pub const fn autodiff<F, G, T: crate::marker::Tuple, R>(f: F, df: G, args: T) ->
 /// }
 /// ```
 ///
-/// 作为参考，见 Clang 关于 offloading 的文档：
-/// <https://clang.llvm.org/docs/OffloadingDesign.html>。
+/// For reference, see the Clang documentation on offloading:
+/// <https://clang.llvm.org/docs/OffloadingDesign.html>.
 #[rustc_nounwind]
 #[rustc_intrinsic]
 pub const fn offload<F, T: crate::marker::Tuple, R>(
@@ -3340,23 +3427,23 @@ pub const fn offload<F, T: crate::marker::Tuple, R>(
     args: T,
 ) -> R;
 
-/// 告知 Miri：给定的指针一定具有某个对齐。
+/// Inform Miri that a given pointer definitely has a certain alignment.
 #[cfg(miri)]
 #[rustc_allow_const_fn_unstable(const_eval_select)]
 pub(crate) const fn miri_promise_symbolic_alignment(ptr: *const (), align: usize) {
     unsafe extern "Rust" {
-        /// 由 Miri 提供的 extern 函数，用于承诺给定指针对“符号化（symbolic）”对齐检查而言已正确对齐。
-        /// 如果该指针实际上未对齐、或 `align` 不是 2 的幂，将会失败。当对齐检查是具体（concrete）模式时
-        /// （这是默认模式），它没有任何效果。
+        /// Miri-provided extern function to promise that a given pointer is properly aligned for
+        /// "symbolic" alignment checks. Will fail if the pointer is not actually aligned or `align` is
+        /// not a power of two. Has no effect when alignment checks are concrete (which is the default).
         fn miri_promise_symbolic_alignment(ptr: *const (), align: usize);
     }
 
     const_eval_select!(
         @capture { ptr: *const (), align: usize}:
         if const {
-            // 什么也不做。
+            // Do nothing.
         } else {
-            // SAFETY: 这个调用总是安全的。
+            // SAFETY: this call is always safe.
             unsafe {
                 miri_promise_symbolic_alignment(ptr, align);
             }
@@ -3364,40 +3451,42 @@ pub(crate) const fn miri_promise_symbolic_alignment(ptr: *const (), align: usize
     )
 }
 
-/// 把可变参数列表 `src` 的当前位置复制到可变参数列表 `dst`。
+/// Copies the current location of arglist `src` to the arglist `dst`.
 ///
-/// # 安全性（Safety）
+/// # Safety
 ///
-/// 调用本函数前，你必须检查以下不变量：
+/// You must check the following invariants before you call this function:
 ///
-/// - `dest` 必须非空，并指向有效、可写的内存。
-/// - `dest` 不得与 `src` 存在别名（alias）。
+/// - `dest` must be non-null and point to valid, writable memory.
+/// - `dest` must not alias `src`.
 ///
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn va_copy<'f>(dest: *mut VaList<'f>, src: &VaList<'f>);
 
-/// 从 `va_list` `ap` 中加载一个类型为 `T` 的参数，并令 `ap` 指向的参数位置前进一步。
+/// Loads an argument of type `T` from the `va_list` `ap` and increment the
+/// argument `ap` points to.
 ///
-/// # 安全性（Safety）
+/// # Safety
 ///
-/// 仅在满足以下条件时调用本函数才是合理的（sound）：
+/// This function is only sound to call when:
 ///
-/// - 存在下一个可用的可变参数。
-/// - 下一个参数的类型必须与类型 `T` 在 ABI 上兼容。
-/// - 下一个参数必须持有一个正确初始化的、类型为 `T` 的值。
+/// - there is a next variable argument available.
+/// - the next argument's type must be ABI-compatible with the type `T`.
+/// - the next argument must have a properly initialized value of type `T`.
 ///
-/// 用不兼容的类型、无效的值，或在已没有更多可变参数时调用本函数，都是不合理的（unsound）。
+/// Calling this function with an incompatible type, an invalid value, or when there
+/// are no more variable arguments, is unsound.
 ///
 #[rustc_intrinsic]
 #[rustc_nounwind]
 pub unsafe fn va_arg<T: VaArgSafe>(ap: &mut VaList<'_>) -> T;
 
-/// 在用 `va_start` 或 `va_copy` 初始化之后，销毁可变参数列表 `ap`。
+/// Destroy the arglist `ap` after initialization with `va_start` or `va_copy`.
 ///
-/// # 安全性（Safety）
+/// # Safety
 ///
-/// 本次调用之后，`ap` 不得再被用于访问可变参数。
+/// `ap` must not be used to access variable arguments after this call.
 ///
 #[rustc_intrinsic]
 #[rustc_nounwind]

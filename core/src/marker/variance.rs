@@ -24,7 +24,7 @@ macro_rules! phantom_type {
         impl<T> $name<T>
             where T: ?Sized
         {
-            /// 构造该变型(variance)标记的一个新实例。
+            /// Constructs a new instance of the variance marker.
             pub const fn new() -> Self {
                 Self(PhantomData)
             }
@@ -108,7 +108,7 @@ macro_rules! phantom_lifetime {
         pub struct $name<$lt>($($inner)*);
 
         impl $name<'_> {
-            /// 构造该变型(variance)标记的一个新实例。
+            /// Constructs a new instance of the variance marker.
             pub const fn new() -> Self {
                 Self(first_token!($($inner)*)(PhantomData))
             }
@@ -128,48 +128,50 @@ macro_rules! phantom_lifetime {
 }
 
 phantom_lifetime! {
-    /// 零大小类型,用来把一个生命周期标记为协变(covariant)。
+    /// Zero-sized type used to mark a lifetime as covariant.
     ///
-    /// 协变的生命周期必须至少活得和声明的一样长。更多信息参见[参考手册][1]。
+    /// Covariant lifetimes must live at least as long as declared. See [the reference][1] for more
+    /// information.
     ///
     /// [1]: https://doc.rust-lang.org/stable/reference/subtyping.html#variance
     ///
-    /// 注意:如果 `'a` 在别处是逆变或不变的,那么最终得到的类型是不变(invariant)的。
+    /// Note: If `'a` is otherwise contravariant or invariant, the resulting type is invariant.
     ///
-    /// ## 内存布局
+    /// ## Layout
     ///
-    /// 对所有 `'a`,以下保证均成立:
+    /// For all `'a`, the following are guaranteed:
     /// * `size_of::<PhantomCovariantLifetime<'a>>() == 0`
     /// * `align_of::<PhantomCovariantLifetime<'a>>() == 1`
     #[rustc_pub_transparent]
     #[repr(transparent)]
     pub struct PhantomCovariantLifetime<'a>(PhantomCovariant<&'a ()>);
-    /// 零大小类型,用来把一个生命周期标记为逆变(contravariant)。
+    /// Zero-sized type used to mark a lifetime as contravariant.
     ///
-    /// 逆变的生命周期最多只能活得和声明的一样长。更多信息参见[参考手册][1]。
+    /// Contravariant lifetimes must live at most as long as declared. See [the reference][1] for
+    /// more information.
     ///
     /// [1]: https://doc.rust-lang.org/stable/reference/subtyping.html#variance
     ///
-    /// 注意:如果 `'a` 在别处是协变或不变的,那么最终得到的类型是不变(invariant)的。
+    /// Note: If `'a` is otherwise covariant or invariant, the resulting type is invariant.
     ///
-    /// ## 内存布局
+    /// ## Layout
     ///
-    /// 对所有 `'a`,以下保证均成立:
+    /// For all `'a`, the following are guaranteed:
     /// * `size_of::<PhantomContravariantLifetime<'a>>() == 0`
     /// * `align_of::<PhantomContravariantLifetime<'a>>() == 1`
     #[rustc_pub_transparent]
     #[repr(transparent)]
     pub struct PhantomContravariantLifetime<'a>(PhantomContravariant<&'a ()>);
-    /// 零大小类型,用来把一个生命周期标记为不变(invariant)。
+    /// Zero-sized type used to mark a lifetime as invariant.
     ///
-    /// 不变的生命周期必须恰好活得和声明的一样长,既不能更短,也不能更长。
-    /// 更多信息参见[参考手册][1]。
+    /// Invariant lifetimes must be live for the exact length declared, neither shorter nor longer.
+    /// See [the reference][1] for more information.
     ///
     /// [1]: https://doc.rust-lang.org/stable/reference/subtyping.html#variance
     ///
-    /// ## 内存布局
+    /// ## Layout
     ///
-    /// 对所有 `'a`,以下保证均成立:
+    /// For all `'a`, the following are guaranteed:
     /// * `size_of::<PhantomInvariantLifetime<'a>>() == 0`
     /// * `align_of::<PhantomInvariantLifetime<'a>>() == 1`
     #[rustc_pub_transparent]
@@ -178,50 +180,52 @@ phantom_lifetime! {
 }
 
 phantom_type! {
-    /// 零大小类型,用来把一个类型参数标记为协变(covariant)。
+    /// Zero-sized type used to mark a type parameter as covariant.
     ///
-    /// 用作函数返回值一部分的类型是协变的。如果该类型 _同时_ 还作为参数传入,
-    /// 那么它就是[不变的][PhantomInvariant]。更多信息参见[参考手册][1]。
+    /// Types used as part of the return value from a function are covariant. If the type is _also_
+    /// passed as a parameter then it is [invariant][PhantomInvariant]. See [the reference][1] for
+    /// more information.
     ///
     /// [1]: https://doc.rust-lang.org/stable/reference/subtyping.html#variance
     ///
-    /// 注意:如果 `T` 在别处是逆变或不变的,那么最终得到的类型是不变(invariant)的。
+    /// Note: If `T` is otherwise contravariant or invariant, the resulting type is invariant.
     ///
-    /// ## 内存布局
+    /// ## Layout
     ///
-    /// 对所有 `T`,以下保证均成立:
+    /// For all `T`, the following are guaranteed:
     /// * `size_of::<PhantomCovariant<T>>() == 0`
     /// * `align_of::<PhantomCovariant<T>>() == 1`
     #[rustc_pub_transparent]
     #[repr(transparent)]
     pub struct PhantomCovariant<T>(PhantomData<fn() -> T>);
-    /// 零大小类型,用来把一个类型参数标记为逆变(contravariant)。
+    /// Zero-sized type used to mark a type parameter as contravariant.
     ///
-    /// 作为参数传给函数的类型是逆变的。如果该类型 _同时_ 还是函数返回值的一
-    /// 部分,那么它就是[不变的][PhantomInvariant]。更多信息参见[参考手册][1]。
+    /// Types passed as arguments to a function are contravariant. If the type is _also_ part of the
+    /// return value from a function then it is [invariant][PhantomInvariant]. See [the
+    /// reference][1] for more information.
     ///
     /// [1]: https://doc.rust-lang.org/stable/reference/subtyping.html#variance
     ///
-    /// 注意:如果 `T` 在别处是协变或不变的,那么最终得到的类型是不变(invariant)的。
+    /// Note: If `T` is otherwise covariant or invariant, the resulting type is invariant.
     ///
-    /// ## 内存布局
+    /// ## Layout
     ///
-    /// 对所有 `T`,以下保证均成立:
+    /// For all `T`, the following are guaranteed:
     /// * `size_of::<PhantomContravariant<T>>() == 0`
     /// * `align_of::<PhantomContravariant<T>>() == 1`
     #[rustc_pub_transparent]
     #[repr(transparent)]
     pub struct PhantomContravariant<T>(PhantomData<fn(T)>);
-    /// 零大小类型,用来把一个类型参数标记为不变(invariant)。
+    /// Zero-sized type used to mark a type parameter as invariant.
     ///
-    /// 既作为参数传入 _又_ 用作函数返回值一部分的类型是不变的。更多信息参见
-    /// [参考手册][1]。
+    /// Types that are both passed as an argument _and_ used as part of the return value from a
+    /// function are invariant. See [the reference][1] for more information.
     ///
     /// [1]: https://doc.rust-lang.org/stable/reference/subtyping.html#variance
     ///
-    /// ## 内存布局
+    /// ## Layout
     ///
-    /// 对所有 `T`,以下保证均成立:
+    /// For all `T`, the following are guaranteed:
     /// * `size_of::<PhantomInvariant<T>>() == 0`
     /// * `align_of::<PhantomInvariant<T>>() == 1`
     #[rustc_pub_transparent]
@@ -235,12 +239,13 @@ mod sealed {
     }
 }
 
-/// 用于幻影变型(phantom variance)类型的标记 trait。
+/// A marker trait for phantom variance types.
 pub trait Variance: sealed::Sealed + Default {}
 
-/// 构造一个变型标记;等价于 [`Default::default`]。
+/// Construct a variance marker; equivalent to [`Default::default`].
 ///
-/// 该类型可以是下列任意一种。不过,你通常不需要显式写出类型名。
+/// This type can be any of the following. You generally should not need to explicitly name the
+/// type, however.
 ///
 /// - [`PhantomCovariant`]
 /// - [`PhantomContravariant`]
@@ -249,7 +254,7 @@ pub trait Variance: sealed::Sealed + Default {}
 /// - [`PhantomContravariantLifetime`]
 /// - [`PhantomInvariantLifetime`]
 ///
-/// # 示例
+/// # Example
 ///
 /// ```rust
 /// #![feature(phantom_variance_markers)]

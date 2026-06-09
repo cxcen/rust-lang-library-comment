@@ -5,9 +5,10 @@ use crate::iter::adapters::{SourceIter, TrustedRandomAccess, TrustedRandomAccess
 use crate::iter::{FusedIterator, InPlaceIterable, TrustedLen, UncheckedIterator};
 use crate::ops::Try;
 
-/// 克隆底层迭代器元素的迭代器。
+/// An iterator that clones the elements of an underlying iterator.
 ///
-/// 该 `struct` 由 [`Iterator`] 上的 [`cloned`] 方法创建。更多信息见该方法文档。
+/// This `struct` is created by the [`cloned`] method on [`Iterator`]. See its
+/// documentation for more.
 ///
 /// [`cloned`]: Iterator::cloned
 /// [`Iterator`]: trait.Iterator.html
@@ -64,7 +65,8 @@ where
     where
         Self: TrustedRandomAccessNoCoerce,
     {
-        // SAFETY: 调用方必须维护 `Iterator::__iterator_get_unchecked` 的契约。
+        // SAFETY: the caller must uphold the contract for
+        // `Iterator::__iterator_get_unchecked`.
         unsafe { try_get_unchecked(&mut self.it, idx).clone() }
     }
 }
@@ -146,8 +148,8 @@ where
     T: Clone,
 {
     unsafe fn next_unchecked(&mut self) -> T {
-        // SAFETY: `Cloned` 与内层迭代器是一对一关系，因此如果调用方承诺还剩一个元素，
-        // 内层迭代器也确实还剩一个元素。
+        // SAFETY: `Cloned` is 1:1 with the inner iterator, so if the caller promised
+        // that there's an element left, the inner iterator has one too.
         let item = unsafe { self.it.next_unchecked() };
         item.clone()
     }
@@ -155,7 +157,7 @@ where
 
 #[stable(feature = "default_iters", since = "1.70.0")]
 impl<I: Default> Default for Cloned<I> {
-    /// 从 `I` 的默认值创建一个 `Cloned` 迭代器。
+    /// Creates a `Cloned` iterator from the default value of `I`
     /// ```
     /// # use core::slice;
     /// # use core::iter::Cloned;
@@ -176,7 +178,7 @@ where
 
     #[inline]
     unsafe fn as_inner(&mut self) -> &mut I::Source {
-        // SAFETY: 转发到具有相同要求的 unsafe 函数。
+        // SAFETY: unsafe function forwarding to unsafe function with the same requirements
         unsafe { SourceIter::as_inner(&mut self.it) }
     }
 }

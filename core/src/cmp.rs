@@ -1,22 +1,24 @@
-//! 用于比较值、为值排序的工具。
+//! Utilities for comparing and ordering values.
 //!
-//! 本模块包含各种用于比较值和排序的工具。概括如下:
+//! This module contains various tools for comparing and ordering values. In
+//! summary:
 //!
-//! * [`PartialEq<Rhs>`] 重载 `==` 和 `!=` 运算符。当 `Rhs`(右操作数的类型)
-//!   是 `Self` 时,本 trait 对应一个 *部分等价关系*(partial equivalence
-//!   relation)。
-//! * [`Eq`] 表明被重载的 `==` 运算符对应一个 *等价关系*(equivalence
-//!   relation)。
-//! * [`Ord`] 和 [`PartialOrd`] 这两个 trait 分别让你定义值之间的全序
-//!   (total ordering)和偏序(partial ordering)。实现它们会重载 `<`、
-//!   `<=`、`>` 和 `>=` 运算符。
-//! * [`Ordering`] 是 [`Ord`] 和 [`PartialOrd`] 的主要函数所返回的枚举,
-//!   它描述两个值之间的次序(小于、等于,或大于)。
-//! * [`Reverse`] 是一个结构体,让你能够轻松地反转某个次序。
-//! * [`max`] 和 [`min`] 是构建于 [`Ord`] 之上的函数,让你能找出两个值中的
-//!   最大值或最小值。
+//! * [`PartialEq<Rhs>`] overloads the `==` and `!=` operators. In cases where
+//!   `Rhs` (the right hand side's type) is `Self`, this trait corresponds to a
+//!   partial equivalence relation.
+//! * [`Eq`] indicates that the overloaded `==` operator corresponds to an
+//!   equivalence relation.
+//! * [`Ord`] and [`PartialOrd`] are traits that allow you to define total and
+//!   partial orderings between values, respectively. Implementing them overloads
+//!   the `<`, `<=`, `>`, and `>=` operators.
+//! * [`Ordering`] is an enum returned by the main functions of [`Ord`] and
+//!   [`PartialOrd`], and describes an ordering of two values (less, equal, or
+//!   greater).
+//! * [`Reverse`] is a struct that allows you to easily reverse an ordering.
+//! * [`max`] and [`min`] are functions that build off of [`Ord`] and allow you
+//!   to find the maximum or minimum of two values.
 //!
-//! 更多细节,参见上述列表中各条目各自的文档。
+//! For more details, see the respective documentation of each item in the list.
 //!
 //! [`max`]: Ord::max
 //! [`min`]: Ord::min
@@ -30,78 +32,84 @@ use self::Ordering::*;
 use crate::marker::{Destruct, PointeeSized};
 use crate::ops::ControlFlow;
 
-/// 用于使用相等运算符进行比较的 trait。
+/// Trait for comparisons using the equality operator.
 ///
-/// 为类型实现本 trait,就为这些类型提供了 `==` 和 `!=` 运算符。
+/// Implementing this trait for types provides the `==` and `!=` operators for
+/// those types.
 ///
-/// `x.eq(y)` 也可以写作 `x == y`,而 `x.ne(y)` 可以写作 `x != y`。在本文档
-/// 的余下部分中,我们使用更易读的中缀记法。
+/// `x.eq(y)` can also be written `x == y`, and `x.ne(y)` can be written `x != y`.
+/// We use the easier-to-read infix notation in the remainder of this documentation.
 ///
-/// 本 trait 允许那些不具备完整等价关系的类型也能使用相等运算符进行比较。
-/// 例如,在浮点数中 `NaN != NaN`,所以浮点类型实现了 `PartialEq` 但不实现
-/// [`trait@Eq`]。正式地说,当 `Rhs == Self` 时,本 trait 对应一个
-/// [部分等价关系][partial equivalence relation]。
+/// This trait allows for comparisons using the equality operator, for types
+/// that do not have a full equivalence relation. For example, in floating point
+/// numbers `NaN != NaN`, so floating point types implement `PartialEq` but not
+/// [`trait@Eq`]. Formally speaking, when `Rhs == Self`, this trait corresponds
+/// to a [partial equivalence relation].
 ///
 /// [partial equivalence relation]: https://en.wikipedia.org/wiki/Partial_equivalence_relation
 ///
-/// 实现必须确保 `eq` 与 `ne` 彼此一致:
+/// Implementations must ensure that `eq` and `ne` are consistent with each other:
 ///
-/// - `a != b` 当且仅当 `!(a == b)`。
+/// - `a != b` if and only if `!(a == b)`.
 ///
-/// `ne` 的默认实现提供了这种一致性,并且几乎总是够用。没有非常充分的理由,
-/// 不应当重写它。
+/// The default implementation of `ne` provides this consistency and is almost
+/// always sufficient. It should not be overridden without very good reason.
 ///
-/// 如果 `Self` 和 `Rhs` 还实现了 [`PartialOrd`] 或 [`Ord`],它们的方法也必须
-/// 与 `PartialEq` 保持一致(确切要求见那些 trait 的文档)。通过派生其中一些
-/// trait、手动实现另一些,很容易在不经意间让它们彼此矛盾。
+/// If [`PartialOrd`] or [`Ord`] are also implemented for `Self` and `Rhs`, their methods must also
+/// be consistent with `PartialEq` (see the documentation of those traits for the exact
+/// requirements). It's easy to accidentally make them disagree by deriving some of the traits and
+/// manually implementing others.
 ///
-/// 相等关系 `==` 必须满足以下条件(对所有 `A`、`B`、`C` 类型的 `a`、`b`、
-/// `c`):
+/// The equality relation `==` must satisfy the following conditions
+/// (for all `a`, `b`, `c` of type `A`, `B`, `C`):
 ///
-/// - **对称性(Symmetry)**:如果 `A: PartialEq<B>` 且 `B: PartialEq<A>`,
-///   那么 **`a == b` 蕴含 `b == a`**;以及
+/// - **Symmetry**: if `A: PartialEq<B>` and `B: PartialEq<A>`, then **`a == b`
+///   implies `b == a`**; and
 ///
-/// - **传递性(Transitivity)**:如果 `A: PartialEq<B>`、`B: PartialEq<C>`
-///   且 `A: PartialEq<C>`,那么 **`a == b` 且 `b == c` 蕴含 `a == c`**。
-///   这对更长的链条同样必须成立,例如当 `A: PartialEq<B>`、`B: PartialEq<C>`、
-///   `C: PartialEq<D>` 和 `A: PartialEq<D>` 同时存在时。
+/// - **Transitivity**: if `A: PartialEq<B>` and `B: PartialEq<C>` and `A:
+///   PartialEq<C>`, then **`a == b` and `b == c` implies `a == c`**.
+///   This must also work for longer chains, such as when `A: PartialEq<B>`, `B: PartialEq<C>`,
+///   `C: PartialEq<D>`, and `A: PartialEq<D>` all exist.
 ///
-/// 注意,并不强制要求 `B: PartialEq<A>`(对称)和 `A: PartialEq<C>`(传递)
-/// 这些 impl 必须存在,但只要它们存在,这些要求就适用。
+/// Note that the `B: PartialEq<A>` (symmetric) and `A: PartialEq<C>`
+/// (transitive) impls are not forced to exist, but these requirements apply
+/// whenever they do exist.
 ///
-/// 违反这些要求属于逻辑错误。逻辑错误所导致的行为是未指定的,但 trait 的
-/// 使用者必须确保此类逻辑错误 *不会* 导致未定义行为。这意味着 `unsafe` 代码
-/// **不得** 依赖这些方法的正确性。需要强调:违反对称性/传递性 *本身* 不是
-/// 未定义行为,但会让排序、查找、集合去重等逻辑产生错误结果。
+/// Violating these requirements is a logic error. The behavior resulting from a logic error is not
+/// specified, but users of the trait must ensure that such logic errors do *not* result in
+/// undefined behavior. This means that `unsafe` code **must not** rely on the correctness of these
+/// methods.
 ///
-/// ## 跨 crate 的考量
+/// ## Cross-crate considerations
 ///
-/// 当一个 crate 为另一个 crate 的类型实现 `PartialEq`(即为了允许把自己的
-/// 某个类型与标准库的类型相比较)时,要维持上述要求会变得棘手。建议是:
-/// 永远不要为外来类型(foreign type)实现本 trait。换句话说,这样的 crate
-/// 应当写 `impl PartialEq<ForeignType> for LocalType`,而 *不应* 写
-/// `impl PartialEq<LocalType> for ForeignType`。
+/// Upholding the requirements stated above can become tricky when one crate implements `PartialEq`
+/// for a type of another crate (i.e., to allow comparing one of its own types with a type from the
+/// standard library). The recommendation is to never implement this trait for a foreign type. In
+/// other words, such a crate should do `impl PartialEq<ForeignType> for LocalType`, but it should
+/// *not* do `impl PartialEq<LocalType> for ForeignType`.
 ///
-/// 这样可以避免那种横跨 crate 边界、纵横交错的传递链问题:对于所有本地
-/// 类型 `T`,你可以假定没有别的 crate 会添加允许比较 `T == U` 的 impl。
-/// 换句话说,如果其他 crate 添加 impl 来构建更长的传递链
-/// `U1 == ... == T == V1 == ...`,那么出现在 `T` 右侧的所有类型都必须是
-/// 定义 `T` 的那个 crate 早已知道的类型。这就排除了这样一种传递链:下游
-/// crate 可以添加新的 impl,以违反传递性的方式把外来类型的比较“拼接”起来。
+/// This avoids the problem of transitive chains that criss-cross crate boundaries: for all local
+/// types `T`, you may assume that no other crate will add `impl`s that allow comparing `T == U`. In
+/// other words, if other crates add `impl`s that allow building longer transitive chains `U1 == ...
+/// == T == V1 == ...`, then all the types that appear to the right of `T` must be types that the
+/// crate defining `T` already knows about. This rules out transitive chains where downstream crates
+/// can add new `impl`s that "stitch together" comparisons of foreign types in ways that violate
+/// transitivity.
 ///
-/// 不存在这样的外来 impl,也避免了前向兼容性问题——否则一个 crate 增加更多
-/// `PartialEq` 实现就可能导致下游 crate 构建失败。
+/// Not having such foreign `impl`s also avoids forward compatibility issues where one crate adding
+/// more `PartialEq` implementations can cause build failures in downstream crates.
 ///
-/// ## 可派生(Derivable)
+/// ## Derivable
 ///
-/// 本 trait 可以配合 `#[derive]` 使用。在结构体上 `derive` 时,若所有字段
-/// 都相等,则两个实例相等;若有任何字段不相等,则不相等。在枚举上 `derive`
-/// 时,若两个实例是同一个变体且所有字段都相等,则它们相等。
+/// This trait can be used with `#[derive]`. When `derive`d on structs, two
+/// instances are equal if all fields are equal, and not equal if any fields
+/// are not equal. When `derive`d on enums, two instances are equal if they
+/// are the same variant and all fields are equal.
 ///
-/// ## 如何实现 `PartialEq`?
+/// ## How can I implement `PartialEq`?
 ///
-/// 下面是一个示例实现,在这个领域里,只要两本书的 ISBN 相同就被认为是同一
-/// 本书,即便它们的版式不同:
+/// An example implementation for a domain in which two books are considered
+/// the same book if their ISBN matches, even if the formats differ:
 ///
 /// ```
 /// enum BookFormat {
@@ -129,13 +137,13 @@ use crate::ops::ControlFlow;
 /// assert!(b1 != b3);
 /// ```
 ///
-/// ## 如何比较两种不同的类型?
+/// ## How can I compare two different types?
 ///
-/// 你能与之比较的类型由 `PartialEq` 的类型参数控制。例如,我们把前面的代码
-/// 稍作改动:
+/// The type you can compare with is controlled by `PartialEq`'s type parameter.
+/// For example, let's tweak our previous code a bit:
 ///
 /// ```
-/// // 这个 derive 实现 <BookFormat> == <BookFormat> 的比较
+/// // The derive implements <BookFormat> == <BookFormat> comparisons
 /// #[derive(PartialEq)]
 /// enum BookFormat {
 ///     Paperback,
@@ -148,14 +156,14 @@ use crate::ops::ControlFlow;
 ///     format: BookFormat,
 /// }
 ///
-/// // 实现 <Book> == <BookFormat> 的比较
+/// // Implement <Book> == <BookFormat> comparisons
 /// impl PartialEq<BookFormat> for Book {
 ///     fn eq(&self, other: &BookFormat) -> bool {
 ///         self.format == *other
 ///     }
 /// }
 ///
-/// // 实现 <BookFormat> == <Book> 的比较
+/// // Implement <BookFormat> == <Book> comparisons
 /// impl PartialEq<Book> for BookFormat {
 ///     fn eq(&self, other: &Book) -> bool {
 ///         *self == other.format
@@ -168,14 +176,16 @@ use crate::ops::ControlFlow;
 /// assert!(BookFormat::Ebook != b1);
 /// ```
 ///
-/// 通过把 `impl PartialEq for Book` 改成 `impl PartialEq<BookFormat> for Book`,
-/// 我们就允许了 `BookFormat` 与 `Book` 相比较。
+/// By changing `impl PartialEq for Book` to `impl PartialEq<BookFormat> for Book`,
+/// we allow `BookFormat`s to be compared with `Book`s.
 ///
-/// 像上面这种忽略结构体某些字段的比较可能是危险的。它很容易在不经意间违反
-/// 部分等价关系的要求。例如,如果我们保留上面那个为 `BookFormat` 实现的
-/// `PartialEq<Book>`,又添加一个为 `Book` 实现的 `PartialEq<Book>`(无论是
-/// 通过 `#[derive]`,还是通过第一个例子里的手动实现),那么结果就会违反
-/// 传递性:
+/// A comparison like the one above, which ignores some fields of the struct,
+/// can be dangerous. It can easily lead to an unintended violation of the
+/// requirements for a partial equivalence relation. For example, if we kept
+/// the above implementation of `PartialEq<Book>` for `BookFormat` and added an
+/// implementation of `PartialEq<Book>` for `Book` (either via a `#[derive]` or
+/// via the manual implementation from the first example) then the result would
+/// violate transitivity:
 ///
 /// ```should_panic
 /// #[derive(PartialEq)]
@@ -210,12 +220,12 @@ use crate::ops::ControlFlow;
 ///     assert!(b1 == BookFormat::Paperback);
 ///     assert!(BookFormat::Paperback == b2);
 ///
-///     // 下面这一条按传递性本应成立,实则不然。
-///     assert!(b1 == b2); // <-- 会 PANIC
+///     // The following should hold by transitivity but doesn't.
+///     assert!(b1 == b2); // <-- PANICS
 /// }
 /// ```
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// let x: u32 = 0;
@@ -239,13 +249,14 @@ use crate::ops::ControlFlow;
 #[rustc_diagnostic_item = "PartialEq"]
 #[rustc_const_unstable(feature = "const_cmp", issue = "143800")]
 pub const trait PartialEq<Rhs: PointeeSized = Self>: PointeeSized {
-    /// 检验 `self` 与 `other` 两个值是否相等,被 `==` 使用。
+    /// Tests for `self` and `other` values to be equal, and is used by `==`.
     #[must_use]
     #[stable(feature = "rust1", since = "1.0.0")]
     #[rustc_diagnostic_item = "cmp_partialeq_eq"]
     fn eq(&self, other: &Rhs) -> bool;
 
-    /// 检验 `!=`。默认实现几乎总是够用,没有非常充分的理由不应重写。
+    /// Tests for `!=`. The default implementation is almost always sufficient,
+    /// and should not be overridden without very good reason.
     #[inline]
     #[must_use]
     #[stable(feature = "rust1", since = "1.0.0")]
@@ -255,46 +266,49 @@ pub const trait PartialEq<Rhs: PointeeSized = Self>: PointeeSized {
     }
 }
 
-/// 生成 [`PartialEq`] trait 实现的派生宏。
-/// 本宏的行为在[此处](PartialEq#derivable)有详细描述。
+/// Derive macro generating an impl of the trait [`PartialEq`].
+/// The behavior of this macro is described in detail [here](PartialEq#derivable).
 #[rustc_builtin_macro]
 #[stable(feature = "builtin_macro_prelude", since = "1.38.0")]
 #[allow_internal_unstable(core_intrinsics, structural_match)]
 pub macro PartialEq($item:item) {
-    /* 编译器内建 */
+    /* compiler built-in */
 }
 
-/// 对应于[等价关系](https://en.wikipedia.org/wiki/Equivalence_relation)的比较 trait。
+/// Trait for comparisons corresponding to [equivalence relations](
+/// https://en.wikipedia.org/wiki/Equivalence_relation).
 ///
-/// 与 [`PartialEq`] 的主要区别在于,它额外要求满足 *自反性*(reflexivity)。
-/// 一个实现 [`PartialEq`] 的类型保证对所有 `a`、`b` 和 `c`:
+/// The primary difference to [`PartialEq`] is the additional requirement for reflexivity. A type
+/// that implements [`PartialEq`] guarantees that for all `a`, `b` and `c`:
 ///
-/// - 对称(symmetric):`a == b` 蕴含 `b == a`,且 `a != b` 蕴含 `!(a == b)`
-/// - 传递(transitive):`a == b` 且 `b == c` 蕴含 `a == c`
+/// - symmetric: `a == b` implies `b == a` and `a != b` implies `!(a == b)`
+/// - transitive: `a == b` and `b == c` implies `a == c`
 ///
-/// 构建于 [`PartialEq`] 之上的 `Eq` 还额外蕴含:
+/// `Eq`, which builds on top of [`PartialEq`] also implies:
 ///
-/// - 自反(reflexive):`a == a`
+/// - reflexive: `a == a`
 ///
-/// 这一性质无法由编译器检查,因此 `Eq` 是一个没有方法的 trait。
+/// This property cannot be checked by the compiler, and therefore `Eq` is a trait without methods.
 ///
-/// 违反这一性质属于逻辑错误。逻辑错误所导致的行为是未指定的,但 trait 的
-/// 使用者必须确保此类逻辑错误 *不会* 导致未定义行为。这意味着 `unsafe` 代码
-/// **不得** 依赖这些方法的正确性。
+/// Violating this property is a logic error. The behavior resulting from a logic error is not
+/// specified, but users of the trait must ensure that such logic errors do *not* result in
+/// undefined behavior. This means that `unsafe` code **must not** rely on the correctness of these
+/// methods.
 ///
-/// 诸如 [`f32`] 和 [`f64`] 之类的浮点类型只实现 [`PartialEq`] 而 *不* 实现
-/// `Eq`,因为 `NaN` != `NaN`。这正是浮点数破坏全序、只能有偏序/部分等价的
-/// 根本原因。
+/// Floating point types such as [`f32`] and [`f64`] implement only [`PartialEq`] but *not* `Eq`
+/// because `NaN` != `NaN`.
 ///
-/// ## 可派生(Derivable)
+/// ## Derivable
 ///
-/// 本 trait 可以配合 `#[derive]` 使用。由于 `Eq` 没有额外的方法,`derive`
-/// 时它只是告诉编译器这是一个等价关系而非部分等价关系。注意,`derive` 策略
-/// 要求所有字段都是 `Eq`,而这并不总是我们想要的。
+/// This trait can be used with `#[derive]`. When `derive`d, because `Eq` has no extra methods, it
+/// is only informing the compiler that this is an equivalence relation rather than a partial
+/// equivalence relation. Note that the `derive` strategy requires all fields are `Eq`, which isn't
+/// always desired.
 ///
-/// ## 如何实现 `Eq`?
+/// ## How can I implement `Eq`?
 ///
-/// 如果你不能使用 `derive` 策略,就声明你的类型实现 `Eq`(它没有额外的方法):
+/// If you cannot use the `derive` strategy, specify that your type implements `Eq`, which has no
+/// extra methods:
 ///
 /// ```
 /// enum BookFormat {
@@ -322,11 +336,11 @@ pub macro PartialEq($item:item) {
 #[rustc_diagnostic_item = "Eq"]
 #[rustc_const_unstable(feature = "const_cmp", issue = "143800")]
 pub const trait Eq: [const] PartialEq<Self> + PointeeSized {
-    // 这个方法仅供 `impl Eq` 或 `#[derive(Eq)]` 使用,用来断言一个类型的每个
-    // 组成部分自身也都实现了 `Eq`。当前的派生基础设施意味着:若不借助本 trait
-    // 上的某个方法,几乎不可能做出这一断言。
+    // this method is used solely by `impl Eq or #[derive(Eq)]` to assert that every component of a
+    // type implements `Eq` itself. The current deriving infrastructure means doing this assertion
+    // without using a method on this trait is nearly impossible.
     //
-    // 这个方法绝不应由手工实现。
+    // This should never be implemented by hand.
     #[doc(hidden)]
     #[coverage(off)]
     #[inline]
@@ -334,19 +348,19 @@ pub const trait Eq: [const] PartialEq<Self> + PointeeSized {
     fn assert_receiver_is_total_eq(&self) {}
 }
 
-/// 生成 [`Eq`] trait 实现的派生宏。
+/// Derive macro generating an impl of the trait [`Eq`].
 #[rustc_builtin_macro]
 #[stable(feature = "builtin_macro_prelude", since = "1.38.0")]
 #[allow_internal_unstable(core_intrinsics, derive_eq_internals, structural_match)]
 #[allow_internal_unstable(coverage_attribute)]
 pub macro Eq($item:item) {
-    /* 编译器内建 */
+    /* compiler built-in */
 }
 
-// FIXME:这个结构体仅供 #[derive] 使用,用来断言一个类型的每个组成部分都
-// 实现了 Eq。
+// FIXME: this struct is used solely by #[derive] to
+// assert that every component of a type implements Eq.
 //
-// 这个结构体绝不应出现在用户代码中。
+// This struct should never appear in user code.
 #[doc(hidden)]
 #[allow(missing_debug_implementations)]
 #[unstable(
@@ -358,9 +372,9 @@ pub struct AssertParamIsEq<T: Eq + PointeeSized> {
     _field: crate::marker::PhantomData<T>,
 }
 
-/// `Ordering` 是对两个值进行比较所得到的结果。
+/// An `Ordering` is the result of a comparison between two values.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// use std::cmp::Ordering;
@@ -374,19 +388,19 @@ pub struct AssertParamIsEq<T: Eq + PointeeSized> {
 #[derive(Copy, Debug, Hash)]
 #[derive_const(Clone, Eq, PartialOrd, Ord, PartialEq)]
 #[stable(feature = "rust1", since = "1.0.0")]
-// 它之所以是一个 lang item,仅仅是为了让 MIR 中的 `BinOp::Cmp` 能返回它。
-// 它没有任何特殊行为,但确实要求 `Less`/`Equal`/`Greater` 这三个变体的判别值
-// 分别保持为 `-1_i8`/`0_i8`/`+1_i8`。
+// This is a lang item only so that `BinOp::Cmp` in MIR can return it.
+// It has no special behavior, but does require that the three variants
+// `Less`/`Equal`/`Greater` remain `-1_i8`/`0_i8`/`+1_i8` respectively.
 #[lang = "Ordering"]
 #[repr(i8)]
 pub enum Ordering {
-    /// 表示被比较的值小于另一个值的次序。
+    /// An ordering where a compared value is less than another.
     #[stable(feature = "rust1", since = "1.0.0")]
     Less = -1,
-    /// 表示被比较的值等于另一个值的次序。
+    /// An ordering where a compared value is equal to another.
     #[stable(feature = "rust1", since = "1.0.0")]
     Equal = 0,
-    /// 表示被比较的值大于另一个值的次序。
+    /// An ordering where a compared value is greater than another.
     #[stable(feature = "rust1", since = "1.0.0")]
     Greater = 1,
 }
@@ -394,13 +408,13 @@ pub enum Ordering {
 impl Ordering {
     #[inline]
     const fn as_raw(self) -> i8 {
-        // FIXME(const-hack):一旦 `PartialOrd` 变为 const,就直接拿它与 `Equal` 比较
+        // FIXME(const-hack): just use `PartialOrd` against `Equal` once that's const
         crate::intrinsics::discriminant_value(&self)
     }
 
-    /// 如果该次序是 `Equal` 变体,返回 `true`。
+    /// Returns `true` if the ordering is the `Equal` variant.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::cmp::Ordering;
@@ -414,15 +428,16 @@ impl Ordering {
     #[rustc_const_stable(feature = "ordering_helpers", since = "1.53.0")]
     #[stable(feature = "ordering_helpers", since = "1.53.0")]
     pub const fn is_eq(self) -> bool {
-        // 所有 `is_*` 方法都实现为“与零比较”,以沿用 clang libcxx 中其等价实现的做法
+        // All the `is_*` methods are implemented as comparisons against zero
+        // to follow how clang's libcxx implements their equivalents in
         // <https://github.com/llvm/llvm-project/blob/60486292b79885b7800b082754153202bef5b1f0/libcxx/include/__compare/is_eq.h#L23-L28>
 
         self.as_raw() == 0
     }
 
-    /// 如果该次序不是 `Equal` 变体,返回 `true`。
+    /// Returns `true` if the ordering is not the `Equal` variant.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::cmp::Ordering;
@@ -439,9 +454,9 @@ impl Ordering {
         self.as_raw() != 0
     }
 
-    /// 如果该次序是 `Less` 变体,返回 `true`。
+    /// Returns `true` if the ordering is the `Less` variant.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::cmp::Ordering;
@@ -458,9 +473,9 @@ impl Ordering {
         self.as_raw() < 0
     }
 
-    /// 如果该次序是 `Greater` 变体,返回 `true`。
+    /// Returns `true` if the ordering is the `Greater` variant.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::cmp::Ordering;
@@ -477,9 +492,9 @@ impl Ordering {
         self.as_raw() > 0
     }
 
-    /// 如果该次序是 `Less` 或 `Equal` 变体之一,返回 `true`。
+    /// Returns `true` if the ordering is either the `Less` or `Equal` variant.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::cmp::Ordering;
@@ -496,9 +511,9 @@ impl Ordering {
         self.as_raw() <= 0
     }
 
-    /// 如果该次序是 `Greater` 或 `Equal` 变体之一,返回 `true`。
+    /// Returns `true` if the ordering is either the `Greater` or `Equal` variant.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::cmp::Ordering;
@@ -515,15 +530,15 @@ impl Ordering {
         self.as_raw() >= 0
     }
 
-    /// 反转该 `Ordering`。
+    /// Reverses the `Ordering`.
     ///
-    /// * `Less` 变成 `Greater`。
-    /// * `Greater` 变成 `Less`。
-    /// * `Equal` 保持 `Equal`。
+    /// * `Less` becomes `Greater`.
+    /// * `Greater` becomes `Less`.
+    /// * `Equal` becomes `Equal`.
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 基本行为:
+    /// Basic behavior:
     ///
     /// ```
     /// use std::cmp::Ordering;
@@ -533,12 +548,12 @@ impl Ordering {
     /// assert_eq!(Ordering::Greater.reverse(), Ordering::Less);
     /// ```
     ///
-    /// 这个方法可以用来反转一次比较:
+    /// This method can be used to reverse a comparison:
     ///
     /// ```
     /// let data: &mut [_] = &mut [2, 10, 5, 8];
     ///
-    /// // 把数组从大到小排序。
+    /// // sort the array from largest to smallest.
     /// data.sort_by(|a, b| a.cmp(b).reverse());
     ///
     /// let b: &mut [_] = &mut [10, 8, 5, 2];
@@ -556,11 +571,11 @@ impl Ordering {
         }
     }
 
-    /// 把两个次序串联起来。
+    /// Chains two orderings.
     ///
-    /// 当 `self` 不是 `Equal` 时返回 `self`。否则返回 `other`。
+    /// Returns `self` when it's not `Equal`. Otherwise returns `other`.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::cmp::Ordering;
@@ -594,11 +609,12 @@ impl Ordering {
         }
     }
 
-    /// 把该次序与给定函数串联起来。
+    /// Chains the ordering with the given function.
     ///
-    /// 当 `self` 不是 `Equal` 时返回 `self`。否则调用 `f` 并返回其结果。
+    /// Returns `self` when it's not `Equal`. Otherwise calls `f` and returns
+    /// the result.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::cmp::Ordering;
@@ -636,14 +652,14 @@ impl Ordering {
     }
 }
 
-/// 一个用于反转次序的辅助结构体。
+/// A helper struct for reverse ordering.
 ///
-/// 本结构体是一个辅助工具,可与诸如 [`Vec::sort_by_key`] 之类的函数配合使用,
-/// 用来对键的某一部分进行倒序排列。
+/// This struct is a helper to be used with functions like [`Vec::sort_by_key`] and
+/// can be used to reverse order a part of a key.
 ///
 /// [`Vec::sort_by_key`]: ../../std/vec/struct.Vec.html#method.sort_by_key
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// use std::cmp::Reverse;
@@ -706,44 +722,47 @@ impl<T: Clone> Clone for Reverse<T> {
     }
 }
 
-/// 面向构成[全序](https://en.wikipedia.org/wiki/Total_order)的类型的 trait。
+/// Trait for types that form a [total order](https://en.wikipedia.org/wiki/Total_order).
 ///
-/// 实现必须与 [`PartialOrd`] 的实现保持一致,并确保 `max`、`min`、`clamp`
-/// 与 `cmp` 保持一致:
+/// Implementations must be consistent with the [`PartialOrd`] implementation, and ensure `max`,
+/// `min`, and `clamp` are consistent with `cmp`:
 ///
-/// - `partial_cmp(a, b) == Some(cmp(a, b))`。
-/// - `max(a, b) == max_by(a, b, cmp)`(由默认实现保证)。
-/// - `min(a, b) == min_by(a, b, cmp)`(由默认实现保证)。
-/// - 关于 `a.clamp(min, max)`,参见[方法文档](#method.clamp)(由默认实现保证)。
+/// - `partial_cmp(a, b) == Some(cmp(a, b))`.
+/// - `max(a, b) == max_by(a, b, cmp)` (ensured by the default implementation).
+/// - `min(a, b) == min_by(a, b, cmp)` (ensured by the default implementation).
+/// - For `a.clamp(min, max)`, see the [method docs](#method.clamp) (ensured by the default
+///   implementation).
 ///
-/// 违反这些要求属于逻辑错误。逻辑错误所导致的行为是未指定的,但 trait 的
-/// 使用者必须确保此类逻辑错误 *不会* 导致未定义行为。这意味着 `unsafe` 代码
-/// **不得** 依赖这些方法的正确性。需要强调:违反全序约定(自反性/反对称性/
-/// 传递性)本身不是未定义行为,但会让排序、二分查找等算法给出错误结果。
+/// Violating these requirements is a logic error. The behavior resulting from a logic error is not
+/// specified, but users of the trait must ensure that such logic errors do *not* result in
+/// undefined behavior. This means that `unsafe` code **must not** rely on the correctness of these
+/// methods.
 ///
-/// ## 推论
+/// ## Corollaries
 ///
-/// 由上述要求以及 `PartialOrd` 的要求可知,对所有 `a`、`b` 和 `c`:
+/// From the above and the requirements of `PartialOrd`, it follows that for all `a`, `b` and `c`:
 ///
-/// - `a < b`、`a == b` 或 `a > b` 三者中恰有一个为真;以及
-/// - `<` 是传递的:`a < b` 且 `b < c` 蕴含 `a < c`。`==` 和 `>` 也必须如此。
+/// - exactly one of `a < b`, `a == b` or `a > b` is true; and
+/// - `<` is transitive: `a < b` and `b < c` implies `a < c`. The same must hold for both `==` and
+///   `>`.
 ///
-/// 从数学上讲,`<` 运算符定义了一个严格[弱序][weak order]。当 `==` 符合
-/// 数学意义上的相等时,它还定义了一个严格[全序][total order]。
+/// Mathematically speaking, the `<` operator defines a strict [weak order]. In cases where `==`
+/// conforms to mathematical equality, it also defines a strict [total order].
 ///
 /// [weak order]: https://en.wikipedia.org/wiki/Weak_ordering
 /// [total order]: https://en.wikipedia.org/wiki/Total_order
 ///
-/// ## 可派生(Derivable)
+/// ## Derivable
 ///
-/// 本 trait 可以配合 `#[derive]` 使用。
+/// This trait can be used with `#[derive]`.
 ///
-/// 在结构体上 `derive` 时,它会基于结构体成员从上到下的声明顺序,产生一个
-/// [字典序](https://en.wikipedia.org/wiki/Lexicographic_order)的次序。
+/// When `derive`d on structs, it will produce a
+/// [lexicographic](https://en.wikipedia.org/wiki/Lexicographic_order) ordering based on the
+/// top-to-bottom declaration order of the struct's members.
 ///
-/// 在枚举上 `derive` 时,变体首先按其判别值(discriminant)排序;其次,
-/// 再按其字段排序。默认情况下,靠上的变体判别值最小,靠下的变体判别值最大。
-/// 这里有一个例子:
+/// When `derive`d on enums, variants are ordered primarily by their discriminants. Secondarily,
+/// they are ordered by their fields. By default, the discriminant is smallest for variants at the
+/// top, and largest for variants at the bottom. Here's an example:
 ///
 /// ```
 /// #[derive(PartialEq, Eq, PartialOrd, Ord)]
@@ -755,7 +774,7 @@ impl<T: Clone> Clone for Reverse<T> {
 /// assert!(E::Top < E::Bottom);
 /// ```
 ///
-/// 然而,手动设置判别值可以覆盖这一默认行为:
+/// However, manually setting the discriminants can override this default behavior:
 ///
 /// ```
 /// #[derive(PartialEq, Eq, PartialOrd, Ord)]
@@ -767,27 +786,31 @@ impl<T: Clone> Clone for Reverse<T> {
 /// assert!(E::Bottom < E::Top);
 /// ```
 ///
-/// ## 字典序比较
+/// ## Lexicographical comparison
 ///
-/// 字典序比较是一种具有以下性质的操作:
-///  - 两个序列逐元素地比较。
-///  - 第一个不匹配的元素决定哪个序列在字典序上更小或更大。
-///  - 如果一个序列是另一个序列的前缀,那么较短的序列在字典序上更小。
-///  - 如果两个序列的元素对应相等且长度相同,那么这两个序列在字典序上相等。
-///  - 空序列在字典序上小于任何非空序列。
-///  - 两个空序列在字典序上相等。
+/// Lexicographical comparison is an operation with the following properties:
+///  - Two sequences are compared element by element.
+///  - The first mismatching element defines which sequence is lexicographically less or greater
+///    than the other.
+///  - If one sequence is a prefix of another, the shorter sequence is lexicographically less than
+///    the other.
+///  - If two sequences have equivalent elements and are of the same length, then the sequences are
+///    lexicographically equal.
+///  - An empty sequence is lexicographically less than any non-empty sequence.
+///  - Two empty sequences are lexicographically equal.
 ///
-/// ## 如何实现 `Ord`?
+/// ## How can I implement `Ord`?
 ///
-/// `Ord` 要求该类型同时也是 [`PartialOrd`]、[`PartialEq`] 和 [`Eq`]。
+/// `Ord` requires that the type also be [`PartialOrd`], [`PartialEq`], and [`Eq`].
 ///
-/// 由于 `Ord` 蕴含着比 [`PartialOrd`] 更强的次序关系,而且 `Ord` 与
-/// [`PartialOrd`] 二者必须一致,所以你必须 **首先** 决定如何实现 `Ord`。
-/// 你可以选择派生它,或手动实现它。如果你派生它,就应当派生全部四个 trait。
-/// 如果你手动实现它,就应当基于 `Ord` 的实现,手动实现全部四个 trait。
+/// Because `Ord` implies a stronger ordering relationship than [`PartialOrd`], and both `Ord` and
+/// [`PartialOrd`] must agree, you must choose how to implement `Ord` **first**. You can choose to
+/// derive it, or implement it manually. If you derive it, you should derive all four traits. If you
+/// implement it manually, you should manually implement all four traits, based on the
+/// implementation of `Ord`.
 ///
-/// 下面是一个例子,你想要只按 `health` 和 `experience` 来定义 `Character`
-/// 的比较,而不考虑字段 `mana`:
+/// Here's an example where you want to define the `Character` comparison by `health` and
+/// `experience` only, disregarding the field `mana`:
 ///
 /// ```
 /// use std::cmp::Ordering;
@@ -821,10 +844,10 @@ impl<T: Clone> Clone for Reverse<T> {
 /// impl Eq for Character {}
 /// ```
 ///
-/// 如果你需要的只是按某个字段的值来 `slice::sort` 一个类型,那么使用
-/// `slice::sort_by_key` 也许更简单。
+/// If all you need is to `slice::sort` a type by a field value, it can be simpler to use
+/// `slice::sort_by_key`.
 ///
-/// ## 错误的 `Ord` 实现示例
+/// ## Examples of incorrect `Ord` implementations
 ///
 /// ```
 /// use std::cmp::Ordering;
@@ -863,16 +886,16 @@ impl<T: Clone> Clone for Reverse<T> {
 /// let a = Character { health: 4.5 };
 /// let b = Character { health: f32::NAN };
 ///
-/// // 错误:浮点值并不构成全序,即便无视这一事实、用内建比较运算符来实现
-/// // `Ord`,也改变不了这个现实。如果你需要对浮点值进行全序比较,请使用
-/// // `f32::total_cmp`。
+/// // Mistake: floating-point values do not form a total order and using the built-in comparison
+/// // operands to implement `Ord` irregardless of that reality does not change it. Use
+/// // `f32::total_cmp` if you need a total order for floating-point values.
 ///
-/// // 不满足 `Ord` 的自反性要求。
+/// // Reflexivity requirement of `Ord` is not given.
 /// assert!(a == a);
 /// assert!(b != b);
 ///
-/// // 不满足 `Ord` 的反对称性要求。a < c 和 c < a 中只允许有一个为真,
-/// // 不能两个都真,也不能两个都假。
+/// // Antisymmetry requirement of `Ord` is not given. Only one of a < c and c < a is allowed to be
+/// // true, not both or neither.
 /// assert_eq!((a < b) as u8 + (b < a) as u8, 0);
 /// ```
 ///
@@ -901,8 +924,8 @@ impl<T: Clone> Clone for Reverse<T> {
 ///     }
 /// }
 ///
-/// // 出于性能原因,这样实现 `PartialEq` 并非地道的写法,但在本例中它确保了
-/// // `PartialEq`、`PartialOrd` 与 `Ord` 之间行为的一致性。
+/// // For performance reasons implementing `PartialEq` this way is not the idiomatic way, but it
+/// // ensures consistent behavior between `PartialEq`, `PartialOrd` and `Ord` in this example.
 /// impl PartialEq for Character {
 ///     fn eq(&self, other: &Self) -> bool {
 ///         self.cmp(other) == Ordering::Equal
@@ -924,20 +947,20 @@ impl<T: Clone> Clone for Reverse<T> {
 ///     experience: 2,
 /// };
 ///
-/// // 错误:`Ord` 的实现根据 `self.health` 的值去比较不同的字段,结果得到的
-/// // 次序不是全序。
+/// // Mistake: The implementation of `Ord` compares different fields depending on the value of
+/// // `self.health`, the resulting order is not total.
 ///
-/// // 不满足 `Ord` 的传递性要求。如果 a 小于 b 且 b 小于 c,那么按传递性,
-/// // a 也必须小于 c。
+/// // Transitivity requirement of `Ord` is not given. If a is smaller than b and b is smaller than
+/// // c, by transitive property a must also be smaller than c.
 /// assert!(a < b && b < c && c < a);
 ///
-/// // 不满足 `Ord` 的反对称性要求。a < c 和 c < a 中只允许有一个为真,
-/// // 不能两个都真,也不能两个都假。
+/// // Antisymmetry requirement of `Ord` is not given. Only one of a < c and c < a is allowed to be
+/// // true, not both or neither.
 /// assert_eq!((a < c) as u8 + (c < a) as u8, 2);
 /// ```
 ///
-/// [`PartialOrd`] 的文档包含更多例子,例如 [`PartialOrd`] 与 [`PartialEq`]
-/// 彼此矛盾就是错误的。
+/// The documentation of [`PartialOrd`] contains further examples, for example it's wrong for
+/// [`PartialOrd`] and [`PartialEq`] to disagree.
 ///
 /// [`cmp`]: Ord::cmp
 #[doc(alias = "<")]
@@ -948,12 +971,12 @@ impl<T: Clone> Clone for Reverse<T> {
 #[rustc_diagnostic_item = "Ord"]
 #[rustc_const_unstable(feature = "const_cmp", issue = "143800")]
 pub const trait Ord: [const] Eq + [const] PartialOrd<Self> + PointeeSized {
-    /// 本方法返回 `self` 与 `other` 之间的 [`Ordering`]。
+    /// This method returns an [`Ordering`] between `self` and `other`.
     ///
-    /// 按惯例,如果表达式 `self <运算符> other` 为真,那么 `self.cmp(&other)`
-    /// 返回与该运算符相匹配的次序。
+    /// By convention, `self.cmp(&other)` returns the ordering matching the expression
+    /// `self <operator> other` if true.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::cmp::Ordering;
@@ -967,11 +990,11 @@ pub const trait Ord: [const] Eq + [const] PartialOrd<Self> + PointeeSized {
     #[rustc_diagnostic_item = "ord_cmp_method"]
     fn cmp(&self, other: &Self) -> Ordering;
 
-    /// 比较并返回两个值中的较大者。
+    /// Compares and returns the maximum of two values.
     ///
-    /// 如果比较判定二者相等,则返回第二个参数。
+    /// Returns the second argument if the comparison determines them to be equal.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// assert_eq!(1.max(2), 2);
@@ -1006,11 +1029,11 @@ pub const trait Ord: [const] Eq + [const] PartialOrd<Self> + PointeeSized {
         if other < self { self } else { other }
     }
 
-    /// 比较并返回两个值中的较小者。
+    /// Compares and returns the minimum of two values.
     ///
-    /// 如果比较判定二者相等,则返回第一个参数。
+    /// Returns the first argument if the comparison determines them to be equal.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// assert_eq!(1.min(2), 1);
@@ -1045,16 +1068,16 @@ pub const trait Ord: [const] Eq + [const] PartialOrd<Self> + PointeeSized {
         if other < self { other } else { self }
     }
 
-    /// 把一个值限制(clamp)在某个区间内。
+    /// Restrict a value to a certain interval.
     ///
-    /// 如果 `self` 大于 `max`,返回 `max`;如果 `self` 小于 `min`,返回 `min`。
-    /// 否则返回 `self`。
+    /// Returns `max` if `self` is greater than `max`, and `min` if `self` is
+    /// less than `min`. Otherwise this returns `self`.
     ///
     /// # Panics
     ///
-    /// 如果 `min > max`,则会 panic。
+    /// Panics if `min > max`.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// assert_eq!((-3).clamp(-2, 1), -2);
@@ -1079,103 +1102,109 @@ pub const trait Ord: [const] Eq + [const] PartialOrd<Self> + PointeeSized {
     }
 }
 
-/// 生成 [`Ord`] trait 实现的派生宏。
-/// 本宏的行为在[此处](Ord#derivable)有详细描述。
+/// Derive macro generating an impl of the trait [`Ord`].
+/// The behavior of this macro is described in detail [here](Ord#derivable).
 #[rustc_builtin_macro]
 #[stable(feature = "builtin_macro_prelude", since = "1.38.0")]
 #[allow_internal_unstable(core_intrinsics)]
 pub macro Ord($item:item) {
-    /* 编译器内建 */
+    /* compiler built-in */
 }
 
-/// 面向构成[偏序](https://en.wikipedia.org/wiki/Partial_order)的类型的 trait。
+/// Trait for types that form a [partial order](https://en.wikipedia.org/wiki/Partial_order).
 ///
-/// 本 trait 的 `lt`、`le`、`gt` 和 `ge` 方法可以分别通过 `<`、`<=`、`>` 和
-/// `>=` 运算符来调用。
+/// The `lt`, `le`, `gt`, and `ge` methods of this trait can be called using the `<`, `<=`, `>`, and
+/// `>=` operators, respectively.
 ///
-/// **只有当你打算只实现 `PartialOrd` 而不实现 [`Ord`] 时**,才应当把类型的
-/// 比较逻辑放在本 trait 中。否则,比较逻辑应当放在 [`Ord`] 里,而本 trait
-/// 则用 `Some(self.cmp(other))` 来实现。
+/// This trait should **only** contain the comparison logic for a type **if one plans on only
+/// implementing `PartialOrd` but not [`Ord`]**. Otherwise the comparison logic should be in [`Ord`]
+/// and this trait implemented with `Some(self.cmp(other))`.
 ///
-/// 本 trait 的各方法之间、以及与 [`PartialEq`] 的方法之间,都必须保持一致。
-/// 以下条件必须成立:
+/// The methods of this trait must be consistent with each other and with those of [`PartialEq`].
+/// The following conditions must hold:
 ///
-/// 1. `a == b` 当且仅当 `partial_cmp(a, b) == Some(Equal)`。
-/// 2. `a < b` 当且仅当 `partial_cmp(a, b) == Some(Less)`
-/// 3. `a > b` 当且仅当 `partial_cmp(a, b) == Some(Greater)`
-/// 4. `a <= b` 当且仅当 `a < b || a == b`
-/// 5. `a >= b` 当且仅当 `a > b || a == b`
-/// 6. `a != b` 当且仅当 `!(a == b)`。
+/// 1. `a == b` if and only if `partial_cmp(a, b) == Some(Equal)`.
+/// 2. `a < b` if and only if `partial_cmp(a, b) == Some(Less)`
+/// 3. `a > b` if and only if `partial_cmp(a, b) == Some(Greater)`
+/// 4. `a <= b` if and only if `a < b || a == b`
+/// 5. `a >= b` if and only if `a > b || a == b`
+/// 6. `a != b` if and only if `!(a == b)`.
 ///
-/// 上面的条件 2–5 由默认实现保证。条件 6 已由 [`PartialEq`] 保证。
+/// Conditions 2–5 above are ensured by the default implementation. Condition 6 is already ensured
+/// by [`PartialEq`].
 ///
-/// 如果 `Self` 和 `Rhs` 还实现了 [`Ord`],那么它也必须与 `partial_cmp` 保持
-/// 一致(确切要求见该 trait 的文档)。通过派生其中一些 trait、手动实现另一些,
-/// 很容易在不经意间让它们彼此矛盾。
+/// If [`Ord`] is also implemented for `Self` and `Rhs`, it must also be consistent with
+/// `partial_cmp` (see the documentation of that trait for the exact requirements). It's easy to
+/// accidentally make them disagree by deriving some of the traits and manually implementing others.
 ///
-/// 比较关系必须满足以下条件(对所有 `A`、`B`、`C` 类型的 `a`、`b`、`c`):
+/// The comparison relations must satisfy the following conditions (for all `a`, `b`, `c` of type
+/// `A`, `B`, `C`):
 ///
-/// - **传递性(Transitivity)**:如果 `A: PartialOrd<B>`、`B: PartialOrd<C>`
-///   且 `A: PartialOrd<C>`,那么 `a < b` 且 `b < c` 蕴含 `a < c`。`==` 和 `>`
-///   也必须如此。这对更长的链条同样必须成立,例如当 `A: PartialOrd<B>`、
-///   `B: PartialOrd<C>`、`C: PartialOrd<D>` 和 `A: PartialOrd<D>` 同时存在时。
-/// - **对偶性(Duality)**:如果 `A: PartialOrd<B>` 且 `B: PartialOrd<A>`,
-///   那么 `a < b` 当且仅当 `b > a`。
+/// - **Transitivity**: if `A: PartialOrd<B>` and `B: PartialOrd<C>` and `A: PartialOrd<C>`, then `a
+///   < b` and `b < c` implies `a < c`. The same must hold for both `==` and `>`. This must also
+///   work for longer chains, such as when `A: PartialOrd<B>`, `B: PartialOrd<C>`, `C:
+///   PartialOrd<D>`, and `A: PartialOrd<D>` all exist.
+/// - **Duality**: if `A: PartialOrd<B>` and `B: PartialOrd<A>`, then `a < b` if and only if `b >
+///   a`.
 ///
-/// 注意,并不强制要求 `B: PartialOrd<A>`(对偶)和 `A: PartialOrd<C>`(传递)
-/// 这些 impl 必须存在,但只要它们存在,这些要求就适用。
+/// Note that the `B: PartialOrd<A>` (dual) and `A: PartialOrd<C>` (transitive) impls are not forced
+/// to exist, but these requirements apply whenever they do exist.
 ///
-/// 违反这些要求属于逻辑错误。逻辑错误所导致的行为是未指定的,但 trait 的
-/// 使用者必须确保此类逻辑错误 *不会* 导致未定义行为。这意味着 `unsafe` 代码
-/// **不得** 依赖这些方法的正确性。
+/// Violating these requirements is a logic error. The behavior resulting from a logic error is not
+/// specified, but users of the trait must ensure that such logic errors do *not* result in
+/// undefined behavior. This means that `unsafe` code **must not** rely on the correctness of these
+/// methods.
 ///
-/// ## 跨 crate 的考量
+/// ## Cross-crate considerations
 ///
-/// 当一个 crate 为另一个 crate 的类型实现 `PartialOrd`(即为了允许把自己的
-/// 某个类型与标准库的类型相比较)时,要维持上述要求会变得棘手。建议是:
-/// 永远不要为外来类型实现本 trait。换句话说,这样的 crate 应当写
-/// `impl PartialOrd<ForeignType> for LocalType`,而 *不应* 写
-/// `impl PartialOrd<LocalType> for ForeignType`。
+/// Upholding the requirements stated above can become tricky when one crate implements `PartialOrd`
+/// for a type of another crate (i.e., to allow comparing one of its own types with a type from the
+/// standard library). The recommendation is to never implement this trait for a foreign type. In
+/// other words, such a crate should do `impl PartialOrd<ForeignType> for LocalType`, but it should
+/// *not* do `impl PartialOrd<LocalType> for ForeignType`.
 ///
-/// 这样可以避免那种横跨 crate 边界、纵横交错的传递链问题:对于所有本地
-/// 类型 `T`,你可以假定没有别的 crate 会添加允许比较 `T < U` 的 impl。
-/// 换句话说,如果其他 crate 添加 impl 来构建更长的传递链
-/// `U1 < ... < T < V1 < ...`,那么出现在 `T` 右侧的所有类型都必须是定义 `T`
-/// 的那个 crate 早已知道的类型。这就排除了这样一种传递链:下游 crate 可以
-/// 添加新的 impl,以违反传递性的方式把外来类型的比较“拼接”起来。
+/// This avoids the problem of transitive chains that criss-cross crate boundaries: for all local
+/// types `T`, you may assume that no other crate will add `impl`s that allow comparing `T < U`. In
+/// other words, if other crates add `impl`s that allow building longer transitive chains `U1 < ...
+/// < T < V1 < ...`, then all the types that appear to the right of `T` must be types that the crate
+/// defining `T` already knows about. This rules out transitive chains where downstream crates can
+/// add new `impl`s that "stitch together" comparisons of foreign types in ways that violate
+/// transitivity.
 ///
-/// 不存在这样的外来 impl,也避免了前向兼容性问题——否则一个 crate 增加更多
-/// `PartialOrd` 实现就可能导致下游 crate 构建失败。
+/// Not having such foreign `impl`s also avoids forward compatibility issues where one crate adding
+/// more `PartialOrd` implementations can cause build failures in downstream crates.
 ///
-/// ## 推论
+/// ## Corollaries
 ///
-/// 由上述要求可得出以下推论:
+/// The following corollaries follow from the above requirements:
 ///
-/// - `<` 与 `>` 的非自反性(irreflexivity):`!(a < a)`、`!(a > a)`
-/// - `>` 的传递性:如果 `a > b` 且 `b > c`,那么 `a > c`
-/// - `partial_cmp` 的对偶性:`partial_cmp(a, b) == partial_cmp(b, a).map(Ordering::reverse)`
+/// - irreflexivity of `<` and `>`: `!(a < a)`, `!(a > a)`
+/// - transitivity of `>`: if `a > b` and `b > c` then `a > c`
+/// - duality of `partial_cmp`: `partial_cmp(a, b) == partial_cmp(b, a).map(Ordering::reverse)`
 ///
-/// ## 严格与非严格偏序
+/// ## Strict and non-strict partial orders
 ///
-/// `<` 与 `>` 运算符的行为遵循一个 *严格* 偏序。然而,`<=` 与 `>=` **并不**
-/// 遵循一个 *非严格* 偏序。这是因为,从数学上讲,一个非严格偏序要求满足
-/// 自反性,即对每一个 `a` 都需要 `a <= a` 为真。对于实现 `PartialOrd` 的
-/// 类型而言,这并不总是成立,例如:
+/// The `<` and `>` operators behave according to a *strict* partial order. However, `<=` and `>=`
+/// do **not** behave according to a *non-strict* partial order. That is because mathematically, a
+/// non-strict partial order would require reflexivity, i.e. `a <= a` would need to be true for
+/// every `a`. This isn't always the case for types that implement `PartialOrd`, for example:
 ///
 /// ```
 /// let a = f64::NAN;
 /// assert_eq!(a <= a, false);
 /// ```
 ///
-/// ## 可派生(Derivable)
+/// ## Derivable
 ///
-/// 本 trait 可以配合 `#[derive]` 使用。
+/// This trait can be used with `#[derive]`.
 ///
-/// 在结构体上 `derive` 时,它会基于结构体成员从上到下的声明顺序,产生一个
-/// [字典序](https://en.wikipedia.org/wiki/Lexicographic_order)的次序。
+/// When `derive`d on structs, it will produce a
+/// [lexicographic](https://en.wikipedia.org/wiki/Lexicographic_order) ordering based on the
+/// top-to-bottom declaration order of the struct's members.
 ///
-/// 在枚举上 `derive` 时,变体首先按其判别值排序;其次,再按其字段排序。
-/// 默认情况下,靠上的变体判别值最小,靠下的变体判别值最大。这里有一个例子:
+/// When `derive`d on enums, variants are primarily ordered by their discriminants. Secondarily,
+/// they are ordered by their fields. By default, the discriminant is smallest for variants at the
+/// top, and largest for variants at the bottom. Here's an example:
 ///
 /// ```
 /// #[derive(PartialEq, PartialOrd)]
@@ -1187,7 +1216,7 @@ pub macro Ord($item:item) {
 /// assert!(E::Top < E::Bottom);
 /// ```
 ///
-/// 然而,手动设置判别值可以覆盖这一默认行为:
+/// However, manually setting the discriminants can override this default behavior:
 ///
 /// ```
 /// #[derive(PartialEq, PartialOrd)]
@@ -1199,17 +1228,18 @@ pub macro Ord($item:item) {
 /// assert!(E::Bottom < E::Top);
 /// ```
 ///
-/// ## 如何实现 `PartialOrd`?
+/// ## How can I implement `PartialOrd`?
 ///
-/// `PartialOrd` 只要求实现 [`partial_cmp`] 方法,其余方法都由默认实现生成。
+/// `PartialOrd` only requires implementation of the [`partial_cmp`] method, with the others
+/// generated from default implementations.
 ///
-/// 不过,对于那些不具备全序的类型,仍然可以分别单独实现其余方法。例如,
-/// 对于浮点数,`NaN < 0 == false` 且 `NaN >= 0 == false`(参见
-/// IEEE 754-2008 第 5.11 节)。
+/// However it remains possible to implement the others separately for types which do not have a
+/// total order. For example, for floating point numbers, `NaN < 0 == false` and `NaN >= 0 == false`
+/// (cf. IEEE 754-2008 section 5.11).
 ///
-/// `PartialOrd` 要求你的类型是 [`PartialEq`]。
+/// `PartialOrd` requires your type to be [`PartialEq`].
 ///
-/// 如果你的类型是 [`Ord`],你可以借助 [`cmp`] 来实现 [`partial_cmp`]:
+/// If your type is [`Ord`], you can implement [`partial_cmp`] by using [`cmp`]:
 ///
 /// ```
 /// use std::cmp::Ordering;
@@ -1241,8 +1271,9 @@ pub macro Ord($item:item) {
 /// impl Eq for Person {}
 /// ```
 ///
-/// 你也许还会发现,对你类型的字段使用 [`partial_cmp`] 很有用。下面是一个例子,
-/// `Person` 类型有一个浮点的 `height` 字段,且它是排序时唯一用到的字段:
+/// You may also find it useful to use [`partial_cmp`] on your type's fields. Here is an example of
+/// `Person` types who have a floating-point `height` field that is the only field to be used for
+/// sorting:
 ///
 /// ```
 /// use std::cmp::Ordering;
@@ -1266,7 +1297,7 @@ pub macro Ord($item:item) {
 /// }
 /// ```
 ///
-/// ## 错误的 `PartialOrd` 实现示例
+/// ## Examples of incorrect `PartialOrd` implementations
 ///
 /// ```
 /// use std::cmp::Ordering;
@@ -1292,13 +1323,13 @@ pub macro Ord($item:item) {
 ///     experience: 77,
 /// };
 ///
-/// // 错误:`PartialEq` 与 `PartialOrd` 彼此矛盾。
+/// // Mistake: `PartialEq` and `PartialOrd` disagree with each other.
 ///
-/// assert_eq!(a.partial_cmp(&b).unwrap(), Ordering::Equal); // 按 `PartialOrd`,a == b。
-/// assert_ne!(a, b); // 按 `PartialEq`,a != b。
+/// assert_eq!(a.partial_cmp(&b).unwrap(), Ordering::Equal); // a == b according to `PartialOrd`.
+/// assert_ne!(a, b); // a != b according to `PartialEq`.
 /// ```
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// let x: u32 = 0;
@@ -1327,9 +1358,9 @@ pub macro Ord($item:item) {
 pub const trait PartialOrd<Rhs: PointeeSized = Self>:
     [const] PartialEq<Rhs> + PointeeSized
 {
-    /// 本方法返回 `self` 与 `other` 两个值之间的次序(如果存在的话)。
+    /// This method returns an ordering between `self` and `other` values if one exists.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::cmp::Ordering;
@@ -1344,7 +1375,7 @@ pub const trait PartialOrd<Rhs: PointeeSized = Self>:
     /// assert_eq!(result, Some(Ordering::Greater));
     /// ```
     ///
-    /// 当无法比较时:
+    /// When comparison is impossible:
     ///
     /// ```
     /// let result = f64::NAN.partial_cmp(&1.0);
@@ -1355,9 +1386,9 @@ pub const trait PartialOrd<Rhs: PointeeSized = Self>:
     #[rustc_diagnostic_item = "cmp_partialord_cmp"]
     fn partial_cmp(&self, other: &Rhs) -> Option<Ordering>;
 
-    /// 检验(`self` 与 `other` 的)小于关系,被 `<` 运算符使用。
+    /// Tests less than (for `self` and `other`) and is used by the `<` operator.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// assert_eq!(1.0 < 1.0, false);
@@ -1372,9 +1403,10 @@ pub const trait PartialOrd<Rhs: PointeeSized = Self>:
         self.partial_cmp(other).is_some_and(Ordering::is_lt)
     }
 
-    /// 检验(`self` 与 `other` 的)小于等于关系,被 `<=` 运算符使用。
+    /// Tests less than or equal to (for `self` and `other`) and is used by the
+    /// `<=` operator.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// assert_eq!(1.0 <= 1.0, true);
@@ -1389,9 +1421,10 @@ pub const trait PartialOrd<Rhs: PointeeSized = Self>:
         self.partial_cmp(other).is_some_and(Ordering::is_le)
     }
 
-    /// 检验(`self` 与 `other` 的)大于关系,被 `>` 运算符使用。
+    /// Tests greater than (for `self` and `other`) and is used by the `>`
+    /// operator.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// assert_eq!(1.0 > 1.0, false);
@@ -1406,9 +1439,10 @@ pub const trait PartialOrd<Rhs: PointeeSized = Self>:
         self.partial_cmp(other).is_some_and(Ordering::is_gt)
     }
 
-    /// 检验(`self` 与 `other` 的)大于等于关系,被 `>=` 运算符使用。
+    /// Tests greater than or equal to (for `self` and `other`) and is used by
+    /// the `>=` operator.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// assert_eq!(1.0 >= 1.0, true);
@@ -1423,21 +1457,22 @@ pub const trait PartialOrd<Rhs: PointeeSized = Self>:
         self.partial_cmp(other).is_some_and(Ordering::is_ge)
     }
 
-    /// 如果 `self == other`,返回 `ControlFlow::Continue(())`。
-    /// 否则返回 `ControlFlow::Break(self < other)`。
+    /// If `self == other`, returns `ControlFlow::Continue(())`.
+    /// Otherwise, returns `ControlFlow::Break(self < other)`.
     ///
-    /// 这在实现字典序的 `PartialOrd::lt` 时把一连串调用串联起来很有用:它让
-    /// 那些(像原始类型那样)能廉价地分别检查 `==` 和 `<` 的类型直接这么做,
-    /// 而无需先算出(再优化掉)三路的 `Ordering` 结果。
+    /// This is useful for chaining together calls when implementing a lexical
+    /// `PartialOrd::lt`, as it allows types (like primitives) which can cheaply
+    /// check `==` and `<` separately to do rather than needing to calculate
+    /// (then optimize out) the three-way `Ordering` result.
     #[inline]
-    // 为改善元组的行为而添加;不一定走稳定化流程。
+    // Added to improve the behaviour of tuples; not necessarily stabilization-track.
     #[unstable(feature = "partial_ord_chaining_methods", issue = "none")]
     #[doc(hidden)]
     fn __chaining_lt(&self, other: &Rhs) -> ControlFlow<bool> {
         default_chaining_impl(self, other, Ordering::is_lt)
     }
 
-    /// 与 `__chaining_lt` 相同,只是针对 `<=` 而非 `<`。
+    /// Same as `__chaining_lt`, but for `<=` instead of `<`.
     #[inline]
     #[unstable(feature = "partial_ord_chaining_methods", issue = "none")]
     #[doc(hidden)]
@@ -1445,7 +1480,7 @@ pub const trait PartialOrd<Rhs: PointeeSized = Self>:
         default_chaining_impl(self, other, Ordering::is_le)
     }
 
-    /// 与 `__chaining_lt` 相同,只是针对 `>` 而非 `<`。
+    /// Same as `__chaining_lt`, but for `>` instead of `<`.
     #[inline]
     #[unstable(feature = "partial_ord_chaining_methods", issue = "none")]
     #[doc(hidden)]
@@ -1453,7 +1488,7 @@ pub const trait PartialOrd<Rhs: PointeeSized = Self>:
         default_chaining_impl(self, other, Ordering::is_gt)
     }
 
-    /// 与 `__chaining_lt` 相同,只是针对 `>=` 而非 `<`。
+    /// Same as `__chaining_lt`, but for `>=` instead of `<`.
     #[inline]
     #[unstable(feature = "partial_ord_chaining_methods", issue = "none")]
     #[doc(hidden)]
@@ -1472,9 +1507,9 @@ where
     T: [const] PartialOrd<U> + PointeeSized,
     U: PointeeSized,
 {
-    // 重要的是这里只调用一次 `partial_cmp`,而不是先调用 `eq`、再调用某个
-    // 关系运算符。比如,我们不希望对一个 `String` 先 `bcmp` 再 `memcp`,
-    // 对其他数据结构也是如此(#108157)。
+    // It's important that this only call `partial_cmp` once, not call `eq` then
+    // one of the relational operators.  We don't want to `bcmp`-then-`memcp` a
+    // `String`, for example, or similarly for other data structures (#108157).
     match <T as PartialOrd<U>>::partial_cmp(lhs, rhs) {
         Some(Equal) => ControlFlow::Continue(()),
         Some(c) => ControlFlow::Break(p(c)),
@@ -1482,22 +1517,22 @@ where
     }
 }
 
-/// 生成 [`PartialOrd`] trait 实现的派生宏。
-/// 本宏的行为在[此处](PartialOrd#derivable)有详细描述。
+/// Derive macro generating an impl of the trait [`PartialOrd`].
+/// The behavior of this macro is described in detail [here](PartialOrd#derivable).
 #[rustc_builtin_macro]
 #[stable(feature = "builtin_macro_prelude", since = "1.38.0")]
 #[allow_internal_unstable(core_intrinsics)]
 pub macro PartialOrd($item:item) {
-    /* 编译器内建 */
+    /* compiler built-in */
 }
 
-/// 比较并返回两个值中的较小者。
+/// Compares and returns the minimum of two values.
 ///
-/// 如果比较判定二者相等,则返回第一个参数。
+/// Returns the first argument if the comparison determines them to be equal.
 ///
-/// 内部使用 [`Ord::min`] 的别名。
+/// Internally uses an alias to [`Ord::min`].
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// use std::cmp;
@@ -1532,14 +1567,14 @@ pub const fn min<T: [const] Ord + [const] Destruct>(v1: T, v2: T) -> T {
     v1.min(v2)
 }
 
-/// 依照指定的比较函数,返回两个值中的较小者。
+/// Returns the minimum of two values with respect to the specified comparison function.
 ///
-/// 如果比较判定二者相等,则返回第一个参数。
+/// Returns the first argument if the comparison determines them to be equal.
 ///
-/// 调用 `compare` 函数时参数顺序保持不变,即 `v1` 总是作为第一个参数传入,
-/// `v2` 作为第二个。
+/// The parameter order is preserved when calling the `compare` function, i.e. `v1` is
+/// always passed as the first argument and `v2` as the second.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// use std::cmp;
@@ -1567,11 +1602,11 @@ pub const fn min_by<T: [const] Destruct, F: [const] FnOnce(&T, &T) -> Ordering>(
     if compare(&v1, &v2).is_le() { v1 } else { v2 }
 }
 
-/// 返回使指定函数取得最小值的那个元素。
+/// Returns the element that gives the minimum value from the specified function.
 ///
-/// 如果比较判定二者相等,则返回第一个参数。
+/// Returns the first argument if the comparison determines them to be equal.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// use std::cmp;
@@ -1598,13 +1633,13 @@ where
     if f(&v2) < f(&v1) { v2 } else { v1 }
 }
 
-/// 比较并返回两个值中的较大者。
+/// Compares and returns the maximum of two values.
 ///
-/// 如果比较判定二者相等,则返回第二个参数。
+/// Returns the second argument if the comparison determines them to be equal.
 ///
-/// 内部使用 [`Ord::max`] 的别名。
+/// Internally uses an alias to [`Ord::max`].
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// use std::cmp;
@@ -1639,14 +1674,14 @@ pub const fn max<T: [const] Ord + [const] Destruct>(v1: T, v2: T) -> T {
     v1.max(v2)
 }
 
-/// 依照指定的比较函数,返回两个值中的较大者。
+/// Returns the maximum of two values with respect to the specified comparison function.
 ///
-/// 如果比较判定二者相等,则返回第二个参数。
+/// Returns the second argument if the comparison determines them to be equal.
 ///
-/// 调用 `compare` 函数时参数顺序保持不变,即 `v1` 总是作为第一个参数传入,
-/// `v2` 作为第二个。
+/// The parameter order is preserved when calling the `compare` function, i.e. `v1` is
+/// always passed as the first argument and `v2` as the second.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// use std::cmp;
@@ -1674,11 +1709,11 @@ pub const fn max_by<T: [const] Destruct, F: [const] FnOnce(&T, &T) -> Ordering>(
     if compare(&v1, &v2).is_gt() { v1 } else { v2 }
 }
 
-/// 返回使指定函数取得最大值的那个元素。
+/// Returns the element that gives the maximum value from the specified function.
 ///
-/// 如果比较判定二者相等,则返回第二个参数。
+/// Returns the second argument if the comparison determines them to be equal.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// use std::cmp;
@@ -1705,11 +1740,11 @@ where
     if f(&v2) < f(&v1) { v1 } else { v2 }
 }
 
-/// 比较并对两个值排序,返回最小值和最大值。
+/// Compares and sorts two values, returning minimum and maximum.
 ///
-/// 如果比较判定二者相等,则返回 `[v1, v2]`。
+/// Returns `[v1, v2]` if the comparison determines them to be equal.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// #![feature(cmp_minmax)]
@@ -1718,7 +1753,7 @@ where
 /// assert_eq!(cmp::minmax(1, 2), [1, 2]);
 /// assert_eq!(cmp::minmax(2, 1), [1, 2]);
 ///
-/// // 你可以用数组模式来解构结果
+/// // You can destructure the result using array patterns
 /// let [min, max] = cmp::minmax(42, 17);
 /// assert_eq!(min, 17);
 /// assert_eq!(max, 42);
@@ -1753,14 +1788,14 @@ where
     if v2 < v1 { [v2, v1] } else { [v1, v2] }
 }
 
-/// 依照指定的比较函数,返回最小值和最大值。
+/// Returns minimum and maximum values with respect to the specified comparison function.
 ///
-/// 如果比较判定二者相等,则返回 `[v1, v2]`。
+/// Returns `[v1, v2]` if the comparison determines them to be equal.
 ///
-/// 调用 `compare` 函数时参数顺序保持不变,即 `v1` 总是作为第一个参数传入,
-/// `v2` 作为第二个。
+/// The parameter order is preserved when calling the `compare` function, i.e. `v1` is
+/// always passed as the first argument and `v2` as the second.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// #![feature(cmp_minmax)]
@@ -1772,7 +1807,7 @@ where
 /// assert_eq!(cmp::minmax_by(-1, 2, abs_cmp), [-1, 2]);
 /// assert_eq!(cmp::minmax_by(-2, 2, abs_cmp), [-2, 2]);
 ///
-/// // 你可以用数组模式来解构结果
+/// // You can destructure the result using array patterns
 /// let [min, max] = cmp::minmax_by(-42, 17, abs_cmp);
 /// assert_eq!(min, 17);
 /// assert_eq!(max, -42);
@@ -1788,11 +1823,11 @@ where
     if compare(&v1, &v2).is_le() { [v1, v2] } else { [v2, v1] }
 }
 
-/// 依照指定的键函数,返回最小值和最大值。
+/// Returns minimum and maximum values with respect to the specified key function.
 ///
-/// 如果比较判定二者相等,则返回 `[v1, v2]`。
+/// Returns `[v1, v2]` if the comparison determines them to be equal.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// #![feature(cmp_minmax)]
@@ -1801,7 +1836,7 @@ where
 /// assert_eq!(cmp::minmax_by_key(-2, 1, |x: &i32| x.abs()), [1, -2]);
 /// assert_eq!(cmp::minmax_by_key(-2, 2, |x: &i32| x.abs()), [-2, 2]);
 ///
-/// // 你可以用数组模式来解构结果
+/// // You can destructure the result using array patterns
 /// let [min, max] = cmp::minmax_by_key(-42, 17, |x: &i32| x.abs());
 /// assert_eq!(min, 17);
 /// assert_eq!(max, -42);
@@ -1818,7 +1853,7 @@ where
     if f(&v2) < f(&v1) { [v2, v1] } else { [v1, v2] }
 }
 
-// 为原始类型实现 PartialEq、Eq、PartialOrd 和 Ord
+// Implementation of PartialEq, Eq, PartialOrd and Ord for primitive types
 mod impls {
     use crate::cmp::Ordering::{self, Equal, Greater, Less};
     use crate::hint::unreachable_unchecked;
@@ -1878,9 +1913,9 @@ mod impls {
             #[inline(always)]
             fn ge(&self, other: &Self) -> bool { *self >= *other }
 
-            // 对 `Ord` 和 `PartialOrd` 类型而言这些实现都是一样的,因为只要
-            // 其中任何一个是 NAN,`==` 检验就会失败,于是我们落入 `Break`
-            // 分支,比较会正确地返回 `false`。
+            // These implementations are the same for `Ord` or `PartialOrd` types
+            // because if either is NAN the `==` test will fail so we end up in
+            // the `Break` case and the comparison will correctly return `false`.
 
             #[inline]
             fn __chaining_lt(&self, other: &Self) -> ControlFlow<bool> {
@@ -2005,13 +2040,14 @@ mod impls {
     impl const Ord for bool {
         #[inline]
         fn cmp(&self, other: &bool) -> Ordering {
-            // 转成 i8 再把差值转换为 Ordering,能生成更优的汇编。
-            // 更多信息参见 <https://github.com/rust-lang/rust/issues/66780>。
+            // Casting to i8's and converting the difference to an Ordering generates
+            // more optimal assembly.
+            // See <https://github.com/rust-lang/rust/issues/66780> for more info.
             match (*self as i8) - (*other as i8) {
                 -1 => Less,
                 0 => Equal,
                 1 => Greater,
-                // SAFETY:bool 转 i8 得到 0 或 1,所以差值不可能是别的值
+                // SAFETY: bool as i8 returns 0 or 1, so the difference can't be anything else
                 _ => unsafe { unreachable_unchecked() },
             }
         }
@@ -2066,7 +2102,7 @@ mod impls {
         }
     }
 
-    // & 引用
+    // & pointers
 
     #[stable(feature = "rust1", since = "1.0.0")]
     #[rustc_const_unstable(feature = "const_cmp", issue = "143800")]
@@ -2141,7 +2177,7 @@ mod impls {
     #[rustc_const_unstable(feature = "const_cmp", issue = "143800")]
     impl<A: PointeeSized> const Eq for &A where A: [const] Eq {}
 
-    // &mut 引用
+    // &mut pointers
 
     #[stable(feature = "rust1", since = "1.0.0")]
     #[rustc_const_unstable(feature = "const_cmp", issue = "143800")]

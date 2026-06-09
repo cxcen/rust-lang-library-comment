@@ -1,9 +1,9 @@
-// 包含打印有用 `assert!` 消息所需的内部机制。它不面向公开使用，
-// 甚至也不面向 nightly 用户直接使用。
+// Contains the machinery necessary to print useful `assert!` messages. Not intended for public
+// usage, not even nightly use-cases.
 //
-// 基于 https://github.com/dtolnay/case-studies/tree/master/autoref-specialization。
-// 当 'specialization' 足够健壮时（5 年？10 年？也许永远不会？），
-// `Capture` 就可以特化到 [Printable]。
+// Based on https://github.com/dtolnay/case-studies/tree/master/autoref-specialization. When
+// 'specialization' is robust enough (5 years? 10 years? Never?), `Capture` can be specialized
+// to [Printable].
 
 #![allow(missing_debug_implementations)]
 #![doc(hidden)]
@@ -12,16 +12,16 @@
 use crate::fmt::{Debug, Formatter};
 use crate::marker::PhantomData;
 
-// ***** TryCapture - 泛型 *****
+// ***** TryCapture - Generic *****
 
-/// [Capture] 使用的标记类型。
+/// Marker used by [Capture]
 #[unstable(feature = "generic_assert_internals", issue = "44838")]
 pub struct TryCaptureWithoutDebug;
 
-/// 捕获任意 `E`，并据此修改 `to`。
+/// Catches an arbitrary `E` and modifies `to` accordingly
 #[unstable(feature = "generic_assert_internals", issue = "44838")]
 pub trait TryCaptureGeneric<E, M> {
-    /// 类似 [TryCapturePrintable]，但泛化到任意 `E`。
+    /// Similar to [TryCapturePrintable] but generic to any `E`.
     fn try_capture(&self, to: &mut Capture<E, M>);
 }
 
@@ -36,16 +36,16 @@ impl<E> Debug for Capture<E, TryCaptureWithoutDebug> {
     }
 }
 
-// ***** TryCapture - 可打印 *****
+// ***** TryCapture - Printable *****
 
-/// [Capture] 使用的标记类型。
+/// Marker used by [Capture]
 #[unstable(feature = "generic_assert_internals", issue = "44838")]
 pub struct TryCaptureWithDebug;
 
-/// 捕获任意 `E: Printable`，并据此修改 `to`。
+/// Catches an arbitrary `E: Printable` and modifies `to` accordingly
 #[unstable(feature = "generic_assert_internals", issue = "44838")]
 pub trait TryCapturePrintable<E, M> {
-    /// 类似 [TryCaptureGeneric]，但特化到任意 `E: Printable`。
+    /// Similar as [TryCaptureGeneric] but specialized to any `E: Printable`.
     fn try_capture(&self, to: &mut Capture<E, M>);
 }
 
@@ -71,22 +71,22 @@ where
     }
 }
 
-// ***** 其他 *****
+// ***** Others *****
 
 //spellchecker:off
-/// 所有可能捕获的 `assert!` 元素。
+/// All possible captured `assert!` elements
 ///
-/// # 类型
+/// # Types
 ///
-/// * `E`: 将要显示的元素。
-/// * `M`: 用于按 [Debug] 区分 [Capture] 的标记。
+/// * `E`: **E**lement that is going to be displayed.
+/// * `M`: **M**arker used to differentiate [Capture]s in regards to [Debug].
 //spellchecker:on
 #[unstable(feature = "generic_assert_internals", issue = "44838")]
 pub struct Capture<E, M> {
-    // 如果为 None，则 `E` 没有实现 [Printable]，或者 `E` 未被求值
-    // （`assert!( ... )` 短路）。
+    // If None, then `E` does not implements [Printable] or `E` wasn't evaluated (`assert!( ... )`
+    // short-circuited).
     //
-    // 如果为 Some，则 `E` 实现了 [Printable] 且已被求值。
+    // If Some, then `E` implements [Printable] and was evaluated.
     pub elem: Option<E>,
     phantom: PhantomData<M>,
 }
@@ -98,11 +98,11 @@ impl<M, T> Capture<M, T> {
     }
 }
 
-/// 实现 `TryCapture*` 时需要。
+/// Necessary for the implementations of `TryCapture*`
 #[unstable(feature = "generic_assert_internals", issue = "44838")]
 pub struct Wrapper<T>(pub T);
 
-/// 表示哪些元素可以被复制和显示。
+/// Tells which elements can be copied and displayed
 #[unstable(feature = "generic_assert_internals", issue = "44838")]
 pub trait Printable: Copy + Debug {}
 

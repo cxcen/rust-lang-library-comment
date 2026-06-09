@@ -1,67 +1,65 @@
-//! 与 UTF-8 验证相关的内部操作。
-//!
-//! `str` 的所有安全 API 都依赖“底层字节是合法 UTF-8”这一不变量。这里的验证逻辑负责在从
-//! `[u8]` 进入 `&str` 前拒绝越界 code point、代理项、过短编码和缺失 continuation byte。
+//! Operations related to UTF-8 validation.
 
 use super::Utf8Error;
 use crate::intrinsics::const_eval_select;
 
-/// 根据首字节返回 code point 累加器的初始值。
-///
-/// 首字节携带了编码宽度标签，因此只保留真正属于 code point 的低位：
-/// 2 字节序列保留低 5 位，3 字节序列保留低 4 位，4 字节序列保留低 3 位。
+/// Returns the initial codepoint accumulator for the first byte.
+/// The first byte is special, only want bottom 5 bits for width 2, 4 bits
+/// for width 3, and 3 bits for width 4.
 #[inline]
 const fn utf8_first_byte(byte: u8, width: u32) -> u32 {
     (byte & (0x7F >> width)) as u32
 }
 
-/// 将 continuation byte `byte` 合并进当前累加值 `ch` 后返回新值。
+/// Returns the value of `ch` updated with continuation byte `byte`.
 #[inline]
 const fn utf8_acc_cont_byte(ch: u32, byte: u8) -> u32 {
     (ch << 6) | (byte & CONT_MASK) as u32
 }
 
-/// 检查字节是否是 UTF-8 continuation byte，也就是是否以位模式 `10` 开头。
+/// Checks whether the byte is a UTF-8 continuation byte (i.e., starts with the
+/// bits `10`).
 #[inline]
 pub(super) const fn utf8_is_cont_byte(byte: u8) -> bool {
     (byte as i8) < -64
 }
 
-/// 从字节迭代器中读取下一个 code point，假定输入使用 UTF-8-like 编码。
+/// Reads the next code point out of a byte iterator (assuming a
+/// UTF-8-like encoding).
 ///
-/// # 安全性(Safety）
+/// # Safety
 ///
-/// `bytes` 必须产生合法 UTF-8-like 字符串（UTF-8 或 WTF-8）。也就是说，
-/// 多字节序列长度和 continuation byte 必须完整有效；调用方还要保证迭代器不会在一个
-/// code point 中途结束。
+/// `bytes` must produce a valid UTF-8-like (UTF-8 or WTF-8) string
 #[unstable(feature = "str_internals", issue = "none")]
 #[inline]
 pub unsafe fn next_code_point<'a, I: Iterator<Item = &'a u8>>(bytes: &mut I) -> Option<u32> {
-    // 解码 UTF-8。
+    // Decode UTF-8
     let x = *bytes.next()?;
     if x < 128 {
         return Some(x as u32);
     }
 
-    // 后续处理多字节情形。
-    // 按 [[[x y] z] w] 的组合顺序解码。
-    // NOTE: 这里的具体写法对性能敏感。
+    // Multibyte case follows
+    // Decode from a byte combination out of: [[[x y] z] w]
+    // NOTE: Performance is sensitive to the exact formulation here
     let init = utf8_first_byte(x, 2);
-    // SAFETY: `bytes` 产生 UTF-8-like 字符串；首字节已表明这是多字节序列，
-    // 因而迭代器这里必须还能产生下一个字节。
+    // SAFETY: `bytes` produces an UTF-8-like string,
+    // so the iterator must produce a value here.
     let y = unsafe { *bytes.next().unwrap_unchecked() };
     let mut ch = utf8_acc_cont_byte(init, y);
     if x >= 0xE0 {
-        // [[x y z] w] 情形。
-        // 0xE0 .. 0xEF 中第 5 位始终为 0，因此 `init` 仍然有效。
-        // SAFETY: `bytes` 产生 UTF-8-like 字符串；三字节/四字节序列在这里必须还有字节。
+        // [[x y z] w] case
+        // 5th bit in 0xE0 .. 0xEF is always clear, so `init` is still valid
+        // SAFETY: `bytes` produces an UTF-8-like string,
+        // so the iterator must produce a value here.
         let z = unsafe { *bytes.next().unwrap_unchecked() };
         let y_z = utf8_acc_cont_byte((y & CONT_MASK) as u32, z);
         ch = init << 12 | y_z;
         if x >= 0xF0 {
-            // [x y z w] 情形。
-            // 只使用 `init` 的低 3 位。
-            // SAFETY: `bytes` 产生 UTF-8-like 字符串；四字节序列在这里必须还有第 4 个字节。
+            // [x y z w] case
+            // use only the lower 3 bits of `init`
+            // SAFETY: `bytes` produces an UTF-8-like string,
+            // so the iterator must produce a value here.
             let w = unsafe { *bytes.next().unwrap_unchecked() };
             ch = (init & 7) << 18 | utf8_acc_cont_byte(y_z, w);
         }
@@ -70,35 +68,38 @@ pub unsafe fn next_code_point<'a, I: Iterator<Item = &'a u8>>(bytes: &mut I) -> 
     Some(ch)
 }
 
-/// 从双端字节迭代器尾部读取最后一个 code point，假定输入使用 UTF-8-like 编码。
+/// Reads the last code point out of a byte iterator (assuming a
+/// UTF-8-like encoding).
 ///
-/// # 安全性(Safety）
+/// # Safety
 ///
-/// `bytes` 必须产生合法 UTF-8-like 字符串（UTF-8 或 WTF-8）。从尾部读取时，
-/// 调用方同样要保证不会把一个 code point 的字节序列截断。
+/// `bytes` must produce a valid UTF-8-like (UTF-8 or WTF-8) string
 #[inline]
 pub(super) unsafe fn next_code_point_reverse<'a, I>(bytes: &mut I) -> Option<u32>
 where
     I: DoubleEndedIterator<Item = &'a u8>,
 {
-    // 解码 UTF-8。
+    // Decode UTF-8
     let w = match *bytes.next_back()? {
         next_byte if next_byte < 128 => return Some(next_byte as u32),
         back_byte => back_byte,
     };
 
-    // 后续处理多字节情形。
-    // 按 [x [y [z w]]] 的组合顺序反向解码。
+    // Multibyte case follows
+    // Decode from a byte combination out of: [x [y [z w]]]
     let mut ch;
-    // SAFETY: `bytes` 产生 UTF-8-like 字符串；尾字节表明这是多字节序列，前面必须还有字节。
+    // SAFETY: `bytes` produces an UTF-8-like string,
+    // so the iterator must produce a value here.
     let z = unsafe { *bytes.next_back().unwrap_unchecked() };
     ch = utf8_first_byte(z, 2);
     if utf8_is_cont_byte(z) {
-        // SAFETY: `bytes` 产生 UTF-8-like 字符串；仍处于 continuation byte 链中，前面必须还有字节。
+        // SAFETY: `bytes` produces an UTF-8-like string,
+        // so the iterator must produce a value here.
         let y = unsafe { *bytes.next_back().unwrap_unchecked() };
         ch = utf8_first_byte(y, 3);
         if utf8_is_cont_byte(y) {
-            // SAFETY: `bytes` 产生 UTF-8-like 字符串；四字节序列的首字节必须存在。
+            // SAFETY: `bytes` produces an UTF-8-like string,
+            // so the iterator must produce a value here.
             let x = unsafe { *bytes.next_back().unwrap_unchecked() };
             ch = utf8_first_byte(x, 4);
             ch = utf8_acc_cont_byte(ch, y);
@@ -112,17 +113,16 @@ where
 
 const NONASCII_MASK: usize = usize::repeat_u8(0x80);
 
-/// 如果机器字 `x` 中任一字节是非 ASCII（>= 128），则返回 `true`。
+/// Returns `true` if any byte in the word `x` is nonascii (>= 128).
 #[inline]
 const fn contains_nonascii(x: usize) -> bool {
     (x & NONASCII_MASK) != 0
 }
 
-/// 遍历 `v` 并检查它是否是合法 UTF-8 字节序列。
-///
-/// 有效时返回 `Ok(())`；无效时返回 `Err(err)`，其中包含已验证的有效前缀位置和错误长度。
+/// Walks through `v` checking that it's a valid UTF-8 sequence,
+/// returning `Ok(())` in that case, or, if it is invalid, `Err(err)`.
 #[inline(always)]
-#[rustc_allow_const_fn_unstable(const_eval_select)] // fallback 实现具有相同行为。
+#[rustc_allow_const_fn_unstable(const_eval_select)] // fallback impl has same behavior
 pub(super) const fn run_utf8_validation(v: &[u8]) -> Result<(), Utf8Error> {
     let mut index = 0;
     let len = v.len();
@@ -131,8 +131,8 @@ pub(super) const fn run_utf8_validation(v: &[u8]) -> Result<(), Utf8Error> {
 
     let ascii_block_size = 2 * USIZE_BYTES;
     let blocks_end = if len >= ascii_block_size { len - ascii_block_size + 1 } else { 0 };
-    // 如果偏移量是 `usize::MAX`，下面会安全退回较慢路径；
-    // 因而编译期和运行期的端到端行为保持一致。
+    // Below, we safely fall back to a slower codepath if the offset is `usize::MAX`,
+    // so the end-to-end behavior is the same at compiletime and runtime.
     let align = const_eval_select!(
         @capture { v: &[u8] } -> usize:
         if const {
@@ -153,7 +153,7 @@ pub(super) const fn run_utf8_validation(v: &[u8]) -> Result<(), Utf8Error> {
         macro_rules! next {
             () => {{
                 index += 1;
-                // 需要继续读取字节，但输入已结束：这是错误。
+                // we needed data, but there was none: error!
                 if index >= len {
                     err!(None)
                 }
@@ -164,16 +164,16 @@ pub(super) const fn run_utf8_validation(v: &[u8]) -> Result<(), Utf8Error> {
         let first = v[index];
         if first >= 128 {
             let w = utf8_char_width(first);
-            // 2 字节编码覆盖 code point  \u{0080} 到  \u{07ff}
-            //        首个合法字节 C2 80        最后合法字节 DF BF
-            // 3 字节编码覆盖 code point  \u{0800} 到  \u{ffff}
-            //        首个合法字节 E0 A0 80     最后合法字节 EF BF BF
-            //   但排除代理项 code point  \u{d800} 到  \u{dfff}
-            //               ED A0 80 到       ED BF BF
-            // 4 字节编码覆盖 code point \u{10000} 到 \u{10ffff}
-            //        首个合法字节 F0 90 80 80  最后合法字节 F4 8F BF BF
+            // 2-byte encoding is for codepoints  \u{0080} to  \u{07ff}
+            //        first  C2 80        last DF BF
+            // 3-byte encoding is for codepoints  \u{0800} to  \u{ffff}
+            //        first  E0 A0 80     last EF BF BF
+            //   excluding surrogates codepoints  \u{d800} to  \u{dfff}
+            //               ED A0 80 to       ED BF BF
+            // 4-byte encoding is for codepoints \u{10000} to \u{10ffff}
+            //        first  F0 90 80 80  last F4 8F BF BF
             //
-            // 使用 RFC 中的 UTF-8 语法：
+            // Use the UTF-8 syntax from the RFC
             //
             // https://tools.ietf.org/html/rfc3629
             // UTF8-1      = %x00-7F
@@ -216,17 +216,19 @@ pub(super) const fn run_utf8_validation(v: &[u8]) -> Result<(), Utf8Error> {
             }
             index += 1;
         } else {
-            // ASCII 情形：尝试快速向前跳过。
-            // 当指针对齐时，每次迭代读取 2 个机器字，直到发现包含非 ASCII 字节的机器字。
+            // Ascii case, try to skip forward quickly.
+            // When the pointer is aligned, read 2 words of data per iteration
+            // until we find a word containing a non-ascii byte.
             if align != usize::MAX && align.wrapping_sub(index).is_multiple_of(USIZE_BYTES) {
                 let ptr = v.as_ptr();
                 while index < blocks_end {
-                    // SAFETY: `align - index` 和 `ascii_block_size` 都是 `USIZE_BYTES` 的倍数，
-                    // 因此 `block = ptr.add(index)` 始终按 `usize` 对齐；
-                    // 同时循环边界保证可读取两个机器字，所以解引用 `block` 和 `block.add(1)` 是安全的。
+                    // SAFETY: since `align - index` and `ascii_block_size` are
+                    // multiples of `USIZE_BYTES`, `block = ptr.add(index)` is
+                    // always aligned with a `usize` so it's safe to dereference
+                    // both `block` and `block.add(1)`.
                     unsafe {
                         let block = ptr.add(index) as *const usize;
-                        // 发现非 ASCII 字节时退出快速路径。
+                        // break if there is a nonascii byte
                         let zu = contains_nonascii(*block);
                         let zv = contains_nonascii(*block.add(1));
                         if zu || zv {
@@ -235,7 +237,7 @@ pub(super) const fn run_utf8_validation(v: &[u8]) -> Result<(), Utf8Error> {
                     }
                     index += ascii_block_size;
                 }
-                // 从按机器字扫描停止的位置继续逐字节前进。
+                // step from the point where the wordwise loop stopped
                 while index < len && v[index] < 128 {
                     index += 1;
                 }
@@ -269,7 +271,7 @@ const UTF8_CHAR_WIDTH: &[u8; 256] = &[
     4, 4, 4, 4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // F
 ];
 
-/// 给定首字节，判断该 UTF-8 字符占用多少字节。
+/// Given a first byte, determines how many bytes are in this UTF-8 character.
 #[unstable(feature = "str_internals", issue = "none")]
 #[must_use]
 #[inline]
@@ -277,5 +279,5 @@ pub const fn utf8_char_width(b: u8) -> usize {
     UTF8_CHAR_WIDTH[b as usize] as usize
 }
 
-/// continuation byte 中数值位的掩码。
+/// Mask of the value bits of a continuation byte.
 const CONT_MASK: u8 = 0b0011_1111;

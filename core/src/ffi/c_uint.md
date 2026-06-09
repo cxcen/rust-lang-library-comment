@@ -1,5 +1,5 @@
-等价于 C 的 `unsigned int` 类型。
+Equivalent to C's `unsigned int` type.
 
-本类型几乎总是 [`u32`],但在少数特殊系统上可能不同。C 标准技术上只要求它是与 [`int`] 大小相同的无符号整数;例如某些系统会把它定义为 [`u16`]。
+This type will almost always be [`u32`], but may differ on some esoteric systems. The C standard technically only requires that this type be an unsigned integer with the same size as an [`int`]; some systems define it as a [`u16`], for example.
 
 [`int`]: c_int

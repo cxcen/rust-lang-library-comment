@@ -50,13 +50,14 @@ impl fmt::Write for PadAdapter<'_, '_> {
     }
 }
 
-/// 辅助编写 [`fmt::Debug`](Debug) 实现的结构体。
+/// A struct to help with [`fmt::Debug`](Debug) implementations.
 ///
-/// 当你希望在 [`Debug::fmt`] 实现中输出结构体形式的格式化结果时,此类型很有用。
+/// This is useful when you wish to output a formatted struct as a part of your
+/// [`Debug::fmt`] implementation.
 ///
-/// 可通过 [`Formatter::debug_struct`] 方法构造它。
+/// This can be constructed by the [`Formatter::debug_struct`] method.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// use std::fmt;
@@ -99,9 +100,9 @@ pub(super) fn debug_struct_new<'a, 'b>(
 }
 
 impl<'a, 'b: 'a> DebugStruct<'a, 'b> {
-    /// 向生成的结构体输出中添加新字段。
+    /// Adds a new field to the generated struct output.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::fmt;
@@ -114,11 +115,11 @@ impl<'a, 'b: 'a> DebugStruct<'a, 'b> {
     /// impl fmt::Debug for Bar {
     ///     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
     ///         fmt.debug_struct("Bar")
-    ///            .field("bar", &self.bar) // 添加 `bar` 字段。
-    ///            .field("another", &self.another) // 添加 `another` 字段。
-    ///            // 甚至添加一个并不存在的字段。
+    ///            .field("bar", &self.bar) // We add `bar` field.
+    ///            .field("another", &self.another) // We add `another` field.
+    ///            // We even add a field which doesn't exist (because why not?).
     ///            .field("nonexistent_field", &1)
-    ///            .finish() // 到这里就完成了。
+    ///            .finish() // We're good to go!
     ///     }
     /// }
     ///
@@ -132,10 +133,10 @@ impl<'a, 'b: 'a> DebugStruct<'a, 'b> {
         self.field_with(name, |f| value.fmt(f))
     }
 
-    /// 向生成的结构体输出中添加新字段。
+    /// Adds a new field to the generated struct output.
     ///
-    /// 此方法等价于 [`DebugStruct::field`],但会使用传入闭包格式化值,
-    /// 而不是调用 [`Debug::fmt`]。
+    /// This method is equivalent to [`DebugStruct::field`], but formats the
+    /// value using a provided closure rather than by calling [`Debug::fmt`].
     #[unstable(feature = "debug_closure_helpers", issue = "117729")]
     pub fn field_with<F>(&mut self, name: &str, value_fmt: F) -> &mut Self
     where
@@ -166,9 +167,10 @@ impl<'a, 'b: 'a> DebugStruct<'a, 'b> {
         self
     }
 
-    /// 将该结构体标记为 non-exhaustive,向读者说明 debug 表示中还有其他未显示字段。
+    /// Marks the struct as non-exhaustive, indicating to the reader that there are some other
+    /// fields that are not shown in the debug representation.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::fmt;
@@ -182,7 +184,7 @@ impl<'a, 'b: 'a> DebugStruct<'a, 'b> {
     ///     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
     ///         fmt.debug_struct("Bar")
     ///            .field("bar", &self.bar)
-    ///            .finish_non_exhaustive() // 表示还存在其他字段。
+    ///            .finish_non_exhaustive() // Show that some other field(s) exist.
     ///     }
     /// }
     ///
@@ -211,9 +213,9 @@ impl<'a, 'b: 'a> DebugStruct<'a, 'b> {
         self.result
     }
 
-    /// 完成输出,并返回过程中遇到的任何错误。
+    /// Finishes output and returns any error encountered.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::fmt;
@@ -228,8 +230,8 @@ impl<'a, 'b: 'a> DebugStruct<'a, 'b> {
     ///         fmt.debug_struct("Bar")
     ///            .field("bar", &self.bar)
     ///            .field("baz", &self.baz)
-    ///            .finish() // 需要调用它来“结束”
-    ///                      // 结构体格式化。
+    ///            .finish() // You need to call it to "finish" the
+    ///                      // struct formatting.
     ///     }
     /// }
     ///
@@ -253,13 +255,14 @@ impl<'a, 'b: 'a> DebugStruct<'a, 'b> {
     }
 }
 
-/// 辅助编写 [`fmt::Debug`](Debug) 实现的结构体。
+/// A struct to help with [`fmt::Debug`](Debug) implementations.
 ///
-/// 当你希望在 [`Debug::fmt`] 实现中输出元组结构体形式的格式化结果时,此类型很有用。
+/// This is useful when you wish to output a formatted tuple as a part of your
+/// [`Debug::fmt`] implementation.
 ///
-/// 可通过 [`Formatter::debug_tuple`] 方法构造它。
+/// This can be constructed by the [`Formatter::debug_tuple`] method.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// use std::fmt;
@@ -299,9 +302,9 @@ pub(super) fn debug_tuple_new<'a, 'b>(
 }
 
 impl<'a, 'b: 'a> DebugTuple<'a, 'b> {
-    /// 向生成的元组结构体输出中添加新字段。
+    /// Adds a new field to the generated tuple struct output.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::fmt;
@@ -311,9 +314,9 @@ impl<'a, 'b: 'a> DebugTuple<'a, 'b> {
     /// impl fmt::Debug for Foo {
     ///     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
     ///         fmt.debug_tuple("Foo")
-    ///            .field(&self.0) // 添加第一个字段。
-    ///            .field(&self.1) // 添加第二个字段。
-    ///            .finish() // 到这里就完成了。
+    ///            .field(&self.0) // We add the first field.
+    ///            .field(&self.1) // We add the second field.
+    ///            .finish() // We're good to go!
     ///     }
     /// }
     ///
@@ -327,10 +330,10 @@ impl<'a, 'b: 'a> DebugTuple<'a, 'b> {
         self.field_with(|f| value.fmt(f))
     }
 
-    /// 向生成的元组结构体输出中添加新字段。
+    /// Adds a new field to the generated tuple struct output.
     ///
-    /// 此方法等价于 [`DebugTuple::field`],但会使用传入闭包格式化值,
-    /// 而不是调用 [`Debug::fmt`]。
+    /// This method is equivalent to [`DebugTuple::field`], but formats the
+    /// value using a provided closure rather than by calling [`Debug::fmt`].
     #[unstable(feature = "debug_closure_helpers", issue = "117729")]
     pub fn field_with<F>(&mut self, value_fmt: F) -> &mut Self
     where
@@ -357,9 +360,10 @@ impl<'a, 'b: 'a> DebugTuple<'a, 'b> {
         self
     }
 
-    /// 将该元组结构体标记为 non-exhaustive,向读者说明 debug 表示中还有其他未显示字段。
+    /// Marks the tuple struct as non-exhaustive, indicating to the reader that there are some
+    /// other fields that are not shown in the debug representation.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::fmt;
@@ -370,7 +374,7 @@ impl<'a, 'b: 'a> DebugTuple<'a, 'b> {
     ///     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
     ///         fmt.debug_tuple("Foo")
     ///            .field(&self.0)
-    ///            .finish_non_exhaustive() // 表示还存在其他字段。
+    ///            .finish_non_exhaustive() // Show that some other field(s) exist.
     ///     }
     /// }
     ///
@@ -399,9 +403,9 @@ impl<'a, 'b: 'a> DebugTuple<'a, 'b> {
         self.result
     }
 
-    /// 完成输出,并返回过程中遇到的任何错误。
+    /// Finishes output and returns any error encountered.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::fmt;
@@ -413,8 +417,8 @@ impl<'a, 'b: 'a> DebugTuple<'a, 'b> {
     ///         fmt.debug_tuple("Foo")
     ///            .field(&self.0)
     ///            .field(&self.1)
-    ///            .finish() // 需要调用它来“结束”
-    ///                      // 元组格式化。
+    ///            .finish() // You need to call it to "finish" the
+    ///                      // tuple formatting.
     ///     }
     /// }
     ///
@@ -441,7 +445,7 @@ impl<'a, 'b: 'a> DebugTuple<'a, 'b> {
     }
 }
 
-/// 用于打印类列表条目的辅助结构,不添加特殊格式化语义。
+/// A helper used to print list-like items with no special formatting.
 struct DebugInner<'a, 'b: 'a> {
     fmt: &'a mut fmt::Formatter<'b>,
     result: fmt::Result,
@@ -479,13 +483,14 @@ impl<'a, 'b: 'a> DebugInner<'a, 'b> {
     }
 }
 
-/// 辅助编写 [`fmt::Debug`](Debug) 实现的结构体。
+/// A struct to help with [`fmt::Debug`](Debug) implementations.
 ///
-/// 当你希望在 [`Debug::fmt`] 实现中输出集合形式的条目时,此类型很有用。
+/// This is useful when you wish to output a formatted set of items as a part
+/// of your [`Debug::fmt`] implementation.
 ///
-/// 可通过 [`Formatter::debug_set`] 方法构造它。
+/// This can be constructed by the [`Formatter::debug_set`] method.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// use std::fmt;
@@ -516,9 +521,9 @@ pub(super) fn debug_set_new<'a, 'b>(fmt: &'a mut fmt::Formatter<'b>) -> DebugSet
 }
 
 impl<'a, 'b: 'a> DebugSet<'a, 'b> {
-    /// 向集合输出中添加新条目。
+    /// Adds a new entry to the set output.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::fmt;
@@ -528,8 +533,8 @@ impl<'a, 'b: 'a> DebugSet<'a, 'b> {
     /// impl fmt::Debug for Foo {
     ///     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
     ///         fmt.debug_set()
-    ///            .entry(&self.0) // 添加第一个“entry”。
-    ///            .entry(&self.1) // 添加第二个“entry”。
+    ///            .entry(&self.0) // Adds the first "entry".
+    ///            .entry(&self.1) // Adds the second "entry".
     ///            .finish()
     ///     }
     /// }
@@ -545,10 +550,10 @@ impl<'a, 'b: 'a> DebugSet<'a, 'b> {
         self
     }
 
-    /// 向集合输出中添加新条目。
+    /// Adds a new entry to the set output.
     ///
-    /// 此方法等价于 [`DebugSet::entry`],但会使用传入闭包格式化条目,
-    /// 而不是调用 [`Debug::fmt`]。
+    /// This method is equivalent to [`DebugSet::entry`], but formats the
+    /// entry using a provided closure rather than by calling [`Debug::fmt`].
     #[unstable(feature = "debug_closure_helpers", issue = "117729")]
     pub fn entry_with<F>(&mut self, entry_fmt: F) -> &mut Self
     where
@@ -558,9 +563,9 @@ impl<'a, 'b: 'a> DebugSet<'a, 'b> {
         self
     }
 
-    /// 把一个 entry 迭代器的内容添加到集合输出中。
+    /// Adds the contents of an iterator of entries to the set output.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::fmt;
@@ -570,8 +575,8 @@ impl<'a, 'b: 'a> DebugSet<'a, 'b> {
     /// impl fmt::Debug for Foo {
     ///     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
     ///         fmt.debug_set()
-    ///            .entries(self.0.iter()) // 添加第一组“entry”。
-    ///            .entries(self.1.iter()) // 添加第二组“entry”。
+    ///            .entries(self.0.iter()) // Adds the first "entry".
+    ///            .entries(self.1.iter()) // Adds the second "entry".
     ///            .finish()
     ///     }
     /// }
@@ -593,9 +598,10 @@ impl<'a, 'b: 'a> DebugSet<'a, 'b> {
         self
     }
 
-    /// 将该集合标记为 non-exhaustive,向读者说明 debug 表示中还有其他未显示元素。
+    /// Marks the set as non-exhaustive, indicating to the reader that there are some other
+    /// elements that are not shown in the debug representation.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::fmt;
@@ -604,7 +610,7 @@ impl<'a, 'b: 'a> DebugSet<'a, 'b> {
     ///
     /// impl fmt::Debug for Foo {
     ///     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-    ///         // 最多打印两个元素,其余部分缩写。
+    ///         // Print at most two elements, abbreviate the rest
     ///         let mut f = fmt.debug_set();
     ///         let mut f = f.entries(self.0.iter().take(2));
     ///         if self.0.len() > 2 {
@@ -640,9 +646,9 @@ impl<'a, 'b: 'a> DebugSet<'a, 'b> {
         self.inner.result
     }
 
-    /// 完成输出,并返回过程中遇到的任何错误。
+    /// Finishes output and returns any error encountered.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::fmt;
@@ -653,7 +659,7 @@ impl<'a, 'b: 'a> DebugSet<'a, 'b> {
     ///     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
     ///         fmt.debug_set()
     ///            .entries(self.0.iter())
-    ///            .finish() // 结束集合格式化。
+    ///            .finish() // Ends the set formatting.
     ///     }
     /// }
     ///
@@ -669,13 +675,14 @@ impl<'a, 'b: 'a> DebugSet<'a, 'b> {
     }
 }
 
-/// 辅助编写 [`fmt::Debug`](Debug) 实现的结构体。
+/// A struct to help with [`fmt::Debug`](Debug) implementations.
 ///
-/// 当你希望在 [`Debug::fmt`] 实现中输出列表形式的条目时,此类型很有用。
+/// This is useful when you wish to output a formatted list of items as a part
+/// of your [`Debug::fmt`] implementation.
 ///
-/// 可通过 [`Formatter::debug_list`] 方法构造它。
+/// This can be constructed by the [`Formatter::debug_list`] method.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// use std::fmt;
@@ -706,9 +713,9 @@ pub(super) fn debug_list_new<'a, 'b>(fmt: &'a mut fmt::Formatter<'b>) -> DebugLi
 }
 
 impl<'a, 'b: 'a> DebugList<'a, 'b> {
-    /// 向列表输出中添加新条目。
+    /// Adds a new entry to the list output.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::fmt;
@@ -718,8 +725,8 @@ impl<'a, 'b: 'a> DebugList<'a, 'b> {
     /// impl fmt::Debug for Foo {
     ///     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
     ///         fmt.debug_list()
-    ///            .entry(&self.0) // 添加第一个“entry”。
-    ///            .entry(&self.1) // 添加第二个“entry”。
+    ///            .entry(&self.0) // We add the first "entry".
+    ///            .entry(&self.1) // We add the second "entry".
     ///            .finish()
     ///     }
     /// }
@@ -735,10 +742,10 @@ impl<'a, 'b: 'a> DebugList<'a, 'b> {
         self
     }
 
-    /// 向列表输出中添加新条目。
+    /// Adds a new entry to the list output.
     ///
-    /// 此方法等价于 [`DebugList::entry`],但会使用传入闭包格式化条目,
-    /// 而不是调用 [`Debug::fmt`]。
+    /// This method is equivalent to [`DebugList::entry`], but formats the
+    /// entry using a provided closure rather than by calling [`Debug::fmt`].
     #[unstable(feature = "debug_closure_helpers", issue = "117729")]
     pub fn entry_with<F>(&mut self, entry_fmt: F) -> &mut Self
     where
@@ -748,9 +755,9 @@ impl<'a, 'b: 'a> DebugList<'a, 'b> {
         self
     }
 
-    /// 把一个 entry 迭代器的内容添加到列表输出中。
+    /// Adds the contents of an iterator of entries to the list output.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::fmt;
@@ -783,9 +790,10 @@ impl<'a, 'b: 'a> DebugList<'a, 'b> {
         self
     }
 
-    /// 将该列表标记为 non-exhaustive,向读者说明 debug 表示中还有其他未显示元素。
+    /// Marks the list as non-exhaustive, indicating to the reader that there are some other
+    /// elements that are not shown in the debug representation.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::fmt;
@@ -794,7 +802,7 @@ impl<'a, 'b: 'a> DebugList<'a, 'b> {
     ///
     /// impl fmt::Debug for Foo {
     ///     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-    ///         // 最多打印两个元素,其余部分缩写。
+    ///         // Print at most two elements, abbreviate the rest
     ///         let mut f = fmt.debug_list();
     ///         let mut f = f.entries(self.0.iter().take(2));
     ///         if self.0.len() > 2 {
@@ -829,9 +837,9 @@ impl<'a, 'b: 'a> DebugList<'a, 'b> {
         })
     }
 
-    /// 完成输出,并返回过程中遇到的任何错误。
+    /// Finishes output and returns any error encountered.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::fmt;
@@ -842,7 +850,7 @@ impl<'a, 'b: 'a> DebugList<'a, 'b> {
     ///     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
     ///         fmt.debug_list()
     ///            .entries(self.0.iter())
-    ///            .finish() // 结束列表格式化。
+    ///            .finish() // Ends the list formatting.
     ///     }
     /// }
     ///
@@ -858,13 +866,14 @@ impl<'a, 'b: 'a> DebugList<'a, 'b> {
     }
 }
 
-/// 辅助编写 [`fmt::Debug`](Debug) 实现的结构体。
+/// A struct to help with [`fmt::Debug`](Debug) implementations.
 ///
-/// 当你希望在 [`Debug::fmt`] 实现中输出映射形式的格式化结果时,此类型很有用。
+/// This is useful when you wish to output a formatted map as a part of your
+/// [`Debug::fmt`] implementation.
 ///
-/// 可通过 [`Formatter::debug_map`] 方法构造它。
+/// This can be constructed by the [`Formatter::debug_map`] method.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// use std::fmt;
@@ -890,7 +899,7 @@ pub struct DebugMap<'a, 'b: 'a> {
     result: fmt::Result,
     has_fields: bool,
     has_key: bool,
-    // 在 key 与 value 之间跟踪换行状态。
+    // The state of newlines is tracked between keys and values
     state: PadAdapterState,
 }
 
@@ -900,9 +909,9 @@ pub(super) fn debug_map_new<'a, 'b>(fmt: &'a mut fmt::Formatter<'b>) -> DebugMap
 }
 
 impl<'a, 'b: 'a> DebugMap<'a, 'b> {
-    /// 向映射输出中添加新条目。
+    /// Adds a new entry to the map output.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::fmt;
@@ -912,7 +921,7 @@ impl<'a, 'b: 'a> DebugMap<'a, 'b> {
     /// impl fmt::Debug for Foo {
     ///     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
     ///         fmt.debug_map()
-    ///            .entry(&"whole", &self.0) // 添加 "whole" 条目。
+    ///            .entry(&"whole", &self.0) // We add the "whole" entry.
     ///            .finish()
     ///     }
     /// }
@@ -927,17 +936,18 @@ impl<'a, 'b: 'a> DebugMap<'a, 'b> {
         self.key(key).value(value)
     }
 
-    /// 向映射输出中添加新条目的 key 部分。
+    /// Adds the key part of a new entry to the map output.
     ///
-    /// 此方法与 `value` 搭配使用,是在一开始还不知道完整 entry 时替代 `entry` 的方式。
-    /// 只要能使用 `entry`,就应优先使用 `entry` 方法。
+    /// This method, together with `value`, is an alternative to `entry` that
+    /// can be used when the complete entry isn't known upfront. Prefer the `entry`
+    /// method when it's possible to use.
     ///
     /// # Panics
     ///
-    /// 必须先调用 `key` 再调用 `value`,且每次 `key` 调用之后都必须跟随一次对应的
-    /// `value` 调用。否则此方法会 panic。
+    /// `key` must be called before `value` and each call to `key` must be followed
+    /// by a corresponding call to `value`. Otherwise this method will panic.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::fmt;
@@ -947,7 +957,7 @@ impl<'a, 'b: 'a> DebugMap<'a, 'b> {
     /// impl fmt::Debug for Foo {
     ///     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
     ///         fmt.debug_map()
-    ///            .key(&"whole").value(&self.0) // 添加 "whole" 条目。
+    ///            .key(&"whole").value(&self.0) // We add the "whole" entry.
     ///            .finish()
     ///     }
     /// }
@@ -962,10 +972,10 @@ impl<'a, 'b: 'a> DebugMap<'a, 'b> {
         self.key_with(|f| key.fmt(f))
     }
 
-    /// 向映射输出中添加新条目的 key 部分。
+    /// Adds the key part of a new entry to the map output.
     ///
-    /// 此方法等价于 [`DebugMap::key`],但会使用传入闭包格式化 key,
-    /// 而不是调用 [`Debug::fmt`]。
+    /// This method is equivalent to [`DebugMap::key`], but formats the
+    /// key using a provided closure rather than by calling [`Debug::fmt`].
     #[unstable(feature = "debug_closure_helpers", issue = "117729")]
     pub fn key_with<F>(&mut self, key_fmt: F) -> &mut Self
     where
@@ -1002,17 +1012,18 @@ impl<'a, 'b: 'a> DebugMap<'a, 'b> {
         self
     }
 
-    /// 向映射输出中添加新条目的 value 部分。
+    /// Adds the value part of a new entry to the map output.
     ///
-    /// 此方法与 `key` 搭配使用,是在一开始还不知道完整 entry 时替代 `entry` 的方式。
-    /// 只要能使用 `entry`,就应优先使用 `entry` 方法。
+    /// This method, together with `key`, is an alternative to `entry` that
+    /// can be used when the complete entry isn't known upfront. Prefer the `entry`
+    /// method when it's possible to use.
     ///
     /// # Panics
     ///
-    /// 必须先调用 `key` 再调用 `value`,且每次 `key` 调用之后都必须跟随一次对应的
-    /// `value` 调用。否则此方法会 panic。
+    /// `key` must be called before `value` and each call to `key` must be followed
+    /// by a corresponding call to `value`. Otherwise this method will panic.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::fmt;
@@ -1022,7 +1033,7 @@ impl<'a, 'b: 'a> DebugMap<'a, 'b> {
     /// impl fmt::Debug for Foo {
     ///     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
     ///         fmt.debug_map()
-    ///            .key(&"whole").value(&self.0) // 添加 "whole" 条目。
+    ///            .key(&"whole").value(&self.0) // We add the "whole" entry.
     ///            .finish()
     ///     }
     /// }
@@ -1037,10 +1048,10 @@ impl<'a, 'b: 'a> DebugMap<'a, 'b> {
         self.value_with(|f| value.fmt(f))
     }
 
-    /// 向映射输出中添加新条目的 value 部分。
+    /// Adds the value part of a new entry to the map output.
     ///
-    /// 此方法等价于 [`DebugMap::value`],但会使用传入闭包格式化 value,
-    /// 而不是调用 [`Debug::fmt`]。
+    /// This method is equivalent to [`DebugMap::value`], but formats the
+    /// value using a provided closure rather than by calling [`Debug::fmt`].
     #[unstable(feature = "debug_closure_helpers", issue = "117729")]
     pub fn value_with<F>(&mut self, value_fmt: F) -> &mut Self
     where
@@ -1066,9 +1077,9 @@ impl<'a, 'b: 'a> DebugMap<'a, 'b> {
         self
     }
 
-    /// 把一个 entry 迭代器的内容添加到映射输出中。
+    /// Adds the contents of an iterator of entries to the map output.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::fmt;
@@ -1078,7 +1089,8 @@ impl<'a, 'b: 'a> DebugMap<'a, 'b> {
     /// impl fmt::Debug for Foo {
     ///     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
     ///         fmt.debug_map()
-    ///            // 映射这个 vec,让每个 entry 的第一个字段成为 "key"。
+    ///            // We map our vec so each entries' first field will become
+    ///            // the "key".
     ///            .entries(self.0.iter().map(|&(ref k, ref v)| (k, v)))
     ///            .finish()
     ///     }
@@ -1102,9 +1114,10 @@ impl<'a, 'b: 'a> DebugMap<'a, 'b> {
         self
     }
 
-    /// 将该映射标记为 non-exhaustive,向读者说明 debug 表示中还有其他未显示条目。
+    /// Marks the map as non-exhaustive, indicating to the reader that there are some other
+    /// entries that are not shown in the debug representation.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::fmt;
@@ -1113,7 +1126,7 @@ impl<'a, 'b: 'a> DebugMap<'a, 'b> {
     ///
     /// impl fmt::Debug for Foo {
     ///     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-    ///         // 最多打印两个元素,其余部分缩写。
+    ///         // Print at most two elements, abbreviate the rest
     ///         let mut f = fmt.debug_map();
     ///         let mut f = f.entries(self.0.iter().take(2).map(|&(ref k, ref v)| (k, v)));
     ///         if self.0.len() > 2 {
@@ -1155,14 +1168,14 @@ impl<'a, 'b: 'a> DebugMap<'a, 'b> {
         self.result
     }
 
-    /// 完成输出,并返回过程中遇到的任何错误。
+    /// Finishes output and returns any error encountered.
     ///
     /// # Panics
     ///
-    /// 必须先调用 `key` 再调用 `value`,且每次 `key` 调用之后都必须跟随一次对应的
-    /// `value` 调用。否则此方法会 panic。
+    /// `key` must be called before `value` and each call to `key` must be followed
+    /// by a corresponding call to `value`. Otherwise this method will panic.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::fmt;
@@ -1173,7 +1186,7 @@ impl<'a, 'b: 'a> DebugMap<'a, 'b> {
     ///     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
     ///         fmt.debug_map()
     ///            .entries(self.0.iter().map(|&(ref k, ref v)| (k, v)))
-    ///            .finish() // 结束映射格式化。
+    ///            .finish() // Ends the map formatting.
     ///     }
     /// }
     ///
@@ -1197,9 +1210,10 @@ impl<'a, 'b: 'a> DebugMap<'a, 'b> {
     }
 }
 
-/// 创建一个类型,其 [`fmt::Debug`] 与 [`fmt::Display`] 实现会转发到传入闭包。
+/// Creates a type whose [`fmt::Debug`] and [`fmt::Display`] impls are
+/// forwarded to the provided closure.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// use std::fmt;
@@ -1218,9 +1232,9 @@ pub fn from_fn<F: Fn(&mut fmt::Formatter<'_>) -> fmt::Result>(f: F) -> FromFn<F>
     FromFn(f)
 }
 
-/// 通过传入闭包实现 [`fmt::Debug`] 与 [`fmt::Display`]。
+/// Implements [`fmt::Debug`] and [`fmt::Display`] via the provided closure.
 ///
-/// 由 [`from_fn`] 创建。
+/// Created with [`from_fn`].
 #[stable(feature = "fmt_from_fn", since = "1.93.0")]
 pub struct FromFn<F>(F);
 

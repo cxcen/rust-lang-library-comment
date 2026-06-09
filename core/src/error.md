@@ -1,104 +1,128 @@
-用于处理错误的接口。
+Interfaces for working with Errors.
 
-# Rust 中的错误处理
+# Error Handling In Rust
 
-Rust 语言提供两个互补系统，用于构造/表示、报告、传播、响应和丢弃错误。
-这些职责统称为“错误处理”。第一套系统包括 panic 运行时和接口，最常用于表示
-程序中检测到的 bug。第二套系统包括 `Result`、错误 trait 和用户定义类型，
-用于表示程序中预期的运行时失败模式。
+The Rust language provides two complementary systems for constructing /
+representing, reporting, propagating, reacting to, and discarding errors.
+These responsibilities are collectively known as "error handling." The
+components of the first system, the panic runtime and interfaces, are most
+commonly used to represent bugs that have been detected in your program. The
+components of the second system, `Result`, the error traits, and user
+defined types, are used to represent anticipated runtime failure modes of
+your program.
 
-## panic 接口
+## The Panic Interfaces
 
-以下是 panic 系统的主要接口及其承担的职责：
+The following are the primary interfaces of the panic system and the
+responsibilities they cover:
 
-* [`panic!`] 和 [`panic_any`]（构造，自动传播）
-* [`set_hook`]、[`take_hook`] 和 [`PanicHookInfo`]（报告）
-* [`#[panic_handler]`][panic-handler] 和 [`PanicInfo`]（在 no_std 中报告）
-* [`catch_unwind`] 和 [`resume_unwind`]（丢弃，传播）
+* [`panic!`] and [`panic_any`] (Constructing, Propagated automatically)
+* [`set_hook`], [`take_hook`], and [`PanicHookInfo`] (Reporting)
+* [`#[panic_handler]`][panic-handler] and [`PanicInfo`] (Reporting in no_std)
+* [`catch_unwind`] and [`resume_unwind`] (Discarding, Propagating)
 
-以下是错误系统的主要接口及其承担的职责：
+The following are the primary interfaces of the error system and the
+responsibilities they cover:
 
-* [`Result`]（传播，响应）
-* [`Error`] trait（报告）
-* 用户定义类型（构造/表示）
-* [`match`] 和 [`downcast`]（响应）
-* 问号运算符（[`?`]）（传播）
-* 部分稳定的 [`Try`] trait（传播，构造）
-* [`Termination`]（报告）
+* [`Result`] (Propagating, Reacting)
+* The [`Error`] trait (Reporting)
+* User defined types (Constructing / Representing)
+* [`match`] and [`downcast`] (Reacting)
+* The question mark operator ([`?`]) (Propagating)
+* The partially stable [`Try`] traits (Propagating, Constructing)
+* [`Termination`] (Reporting)
 
-## 将错误转换为 panic
+## Converting Errors into Panics
 
-panic 系统和错误系统并非完全分离。很多时候，API 中预期的运行时失败错误，
-对调用方来说反而可能代表 bug。针对这类情况，标准库提供了 API，可以构造
-以某个 `Error` 作为来源的 panic。
+The panic and error systems are not entirely distinct. Often times errors
+that are anticipated runtime failures in an API might instead represent bugs
+to a caller. For these situations the standard library provides APIs for
+constructing panics with an `Error` as its source.
 
 * [`Result::unwrap`]
 * [`Result::expect`]
 
-这两个函数等价：如果 `Result` 为 `Ok`，它们返回内部值；如果 `Result` 为
-`Err`，它们会 panic，并把内部错误作为来源打印出来。二者唯一的区别是：
-使用 `expect` 时，你会提供一条 panic 错误消息，与来源一起打印；
-而 `unwrap` 使用默认消息，只说明你解包了一个 `Err`。
+These functions are equivalent, they either return the inner value if the
+`Result` is `Ok` or panic if the `Result` is `Err` printing the inner error
+as the source. The only difference between them is that with `expect` you
+provide a panic error message to be printed alongside the source, whereas
+`unwrap` has a default message indicating only that you unwrapped an `Err`.
 
-在二者之中，通常更推荐 `expect`，因为它的 `msg` 字段允许你表达意图和假设，
-从而更容易追踪 panic 的来源。另一方面，在你可以轻易证明某段代码永远不会
-panic 的场景中，`unwrap` 仍然可能很合适，例如
-`"127.0.0.1".parse::<std::net::IpAddr>().unwrap()`，也适合早期原型开发。
+Of the two, `expect` is generally preferred since its `msg` field allows you
+to convey your intent and assumptions which makes tracking down the source
+of a panic easier. `unwrap` on the other hand can still be a good fit in
+situations where you can trivially show that a piece of code will never
+panic, such as `"127.0.0.1".parse::<std::net::IpAddr>().unwrap()` or early
+prototyping.
 
-# 常见消息风格
+# Common Message Styles
 
-人们编写 `expect` 消息时常见两种风格：把消息作为面向遭遇 panic 的用户的
-信息（“把 expect 当作错误消息”），或者把消息作为面向调试 panic 的开发者的
-信息（“把 expect 当作前提条件”）。
+There are two common styles for how people word `expect` messages. Using
+the message to present information to users encountering a panic
+("expect as error message") or using the message to present information
+to developers debugging the panic ("expect as precondition").
 
-在前一种情况下，expect 消息用于描述已经发生、且被视为 bug 的错误。考虑下面的例子：
+In the former case the expect message is used to describe the error that
+has occurred which is considered a bug. Consider the following example:
 
 ```should_panic
 // Read environment variable, panic if it is not present
 let path = std::env::var("IMPORTANT_PATH").unwrap();
 ```
 
-在“把 expect 当作错误消息”风格中，我们会使用 expect 来描述环境变量本应设置却未设置：
+In the "expect as error message" style we would use expect to describe
+that the environment variable was not set when it should have been:
 
 ```should_panic
 let path = std::env::var("IMPORTANT_PATH")
     .expect("env variable `IMPORTANT_PATH` is not set");
 ```
 
-在“把 expect 当作前提条件”风格中，我们转而描述自己_预期_ `Result` 应为 `Ok`
-的理由。采用这种风格时，我们更倾向于写成：
+In the "expect as precondition" style, we would instead describe the
+reason we _expect_ the `Result` should be `Ok`. With this style we would
+prefer to write:
 
 ```should_panic
 let path = std::env::var("IMPORTANT_PATH")
     .expect("env variable `IMPORTANT_PATH` should be set by `wrapper_script.sh`");
 ```
 
-“把 expect 当作错误消息”风格与 std panic hook 的默认输出配合得不太好，
-通常会重复被解包来源错误已经传达过的信息：
+The "expect as error message" style does not work as well with the
+default output of the std panic hooks, and often ends up repeating
+information that is already communicated by the source error being
+unwrapped:
 
 ```text
 thread 'main' panicked at src/main.rs:4:6:
 env variable `IMPORTANT_PATH` is not set: NotPresent
 ```
 
-在这个例子中，我们先说某个环境变量没有设置，随后来源消息又说该环境不存在；
-我们额外传达的唯一信息只是正在检查的环境变量名称。
+In this example we end up mentioning that an env variable is not set,
+followed by our source message that says the env is not present, the
+only additional information we're communicating is the name of the
+environment variable being checked.
 
-“把 expect 当作前提条件”风格则关注源代码可读性。在 panic 专门用来表示 bug
-的场景中，它更容易让人理解究竟什么前提出了问题。另外，通过用“本应”发生什么
-来避免来源错误的方式表述 expect，我们引入了独立于来源错误的新信息。
+The "expect as precondition" style instead focuses on source code
+readability, making it easier to understand what must have gone wrong in
+situations where panics are being used to represent bugs exclusively.
+Also, by framing our expect in terms of what "SHOULD" have happened to
+prevent the source error, we end up introducing new information that is
+independent from our source error.
 
 ```text
 thread 'main' panicked at src/main.rs:4:6:
 env variable `IMPORTANT_PATH` should be set by `wrapper_script.sh`: NotPresent
 ```
 
-在这个例子中，我们不仅传达了本应设置的环境变量名称，还解释了它为什么应该被设置，
-并让来源错误清楚地显示出它与我们预期之间的矛盾。
+In this example we are communicating not only the name of the
+environment variable that should have been set, but also an explanation
+for why it should have been set, and we let the source error display as
+a clear contradiction to our expectation.
 
-**提示**：如果你很难记住如何措辞“把 expect 当作前提条件”风格的错误消息，
-请记得聚焦于 `should` 这个词，例如“env variable should be set by blah”或
-“the given binary should be available and executable by the current user”。
+**Hint**: If you're having trouble remembering how to phrase
+expect-as-precondition style error messages remember to focus on the word
+"should" as in "env variable should be set by blah" or "the given binary
+should be available and executable by the current user".
 
 [`panic_any`]: ../../std/panic/fn.panic_any.html
 [`PanicHookInfo`]: ../../std/panic/struct.PanicHookInfo.html

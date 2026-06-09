@@ -3,11 +3,11 @@ use crate::marker::Destruct;
 use crate::mem::ManuallyDrop;
 use crate::ops::{Deref, DerefMut};
 
-/// 包装一个值，并在其被 drop 时运行一个闭包。
+/// Wrap a value and run a closure when dropped.
 ///
-/// 这适合用来内联地、快速地创建析构逻辑（destructor）。
+/// This is useful for quickly creating destructors inline.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```rust
 /// # #![allow(unused)]
@@ -16,15 +16,15 @@ use crate::ops::{Deref, DerefMut};
 /// use std::mem::DropGuard;
 ///
 /// {
-///     // 围绕一个字符串创建一个新的 guard，
-///     // 它会在被 drop 时打印自己的值。
+///     // Create a new guard around a string that will
+///     // print its value when dropped.
 ///     let s = String::from("Chashu likes tuna");
 ///     let mut s = DropGuard::new(s, |s| println!("{s}"));
 ///
-///     // 修改 guard 内部所包含的字符串。
+///     // Modify the string contained in the guard.
 ///     s.push_str("!!!");
 ///
-///     // guard 会在此处被 drop，打印出：
+///     // The guard will be dropped here, printing:
 ///     // "Chashu likes tuna!!!"
 /// }
 /// ```
@@ -43,9 +43,9 @@ impl<T, F> DropGuard<T, F>
 where
     F: FnOnce(T),
 {
-    /// 创建一个新的 `DropGuard` 实例。
+    /// Create a new instance of `DropGuard`.
     ///
-    /// # 示例
+    /// # Example
     ///
     /// ```rust
     /// # #![allow(unused)]
@@ -62,13 +62,14 @@ where
         Self { inner: ManuallyDrop::new(inner), f: ManuallyDrop::new(f) }
     }
 
-    /// 消耗（consume）该 `DropGuard`，返回其包装的值。
+    /// Consumes the `DropGuard`, returning the wrapped value.
     ///
-    /// 这不会执行闭包。通常更推荐调用此函数而不是 `mem::forget`，
-    /// 因为它会返回存储的值，并 drop 闭包所捕获的变量，
-    /// 而不是泄漏这些变量所拥有的资源。
+    /// This will not execute the closure. It is typically preferred to call
+    /// this function instead of `mem::forget` because it will return the stored
+    /// value and drop variables captured by the closure instead of leaking their
+    /// owned resources.
     ///
-    /// # 示例
+    /// # Example
     ///
     /// ```rust
     /// # #![allow(unused)]
@@ -87,19 +88,20 @@ where
     where
         F: [const] Destruct,
     {
-        // 首先确保 drop 这个 guard 时不会触发它自己的析构逻辑。
+        // First we ensure that dropping the guard will not trigger
+        // its destructor
         let mut guard = ManuallyDrop::new(guard);
 
-        // 接着我们手动从 guard 中读出存储的值。
+        // Next we manually read the stored value from the guard.
         //
-        // SAFETY: 这是安全的，因为我们已经取得了 guard 的所有权。
+        // SAFETY: this is safe because we've taken ownership of the guard.
         let value = unsafe { ManuallyDrop::take(&mut guard.inner) };
 
-        // 最后我们 drop 存储的闭包。我们在读出值*之后*才这样做，
-        // 这样即使闭包的 `drop` 函数发生 panic，
-        // 展开（unwinding）过程仍然会尝试 drop 那个值。
+        // Finally we drop the stored closure. We do this *after* having read
+        // the value, so that even if the closure's `drop` function panics,
+        // unwinding still tries to drop the value.
         //
-        // SAFETY: 这是安全的，因为我们已经取得了 guard 的所有权。
+        // SAFETY: this is safe because we've taken ownership of the guard.
         unsafe { ManuallyDrop::drop(&mut guard.f) };
         value
     }
@@ -136,10 +138,10 @@ where
     F: [const] FnOnce(T),
 {
     fn drop(&mut self) {
-        // SAFETY: `DropGuard` 正处于被 drop 的过程中。
+        // SAFETY: `DropGuard` is in the process of being dropped.
         let inner = unsafe { ManuallyDrop::take(&mut self.inner) };
 
-        // SAFETY: `DropGuard` 正处于被 drop 的过程中。
+        // SAFETY: `DropGuard` is in the process of being dropped.
         let f = unsafe { ManuallyDrop::take(&mut self.f) };
 
         f(inner);

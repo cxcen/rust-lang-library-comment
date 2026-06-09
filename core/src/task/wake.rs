@@ -6,44 +6,48 @@ use crate::mem::{ManuallyDrop, transmute};
 use crate::panic::AssertUnwindSafe;
 use crate::{fmt, ptr};
 
-/// `RawWaker` 让任务执行器的实现者得以构造出一个 [`Waker`] 或 [`LocalWaker`],
-/// 从而提供自定义的唤醒行为。
+/// A `RawWaker` allows the implementor of a task executor to create a [`Waker`]
+/// or a [`LocalWaker`] which provides customized wakeup behavior.
 ///
-/// 它由一个 `data` 裸指针和一张[虚函数指针表(vtable)][vtable]构成,后者用来定制 `RawWaker`
-/// 的具体行为。这正是 `core` 只定义“唤醒任务”这一**契约/接口**、而把唤醒的真正实现完全交给
-/// 上层运行时的方式:`core` 不知道任务存在哪里、如何调度,只通过 vtable 中的函数指针回调到
-/// 运行时提供的实现。
+/// It consists of a data pointer and a [virtual function pointer table (vtable)][vtable]
+/// that customizes the behavior of the `RawWaker`.
 ///
-/// `RawWaker` 的使用是 unsafe 的——它背后是一组裸函数指针和裸数据指针,正确性完全由实现者保证。
-/// vtable 中的 `clone`、`wake`、`wake_by_ref` 和 `drop` 必须共同维护 `data` 所代表任务句柄的
-/// 所有权、引用计数和线程安全边界。实现 [`Wake`] trait 是一种安全的替代方案,代价是需要进行
-/// 堆内存分配。
+/// `RawWaker`s are unsafe to use.
+/// Implementing the [`Wake`] trait is a safe alternative that requires memory allocation.
 ///
 /// [vtable]: https://en.wikipedia.org/wiki/Virtual_method_table
 /// [`Wake`]: ../../alloc/task/trait.Wake.html
 #[derive(PartialEq, Debug)]
 #[stable(feature = "futures_api", since = "1.36.0")]
 pub struct RawWaker {
-    /// 一个数据指针,可用来存放执行器所需的任意数据。例如,它可以是一个指向与该任务关联的
-    /// `Arc` 的类型擦除指针。该字段的值会作为第一个参数被传给 vtable 中的每一个函数。
-    /// 这块数据的所有权与生命周期完全由实现者通过 vtable(尤其是 `clone`/`drop`)来管理。
+    /// A data pointer, which can be used to store arbitrary data as required
+    /// by the executor. This could be e.g. a type-erased pointer to an `Arc`
+    /// that is associated with the task.
+    /// The value of this field gets passed to all functions that are part of
+    /// the vtable as the first parameter.
     data: *const (),
-    /// 用来定制本 waker 行为的虚函数指针表。
+    /// Virtual function pointer table that customizes the behavior of this waker.
     vtable: &'static RawWakerVTable,
 }
 
 impl RawWaker {
-    /// 从给定的 `data` 指针和 `vtable` 创建一个新的 `RawWaker`。
+    /// Creates a new `RawWaker` from the provided `data` pointer and `vtable`.
     ///
-    /// `data` 指针可用来存放执行器所需的任意数据。例如,它可以是一个指向与该任务关联的
-    /// `Arc` 的类型擦除指针。这个指针的值会作为第一个参数被传给 `vtable` 中的每一个函数。
+    /// The `data` pointer can be used to store arbitrary data as required
+    /// by the executor. This could be e.g. a type-erased pointer to an `Arc`
+    /// that is associated with the task.
+    /// The value of this pointer will get passed to all functions that are part
+    /// of the `vtable` as the first parameter.
     ///
-    /// 需要特别注意:当用它来构造 [`Waker`] 时,`data` 指针必须指向一个线程安全的类型,
-    /// 例如 `Arc<T: Send + Sync>`。而在构造 [`LocalWaker`] 时这一限制被解除——可以使用像
-    /// `Rc<T>` 这样不实现 <code>[Send] + [Sync]</code> 的类型。
+    /// It is important to consider that the `data` pointer must point to a
+    /// thread safe type such as an `Arc<T: Send + Sync>`
+    /// when used to construct a [`Waker`]. This restriction is lifted when
+    /// constructing a [`LocalWaker`], which allows using types that do not implement
+    /// <code>[Send] + [Sync]</code> like `Rc<T>`.
     ///
-    /// `vtable` 用来定制由该 `RawWaker` 创建出的 `Waker` 的行为。对 `Waker` 的每一项操作,
-    /// 都会调用底层 `RawWaker` 的 `vtable` 中对应的那个函数。
+    /// The `vtable` customizes the behavior of a `Waker` which gets created
+    /// from a `RawWaker`. For each operation on the `Waker`, the associated
+    /// function in the `vtable` of the underlying `RawWaker` will be called.
     #[inline]
     #[rustc_promotable]
     #[stable(feature = "futures_api", since = "1.36.0")]
@@ -56,117 +60,136 @@ impl RawWaker {
     #[stable(feature = "noop_waker", since = "1.85.0")]
     const NOOP: RawWaker = {
         const VTABLE: RawWakerVTable = RawWakerVTable::new(
-            // clone 只是返回一个新的“什么都不做”的 `RawWaker`
+            // Cloning just returns a new no-op raw waker
             |_| RawWaker::NOOP,
-            // wake 什么都不做
+            // `wake` does nothing
             |_| {},
-            // wake_by_ref 什么都不做
+            // `wake_by_ref` does nothing
             |_| {},
-            // 由于我们没有分配任何资源,drop 也什么都不做
+            // Dropping does nothing as we don't allocate anything
             |_| {},
         );
         RawWaker::new(ptr::null(), &VTABLE)
     };
 }
 
-/// 一张虚函数指针表(vtable),用来指定某个 [`RawWaker`] 的行为。
+/// A virtual function pointer table (vtable) that specifies the behavior
+/// of a [`RawWaker`].
 ///
-/// 传给表中所有函数的指针,都是其外层 [`RawWaker`] 对象里的 `data` 指针。
+/// The pointer passed to all functions inside the vtable is the `data` pointer
+/// from the enclosing [`RawWaker`] object.
 ///
-/// 表中的这些函数只应在 [`RawWaker`] 实现内部、针对一个正确构造的 [`RawWaker`] 对象的
-/// `data` 指针来调用。这个 `data` 指针必须正是为同一张 vtable 准备的值,并且必须满足该 vtable
-/// 各函数约定的有效性、所有权和线程安全要求。用任何其它 `data` 指针去调用其中某个函数,
-/// 都会导致未定义行为。
+/// The functions inside this struct are only intended to be called on the `data`
+/// pointer of a properly constructed [`RawWaker`] object from inside the
+/// [`RawWaker`] implementation. Calling one of the contained functions using
+/// any other `data` pointer will cause undefined behavior.
 ///
-/// 注意:尽管本类型实现了 `PartialEq`,但比较函数指针(以及由此比较像本结构这样含有函数指针的
-/// 结构体)是不可靠的:指向同一函数的指针可能比较为不相等(因为函数会在多个 codegen unit 中被
-/// 复制),而指向*不同*函数的指针也可能比较为相等(因为相同的函数可能在一个 codegen unit 内被
-/// 去重合并)。
+/// Note that while this type implements `PartialEq`, comparing function pointers, and hence
+/// comparing structs like this that contain function pointers, is unreliable: pointers to the same
+/// function can compare inequal (because functions are duplicated in multiple codegen units), and
+/// pointers to *different* functions can compare equal (since identical functions can be
+/// deduplicated within a codegen unit).
 ///
-/// # 线程安全
-/// 如果该 [`RawWaker`] 将被用来构造一个 [`Waker`],那么这些函数全部**必须是线程安全的**
-/// (即便 [`RawWaker`] 本身是 <code>\![Send] + \![Sync]</code>)。原因在于 [`Waker`] 是
-/// <code>[Send] + [Sync]</code> 的,它可能被移动到任意线程,或通过 `&` 引用被调用。举例来说,
-/// 这意味着如果 `clone` 与 `drop` 函数维护着一个引用计数,它们就必须以原子方式来增减该计数,
-/// 否则会发生数据竞争,进而导致内存不安全。
+/// # Thread safety
+/// If the [`RawWaker`] will be used to construct a [`Waker`] then
+/// these functions must all be thread-safe (even though [`RawWaker`] is
+/// <code>\![Send] + \![Sync]</code>). This is because [`Waker`] is <code>[Send] + [Sync]</code>,
+/// and it may be moved to arbitrary threads or invoked by `&` reference. For example,
+/// this means that if the `clone` and `drop` functions manage a reference count,
+/// they must do so atomically.
 ///
-/// 然而,如果该 [`RawWaker`] 将被用来构造一个 [`LocalWaker`],这些函数就不必线程安全。
-/// 这意味着 `data` 指针中可以存放 <code>\![Send] + \![Sync]</code> 的数据,引用计数也不需要任何
-/// 原子同步。因为 [`LocalWaker`] 自身就不是线程安全的,无法被跨线程发送。
+/// However, if the [`RawWaker`] will be used to construct a [`LocalWaker`] instead, then
+/// these functions don't need to be thread safe. This means that <code>\![Send] + \![Sync]</code>
+///  data can be stored in the data pointer, and reference counting does not need any atomic
+/// synchronization. This is because [`LocalWaker`] is not thread safe itself, so it cannot
+/// be sent across threads.
 #[stable(feature = "futures_api", since = "1.36.0")]
 #[allow(unpredictable_function_pointer_comparisons)]
 #[derive(PartialEq, Copy, Clone, Debug)]
 pub struct RawWakerVTable {
-    /// 当 [`RawWaker`] 被克隆时(例如存放着该 [`RawWaker`] 的 [`Waker`] 被克隆时)调用此函数。
+    /// This function will be called when the [`RawWaker`] gets cloned, e.g. when
+    /// the [`Waker`] in which the [`RawWaker`] is stored gets cloned.
     ///
-    /// 此函数的实现必须保留这一新增的 [`RawWaker`] 实例及其关联任务所需的全部资源(通常意味着
-    /// 把引用计数加一)。返回的 [`RawWaker`] 必须使用与其 `data` 匹配的 vtable,并且在返回的那个
-    /// [`RawWaker`] 上调用 `wake`,所唤醒的任务必须与在原始 [`RawWaker`] 上调用 `wake` 时唤醒的是
-    /// 同一个任务。
+    /// The implementation of this function must retain all resources that are
+    /// required for this additional instance of a [`RawWaker`] and associated
+    /// task. Calling `wake` on the resulting [`RawWaker`] should result in a wakeup
+    /// of the same task that would have been awoken by the original [`RawWaker`].
     clone: unsafe fn(*const ()) -> RawWaker,
 
-    /// 当 [`Waker`] 上的 `wake` 被调用时调用此函数。它必须唤醒与该 [`RawWaker`] 关联的任务。
+    /// This function will be called when `wake` is called on the [`Waker`].
+    /// It must wake up the task associated with this [`RawWaker`].
     ///
-    /// 此函数的实现必须确保释放与该 [`RawWaker`] 实例及其关联任务相关的所有资源——因为 `wake`
-    /// 会**消费**这个 waker(把所有权交给本函数),通常意味着在唤醒后把引用计数减一。调用方不会再
-    /// 对同一个 [`RawWaker`] 实例调用 `drop`,所以释放责任必须在这里完成。
+    /// The implementation of this function must make sure to release any
+    /// resources that are associated with this instance of a [`RawWaker`] and
+    /// associated task.
     wake: unsafe fn(*const ()),
 
-    /// 当 [`Waker`] 上的 `wake_by_ref` 被调用时调用此函数。它必须唤醒与该 [`RawWaker`] 关联的任务。
+    /// This function will be called when `wake_by_ref` is called on the [`Waker`].
+    /// It must wake up the task associated with this [`RawWaker`].
     ///
-    /// 此函数与 `wake` 类似,但**不得消费**所提供的 `data` 指针(即不获取其所有权、不释放资源),
-    /// 因为调用方仍持有该 waker。
+    /// This function is similar to `wake`, but must not consume the provided data
+    /// pointer.
     wake_by_ref: unsafe fn(*const ()),
 
-    /// 当一个 [`Waker`] 被丢弃(drop)时调用此函数。
+    /// This function will be called when a [`Waker`] gets dropped.
     ///
-    /// 此函数的实现必须确保释放与该 [`RawWaker`] 实例及其关联任务相关的所有资源(通常意味着把
-    /// 引用计数减一,并在计数归零时回收底层分配)。它至少要释放这一份 waker 实例拥有的资源;
-    /// 调用方不能依赖丢弃 waker 来安排任务再次运行。
+    /// The implementation of this function must make sure to release any
+    /// resources that are associated with this instance of a [`RawWaker`] and
+    /// associated task.
     drop: unsafe fn(*const ()),
 }
 
 impl RawWakerVTable {
-    /// 从给定的 `clone`、`wake`、`wake_by_ref` 和 `drop` 函数创建一个新的 `RawWakerVTable`。
+    /// Creates a new `RawWakerVTable` from the provided `clone`, `wake`,
+    /// `wake_by_ref`, and `drop` functions.
     ///
-    /// 如果该 [`RawWaker`] 将被用来构造一个 [`Waker`],那么这些函数全部**必须是线程安全的**
-    /// (即便 [`RawWaker`] 本身是 <code>\![Send] + \![Sync]</code>)。原因在于 [`Waker`] 是
-    /// <code>[Send] + [Sync]</code> 的,它可能被移动到任意线程,或通过 `&` 引用被调用。举例来说,
-    /// 这意味着如果 `clone` 与 `drop` 函数维护着一个引用计数,它们就必须以原子方式来增减该计数。
+    /// If the [`RawWaker`] will be used to construct a [`Waker`] then
+    /// these functions must all be thread-safe (even though [`RawWaker`] is
+    /// <code>\![Send] + \![Sync]</code>). This is because [`Waker`] is <code>[Send] + [Sync]</code>,
+    /// and it may be moved to arbitrary threads or invoked by `&` reference. For example,
+    /// this means that if the `clone` and `drop` functions manage a reference count,
+    /// they must do so atomically.
     ///
-    /// 然而,如果该 [`RawWaker`] 将被用来构造一个 [`LocalWaker`],这些函数就不必线程安全。
-    /// 这意味着 `data` 指针中可以存放 <code>\![Send] + \![Sync]</code> 的数据,引用计数也不需要任何
-    /// 原子同步。因为 [`LocalWaker`] 自身就不是线程安全的,无法被跨线程发送。
+    /// However, if the [`RawWaker`] will be used to construct a [`LocalWaker`] instead, then
+    /// these functions don't need to be thread safe. This means that <code>\![Send] + \![Sync]</code>
+    /// data can be stored in the data pointer, and reference counting does not need any atomic
+    /// synchronization. This is because [`LocalWaker`] is not thread safe itself, so it cannot
+    /// be sent across threads.
     /// # `clone`
     ///
-    /// 当 [`RawWaker`] 被克隆时(例如存放着该 [`RawWaker`] 的 [`Waker`]/[`LocalWaker`] 被克隆时)
-    /// 调用此函数。
+    /// This function will be called when the [`RawWaker`] gets cloned, e.g. when
+    /// the [`Waker`]/[`LocalWaker`] in which the [`RawWaker`] is stored gets cloned.
     ///
-    /// 此函数的实现必须保留这一新增的 [`RawWaker`] 实例及其关联任务所需的全部资源。在返回的那个
-    /// [`RawWaker`] 上调用 `wake`,所唤醒的任务必须与在原始 [`RawWaker`] 上调用 `wake` 时唤醒的是
-    /// 同一个任务。若 `data` 中包含引用计数,这里通常要增加计数,并且在线程安全 `Waker` 场景下
-    /// 必须使用原子操作。
+    /// The implementation of this function must retain all resources that are
+    /// required for this additional instance of a [`RawWaker`] and associated
+    /// task. Calling `wake` on the resulting [`RawWaker`] should result in a wakeup
+    /// of the same task that would have been awoken by the original [`RawWaker`].
     ///
     /// # `wake`
     ///
-    /// 当 [`Waker`] 上的 `wake` 被调用时调用此函数。它必须唤醒与该 [`RawWaker`] 关联的任务。
+    /// This function will be called when `wake` is called on the [`Waker`].
+    /// It must wake up the task associated with this [`RawWaker`].
     ///
-    /// 此函数的实现必须确保释放与该 [`RawWaker`] 实例及其关联任务相关的所有资源。因为 `wake`
-    /// 消费 waker,这里必须完成与 `drop` 等价的释放责任,同时把任务重新提交给执行器。
+    /// The implementation of this function must make sure to release any
+    /// resources that are associated with this instance of a [`RawWaker`] and
+    /// associated task.
     ///
     /// # `wake_by_ref`
     ///
-    /// 当 [`Waker`] 上的 `wake_by_ref` 被调用时调用此函数。它必须唤醒与该 [`RawWaker`] 关联的任务。
+    /// This function will be called when `wake_by_ref` is called on the [`Waker`].
+    /// It must wake up the task associated with this [`RawWaker`].
     ///
-    /// 此函数与 `wake` 类似,但**不得消费**所提供的 `data` 指针;它只能借用任务句柄并安排唤醒,
-    /// 不能减少属于当前 waker 实例的引用计数。
+    /// This function is similar to `wake`, but must not consume the provided data
+    /// pointer.
     ///
     /// # `drop`
     ///
-    /// 当一个 [`Waker`]/[`LocalWaker`] 被丢弃(drop)时调用此函数。
+    /// This function will be called when a [`Waker`]/[`LocalWaker`] gets
+    /// dropped.
     ///
-    /// 此函数的实现必须确保释放与该 [`RawWaker`] 实例及其关联任务相关的所有资源。它代表正常
-    /// 丢弃 waker;调用方不能把 drop 当作一次唤醒来依赖。
+    /// The implementation of this function must make sure to release any
+    /// resources that are associated with this instance of a [`RawWaker`] and
+    /// associated task.
     #[rustc_promotable]
     #[stable(feature = "futures_api", since = "1.36.0")]
     #[rustc_const_stable(feature = "futures_api", since = "1.36.0")]
@@ -186,32 +209,28 @@ enum ExtData<'a> {
     None(()),
 }
 
-/// 一个异步任务的上下文。
+/// The context of an asynchronous task.
 ///
-/// 目前,`Context` 唯一的作用就是提供对一个 [`&Waker`](Waker) 的访问,该 waker 可用于唤醒
-/// 当前任务。执行器在每次调用 [`Future::poll`](crate::future::Future::poll) 前构造或复用一个
-/// `Context`,并把“如果本次返回 `Pending`,之后该如何重新调度这个任务”的能力放进其中。
-/// future 实现若需要挂起,就从这个 `Context` 克隆 waker 并交给 I/O 资源、计时器或其它事件源。
-/// 预留这一层封装是为了未来可扩展(例如携带更多上下文信息),而不破坏现有 API。
-///
-/// 注意:`Context` 在不同的 `poll` 调用之间**不保证**是同一个,其中携带的 [`Waker`] 也可能不同。
-/// 因此实现者在每次 `poll` 时都应使用本次传入的、最新的那个 waker,而不要假定它与上次相同。
-/// 这条规则允许执行器迁移任务、替换调度队列或压缩唤醒状态,同时仍保持 `poll`/`wake` 协议正确。
+/// Currently, `Context` only serves to provide access to a [`&Waker`](Waker)
+/// which can be used to wake the current task.
 #[stable(feature = "futures_api", since = "1.36.0")]
 #[lang = "Context"]
 pub struct Context<'a> {
     waker: &'a Waker,
     local_waker: &'a LocalWaker,
     ext: AssertUnwindSafe<ExtData<'a>>,
-    // 通过强制让生命周期为不变,来对未来可能的型变改动做前向兼容
-    // 防护(参数位置的生命周期是逆变的,返回位置的生命周期是协变的)。
+    // Ensure we future-proof against variance changes by forcing
+    // the lifetime to be invariant (argument-position lifetimes
+    // are contravariant while return-position lifetimes are
+    // covariant).
     _marker: PhantomData<fn(&'a ()) -> &'a ()>,
-    // 确保 `Context` 是 `!Send` 且 `!Sync` 的,以便将来可以加入 `!Send` 和/或 `!Sync` 的字段。
+    // Ensure `Context` is `!Send` and `!Sync` in order to allow
+    // for future `!Send` and / or `!Sync` fields.
     _marker2: PhantomData<*mut ()>,
 }
 
 impl<'a> Context<'a> {
-    /// 从一个 [`&Waker`](Waker) 创建一个新的 `Context`。
+    /// Creates a new `Context` from a [`&Waker`](Waker).
     #[stable(feature = "futures_api", since = "1.36.0")]
     #[rustc_const_stable(feature = "const_waker", since = "1.82.0")]
     #[must_use]
@@ -220,7 +239,7 @@ impl<'a> Context<'a> {
         ContextBuilder::from_waker(waker).build()
     }
 
-    /// 返回当前任务的 [`Waker`] 的引用。
+    /// Returns a reference to the [`Waker`] for the current task.
     #[inline]
     #[must_use]
     #[stable(feature = "futures_api", since = "1.36.0")]
@@ -229,19 +248,19 @@ impl<'a> Context<'a> {
         &self.waker
     }
 
-    /// 返回当前任务的 [`LocalWaker`] 的引用。
+    /// Returns a reference to the [`LocalWaker`] for the current task.
     #[inline]
     #[unstable(feature = "local_waker", issue = "118959")]
     pub const fn local_waker(&self) -> &'a LocalWaker {
         &self.local_waker
     }
 
-    /// 返回当前任务的扩展数据的引用。
+    /// Returns a reference to the extension data for the current task.
     #[inline]
     #[unstable(feature = "context_ext", issue = "123392")]
     pub const fn ext(&mut self) -> &mut dyn Any {
-        // FIXME: 这个字段让 Context 在 unwind 安全性方面变得格外别扭;
-        // 若要稳定它,需要重新评估这里使用 AssertUnwindSafe 是否正当,以及调用方是否会观察到影响。
+        // FIXME: this field makes Context extra-weird about unwind safety
+        // can we justify AssertUnwindSafe if we stabilize this? do we care?
         match &mut self.ext.0 {
             ExtData::Some(data) => *data,
             ExtData::None(unit) => unit,
@@ -256,9 +275,10 @@ impl fmt::Debug for Context<'_> {
     }
 }
 
-/// 一个用于构造 `Context` 实例的构造器,支持设置 `LocalWaker`。
+/// A Builder used to construct a `Context` instance
+/// with support for `LocalWaker`.
 ///
-/// # 示例
+/// # Examples
 /// ```
 /// #![feature(local_waker)]
 /// use std::task::{ContextBuilder, LocalWaker, Waker, Poll};
@@ -282,23 +302,22 @@ pub struct ContextBuilder<'a> {
     waker: &'a Waker,
     local_waker: &'a LocalWaker,
     ext: ExtData<'a>,
-    // 通过强制让生命周期为不变,来对未来可能的型变改动做前向兼容
-    // 防护(参数位置的生命周期是逆变的,返回位置的生命周期是协变的)。
+    // Ensure we future-proof against variance changes by forcing
+    // the lifetime to be invariant (argument-position lifetimes
+    // are contravariant while return-position lifetimes are
+    // covariant).
     _marker: PhantomData<fn(&'a ()) -> &'a ()>,
-    // 确保 `Context` 是 `!Send` 且 `!Sync` 的,以便将来可以加入 `!Send` 和/或 `!Sync` 的字段。
+    // Ensure `Context` is `!Send` and `!Sync` in order to allow
+    // for future `!Send` and / or `!Sync` fields.
     _marker2: PhantomData<*mut ()>,
 }
 
 impl<'a> ContextBuilder<'a> {
-    /// 从一个 `Waker` 创建一个 `ContextBuilder`。
-    ///
-    /// 这是执行器准备调用 `poll` 时的入口:普通 `Waker` 总是存在,`LocalWaker` 默认通过同一份
-    /// `RawWaker` 派生出来,除非调用方随后显式设置。
+    /// Creates a ContextBuilder from a Waker.
     #[inline]
     #[unstable(feature = "local_waker", issue = "118959")]
     pub const fn from_waker(waker: &'a Waker) -> Self {
-        // SAFETY: LocalWaker 就是去掉了线程安全性的 Waker,两者内存布局一致,
-        // 因此把 `&Waker` transmute 成 `&LocalWaker` 是合法的。
+        // SAFETY: LocalWaker is just Waker without thread safety
         let local_waker = unsafe { transmute(waker) };
         Self {
             waker,
@@ -309,7 +328,7 @@ impl<'a> ContextBuilder<'a> {
         }
     }
 
-    /// 从一个已有的 `Context` 创建一个 `ContextBuilder`。
+    /// Creates a ContextBuilder from an existing Context.
     #[inline]
     #[unstable(feature = "context_ext", issue = "123392")]
     pub const fn from(cx: &'a mut Context<'_>) -> Self {
@@ -326,28 +345,28 @@ impl<'a> ContextBuilder<'a> {
         }
     }
 
-    /// 设置 `Context` 上 waker 的取值。
+    /// Sets the value for the waker on `Context`.
     #[inline]
     #[unstable(feature = "context_ext", issue = "123392")]
     pub const fn waker(self, waker: &'a Waker) -> Self {
         Self { waker, ..self }
     }
 
-    /// 设置 `Context` 上 `LocalWaker` 的取值。
+    /// Sets the value for the local waker on `Context`.
     #[inline]
     #[unstable(feature = "local_waker", issue = "118959")]
     pub const fn local_waker(self, local_waker: &'a LocalWaker) -> Self {
         Self { local_waker, ..self }
     }
 
-    /// 设置 `Context` 上扩展数据的取值。
+    /// Sets the value for the extension data on `Context`.
     #[inline]
     #[unstable(feature = "context_ext", issue = "123392")]
     pub const fn ext(self, data: &'a mut dyn Any) -> Self {
         Self { ext: ExtData::Some(data), ..self }
     }
 
-    /// 构建出 `Context`。
+    /// Builds the `Context`.
     #[inline]
     #[unstable(feature = "local_waker", issue = "118959")]
     pub const fn build(self) -> Context<'a> {
@@ -356,28 +375,30 @@ impl<'a> ContextBuilder<'a> {
     }
 }
 
-/// `Waker` 是一个用于唤醒任务的句柄:它通过通知任务所属的执行器“该任务已可以再次运行”来完成
-/// 唤醒。
+/// A `Waker` is a handle for waking up a task by notifying its executor that it
+/// is ready to be run.
 ///
-/// 该句柄封装了一个 [`RawWaker`] 实例,后者定义了与具体执行器相关的唤醒行为。
+/// This handle encapsulates a [`RawWaker`] instance, which defines the
+/// executor-specific wakeup behavior.
 ///
-/// 一个 `Waker` 的典型生命周期是:由执行器构造出来,包进一个 [`Context`],再传给
-/// [`Future::poll()`]。随后,如果该 future 选择返回 [`Poll::Pending`],它就必须以某种方式把这个
-/// waker 保存下来,并在该 future 应当被再次 poll 时调用 [`Waker::wake()`]。这正是 [`Future::poll`]
-/// “返回 `Pending` 前必须已安排好唤醒”这一契约得以落实的机制。
+/// The typical life of a `Waker` is that it is constructed by an executor, wrapped in a
+/// [`Context`], then passed to [`Future::poll()`]. Then, if the future chooses to return
+/// [`Poll::Pending`], it must also store the waker somehow and call [`Waker::wake()`] when
+/// the future should be polled again.
 ///
-/// `Waker` 实现了 [`Clone`]、[`Send`] 和 [`Sync`];因此一个 waker 可以从任意线程被调用,包括完全
-/// 不受执行器管理的线程。举例来说,当某个阻塞式函数调用在另一个线程上完成时,就可以借此唤醒一个
-/// future。
+/// Implements [`Clone`], [`Send`], and [`Sync`]; therefore, a waker may be invoked
+/// from any thread, including ones not in any way managed by the executor. For example,
+/// this might be done to wake a future when a blocking function call completes on another
+/// thread.
 ///
-/// 注意:相比 `*waker = new_waker.clone()`,更推荐使用 `waker.clone_from(&new_waker)`,因为当两个
-/// waker [唤醒的是同一个任务](Self::will_wake)时,后者可以避免不必要的克隆。
+/// Note that it is preferable to use `waker.clone_from(&new_waker)` instead
+/// of `*waker = new_waker.clone()`, as the former will avoid cloning the waker
+/// unnecessarily if the two wakers [wake the same task](Self::will_wake).
 ///
-/// 从一个 [`RawWaker`] 构造 `Waker` 是 unsafe 的。实现 [`Wake`] trait 是一种安全的替代方案,
-/// 代价是需要进行堆内存分配。
+/// Constructing a `Waker` from a [`RawWaker`] is unsafe.
+/// Implementing the [`Wake`] trait is a safe alternative that requires memory allocation.
 ///
 /// [`Future::poll()`]: core::future::Future::poll
-/// [`Future::poll`]: core::future::Future::poll
 /// [`Poll::Pending`]: core::task::Poll::Pending
 /// [`Wake`]: ../../alloc/task/trait.Wake.html
 #[repr(transparent)]
@@ -395,82 +416,94 @@ unsafe impl Send for Waker {}
 unsafe impl Sync for Waker {}
 
 impl Waker {
-    /// 唤醒与此 `Waker` 关联的任务。
+    /// Wakes up the task associated with this `Waker`.
     ///
-    /// 只要执行器仍在运行且任务尚未结束,就保证:每一次 [`wake()`](Self::wake)(或
-    /// [`wake_by_ref()`](Self::wake_by_ref))调用之后,该 `Waker` 所属的任务至少会被
-    /// [`poll()`] 一次。这使得在运行可能无界的处理循环时,能够临时让出给其它任务。
+    /// As long as the executor keeps running and the task is not finished, it is
+    /// guaranteed that each invocation of [`wake()`](Self::wake) (or
+    /// [`wake_by_ref()`](Self::wake_by_ref)) will be followed by at least one
+    /// [`poll()`] of the task to which this `Waker` belongs. This makes
+    /// it possible to temporarily yield to other tasks while running potentially
+    /// unbounded processing loops.
     ///
-    /// 注意,上面这一点意味着:运行时可能会把多次唤醒合并为对 [`poll()`] 的一次调用。
+    /// Note that the above implies that multiple wake-ups may be coalesced into a
+    /// single [`poll()`] invocation by the runtime.
     ///
-    /// 还要注意,让出给相互竞争的任务并不被保证:具体运行哪个任务由执行器决定,执行器也可能选择
-    /// 再次运行当前任务。
+    /// Also note that yielding to competing tasks is not guaranteed: it is the
+    /// executor’s choice which task to run and the executor may choose to run the
+    /// current task again.
     ///
     /// [`poll()`]: crate::future::Future::poll
     #[inline]
     #[stable(feature = "futures_api", since = "1.36.0")]
     pub fn wake(self) {
-        // 真正的唤醒调用通过一次虚函数调用,委派给由执行器定义的那份实现。
+        // The actual wakeup call is delegated through a virtual function call
+        // to the implementation which is defined by the executor.
 
-        // 不要调用 `drop`——这个 waker 会被 `wake` 消费掉(其资源由 vtable 的 wake 负责释放)。
+        // Don't call `drop` -- the waker will be consumed by `wake`.
         let this = ManuallyDrop::new(self);
 
-        // SAFETY: 这是安全的,因为初始化 `wake` 与 `data` 的唯一途径是 `Waker::from_raw`
-        // 或 `Waker::new`,这要求使用者已确认 `RawWaker` 的契约得到了遵守
-        // (即 data 指针对该 vtable 有效,且 wake 会消费这一份 waker 资源)。
+        // SAFETY: This is safe because `Waker::from_raw` is the only way
+        // to initialize `wake` and `data` requiring the user to acknowledge
+        // that the contract of `RawWaker` is upheld.
         unsafe { (this.waker.vtable.wake)(this.waker.data) };
     }
 
-    /// 在不消费该 `Waker` 的前提下,唤醒与之关联的任务。
+    /// Wakes up the task associated with this `Waker` without consuming the `Waker`.
     ///
-    /// 这与 [`wake()`](Self::wake) 类似,但在已持有一个拥有所有权的 `Waker` 的场景下可能略低效一些。
-    /// 相比 `waker.clone().wake()`,应优先使用本方法。
+    /// This is similar to [`wake()`](Self::wake), but may be slightly less efficient in
+    /// the case where an owned `Waker` is available. This method should be preferred to
+    /// calling `waker.clone().wake()`.
     #[inline]
     #[stable(feature = "futures_api", since = "1.36.0")]
     pub fn wake_by_ref(&self) {
-        // 真正的唤醒调用通过一次虚函数调用,委派给由执行器定义的那份实现。
+        // The actual wakeup call is delegated through a virtual function call
+        // to the implementation which is defined by the executor.
 
-        // SAFETY: 见 `wake`
+        // SAFETY: see `wake`
         unsafe { (self.waker.vtable.wake_by_ref)(self.waker.data) }
     }
 
-    /// 如果此 `Waker` 与另一个 `Waker` 会唤醒同一个任务,返回 `true`。
+    /// Returns `true` if this `Waker` and another `Waker` would awake the same task.
     ///
-    /// 本函数以“尽力而为”为基础工作:即便两个 `Waker` 确实会唤醒同一个任务,它也
-    /// 可能返回 `false`。但反过来,如果本函数返回了 `true`,就保证这两个 `Waker` 唤醒的是同一个
-    /// 任务。
+    /// This function works on a best-effort basis, and may return false even
+    /// when the `Waker`s would awaken the same task. However, if this function
+    /// returns `true`, it is guaranteed that the `Waker`s will awaken the same task.
     ///
-    /// 本函数主要用于优化目的——例如本类型的 [`clone_from`](Self::clone_from) 实现就借助它,
-    /// 在两个 waker 反正会唤醒同一任务时避免克隆。
+    /// This function is primarily used for optimization purposes — for example,
+    /// this type's [`clone_from`](Self::clone_from) implementation uses it to
+    /// avoid cloning the waker when they would wake the same task anyway.
     #[inline]
     #[must_use]
     #[stable(feature = "futures_api", since = "1.36.0")]
     pub fn will_wake(&self, other: &Waker) -> bool {
-        // 我们通过比较 vtable 的地址(而非 vtable 的内容)来做优化。
-        // 由于本函数被文档声明为“尽力而为”,这样做是允许的。
+        // We optimize this by comparing vtable addresses instead of vtable contents.
+        // This is permitted since the function is documented as best-effort.
         let RawWaker { data: a_data, vtable: a_vtable } = self.waker;
         let RawWaker { data: b_data, vtable: b_vtable } = other.waker;
         a_data == b_data && ptr::eq(a_vtable, b_vtable)
     }
 
-    /// 从给定的 `data` 指针和 `vtable` 创建一个新的 `Waker`。
+    /// Creates a new `Waker` from the provided `data` pointer and `vtable`.
     ///
-    /// `data` 指针可用来存放执行器所需的任意数据。例如,它可以是一个指向与该任务关联的
-    /// `Arc` 的类型擦除指针。这个指针的值会作为第一个参数被传给 `vtable` 中的每一个函数。
+    /// The `data` pointer can be used to store arbitrary data as required
+    /// by the executor. This could be e.g. a type-erased pointer to an `Arc`
+    /// that is associated with the task.
+    /// The value of this pointer will get passed to all functions that are part
+    /// of the `vtable` as the first parameter.
     ///
-    /// 需要特别注意:`data` 指针必须指向一个线程安全的类型,例如 `Arc`。
+    /// It is important to consider that the `data` pointer must point to a
+    /// thread safe type such as an `Arc`.
     ///
-    /// `vtable` 用来定制 `Waker` 的行为。对 `Waker` 的每一项操作,都会调用 `vtable` 中对应的
-    /// 那个函数。
+    /// The `vtable` customizes the behavior of a `Waker`. For each operation
+    /// on the `Waker`, the associated function in the `vtable` will be called.
     ///
-    /// # 安全性(Safety）
+    /// # Safety
     ///
-    /// `data` 必须是为这张 `vtable` 准备的指针,并且 `vtable` 中的 `clone`、`wake`、
-    /// `wake_by_ref` 和 `drop` 必须满足 [`RawWakerVTable`] 文档中定义的全部契约。因为返回的是
-    /// 线程安全的 [`Waker`],这些函数还必须能被任意线程调用;例如引用计数必须用原子操作维护。
-    /// 若这些条件不成立,返回的 `Waker` 在克隆、唤醒或丢弃时可能触发未定义行为。
+    /// The behavior of the returned `Waker` is undefined if the contract defined
+    /// in [`RawWakerVTable`]'s documentation is not upheld.
     ///
-    /// (希望避免使用 unsafe 代码的作者可以改为实现 [`Wake`] trait,代价是需要一次堆分配。)
+    /// (Authors wishing to avoid unsafe code may implement the [`Wake`] trait instead, at the
+    /// cost of a required heap allocation.)
     ///
     /// [`Wake`]: ../../alloc/task/trait.Wake.html
     #[inline]
@@ -481,16 +514,15 @@ impl Waker {
         Waker { waker: RawWaker { data, vtable } }
     }
 
-    /// 从一个 [`RawWaker`] 创建一个新的 `Waker`。
+    /// Creates a new `Waker` from [`RawWaker`].
     ///
-    /// # 安全性(Safety）
+    /// # Safety
     ///
-    /// 传入的 [`RawWaker`] 必须拥有一个与其 `data` 匹配的 [`RawWakerVTable`],并且该 vtable
-    /// 必须满足 [`Waker`] 所需的线程安全契约。`from_raw` 会接管这一份 `RawWaker` 的所有权;
-    /// 之后 `Waker` 的 clone/wake/drop 都会直接调用该 vtable。若这些契约未被遵守,返回的 `Waker`
-    /// 的行为是未定义的。
+    /// The behavior of the returned `Waker` is undefined if the contract defined
+    /// in [`RawWaker`]'s and [`RawWakerVTable`]'s documentation is not upheld.
     ///
-    /// (希望避免使用 unsafe 代码的作者可以改为实现 [`Wake`] trait,代价是需要一次堆分配。)
+    /// (Authors wishing to avoid unsafe code may implement the [`Wake`] trait instead, at the
+    /// cost of a required heap allocation.)
     ///
     /// [`Wake`]: ../../alloc/task/trait.Wake.html
     #[inline]
@@ -501,20 +533,23 @@ impl Waker {
         Waker { waker }
     }
 
-    /// 返回一个引用,指向一个被使用时什么都不做的 `Waker`。
+    /// Returns a reference to a `Waker` that does nothing when used.
     ///
-    // 注意!本方法的文档大部分与 `LocalWaker::noop` 的文档重复。
-    // 如果你修改了这里,请考虑同时修改那一份。
+    // Note!  Much of the documentation for this method is duplicated
+    // in the docs for `LocalWaker::noop`.
+    // If you edit it, consider editing the other copy too.
     //
-    /// 它主要用于编写测试:这些测试需要一个 [`Context`] 来 poll 某些 future,但并不期待这些
-    /// future 会唤醒该 waker,或者即便唤醒了也无需做任何特定处理。
+    /// This is mostly useful for writing tests that need a [`Context`] to poll
+    /// some futures, but are not expecting those futures to wake the waker or
+    /// do not need to do anything specific if it happens.
     ///
-    /// 更一般地说,用 `Waker::noop()` 去 poll 一个 future,意味着丢弃“该 future 何时应被再次
-    /// poll”的通知。所以只有当这种通知对推进进度并非必需时,才应使用它。
+    /// More generally, using `Waker::noop()` to poll a future
+    /// means discarding the notification of when the future should be polled again.
+    /// So it should only be used when such a notification will not be needed to make progress.
     ///
-    /// 如果需要一个拥有所有权的 `Waker`,对它 `clone()` 即可。
+    /// If an owned `Waker` is needed, `clone()` this one.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::future::Future;
@@ -534,7 +569,7 @@ impl Waker {
         WAKER
     }
 
-    /// 取出用于创建此 `Waker` 的 `data` 指针。
+    /// Gets the `data` pointer used to create this `Waker`.
     #[inline]
     #[must_use]
     #[stable(feature = "waker_getters", since = "1.83.0")]
@@ -542,7 +577,7 @@ impl Waker {
         self.waker.data
     }
 
-    /// 取出用于创建此 `Waker` 的 `vtable` 指针。
+    /// Gets the `vtable` pointer used to create this `Waker`.
     #[inline]
     #[must_use]
     #[stable(feature = "waker_getters", since = "1.83.0")]
@@ -550,13 +585,13 @@ impl Waker {
         self.waker.vtable
     }
 
-    /// 从一个函数指针构造一个 `Waker`。
+    /// Constructs a `Waker` from a function pointer.
     #[inline]
     #[must_use]
     #[unstable(feature = "waker_from_fn_ptr", issue = "148457")]
     pub const fn from_fn_ptr(f: fn()) -> Self {
-        // SAFETY: 这里的 unsafe 用于 transmute;`data` 指针只由下面的 `from_fn_ptr`
-        // 从同一个 `fn()` 指针写入,所以 vtable 回调收到它时,把它还原成 `fn()` 并调用是可靠的。
+        // SAFETY: Unsafe is used for transmutes, pointer came from `fn()` so it
+        //         is sound to transmute it back to `fn()`.
         static VTABLE: RawWakerVTable = unsafe {
             RawWakerVTable::new(
                 |this| RawWaker::new(this, &VTABLE),
@@ -567,8 +602,8 @@ impl Waker {
         };
         let raw = RawWaker::new(f as *const (), &VTABLE);
 
-        // SAFETY: 该 `RawWaker` 不拥有外部分配:`clone` 只是复制同一个函数指针,`drop` 是空操作,
-        // 而 `wake` 与 `wake_by_ref` 只是调用该函数指针,不会消费或释放不属于自己的资源。
+        // SAFETY: `clone` is just a copy, `drop` is a no-op while `wake` and
+        //         `wake_by_ref` just call the function pointer.
         unsafe { Self::from_raw(raw) }
     }
 }
@@ -578,20 +613,19 @@ impl Clone for Waker {
     #[inline]
     fn clone(&self) -> Self {
         Waker {
-            // SAFETY: 这是安全的,因为初始化 `clone` 与 `data` 的唯一途径是 `Waker::from_raw`
-            // 或 `Waker::new`,这要求使用者已确认 [`RawWaker`] 的契约得到了遵守
-            // (clone 会正确管理底层引用计数)。
+            // SAFETY: This is safe because `Waker::from_raw` is the only way
+            // to initialize `clone` and `data` requiring the user to acknowledge
+            // that the contract of [`RawWaker`] is upheld.
             waker: unsafe { (self.waker.vtable.clone)(self.waker.data) },
         }
     }
 
-    /// 把 `source` 的一份克隆赋给 `self`,除非 [`self.will_wake(source)`][Waker::will_wake]
-    /// 本就成立(那样就跳过克隆)。
+    /// Assigns a clone of `source` to `self`, unless [`self.will_wake(source)`][Waker::will_wake] anyway.
     ///
-    /// 相比直接把 `source.clone()` 赋给 `self`,更推荐本方法,因为当 `self` 已经是同一个 waker
-    /// 时,它可以避免克隆。
+    /// This method is preferred over simply assigning `source.clone()` to `self`,
+    /// as it avoids cloning the waker if `self` is already the same waker.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::future::Future;
@@ -613,10 +647,10 @@ impl Clone for Waker {
     ///     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
     ///         let mut shared = self.shared.lock().unwrap();
     ///
-    ///         // 更新 waker
+    ///         // update the waker
     ///         shared.waker.clone_from(cx.waker());
     ///
-    ///         // 就绪判断逻辑 ...
+    ///         // readiness logic ...
     /// #       Poll::Ready(())
     ///     }
     /// }
@@ -634,9 +668,9 @@ impl Clone for Waker {
 impl Drop for Waker {
     #[inline]
     fn drop(&mut self) {
-        // SAFETY: 这是安全的,因为初始化 `drop` 与 `data` 的唯一途径是 `Waker::from_raw`
-        // 或 `Waker::new`,这要求使用者已确认 `RawWaker` 的契约得到了遵守
-        // (drop 会正确释放底层资源/减少引用计数)。
+        // SAFETY: This is safe because `Waker::from_raw` is the only way
+        // to initialize `drop` and `data` requiring the user to acknowledge
+        // that the contract of `RawWaker` is upheld.
         unsafe { (self.waker.vtable.drop)(self.waker.data) }
     }
 }
@@ -652,33 +686,35 @@ impl fmt::Debug for Waker {
     }
 }
 
-/// `LocalWaker` 类似于 [`Waker`],但它**不**实现 [`Send`] 或 [`Sync`]。
+/// A `LocalWaker` is analogous to a [`Waker`], but it does not implement [`Send`] or [`Sync`].
 ///
-/// 该句柄封装了一个 [`RawWaker`] 实例,后者定义了与具体执行器相关的唤醒行为。
+/// This handle encapsulates a [`RawWaker`] instance, which defines the
+/// executor-specific wakeup behavior.
 ///
-/// 可以通过 `Context` 的 [`local_waker`] 方法取得 `LocalWaker`。
+/// Local wakers can be requested from a `Context` with the [`local_waker`] method.
 ///
-/// 一个 `LocalWaker` 的典型生命周期是:由执行器构造出来,借助 [`ContextBuilder`] 包进一个
-/// [`Context`],再传给 [`Future::poll()`]。随后,如果该 future 选择返回 [`Poll::Pending`],
-/// 它就必须以某种方式把这个 waker 保存下来,并在该 future 应当被再次 poll 时调用
-/// [`LocalWaker::wake()`]。
+/// The typical life of a `LocalWaker` is that it is constructed by an executor, wrapped in a
+/// [`Context`] using [`ContextBuilder`], then passed to [`Future::poll()`]. Then, if the future chooses to return
+/// [`Poll::Pending`], it must also store the waker somehow and call [`LocalWaker::wake()`] when
+/// the future should be polled again.
 ///
-/// `LocalWaker` 实现了 [`Clone`],但既不是 [`Send`] 也不是 [`Sync`];因此一个 `LocalWaker` 不能
-/// 被移动到其它线程。一般来说,在选择用 `Waker` 还是 `LocalWaker` 时,除非确实需要把 waker 跨线程
-/// 发送,否则 `LocalWaker` 更可取——因为普通 `Waker` 可能带来与内存同步相关的额外开销
-/// (例如引用计数必须用原子操作)。
+/// Implements [`Clone`], but neither [`Send`] nor [`Sync`]; therefore, a local waker may
+/// not be moved to other threads. In general, when deciding to use wakers or local wakers,
+/// local wakers are preferable unless the waker needs to be sent across threads. This is because
+/// wakers can incur in additional cost related to memory synchronization.
 ///
-/// 注意:相比 `*local_waker = new_waker.clone()`,更推荐使用 `local_waker.clone_from(&new_waker)`,
-/// 因为当两个 waker [唤醒的是同一个任务](Self::will_wake)时,后者可以避免不必要的克隆。
+/// Note that it is preferable to use `local_waker.clone_from(&new_waker)` instead
+/// of `*local_waker = new_waker.clone()`, as the former will avoid cloning the waker
+/// unnecessarily if the two wakers [wake the same task](Self::will_wake).
 ///
-/// # 示例
-/// 用一个 `LocalWaker` 来实现一个类似于 `std::thread::yield_now()` 的 future。
+/// # Examples
+/// Usage of a local waker to implement a future analogous to `std::thread::yield_now()`.
 /// ```
 /// #![feature(local_waker)]
 /// use std::future::{Future, poll_fn};
 /// use std::task::Poll;
 ///
-/// // 一个会先返回一次 `Pending` 的 future。
+/// // a future that returns pending once.
 /// fn yield_now() -> impl Future<Output=()> + Unpin {
 ///     let mut yielded = false;
 ///     poll_fn(move |cx| {
@@ -709,76 +745,89 @@ pub struct LocalWaker {
 impl Unpin for LocalWaker {}
 
 impl LocalWaker {
-    /// 唤醒与此 `LocalWaker` 关联的任务。
+    /// Wakes up the task associated with this `LocalWaker`.
     ///
-    /// 只要执行器仍在运行且任务尚未结束,就保证:每一次 [`wake()`](Self::wake)(或
-    /// [`wake_by_ref()`](Self::wake_by_ref))调用之后,该 `LocalWaker` 所属的任务至少会被
-    /// [`poll()`] 一次。这使得在运行可能无界的处理循环时,能够临时让出给其它任务。
+    /// As long as the executor keeps running and the task is not finished, it is
+    /// guaranteed that each invocation of [`wake()`](Self::wake) (or
+    /// [`wake_by_ref()`](Self::wake_by_ref)) will be followed by at least one
+    /// [`poll()`] of the task to which this `LocalWaker` belongs. This makes
+    /// it possible to temporarily yield to other tasks while running potentially
+    /// unbounded processing loops.
     ///
-    /// 注意,上面这一点意味着:运行时可能会把多次唤醒合并为对 [`poll()`] 的一次调用。
+    /// Note that the above implies that multiple wake-ups may be coalesced into a
+    /// single [`poll()`] invocation by the runtime.
     ///
-    /// 还要注意,让出给相互竞争的任务并不被保证:具体运行哪个任务由执行器决定,执行器也可能选择
-    /// 再次运行当前任务。
+    /// Also note that yielding to competing tasks is not guaranteed: it is the
+    /// executor’s choice which task to run and the executor may choose to run the
+    /// current task again.
     ///
     /// [`poll()`]: crate::future::Future::poll
     #[inline]
     #[unstable(feature = "local_waker", issue = "118959")]
     pub fn wake(self) {
-        // 真正的唤醒调用通过一次虚函数调用,委派给由执行器定义的那份实现。
+        // The actual wakeup call is delegated through a virtual function call
+        // to the implementation which is defined by the executor.
 
-        // 不要调用 `drop`——这个 waker 会被 `wake` 消费掉。
+        // Don't call `drop` -- the waker will be consumed by `wake`.
         let this = ManuallyDrop::new(self);
 
-        // SAFETY: 这是安全的,因为初始化 `wake` 与 `data` 的唯一途径是 `LocalWaker::from_raw`
-        // 或 `LocalWaker::new`,这要求使用者已确认 `RawWaker` 的契约得到了遵守。
+        // SAFETY: This is safe because `Waker::from_raw` is the only way
+        // to initialize `wake` and `data` requiring the user to acknowledge
+        // that the contract of `RawWaker` is upheld.
         unsafe { (this.waker.vtable.wake)(this.waker.data) };
     }
 
-    /// 在不消费该 `LocalWaker` 的前提下,唤醒与之关联的任务。
+    /// Wakes up the task associated with this `LocalWaker` without consuming the `LocalWaker`.
     ///
-    /// 这与 [`wake()`](Self::wake) 类似,但在已持有一个拥有所有权的 `LocalWaker` 的场景下可能
-    /// 略低效一些。相比 `local_waker.clone().wake()`,应优先使用本方法。
+    /// This is similar to [`wake()`](Self::wake), but may be slightly less efficient in
+    /// the case where an owned `Waker` is available. This method should be preferred to
+    /// calling `waker.clone().wake()`.
     #[inline]
     #[unstable(feature = "local_waker", issue = "118959")]
     pub fn wake_by_ref(&self) {
-        // 真正的唤醒调用通过一次虚函数调用,委派给由执行器定义的那份实现。
+        // The actual wakeup call is delegated through a virtual function call
+        // to the implementation which is defined by the executor.
 
-        // SAFETY: 见 `wake`
+        // SAFETY: see `wake`
         unsafe { (self.waker.vtable.wake_by_ref)(self.waker.data) }
     }
 
-    /// 如果此 `LocalWaker` 与另一个 `LocalWaker` 会唤醒同一个任务,返回 `true`。
+    /// Returns `true` if this `LocalWaker` and another `LocalWaker` would awake the same task.
     ///
-    /// 本函数以“尽力而为”为基础工作:即便两个 `LocalWaker` 确实会唤醒同一个任务,它也可能返回
-    /// `false`。但反过来,如果本函数返回了 `true`,就保证这两个 `LocalWaker` 唤醒的是同一个任务。
+    /// This function works on a best-effort basis, and may return false even
+    /// when the `Waker`s would awaken the same task. However, if this function
+    /// returns `true`, it is guaranteed that the `Waker`s will awaken the same task.
     ///
-    /// 本函数主要用于优化目的——例如本类型的 [`clone_from`](Self::clone_from) 实现就借助它,
-    /// 在两个 waker 反正会唤醒同一任务时避免克隆。
+    /// This function is primarily used for optimization purposes — for example,
+    /// this type's [`clone_from`](Self::clone_from) implementation uses it to
+    /// avoid cloning the waker when they would wake the same task anyway.
     #[inline]
     #[must_use]
     #[unstable(feature = "local_waker", issue = "118959")]
     pub fn will_wake(&self, other: &LocalWaker) -> bool {
-        // 我们通过比较 vtable 的地址(而非 vtable 的内容)来做优化。
-        // 由于本函数被文档声明为“尽力而为”,这样做是允许的。
+        // We optimize this by comparing vtable addresses instead of vtable contents.
+        // This is permitted since the function is documented as best-effort.
         let RawWaker { data: a_data, vtable: a_vtable } = self.waker;
         let RawWaker { data: b_data, vtable: b_vtable } = other.waker;
         a_data == b_data && ptr::eq(a_vtable, b_vtable)
     }
 
-    /// 从给定的 `data` 指针和 `vtable` 创建一个新的 `LocalWaker`。
+    /// Creates a new `LocalWaker` from the provided `data` pointer and `vtable`.
     ///
-    /// `data` 指针可用来存放执行器所需的任意数据。例如,它可以是一个指向与该任务关联的
-    /// `Arc` 的类型擦除指针。这个指针的值会作为第一个参数被传给 `vtable` 中的每一个函数。
+    /// The `data` pointer can be used to store arbitrary data as required
+    /// by the executor. This could be e.g. a type-erased pointer to an `Arc`
+    /// that is associated with the task.
+    /// The value of this pointer will get passed to all functions that are part
+    /// of the `vtable` as the first parameter.
     ///
-    /// `vtable` 用来定制 `LocalWaker` 的行为。对 `LocalWaker` 的每一项操作,都会调用 `vtable`
-    /// 中对应的那个函数。
+    /// The `vtable` customizes the behavior of a `LocalWaker`. For each
+    /// operation on the `LocalWaker`, the associated function in the `vtable`
+    /// will be called.
     ///
-    /// # 安全性(Safety）
+    /// # Safety
     ///
-    /// `data` 必须是为这张 `vtable` 准备的指针,并且 `vtable` 中的 `clone`、`wake`、
-    /// `wake_by_ref` 和 `drop` 必须满足 [`RawWakerVTable`] 文档中定义的全部契约。与 [`Waker`]
-    /// 不同,`LocalWaker` 不要求这些函数线程安全,但它们仍必须正确维护这份任务句柄的所有权和
-    /// 引用计数。若这些条件不成立,返回的 `LocalWaker` 的行为是未定义的。
+    /// The behavior of the returned `Waker` is undefined if the contract defined
+    /// in [`RawWakerVTable`]'s documentation is not upheld.
     ///
     #[inline]
     #[must_use]
@@ -787,14 +836,11 @@ impl LocalWaker {
         LocalWaker { waker: RawWaker { data, vtable } }
     }
 
-    /// 从一个 [`RawWaker`] 创建一个新的 `LocalWaker`。
+    /// Creates a new `LocalWaker` from [`RawWaker`].
     ///
-    /// # 安全性(Safety）
-    ///
-    /// 传入的 [`RawWaker`] 必须拥有一个与其 `data` 匹配的 [`RawWakerVTable`],并且该 vtable
-    /// 必须满足 [`LocalWaker`] 的所有权与引用计数契约。`from_raw` 会接管这一份 `RawWaker` 的
-    /// 所有权;之后 `LocalWaker` 的 clone/wake/drop 都会直接调用该 vtable。若这些契约未被遵守,
-    /// 返回的 `LocalWaker` 的行为是未定义的。
+    /// The behavior of the returned `LocalWaker` is undefined if the contract defined
+    /// in [`RawWaker`]'s and [`RawWakerVTable`]'s documentation is not upheld.
+    /// Therefore this method is unsafe.
     #[inline]
     #[must_use]
     #[unstable(feature = "local_waker", issue = "118959")]
@@ -802,20 +848,23 @@ impl LocalWaker {
         Self { waker }
     }
 
-    /// 返回一个引用,指向一个被使用时什么都不做的 `LocalWaker`。
+    /// Returns a reference to a `LocalWaker` that does nothing when used.
     ///
-    // 注意!本方法的文档大部分与 `Waker::noop` 的文档重复。
-    // 如果你修改了这里,请考虑同时修改那一份。
+    // Note!  Much of the documentation for this method is duplicated
+    // in the docs for `Waker::noop`.
+    // If you edit it, consider editing the other copy too.
     //
-    /// 它主要用于编写测试:这些测试需要一个 [`Context`] 来 poll 某些 future,但并不期待这些
-    /// future 会唤醒该 waker,或者即便唤醒了也无需做任何特定处理。
+    /// This is mostly useful for writing tests that need a [`Context`] to poll
+    /// some futures, but are not expecting those futures to wake the waker or
+    /// do not need to do anything specific if it happens.
     ///
-    /// 更一般地说,用 `LocalWaker::noop()` 去 poll 一个 future,意味着丢弃“该 future 何时应被
-    /// 再次 poll”的通知。所以只有当这种通知对推进进度并非必需时,才应使用它。
+    /// More generally, using `LocalWaker::noop()` to poll a future
+    /// means discarding the notification of when the future should be polled again,
+    /// So it should only be used when such a notification will not be needed to make progress.
     ///
-    /// 如果需要一个拥有所有权的 `LocalWaker`,对它 `clone()` 即可。
+    /// If an owned `LocalWaker` is needed, `clone()` this one.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// #![feature(local_waker)]
@@ -837,7 +886,7 @@ impl LocalWaker {
         WAKER
     }
 
-    /// 取出用于创建此 `LocalWaker` 的 `data` 指针。
+    /// Gets the `data` pointer used to create this `LocalWaker`.
     #[inline]
     #[must_use]
     #[unstable(feature = "local_waker", issue = "118959")]
@@ -845,7 +894,7 @@ impl LocalWaker {
         self.waker.data
     }
 
-    /// 取出用于创建此 `LocalWaker` 的 `vtable` 指针。
+    /// Gets the `vtable` pointer used to create this `LocalWaker`.
     #[inline]
     #[must_use]
     #[unstable(feature = "local_waker", issue = "118959")]
@@ -853,13 +902,13 @@ impl LocalWaker {
         self.waker.vtable
     }
 
-    /// 从一个函数指针构造一个 `LocalWaker`。
+    /// Constructs a `LocalWaker` from a function pointer.
     #[inline]
     #[must_use]
     #[unstable(feature = "waker_from_fn_ptr", issue = "148457")]
     pub const fn from_fn_ptr(f: fn()) -> Self {
-        // SAFETY: 这里的 unsafe 用于 transmute;`data` 指针只由下面的 `from_fn_ptr`
-        // 从同一个 `fn()` 指针写入,所以 vtable 回调收到它时,把它还原成 `fn()` 并调用是可靠的。
+        // SAFETY: Unsafe is used for transmutes, pointer came from `fn()` so it
+        //         is sound to transmute it back to `fn()`.
         static VTABLE: RawWakerVTable = unsafe {
             RawWakerVTable::new(
                 |this| RawWaker::new(this, &VTABLE),
@@ -870,8 +919,8 @@ impl LocalWaker {
         };
         let raw = RawWaker::new(f as *const (), &VTABLE);
 
-        // SAFETY: 该 `RawWaker` 不拥有外部分配:`clone` 只是复制同一个函数指针,`drop` 是空操作,
-        // 而 `wake` 与 `wake_by_ref` 只是调用该函数指针,不会消费或释放不属于自己的资源。
+        // SAFETY: `clone` is just a copy, `drop` is a no-op while `wake` and
+        //         `wake_by_ref` just call the function pointer.
         unsafe { Self::from_raw(raw) }
     }
 }
@@ -880,8 +929,9 @@ impl Clone for LocalWaker {
     #[inline]
     fn clone(&self) -> Self {
         LocalWaker {
-            // SAFETY: 这是安全的,因为初始化 `clone` 与 `data` 的唯一途径是 `LocalWaker::from_raw`
-            // 或 `LocalWaker::new`,这要求使用者已确认 [`RawWaker`] 的契约得到了遵守。
+            // SAFETY: This is safe because `Waker::from_raw` is the only way
+            // to initialize `clone` and `data` requiring the user to acknowledge
+            // that the contract of [`RawWaker`] is upheld.
             waker: unsafe { (self.waker.vtable.clone)(self.waker.data) },
         }
     }
@@ -898,7 +948,7 @@ impl Clone for LocalWaker {
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
 impl const AsRef<LocalWaker> for Waker {
     fn as_ref(&self) -> &LocalWaker {
-        // SAFETY: LocalWaker 就是去掉了线程安全性的 Waker,两者内存布局一致,转换合法。
+        // SAFETY: LocalWaker is just Waker without thread safety
         unsafe { transmute(self) }
     }
 }
@@ -907,9 +957,9 @@ impl const AsRef<LocalWaker> for Waker {
 impl Drop for LocalWaker {
     #[inline]
     fn drop(&mut self) {
-        // SAFETY: 这是安全的,因为初始化 `drop` 与 `data` 的唯一途径是 `LocalWaker::from_raw`
-        // 或 `LocalWaker::new`,这要求使用者已确认 `RawWaker` 的契约得到了遵守
-        // (drop 会正确释放底层资源)。
+        // SAFETY: This is safe because `LocalWaker::from_raw` is the only way
+        // to initialize `drop` and `data` requiring the user to acknowledge
+        // that the contract of `RawWaker` is upheld.
         unsafe { (self.waker.vtable.drop)(self.waker.data) }
     }
 }

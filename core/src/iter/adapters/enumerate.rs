@@ -4,9 +4,10 @@ use crate::iter::{FusedIterator, InPlaceIterable, TrustedFused, TrustedLen};
 use crate::num::NonZero;
 use crate::ops::Try;
 
-/// 迭代时同时产出当前计数和元素的迭代器。
+/// An iterator that yields the current count and the element during iteration.
 ///
-/// 该 `struct` 由 [`Iterator`] 上的 [`enumerate`] 方法创建。更多信息见该方法文档。
+/// This `struct` is created by the [`enumerate`] method on [`Iterator`]. See its
+/// documentation for more.
 ///
 /// [`enumerate`]: Iterator::enumerate
 /// [`Iterator`]: trait.Iterator.html
@@ -23,14 +24,14 @@ impl<I> Enumerate<I> {
         Enumerate { iter, count: 0 }
     }
 
-    /// 取得迭代器的当前位置。
+    /// Retrieve the current position of the iterator.
     ///
-    /// 如果迭代器尚未推进，返回的位置为 0。
+    /// If the iterator has not advanced, the position returned will be 0.
     ///
-    /// 该位置也可能超过迭代器边界，以便根据后续 [`Iterator::next`] 调用计算迭代器的
-    /// 位移。
+    /// The position may also exceed the bounds of the iterator to allow for calculating
+    /// the displacement of the iterator from following calls to [`Iterator::next`].
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// #![feature(next_index)]
@@ -64,14 +65,15 @@ where
 {
     type Item = (usize, <I as Iterator>::Item);
 
-    /// # 溢出行为
+    /// # Overflow Behavior
     ///
-    /// 该方法不会额外防护溢出，因此枚举超过 `usize::MAX` 个元素要么产生错误结果，
-    /// 要么 panic。启用溢出检查时保证会 panic。
+    /// The method does no guarding against overflows, so enumerating more than
+    /// `usize::MAX` elements either produces the wrong result or panics. If
+    /// overflow checks are enabled, a panic is guaranteed.
     ///
     /// # Panics
     ///
-    /// 如果元素索引溢出 `usize`，可能 panic。
+    /// Might panic if the index of the element overflows a `usize`.
     #[inline]
     #[rustc_inherit_overflow_checks]
     fn next(&mut self) -> Option<(usize, <I as Iterator>::Item)> {
@@ -162,7 +164,8 @@ where
     where
         Self: TrustedRandomAccessNoCoerce,
     {
-        // SAFETY: 调用方必须维护 `Iterator::__iterator_get_unchecked` 的契约。
+        // SAFETY: the caller must uphold the contract for
+        // `Iterator::__iterator_get_unchecked`.
         let value = unsafe { try_get_unchecked(&mut self.iter, idx) };
         (self.count + idx, value)
     }
@@ -177,7 +180,8 @@ where
     fn next_back(&mut self) -> Option<(usize, <I as Iterator>::Item)> {
         let a = self.iter.next_back()?;
         let len = self.iter.len();
-        // 可以安全相加，因为 `ExactSizeIterator` 承诺元素数量能放入 `usize`。
+        // Can safely add, `ExactSizeIterator` promises that the number of
+        // elements fits into a `usize`.
         Some((self.count + len, a))
     }
 
@@ -185,7 +189,8 @@ where
     fn nth_back(&mut self, n: usize) -> Option<(usize, <I as Iterator>::Item)> {
         let a = self.iter.nth_back(n)?;
         let len = self.iter.len();
-        // 可以安全相加，因为 `ExactSizeIterator` 承诺元素数量能放入 `usize`。
+        // Can safely add, `ExactSizeIterator` promises that the number of
+        // elements fits into a `usize`.
         Some((self.count + len, a))
     }
 
@@ -196,7 +201,8 @@ where
         Fold: FnMut(Acc, Self::Item) -> R,
         R: Try<Output = Acc>,
     {
-        // 可以安全地对 count 做加减，因为 `ExactSizeIterator` 承诺元素数量能放入 `usize`。
+        // Can safely add and subtract the count, as `ExactSizeIterator` promises
+        // that the number of elements fits into a `usize`.
         fn enumerate<T, Acc, R>(
             mut count: usize,
             mut fold: impl FnMut(Acc, (usize, T)) -> R,
@@ -216,7 +222,8 @@ where
     where
         Fold: FnMut(Acc, Self::Item) -> Acc,
     {
-        // 可以安全地对 count 做加减，因为 `ExactSizeIterator` 承诺元素数量能放入 `usize`。
+        // Can safely add and subtract the count, as `ExactSizeIterator` promises
+        // that the number of elements fits into a `usize`.
         fn enumerate<T, Acc>(
             mut count: usize,
             mut fold: impl FnMut(Acc, (usize, T)) -> Acc,
@@ -233,7 +240,8 @@ where
 
     #[inline]
     fn advance_back_by(&mut self, n: usize) -> Result<(), NonZero<usize>> {
-        // 不需要更新 count，因为它只统计从前端消耗的项数；从后端消耗项永远不会减少它。
+        // we do not need to update the count since that only tallies the number of items
+        // consumed from the front. consuming items from the back can never reduce that.
         self.iter.advance_back_by(n)
     }
 }
@@ -283,7 +291,7 @@ where
 
     #[inline]
     unsafe fn as_inner(&mut self) -> &mut I::Source {
-        // SAFETY: 转发到具有相同要求的 unsafe 函数。
+        // SAFETY: unsafe function forwarding to unsafe function with the same requirements
         unsafe { SourceIter::as_inner(&mut self.iter) }
     }
 }
@@ -296,7 +304,7 @@ unsafe impl<I: InPlaceIterable> InPlaceIterable for Enumerate<I> {
 
 #[stable(feature = "default_iters", since = "1.70.0")]
 impl<I: Default> Default for Enumerate<I> {
-    /// 从 `I` 的默认值创建一个 `Enumerate` 迭代器。
+    /// Creates an `Enumerate` iterator from the default value of `I`
     /// ```
     /// # use core::slice;
     /// # use std::iter::Enumerate;

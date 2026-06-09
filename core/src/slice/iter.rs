@@ -1,6 +1,6 @@
-//! `[T]` 上各类迭代器的定义。
+//! Definitions of a bunch of iterators for `[T]`.
 
-#[macro_use] // 导入 iterator! 和 forward_iterator!。
+#[macro_use] // import iterator! and forward_iterator!
 mod macros;
 
 use super::{from_raw_parts, from_raw_parts_mut};
@@ -37,25 +37,25 @@ impl<'a, T> IntoIterator for &'a mut [T] {
     }
 }
 
-/// 不可变切片迭代器。
+/// Immutable slice iterator
 ///
-/// 该结构体由 [切片][slices] 上的 [`iter`] 方法创建。
+/// This struct is created by the [`iter`] method on [slices].
 ///
-/// # 示例
+/// # Examples
 ///
-/// 基本用法：
+/// Basic usage:
 ///
 /// ```
-/// // 首先，需要一个可调用 `iter` 方法的切片：
+/// // First, we need a slice to call the `iter` method on:
 /// let slice = &[1, 2, 3];
 ///
-/// // 然后在切片上调用 `iter` 得到 `Iter` 迭代器，
-/// // 并遍历它：
+/// // Then we call `iter` on the slice to get the `Iter` iterator,
+/// // and iterate over it:
 /// for element in slice.iter() {
 ///     println!("{element}");
 /// }
 ///
-/// // 实际上，不调用 `iter` 时这个 for 循环也已经可用：
+/// // This for loop actually already works without calling `iter`:
 /// for element in slice {
 ///     println!("{element}");
 /// }
@@ -67,13 +67,14 @@ impl<'a, T> IntoIterator for &'a mut [T] {
 #[must_use = "iterators are lazy and do nothing unless consumed"]
 #[rustc_diagnostic_item = "SliceIter"]
 pub struct Iter<'a, T: 'a> {
-    /// 指向下一个要返回的元素；如果迭代器为空，则指向末尾后一位位置。
+    /// The pointer to the next element to return, or the past-the-end location
+    /// if the iterator is empty.
     ///
-    /// 对所有 ZST 元素都会使用这个地址，并且它不会改变。
+    /// This address will be used for all ZST elements, never changed.
     ptr: NonNull<T>,
-    /// 对非 ZST，这是指向末尾后一位元素的非空指针。
+    /// For non-ZSTs, the non-null pointer to the past-the-end element.
     ///
-    /// 对 ZST，这是 `ptr::without_provenance_mut(len)`。
+    /// For ZSTs, this is `ptr::without_provenance_mut(len)`.
     end_or_len: *const T,
     _marker: PhantomData<&'a T>,
 }
@@ -95,7 +96,7 @@ impl<'a, T> Iter<'a, T> {
     pub(super) const fn new(slice: &'a [T]) -> Self {
         let len = slice.len();
         let ptr: NonNull<T> = NonNull::from_ref(slice).cast();
-        // SAFETY: 与 `IterMut::new` 类似。
+        // SAFETY: Similar to `IterMut::new`.
         unsafe {
             let end_or_len =
                 if T::IS_ZST { without_provenance(len) } else { ptr.as_ptr().add(len) };
@@ -104,30 +105,30 @@ impl<'a, T> Iter<'a, T> {
         }
     }
 
-    /// 把底层数据视为原始数据的一个子切片。
+    /// Views the underlying data as a subslice of the original data.
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 基本用法：
+    /// Basic usage:
     ///
     /// ```
-    /// // 首先，需要一个可调用 `iter` 方法的切片：
+    /// // First, we need a slice to call the `iter` method on:
     /// let slice = &[1, 2, 3];
     ///
-    /// // 然后在切片上调用 `iter` 得到 `Iter` 迭代器：
+    /// // Then we call `iter` on the slice to get the `Iter` iterator:
     /// let mut iter = slice.iter();
-    /// // 这里 `as_slice` 仍返回整个切片，因此会打印 "[1, 2, 3]"：
+    /// // Here `as_slice` still returns the whole slice, so this prints "[1, 2, 3]":
     /// println!("{:?}", iter.as_slice());
     ///
-    /// // 现在，调用 `next` 方法从迭代器中移除第一个元素：
+    /// // Now, we call the `next` method to remove the first element from the iterator:
     /// iter.next();
-    /// // 这里迭代器不再包含切片的第一个元素，
-    /// // 因而 `as_slice` 只返回切片最后两个元素，
-    /// // 所以会打印 "[2, 3]"：
+    /// // Here the iterator does not contain the first element of the slice any more,
+    /// // so `as_slice` only returns the last two elements of the slice,
+    /// // and so this prints "[2, 3]":
     /// println!("{:?}", iter.as_slice());
     ///
-    /// // 底层切片没有被修改，仍包含三个元素，
-    /// // 因此会打印 "[1, 2, 3]"：
+    /// // The underlying slice has not been modified and still contains three elements,
+    /// // so this prints "[1, 2, 3]":
     /// println!("{:?}", slice);
     /// ```
     #[must_use]
@@ -164,25 +165,25 @@ impl<T> AsRef<[T]> for Iter<'_, T> {
     }
 }
 
-/// 可变切片迭代器。
+/// Mutable slice iterator.
 ///
-/// 该结构体由 [切片][slices] 上的 [`iter_mut`] 方法创建。
+/// This struct is created by the [`iter_mut`] method on [slices].
 ///
-/// # 示例
+/// # Examples
 ///
-/// 基本用法：
+/// Basic usage:
 ///
 /// ```
-/// // 首先，需要一个可调用 `iter_mut` 方法的切片：
+/// // First, we need a slice to call the `iter_mut` method on:
 /// let slice = &mut [1, 2, 3];
 ///
-/// // 然后在切片上调用 `iter_mut` 得到 `IterMut` 迭代器，
-/// // 遍历它并递增每个元素的值：
+/// // Then we call `iter_mut` on the slice to get the `IterMut` iterator,
+/// // iterate over it and increment each element value:
 /// for element in slice.iter_mut() {
 ///     *element += 1;
 /// }
 ///
-/// // 现在得到 "[2, 3, 4]"：
+/// // We now have "[2, 3, 4]":
 /// println!("{slice:?}");
 /// ```
 ///
@@ -191,13 +192,14 @@ impl<T> AsRef<[T]> for Iter<'_, T> {
 #[stable(feature = "rust1", since = "1.0.0")]
 #[must_use = "iterators are lazy and do nothing unless consumed"]
 pub struct IterMut<'a, T: 'a> {
-    /// 指向下一个要返回的元素；如果迭代器为空，则指向末尾后一位位置。
+    /// The pointer to the next element to return, or the past-the-end location
+    /// if the iterator is empty.
     ///
-    /// 对所有 ZST 元素都会使用这个地址，并且它不会改变。
+    /// This address will be used for all ZST elements, never changed.
     ptr: NonNull<T>,
-    /// 对非 ZST，这是指向末尾后一位元素的非空指针。
+    /// For non-ZSTs, the non-null pointer to the past-the-end element.
     ///
-    /// 对 ZST，这是 `ptr::without_provenance_mut(len)`。
+    /// For ZSTs, this is `ptr::without_provenance_mut(len)`.
     end_or_len: *mut T,
     _marker: PhantomData<&'a mut T>,
 }
@@ -219,19 +221,22 @@ impl<'a, T> IterMut<'a, T> {
     pub(super) const fn new(slice: &'a mut [T]) -> Self {
         let len = slice.len();
         let ptr: NonNull<T> = NonNull::from_mut(slice).cast();
-        // SAFETY: 这里有几层理由：
+        // SAFETY: There are several things here:
         //
-        // `ptr` 来自 `slice.as_ptr()`，而 `slice` 是有效引用，
-        // 因此它非空，可安全使用并传给 `NonNull::new_unchecked`。
+        // `ptr` has been obtained by `slice.as_ptr()` where `slice` is a valid
+        // reference thus it is non-NUL and safe to use and pass to
+        // `NonNull::new_unchecked` .
         //
-        // 将 `slice.len()` 加到起始指针上，会得到切片末尾后一位指针。
-        // `end` 永远不会被解引用，只会与 `ptr` 做直接指针相等性检查，
-        // 用于判断迭代器是否结束。
+        // Adding `slice.len()` to the starting pointer gives a pointer
+        // at the end of `slice`. `end` will never be dereferenced, only checked
+        // for direct pointer equality with `ptr` to check if the iterator is
+        // done.
         //
-        // 对 ZST，end 指针只是长度。它完全不会作为指针使用，
-        // 因此没有 provenance 也是可以的。
+        // In the case of a ZST, the end pointer is just the length.  It's never
+        // used as a pointer at all, and thus it's fine to have no provenance.
         //
-        // 更多信息见 `next_unchecked!`、`is_empty!` 宏以及 `post_inc_start` 方法。
+        // See the `next_unchecked!` and `is_empty!` macros as well as the
+        // `post_inc_start` method for more information.
         unsafe {
             let end_or_len =
                 if T::IS_ZST { without_provenance_mut(len) } else { ptr.as_ptr().add(len) };
@@ -240,63 +245,66 @@ impl<'a, T> IterMut<'a, T> {
         }
     }
 
-    /// 把底层数据视为原始数据的一个子切片。
+    /// Views the underlying data as a subslice of the original data.
     ///
-    /// 为避免创建相互 alias 的 `&mut` 引用，这个方法被迫消费迭代器。
+    /// To avoid creating `&mut` references that alias, this is forced
+    /// to consume the iterator.
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 基本用法：
+    /// Basic usage:
     ///
     /// ```
-    /// // 首先，需要一个可调用 `iter_mut` 方法的切片：
+    /// // First, we need a slice to call the `iter_mut` method on:
     /// let mut slice = &mut [1, 2, 3];
     ///
-    /// // 然后在切片上调用 `iter_mut` 得到 `IterMut` 结构体：
+    /// // Then we call `iter_mut` on the slice to get the `IterMut` struct:
     /// let mut iter = slice.iter_mut();
-    /// // 现在，调用 `next` 方法移除迭代器的第一个元素，
-    /// // 对 `next` 得到的值执行 unwrap 和解引用，并把它的值加 1：
+    /// // Now, we call the `next` method to remove the first element of the iterator,
+    /// // unwrap and dereference what we get from `next` and increase its value by 1:
     /// *iter.next().unwrap() += 1;
-    /// // 这里迭代器不再包含切片的第一个元素，
-    /// // 因而 `into_slice` 只返回切片最后两个元素，
-    /// // 所以会打印 "[2, 3]"：
+    /// // Here the iterator does not contain the first element of the slice any more,
+    /// // so `into_slice` only returns the last two elements of the slice,
+    /// // and so this prints "[2, 3]":
     /// println!("{:?}", iter.into_slice());
-    /// // 底层切片仍包含三个元素，但第一个元素已增加 1，
-    /// // 因此会打印 "[2, 2, 3]"：
+    /// // The underlying slice still contains three elements, but its first element
+    /// // was increased by 1, so this prints "[2, 2, 3]":
     /// println!("{:?}", slice);
     /// ```
     #[must_use = "`self` will be dropped if the result is not used"]
     #[stable(feature = "iter_to_slice", since = "1.4.0")]
     pub fn into_slice(self) -> &'a mut [T] {
-        // SAFETY: 该迭代器由一个可变切片创建，当前起点为 `self.ptr`，
-        // 剩余长度为 `len!(self)`；这保证满足 `from_raw_parts_mut` 的全部前置条件。
+        // SAFETY: the iterator was created from a mutable slice with pointer
+        // `self.ptr` and length `len!(self)`. This guarantees that all the prerequisites
+        // for `from_raw_parts_mut` are fulfilled.
         unsafe { from_raw_parts_mut(self.ptr.as_ptr(), len!(self)) }
     }
 
-    /// 把底层数据视为原始数据的一个子切片。
+    /// Views the underlying data as a subslice of the original data.
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 基本用法：
+    /// Basic usage:
     ///
     /// ```
-    /// // 首先，需要一个可调用 `iter_mut` 方法的切片：
+    /// // First, we need a slice to call the `iter_mut` method on:
     /// let slice = &mut [1, 2, 3];
     ///
-    /// // 然后在切片上调用 `iter_mut` 得到 `IterMut` 迭代器：
+    /// // Then we call `iter_mut` on the slice to get the `IterMut` iterator:
     /// let mut iter = slice.iter_mut();
-    /// // 这里 `as_slice` 仍返回整个切片，因此会打印 "[1, 2, 3]"：
+    /// // Here `as_slice` still returns the whole slice, so this prints "[1, 2, 3]":
     /// println!("{:?}", iter.as_slice());
     ///
-    /// // 现在，调用 `next` 方法从迭代器中移除第一个元素并递增它的值：
+    /// // Now, we call the `next` method to remove the first element from the iterator
+    /// // and increment its value:
     /// *iter.next().unwrap() += 1;
-    /// // 这里迭代器不再包含切片的第一个元素，
-    /// // 因而 `as_slice` 只返回切片最后两个元素，
-    /// // 所以会打印 "[2, 3]"：
+    /// // Here the iterator does not contain the first element of the slice any more,
+    /// // so `as_slice` only returns the last two elements of the slice,
+    /// // and so this prints "[2, 3]":
     /// println!("{:?}", iter.as_slice());
     ///
-    /// // 底层切片仍包含三个元素，但第一个元素已增加 1，
-    /// // 因此会打印 "[2, 2, 3]"：
+    /// // The underlying slice still contains three elements, but its first element
+    /// // was increased by 1, so this prints "[2, 2, 3]":
     /// println!("{:?}", slice);
     /// ```
     #[must_use]
@@ -306,39 +314,41 @@ impl<'a, T> IterMut<'a, T> {
         self.make_slice()
     }
 
-    /// 把底层数据视为原始数据的一个可变子切片。
+    /// Views the underlying data as a mutable subslice of the original data.
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 基本用法：
+    /// Basic usage:
     ///
     /// ```
     /// #![feature(slice_iter_mut_as_mut_slice)]
     ///
     /// let mut slice: &mut [usize] = &mut [1, 2, 3];
     ///
-    /// // 首先取得迭代器：
+    /// // First, we get the iterator:
     /// let mut iter = slice.iter_mut();
-    /// // 然后从中取得一个可变切片：
+    /// // Then, we get a mutable slice from it:
     /// let mut_slice = iter.as_mut_slice();
-    /// // 因此检查 `as_mut_slice` 方法的返回值时，会得到 "[1, 2, 3]"：
+    /// // So if we check what the `as_mut_slice` method returned, we have "[1, 2, 3]":
     /// assert_eq!(mut_slice, &mut [1, 2, 3]);
     ///
-    /// // 可以用它修改切片：
+    /// // We can use it to mutate the slice:
     /// mut_slice[0] = 4;
     /// mut_slice[2] = 5;
     ///
-    /// // 接着可以移动到切片第二个元素，并检查它产出刚才写入的值：
+    /// // Next, we can move to the second element of the slice, checking that
+    /// // it yields the value we just wrote:
     /// assert_eq!(iter.next(), Some(&mut 4));
-    /// // 现在 `as_mut_slice` 返回 "[2, 5]"：
+    /// // Now `as_mut_slice` returns "[2, 5]":
     /// assert_eq!(iter.as_mut_slice(), &mut [2, 5]);
     /// ```
     #[must_use]
-    // FIXME: 当它稳定后，取消注释 `AsMut<[T]>` impl。
+    // FIXME: Uncomment the `AsMut<[T]>` impl when this gets stabilized.
     #[unstable(feature = "slice_iter_mut_as_mut_slice", issue = "93079")]
     pub fn as_mut_slice(&mut self) -> &mut [T] {
-        // SAFETY: 该迭代器由一个可变切片创建，当前起点为 `self.ptr`，
-        // 剩余长度为 `len!(self)`；这保证满足 `from_raw_parts_mut` 的全部前置条件。
+        // SAFETY: the iterator was created from a mutable slice with pointer
+        // `self.ptr` and length `len!(self)`. This guarantees that all the prerequisites
+        // for `from_raw_parts_mut` are fulfilled.
         unsafe { from_raw_parts_mut(self.ptr.as_ptr(), len!(self)) }
     }
 }
@@ -360,18 +370,21 @@ impl<T> AsRef<[T]> for IterMut<'_, T> {
 
 iterator! {struct IterMut -> *mut T, &'a mut T, mut, {mut}, as_mut, each_mut, {}}
 
-/// 分割迭代器上的内部抽象，使 splitn、splitn_mut 等只需实现一次。
+/// An internal abstraction over the splitting iterators, so that
+/// splitn, splitn_mut etc can be implemented once.
 #[doc(hidden)]
 pub(super) trait SplitIter: DoubleEndedIterator {
-    /// 将底层迭代器标记为完成，并提取切片的剩余部分。
+    /// Marks the underlying iterator as complete, extracting the remaining
+    /// portion of the slice.
     fn finish(&mut self) -> Option<Self::Item>;
 }
 
-/// 按满足谓词函数的元素分隔子切片的迭代器。
+/// An iterator over subslices separated by elements that match a predicate
+/// function.
 ///
-/// 该结构体由 [切片][slices] 上的 [`split`] 方法创建。
+/// This struct is created by the [`split`] method on [slices].
 ///
-/// # 示例
+/// # Example
 ///
 /// ```
 /// let slice = [10, 40, 33, 20];
@@ -389,10 +402,10 @@ pub struct Split<'a, T: 'a, P>
 where
     P: FnMut(&T) -> bool,
 {
-    // 供 `SplitWhitespace` 和 `SplitAsciiWhitespace` 的 `as_str` 方法使用。
+    // Used for `SplitWhitespace` and `SplitAsciiWhitespace` `as_str` methods
     pub(crate) v: &'a [T],
     pred: P,
-    // 供 `SplitAsciiWhitespace` 的 `as_str` 方法使用。
+    // Used for `SplitAsciiWhitespace` `as_str` method
     pub(crate) finished: bool,
 }
 
@@ -401,8 +414,8 @@ impl<'a, T: 'a, P: FnMut(&T) -> bool> Split<'a, T, P> {
     pub(super) fn new(slice: &'a [T], pred: P) -> Self {
         Self { v: slice, pred, finished: false }
     }
-    /// 返回一个包含 split 尚未处理元素的切片。
-    /// # 示例
+    /// Returns a slice which contains items not yet handled by split.
+    /// # Example
     ///
     /// ```
     /// #![feature(split_as_slice)]
@@ -427,7 +440,7 @@ where
     }
 }
 
-// FIXME(#26925) 改用 `#[derive(Clone)]` 后移除此实现。
+// FIXME(#26925) Remove in favor of `#[derive(Clone)]`
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<T, P> Clone for Split<'_, T, P>
 where
@@ -455,8 +468,8 @@ where
             None => self.finish(),
             Some(idx) => {
                 let (left, right) =
-                    // SAFETY: 如果 v.iter().position 返回 Some(idx)，
-                    // 则 idx 必定是 v 的有效索引。
+                    // SAFETY: if v.iter().position returns Some(idx), that
+                    // idx is definitely a valid index for v
                     unsafe { (self.v.get_unchecked(..idx), self.v.get_unchecked(idx + 1..)) };
                 let ret = Some(left);
                 self.v = right;
@@ -470,8 +483,8 @@ where
         if self.finished {
             (0, Some(0))
         } else {
-            // 如果谓词不匹配任何元素，则产出一个切片。
-            // 如果它匹配每个元素，则产出 `len() + 1` 个空切片。
+            // If the predicate doesn't match anything, we yield one slice.
+            // If it matches every element, we yield `len() + 1` empty slices.
             (1, Some(self.v.len() + 1))
         }
     }
@@ -492,8 +505,8 @@ where
             None => self.finish(),
             Some(idx) => {
                 let (left, right) =
-                    // SAFETY: 如果 v.iter().rposition 返回 Some(idx)，
-                    // 则 idx 必定是 v 的有效索引。
+                    // SAFETY: if v.iter().rposition returns Some(idx), then
+                    // idx is definitely a valid index for v
                     unsafe { (self.v.get_unchecked(..idx), self.v.get_unchecked(idx + 1..)) };
                 let ret = Some(right);
                 self.v = left;
@@ -521,12 +534,13 @@ where
 #[stable(feature = "fused", since = "1.26.0")]
 impl<T, P> FusedIterator for Split<'_, T, P> where P: FnMut(&T) -> bool {}
 
-/// 按满足谓词函数的元素分隔子切片的迭代器。
-/// 与 `Split` 不同，它会把匹配的部分作为子切片的终止元素包含进去。
+/// An iterator over subslices separated by elements that match a predicate
+/// function. Unlike `Split`, it contains the matched part as a terminator
+/// of the subslice.
 ///
-/// 该结构体由 [切片][slices] 上的 [`split_inclusive`] 方法创建。
+/// This struct is created by the [`split_inclusive`] method on [slices].
 ///
-/// # 示例
+/// # Example
 ///
 /// ```
 /// let slice = [10, 40, 33, 20];
@@ -570,7 +584,7 @@ where
     }
 }
 
-// FIXME(#26925) 改用 `#[derive(Clone)]` 后移除此实现。
+// FIXME(#26925) Remove in favor of `#[derive(Clone)]`
 #[stable(feature = "split_inclusive", since = "1.51.0")]
 impl<T, P> Clone for SplitInclusive<'_, T, P>
 where
@@ -609,8 +623,9 @@ where
         if self.finished {
             (0, Some(0))
         } else {
-            // 如果谓词不匹配任何元素，则产出一个切片。
-            // 如果它匹配每个元素，则产出 `len()` 个单元素切片，或者一个空切片。
+            // If the predicate doesn't match anything, we yield one slice.
+            // If it matches every element, we yield `len()` one-element slices,
+            // or a single empty slice.
             (1, Some(cmp::max(1, self.v.len())))
         }
     }
@@ -627,8 +642,9 @@ where
             return None;
         }
 
-        // self.v 的最后一个索引已经在上一次迭代中检查并发现匹配，
-        // 因此从左移一个索引的位置开始搜索新的匹配项。
+        // The last index of self.v is already checked and found to match
+        // by the last iteration, so we start searching a new match
+        // one index to the left.
         let remainder = if self.v.is_empty() { &[] } else { &self.v[..(self.v.len() - 1)] };
         let idx = remainder.iter().rposition(|x| (self.pred)(x)).map(|idx| idx + 1).unwrap_or(0);
         if idx == 0 {
@@ -643,11 +659,12 @@ where
 #[stable(feature = "split_inclusive", since = "1.51.0")]
 impl<T, P> FusedIterator for SplitInclusive<'_, T, P> where P: FnMut(&T) -> bool {}
 
-/// 按匹配 `pred` 的元素分隔可变子切片的迭代器。
+/// An iterator over the mutable subslices of the vector which are separated
+/// by elements that match `pred`.
 ///
-/// 该结构体由 [切片][slices] 上的 [`split_mut`] 方法创建。
+/// This struct is created by the [`split_mut`] method on [slices].
 ///
-/// # 示例
+/// # Example
 ///
 /// ```
 /// let mut v = [10, 40, 30, 20, 60, 50];
@@ -716,11 +733,12 @@ where
             None => self.finish(),
             Some(idx) => {
                 let tmp = mem::take(&mut self.v);
-                // idx 是执行分割的元素索引。目标是把 self 设为 idx 之后的区域，
-                // 并返回 idx 之前且不包含 idx 的子切片。因此先在 idx 之后分割。
+                // idx is the index of the element we are splitting on. We want to set self to the
+                // region after idx, and return the subslice before and not including idx.
+                // So first we split after idx
                 let (head, tail) = tmp.split_at_mut(idx + 1);
                 self.v = tail;
-                // 然后返回到找到的元素之前、且不包含该元素的子切片。
+                // Then return the subslice up to but not including the found element
                 Some(&mut head[..idx])
             }
         }
@@ -731,8 +749,8 @@ where
         if self.finished {
             (0, Some(0))
         } else {
-            // 如果谓词不匹配任何元素，则产出一个切片。
-            // 如果它匹配每个元素，则产出 `len() + 1` 个空切片。
+            // If the predicate doesn't match anything, we yield one slice.
+            // If it matches every element, we yield `len() + 1` empty slices.
             (1, Some(self.v.len() + 1))
         }
     }
@@ -750,7 +768,7 @@ where
         }
 
         let idx_opt = {
-            // 绕开 borrowck 限制。
+            // work around borrowck limitations
             let pred = &mut self.pred;
             self.v.iter().rposition(|x| (*pred)(x))
         };
@@ -769,12 +787,13 @@ where
 #[stable(feature = "fused", since = "1.26.0")]
 impl<T, P> FusedIterator for SplitMut<'_, T, P> where P: FnMut(&T) -> bool {}
 
-/// 按匹配 `pred` 的元素分隔可变子切片的迭代器。
-/// 与 `SplitMut` 不同，它会把匹配部分包含在子切片末尾。
+/// An iterator over the mutable subslices of the vector which are separated
+/// by elements that match `pred`. Unlike `SplitMut`, it contains the matched
+/// parts in the ends of the subslices.
 ///
-/// 该结构体由 [切片][slices] 上的 [`split_inclusive_mut`] 方法创建。
+/// This struct is created by the [`split_inclusive_mut`] method on [slices].
 ///
-/// # 示例
+/// # Example
 ///
 /// ```
 /// let mut v = [10, 40, 30, 20, 60, 50];
@@ -829,7 +848,7 @@ where
         }
 
         let idx_opt = {
-            // 绕开 borrowck 限制。
+            // work around borrowck limitations
             let pred = &mut self.pred;
             self.v.iter().position(|x| (*pred)(x))
         };
@@ -848,8 +867,9 @@ where
         if self.finished {
             (0, Some(0))
         } else {
-            // 如果谓词不匹配任何元素，则产出一个切片。
-            // 如果它匹配每个元素，则产出 `len()` 个单元素切片，或者一个空切片。
+            // If the predicate doesn't match anything, we yield one slice.
+            // If it matches every element, we yield `len()` one-element slices,
+            // or a single empty slice.
             (1, Some(cmp::max(1, self.v.len())))
         }
     }
@@ -869,11 +889,12 @@ where
         let idx_opt = if self.v.is_empty() {
             None
         } else {
-            // 绕开 borrowck 限制。
+            // work around borrowck limitations
             let pred = &mut self.pred;
 
-            // self.v 的最后一个索引已经在上一次迭代中检查并发现匹配，
-            // 因此从左移一个索引的位置开始搜索新的匹配项。
+            // The last index of self.v is already checked and found to match
+            // by the last iteration, so we start searching a new match
+            // one index to the left.
             let remainder = &self.v[..(self.v.len() - 1)];
             remainder.iter().rposition(|x| (*pred)(x))
         };
@@ -891,11 +912,12 @@ where
 #[stable(feature = "split_inclusive", since = "1.51.0")]
 impl<T, P> FusedIterator for SplitInclusiveMut<'_, T, P> where P: FnMut(&T) -> bool {}
 
-/// 按满足谓词函数的元素分隔子切片，并从切片末尾开始迭代的迭代器。
+/// An iterator over subslices separated by elements that match a predicate
+/// function, starting from the end of the slice.
 ///
-/// 该结构体由 [切片][slices] 上的 [`rsplit`] 方法创建。
+/// This struct is created by the [`rsplit`] method on [slices].
 ///
-/// # 示例
+/// # Example
 ///
 /// ```
 /// let slice = [11, 22, 33, 0, 44, 55];
@@ -936,7 +958,7 @@ where
     }
 }
 
-// FIXME(#26925) 改用 `#[derive(Clone)]` 后移除此实现。
+// FIXME(#26925) Remove in favor of `#[derive(Clone)]`
 #[stable(feature = "slice_rsplit", since = "1.27.0")]
 impl<T, P> Clone for RSplit<'_, T, P>
 where
@@ -990,11 +1012,12 @@ where
 #[stable(feature = "slice_rsplit", since = "1.27.0")]
 impl<T, P> FusedIterator for RSplit<'_, T, P> where P: FnMut(&T) -> bool {}
 
-/// 按匹配 `pred` 的元素分隔子切片，并从切片末尾开始迭代的迭代器。
+/// An iterator over the subslices of the vector which are separated
+/// by elements that match `pred`, starting from the end of the slice.
 ///
-/// 该结构体由 [切片][slices] 上的 [`rsplit_mut`] 方法创建。
+/// This struct is created by the [`rsplit_mut`] method on [slices].
 ///
-/// # 示例
+/// # Example
 ///
 /// ```
 /// let mut slice = [11, 22, 33, 0, 44, 55];
@@ -1075,7 +1098,9 @@ where
 #[stable(feature = "slice_rsplit", since = "1.27.0")]
 impl<T, P> FusedIterator for RSplitMut<'_, T, P> where P: FnMut(&T) -> bool {}
 
-/// 私有迭代器：按满足谓词函数的元素分隔子切片，最多分割固定次数。
+/// An private iterator over subslices separated by elements that
+/// match a predicate function, splitting at most a fixed number of
+/// times.
 #[derive(Debug)]
 struct GenericSplitN<I> {
     iter: I,
@@ -1110,11 +1135,12 @@ impl<T, I: SplitIter<Item = T>> Iterator for GenericSplitN<I> {
     }
 }
 
-/// 按满足谓词函数的元素分隔子切片，并限制分割次数的迭代器。
+/// An iterator over subslices separated by elements that match a predicate
+/// function, limited to a given number of splits.
 ///
-/// 该结构体由 [切片][slices] 上的 [`splitn`] 方法创建。
+/// This struct is created by the [`splitn`] method on [slices].
 ///
-/// # 示例
+/// # Example
 ///
 /// ```
 /// let slice = [10, 40, 30, 20, 60, 50];
@@ -1152,12 +1178,13 @@ where
     }
 }
 
-/// 按满足谓词函数的元素分隔子切片、限制分割次数，
-/// 并从切片末尾开始迭代的迭代器。
+/// An iterator over subslices separated by elements that match a
+/// predicate function, limited to a given number of splits, starting
+/// from the end of the slice.
 ///
-/// 该结构体由 [切片][slices] 上的 [`rsplitn`] 方法创建。
+/// This struct is created by the [`rsplitn`] method on [slices].
 ///
-/// # 示例
+/// # Example
 ///
 /// ```
 /// let slice = [10, 40, 30, 20, 60, 50];
@@ -1195,11 +1222,12 @@ where
     }
 }
 
-/// 按满足谓词函数的元素分隔子切片，并限制分割次数的迭代器。
+/// An iterator over subslices separated by elements that match a predicate
+/// function, limited to a given number of splits.
 ///
-/// 该结构体由 [切片][slices] 上的 [`splitn_mut`] 方法创建。
+/// This struct is created by the [`splitn_mut`] method on [slices].
 ///
-/// # 示例
+/// # Example
 ///
 /// ```
 /// let mut slice = [10, 40, 30, 20, 60, 50];
@@ -1234,12 +1262,13 @@ where
     }
 }
 
-/// 按满足谓词函数的元素分隔子切片、限制分割次数，
-/// 并从切片末尾开始迭代的迭代器。
+/// An iterator over subslices separated by elements that match a
+/// predicate function, limited to a given number of splits, starting
+/// from the end of the slice.
 ///
-/// 该结构体由 [切片][slices] 上的 [`rsplitn_mut`] 方法创建。
+/// This struct is created by the [`rsplitn_mut`] method on [slices].
 ///
-/// # 示例
+/// # Example
 ///
 /// ```
 /// let mut slice = [10, 40, 30, 20, 60, 50];
@@ -1279,11 +1308,11 @@ forward_iterator! { RSplitN: T, &'a [T] }
 forward_iterator! { SplitNMut: T, &'a mut [T] }
 forward_iterator! { RSplitNMut: T, &'a mut [T] }
 
-/// 长度为 `size` 的重叠子切片迭代器。
+/// An iterator over overlapping subslices of length `size`.
 ///
-/// 该结构体由 [切片][slices] 上的 [`windows`] 方法创建。
+/// This struct is created by the [`windows`] method on [slices].
 ///
-/// # 示例
+/// # Example
 ///
 /// ```
 /// let slice = ['r', 'u', 's', 't'];
@@ -1311,7 +1340,7 @@ impl<'a, T: 'a> Windows<'a, T> {
     }
 }
 
-// FIXME(#26925) 改用 `#[derive(Clone)]` 后移除此实现。
+// FIXME(#26925) Remove in favor of `#[derive(Clone)]`
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<T> Clone for Windows<'_, T> {
     fn clone(&self) -> Self {
@@ -1358,8 +1387,8 @@ impl<'a, T> Iterator for Windows<'a, T> {
             self.v = &rest[1..];
             Some(nth)
         } else {
-            // 赋值为 &[] 时，设置长度为 0 比覆盖指针更便宜。
-            self.v = &self.v[..0]; // 比 &[] 更省
+            // setting length to 0 is cheaper than overwriting the pointer when assigning &[]
+            self.v = &self.v[..0]; // cheaper than &[]
             None
         }
     }
@@ -1375,9 +1404,10 @@ impl<'a, T> Iterator for Windows<'a, T> {
     }
 
     unsafe fn __iterator_get_unchecked(&mut self, idx: usize) -> Self::Item {
-        // SAFETY: 调用方保证 `i` 在边界内，这意味着 `i` 不可能溢出 `isize`；
-        // `from_raw_parts` 创建的切片是 `self.v` 的子切片，
-        // 因而保证在 `self.v` 的生命周期 `'a` 内有效。
+        // SAFETY: since the caller guarantees that `i` is in bounds,
+        // which means that `i` cannot overflow an `isize`, and the
+        // slice created by `from_raw_parts` is a subslice of `self.v`
+        // thus is guaranteed to be valid for the lifetime `'a` of `self.v`.
         unsafe { from_raw_parts(self.v.as_ptr().add(idx), self.size.get()) }
     }
 }
@@ -1398,7 +1428,7 @@ impl<'a, T> DoubleEndedIterator for Windows<'a, T> {
             self.v = &self.v[..end - 1];
             Some(res)
         } else {
-            self.v = &self.v[..0]; // 比 &[] 更省
+            self.v = &self.v[..0]; // cheaper than &[]
             None
         }
     }
@@ -1423,14 +1453,15 @@ unsafe impl<'a, T> TrustedRandomAccessNoCoerce for Windows<'a, T> {
     const MAY_HAVE_SIDE_EFFECT: bool = false;
 }
 
-/// 从切片开头开始、按（不重叠的）chunk 迭代切片的迭代器；
-/// 每个 chunk 包含 `chunk_size` 个元素。
+/// An iterator over a slice in (non-overlapping) chunks (`chunk_size` elements at a
+/// time), starting at the beginning of the slice.
 ///
-/// 当切片长度不能被 chunk 大小整除时，迭代中的最后一个切片就是剩余部分。
+/// When the slice len is not evenly divided by the chunk size, the last slice
+/// of the iteration will be the remainder.
 ///
-/// 该结构体由 [切片][slices] 上的 [`chunks`] 方法创建。
+/// This struct is created by the [`chunks`] method on [slices].
 ///
-/// # 示例
+/// # Example
 ///
 /// ```
 /// let slice = ['l', 'o', 'r', 'e', 'm'];
@@ -1458,7 +1489,7 @@ impl<'a, T: 'a> Chunks<'a, T> {
     }
 }
 
-// FIXME(#26925) 改用 `#[derive(Clone)]` 后移除此实现。
+// FIXME(#26925) Remove in favor of `#[derive(Clone)]`
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<T> Clone for Chunks<'_, T> {
     fn clone(&self) -> Self {
@@ -1507,7 +1538,7 @@ impl<'a, T> Iterator for Chunks<'a, T> {
             self.v = rest;
             Some(chunk)
         } else {
-            self.v = &self.v[..0]; // 比 &[] 更省
+            self.v = &self.v[..0]; // cheaper than &[]
             None
         }
     }
@@ -1524,10 +1555,13 @@ impl<'a, T> Iterator for Chunks<'a, T> {
 
     unsafe fn __iterator_get_unchecked(&mut self, idx: usize) -> Self::Item {
         let start = idx * self.chunk_size;
-        // SAFETY: 调用方保证 `i` 在边界内，这意味着 `start` 必定位于底层
-        // `self.v` 切片边界内；这里也确保 `len` 在 `self.v` 边界内。
-        // 因此 `start` 不能溢出 `isize`，并且由 `from_raw_parts` 构造的切片
-        // 是 `self.v` 的子切片，保证在 `self.v` 的生命周期 `'a` 内有效。
+        // SAFETY: the caller guarantees that `i` is in bounds,
+        // which means that `start` must be in bounds of the
+        // underlying `self.v` slice, and we made sure that `len`
+        // is also in bounds of `self.v`. Thus, `start` cannot overflow
+        // an `isize`, and the slice constructed by `from_raw_parts`
+        // is a subslice of `self.v` which is guaranteed to be valid
+        // for the lifetime `'a` of `self.v`.
         unsafe {
             let len = cmp::min(self.v.len().unchecked_sub(start), self.chunk_size);
             from_raw_parts(self.v.as_ptr().add(start), len)
@@ -1544,16 +1578,20 @@ impl<'a, T> DoubleEndedIterator for Chunks<'a, T> {
         } else {
             let remainder = self.v.len() % self.chunk_size;
             let chunksz = if remainder != 0 { remainder } else { self.chunk_size };
-            // SAFETY: split_at_unchecked 要求参数小于或等于长度。
-            // 这里能保证这一点，但理由比较微妙：`chunksz` 要么是
-            // `self.v.len() % self.chunk_size`，它始终严格小于 `self.v.len()`
-            // （如果 `self.chunk_size` 为零，则会 panic）；要么在长度正好能被
-            // chunk 大小整除时是 `self.chunk_size`。
+            // SAFETY: split_at_unchecked requires the argument be less than or
+            // equal to the length. This is guaranteed, but subtle: `chunksz`
+            // will always either be `self.v.len() % self.chunk_size`, which
+            // will always evaluate to strictly less than `self.v.len()` (or
+            // panic, in the case that `self.chunk_size` is zero), or it can be
+            // `self.chunk_size`, in the case that the length is exactly
+            // divisible by the chunk size.
             //
-            // 这种情况下使用 `self.chunk_size` 看似可能产生大于 `self.v.len()`
-            // 的值，但实际上不会：如果 `self.chunk_size` 大于 `self.v.len()`，
-            // 那么 `self.v.len() % self.chunk_size` 会返回非零值（注意在该 `if`
-            // 分支中，已经知道 `self.v` 非空）。
+            // While it seems like using `self.chunk_size` in this case could
+            // lead to a value greater than `self.v.len()`, it cannot: if
+            // `self.chunk_size` were greater than `self.v.len()`, then
+            // `self.v.len() % self.chunk_size` would return nonzero (note that
+            // in this branch of the `if`, we already know that `self.v` is
+            // non-empty).
             let (fst, snd) = unsafe { self.v.split_at_unchecked(self.v.len() - chunksz) };
             self.v = fst;
             Some(snd)
@@ -1570,7 +1608,7 @@ impl<'a, T> DoubleEndedIterator for Chunks<'a, T> {
             self.v = &self.v[..start];
             Some(nth_back)
         } else {
-            self.v = &self.v[..0]; // 比 &[] 更省
+            self.v = &self.v[..0]; // cheaper than &[]
             None
         }
     }
@@ -1595,14 +1633,15 @@ unsafe impl<'a, T> TrustedRandomAccessNoCoerce for Chunks<'a, T> {
     const MAY_HAVE_SIDE_EFFECT: bool = false;
 }
 
-/// 从切片开头开始、按（不重叠的）可变 chunk 迭代切片的迭代器；
-/// 每个 chunk 包含 `chunk_size` 个元素。
+/// An iterator over a slice in (non-overlapping) mutable chunks (`chunk_size`
+/// elements at a time), starting at the beginning of the slice.
 ///
-/// 当切片长度不能被 chunk 大小整除时，迭代中的最后一个切片就是剩余部分。
+/// When the slice len is not evenly divided by the chunk size, the last slice
+/// of the iteration will be the remainder.
 ///
-/// 该结构体由 [切片][slices] 上的 [`chunks_mut`] 方法创建。
+/// This struct is created by the [`chunks_mut`] method on [slices].
 ///
-/// # 示例
+/// # Example
 ///
 /// ```
 /// let mut slice = ['l', 'o', 'r', 'e', 'm'];
@@ -1615,12 +1654,12 @@ unsafe impl<'a, T> TrustedRandomAccessNoCoerce for Chunks<'a, T> {
 #[stable(feature = "rust1", since = "1.0.0")]
 #[must_use = "iterators are lazy and do nothing unless consumed"]
 pub struct ChunksMut<'a, T: 'a> {
-    /// # 安全性(Safety）
-    /// 该切片指针必须指向至少有 `v.len()` 个 `T` 的有效区域。
-    /// 通常这些要求意味着这里可以改用 `&mut [T]`，但实际不能这样做：
-    /// `__iterator_get_unchecked` 需要返回 `&mut [T]`，而这保证了某些 aliasing
-    /// 属性；如果继续持有完整的原始 `&mut [T]`，就无法维护这些属性。
-    /// 包装裸切片则允许从被包装切片中分发互不重叠的 `&mut [T]` 子切片。
+    /// # Safety
+    /// This slice pointer must point at a valid region of `T` with at least length `v.len()`. Normally,
+    /// those requirements would mean that we could instead use a `&mut [T]` here, but we cannot
+    /// because `__iterator_get_unchecked` needs to return `&mut [T]`, which guarantees certain aliasing
+    /// properties that we cannot uphold if we hold on to the full original `&mut [T]`. Wrapping a raw
+    /// slice instead lets us hand out non-overlapping `&mut [T]` subslices of the slice we wrap.
     v: *mut [T],
     chunk_size: usize,
     _marker: PhantomData<&'a mut T>,
@@ -1643,10 +1682,10 @@ impl<'a, T> Iterator for ChunksMut<'a, T> {
             None
         } else {
             let sz = cmp::min(self.v.len(), self.chunk_size);
-            // SAFETY: self.v 的契约保证任意 split_at_mut 都有效。
+            // SAFETY: The self.v contract ensures that any split_at_mut is valid.
             let (head, tail) = unsafe { self.v.split_at_mut(sz) };
             self.v = tail;
-            // SAFETY: 没有其它东西指向、或将会指向该切片的内容。
+            // SAFETY: Nothing else points to or will point to the contents of this slice.
             Some(unsafe { &mut *head })
         }
     }
@@ -1671,12 +1710,12 @@ impl<'a, T> Iterator for ChunksMut<'a, T> {
         if let Some(start) = n.checked_mul(self.chunk_size)
             && start < self.v.len()
         {
-            // SAFETY: `start < self.v.len()` 保证这里在边界内。
+            // SAFETY: `start < self.v.len()` ensures this is in bounds
             let (_, rest) = unsafe { self.v.split_at_mut(start) };
-            // SAFETY: `.min(rest.len()` 保证这里在边界内。
+            // SAFETY: `.min(rest.len()` ensures this is in bounds
             let (chunk, rest) = unsafe { rest.split_at_mut(self.chunk_size.min(rest.len())) };
             self.v = rest;
-            // SAFETY: 没有其它东西指向、或将会指向该切片的内容。
+            // SAFETY: Nothing else points to or will point to the contents of this slice.
             Some(unsafe { &mut *chunk })
         } else {
             self.v = &mut [];
@@ -1690,17 +1729,19 @@ impl<'a, T> Iterator for ChunksMut<'a, T> {
             None
         } else {
             let start = (self.v.len() - 1) / self.chunk_size * self.chunk_size;
-            // SAFETY: 没有其它东西指向、或将会指向该切片的内容。
+            // SAFETY: Nothing else points to or will point to the contents of this slice.
             Some(unsafe { &mut *self.v.get_unchecked_mut(start..) })
         }
     }
 
     unsafe fn __iterator_get_unchecked(&mut self, idx: usize) -> Self::Item {
         let start = idx * self.chunk_size;
-        // SAFETY: 见 `Chunks::__iterator_get_unchecked` 和 `self.v` 的注释。
+        // SAFETY: see comments for `Chunks::__iterator_get_unchecked` and `self.v`.
         //
-        // 还要注意，调用方也保证不会以同一索引再次调用本方法，
-        // 并且不会调用其它会访问该子切片的方法；因此返回可变切片是有效的。
+        // Also note that the caller also guarantees that we're never called
+        // with the same index again, and that no other methods that will
+        // access this subslice are called, so it is valid for the returned
+        // slice to be mutable.
         unsafe {
             let len = cmp::min(self.v.len().unchecked_sub(start), self.chunk_size);
             from_raw_parts_mut(self.v.as_mut_ptr().add(start), len)
@@ -1718,10 +1759,10 @@ impl<'a, T> DoubleEndedIterator for ChunksMut<'a, T> {
             let remainder = self.v.len() % self.chunk_size;
             let sz = if remainder != 0 { remainder } else { self.chunk_size };
             let len = self.v.len();
-            // SAFETY: 与 `Chunks::next_back` 类似。
+            // SAFETY: Similar to `Chunks::next_back`
             let (head, tail) = unsafe { self.v.split_at_mut_unchecked(len - sz) };
             self.v = head;
-            // SAFETY: 没有其它东西指向、或将会指向该切片的内容。
+            // SAFETY: Nothing else points to or will point to the contents of this slice.
             Some(unsafe { &mut *tail })
         }
     }
@@ -1735,12 +1776,12 @@ impl<'a, T> DoubleEndedIterator for ChunksMut<'a, T> {
                 Some(res) => cmp::min(self.v.len(), res),
                 None => self.v.len(),
             };
-            // SAFETY: self.v 的契约保证任意 split_at_mut 都有效。
+            // SAFETY: The self.v contract ensures that any split_at_mut is valid.
             let (temp, _tail) = unsafe { self.v.split_at_mut(end) };
-            // SAFETY: self.v 的契约保证任意 split_at_mut 都有效。
+            // SAFETY: The self.v contract ensures that any split_at_mut is valid.
             let (head, nth_back) = unsafe { temp.split_at_mut(start) };
             self.v = head;
-            // SAFETY: 没有其它东西指向、或将会指向该切片的内容。
+            // SAFETY: Nothing else points to or will point to the contents of this slice.
             Some(unsafe { &mut *nth_back })
         } else {
             self.v = &mut [];
@@ -1774,15 +1815,16 @@ unsafe impl<T> Send for ChunksMut<'_, T> where T: Send {}
 #[stable(feature = "rust1", since = "1.0.0")]
 unsafe impl<T> Sync for ChunksMut<'_, T> where T: Sync {}
 
-/// 从切片开头开始、按（不重叠的）chunk 迭代切片的迭代器；
-/// 每个 chunk 包含 `chunk_size` 个元素。
+/// An iterator over a slice in (non-overlapping) chunks (`chunk_size` elements at a
+/// time), starting at the beginning of the slice.
 ///
-/// 当切片长度不能被 chunk 大小整除时，最后最多 `chunk_size-1` 个元素会被省略，
-/// 但可通过迭代器的 [`remainder`] 函数取回。
+/// When the slice len is not evenly divided by the chunk size, the last
+/// up to `chunk_size-1` elements will be omitted but can be retrieved from
+/// the [`remainder`] function from the iterator.
 ///
-/// 该结构体由 [切片][slices] 上的 [`chunks_exact`] 方法创建。
+/// This struct is created by the [`chunks_exact`] method on [slices].
 ///
-/// # 示例
+/// # Example
 ///
 /// ```
 /// let slice = ['l', 'o', 'r', 'e', 'm'];
@@ -1809,15 +1851,16 @@ impl<'a, T> ChunksExact<'a, T> {
     pub(super) const fn new(slice: &'a [T], chunk_size: usize) -> Self {
         let rem = slice.len() % chunk_size;
         let fst_len = slice.len() - rem;
-        // SAFETY: 根据上面的构造，0 <= fst_len <= slice.len()。
+        // SAFETY: 0 <= fst_len <= slice.len() by construction above
         let (fst, snd) = unsafe { slice.split_at_unchecked(fst_len) };
         Self { v: fst, rem: snd, chunk_size }
     }
 
-    /// 返回原始切片中不会被迭代器返回的剩余部分。
-    /// 返回切片最多包含 `chunk_size-1` 个元素。
+    /// Returns the remainder of the original slice that is not going to be
+    /// returned by the iterator. The returned slice has at most `chunk_size-1`
+    /// elements.
     ///
-    /// # 示例
+    /// # Example
     ///
     /// ```
     /// let slice = ['l', 'o', 'r', 'e', 'm'];
@@ -1837,7 +1880,7 @@ impl<'a, T> ChunksExact<'a, T> {
     }
 }
 
-// FIXME(#26925) 改用 `#[derive(Clone)]` 后移除此实现。
+// FIXME(#26925) Remove in favor of `#[derive(Clone)]`
 #[stable(feature = "chunks_exact", since = "1.31.0")]
 impl<T> Clone for ChunksExact<'_, T> {
     fn clone(&self) -> Self {
@@ -1876,7 +1919,7 @@ impl<'a, T> Iterator for ChunksExact<'a, T> {
             self.v = &self.v[start..];
             self.next()
         } else {
-            self.v = &self.v[..0]; // 比 &[] 更便宜。
+            self.v = &self.v[..0]; // cheaper than &[]
             None
         }
     }
@@ -1888,7 +1931,7 @@ impl<'a, T> Iterator for ChunksExact<'a, T> {
 
     unsafe fn __iterator_get_unchecked(&mut self, idx: usize) -> Self::Item {
         let start = idx * self.chunk_size;
-        // SAFETY: 与 `Chunks::__iterator_get_unchecked` 基本相同。
+        // SAFETY: mostly identical to `Chunks::__iterator_get_unchecked`.
         unsafe { from_raw_parts(self.v.as_ptr().add(start), self.chunk_size) }
     }
 }
@@ -1916,7 +1959,7 @@ impl<'a, T> DoubleEndedIterator for ChunksExact<'a, T> {
             self.v = &self.v[..start];
             Some(nth_back)
         } else {
-            self.v = &self.v[..0]; // 比 &[] 更便宜。
+            self.v = &self.v[..0]; // cheaper than &[]
             None
         }
     }
@@ -1945,15 +1988,16 @@ unsafe impl<'a, T> TrustedRandomAccessNoCoerce for ChunksExact<'a, T> {
     const MAY_HAVE_SIDE_EFFECT: bool = false;
 }
 
-/// 从切片开头开始、按（不重叠的）可变 chunk 迭代切片的迭代器；
-/// 每个 chunk 包含 `chunk_size` 个元素。
+/// An iterator over a slice in (non-overlapping) mutable chunks (`chunk_size`
+/// elements at a time), starting at the beginning of the slice.
 ///
-/// 当切片长度不能被 chunk 大小整除时，最后最多 `chunk_size-1` 个元素会被省略，
-/// 但可通过迭代器的 [`into_remainder`] 函数取回。
+/// When the slice len is not evenly divided by the chunk size, the last up to
+/// `chunk_size-1` elements will be omitted but can be retrieved from the
+/// [`into_remainder`] function from the iterator.
 ///
-/// 该结构体由 [切片][slices] 上的 [`chunks_exact_mut`] 方法创建。
+/// This struct is created by the [`chunks_exact_mut`] method on [slices].
 ///
-/// # 示例
+/// # Example
 ///
 /// ```
 /// let mut slice = ['l', 'o', 'r', 'e', 'm'];
@@ -1967,14 +2011,14 @@ unsafe impl<'a, T> TrustedRandomAccessNoCoerce for ChunksExact<'a, T> {
 #[stable(feature = "chunks_exact", since = "1.31.0")]
 #[must_use = "iterators are lazy and do nothing unless consumed"]
 pub struct ChunksExactMut<'a, T: 'a> {
-    /// # 安全性(Safety）
-    /// 该切片指针必须指向至少有 `v.len()` 个 `T` 的有效区域。
-    /// 通常这些要求意味着这里可以改用 `&mut [T]`，但实际不能这样做：
-    /// `__iterator_get_unchecked` 需要返回 `&mut [T]`，而这保证了某些 aliasing
-    /// 属性；如果继续持有完整的原始 `&mut [T]`，就无法维护这些属性。
-    /// 包装裸切片则允许从被包装切片中分发互不重叠的 `&mut [T]` 子切片。
+    /// # Safety
+    /// This slice pointer must point at a valid region of `T` with at least length `v.len()`. Normally,
+    /// those requirements would mean that we could instead use a `&mut [T]` here, but we cannot
+    /// because `__iterator_get_unchecked` needs to return `&mut [T]`, which guarantees certain aliasing
+    /// properties that we cannot uphold if we hold on to the full original `&mut [T]`. Wrapping a raw
+    /// slice instead lets us hand out non-overlapping `&mut [T]` subslices of the slice we wrap.
     v: *mut [T],
-    rem: &'a mut [T], // 迭代器永远不会从这里产出元素，因此它可以保持唯一。
+    rem: &'a mut [T], // The iterator never yields from here, so this can be unique
     chunk_size: usize,
     _marker: PhantomData<&'a mut T>,
 }
@@ -1984,13 +2028,14 @@ impl<'a, T> ChunksExactMut<'a, T> {
     pub(super) const fn new(slice: &'a mut [T], chunk_size: usize) -> Self {
         let rem = slice.len() % chunk_size;
         let fst_len = slice.len() - rem;
-        // SAFETY: 根据上面的构造，0 <= fst_len <= slice.len()。
+        // SAFETY: 0 <= fst_len <= slice.len() by construction above
         let (fst, snd) = unsafe { slice.split_at_mut_unchecked(fst_len) };
         Self { v: fst, rem: snd, chunk_size, _marker: PhantomData }
     }
 
-    /// 返回原始切片中不会被迭代器返回的剩余部分。
-    /// 返回切片最多包含 `chunk_size-1` 个元素。
+    /// Returns the remainder of the original slice that is not going to be
+    /// returned by the iterator. The returned slice has at most `chunk_size-1`
+    /// elements.
     #[must_use = "`self` will be dropped if the result is not used"]
     #[stable(feature = "chunks_exact", since = "1.31.0")]
     pub fn into_remainder(self) -> &'a mut [T] {
@@ -2004,7 +2049,7 @@ impl<'a, T> Iterator for ChunksExactMut<'a, T> {
 
     #[inline]
     fn next(&mut self) -> Option<&'a mut [T]> {
-        // SAFETY: 这里持有 `&mut self`，因此允许临时物化一个可变切片。
+        // SAFETY: we have `&mut self`, so are allowed to temporarily materialize a mut slice
         unsafe { &mut *self.v }.split_at_mut_checked(self.chunk_size).and_then(|(chunk, rest)| {
             self.v = rest;
             Some(chunk)
@@ -2027,7 +2072,7 @@ impl<'a, T> Iterator for ChunksExactMut<'a, T> {
         if let Some(start) = n.checked_mul(self.chunk_size)
             && start < self.v.len()
         {
-            // SAFETY: `start < self.v.len()` 保证这里在边界内。
+            // SAFETY: `start < self.v.len()`
             self.v = unsafe { self.v.split_at_mut(start).1 };
             self.next()
         } else {
@@ -2043,7 +2088,7 @@ impl<'a, T> Iterator for ChunksExactMut<'a, T> {
 
     unsafe fn __iterator_get_unchecked(&mut self, idx: usize) -> Self::Item {
         let start = idx * self.chunk_size;
-        // SAFETY: 见 `Chunks::__iterator_get_unchecked` 和 `self.v` 的注释。
+        // SAFETY: see comments for `Chunks::__iterator_get_unchecked` and `self.v`.
         unsafe { from_raw_parts_mut(self.v.as_mut_ptr().add(start), self.chunk_size) }
     }
 }
@@ -2055,10 +2100,10 @@ impl<'a, T> DoubleEndedIterator for ChunksExactMut<'a, T> {
         if self.v.len() < self.chunk_size {
             None
         } else {
-            // SAFETY: 由于上面的检查，这个减法在边界内。
+            // SAFETY: This subtraction is inbounds because of the check above
             let (head, tail) = unsafe { self.v.split_at_mut(self.v.len() - self.chunk_size) };
             self.v = head;
-            // SAFETY: 没有其它东西指向、或将会指向该切片的内容。
+            // SAFETY: Nothing else points to or will point to the contents of this slice.
             Some(unsafe { &mut *tail })
         }
     }
@@ -2069,12 +2114,12 @@ impl<'a, T> DoubleEndedIterator for ChunksExactMut<'a, T> {
         if n < len {
             let start = (len - 1 - n) * self.chunk_size;
             let end = start + self.chunk_size;
-            // SAFETY: self.v 的契约保证任意 split_at_mut 都有效。
+            // SAFETY: The self.v contract ensures that any split_at_mut is valid.
             let (temp, _tail) = unsafe { mem::replace(&mut self.v, &mut []).split_at_mut(end) };
-            // SAFETY: self.v 的契约保证任意 split_at_mut 都有效。
+            // SAFETY: The self.v contract ensures that any split_at_mut is valid.
             let (head, nth_back) = unsafe { temp.split_at_mut(start) };
             self.v = head;
-            // SAFETY: 没有其它东西指向、或将会指向该切片的内容。
+            // SAFETY: Nothing else points to or will point to the contents of this slice.
             Some(unsafe { &mut *nth_back })
         } else {
             self.v = &mut [];
@@ -2112,11 +2157,12 @@ unsafe impl<T> Send for ChunksExactMut<'_, T> where T: Send {}
 #[stable(feature = "chunks_exact", since = "1.31.0")]
 unsafe impl<T> Sync for ChunksExactMut<'_, T> where T: Sync {}
 
-/// 从切片开头开始、按重叠窗口迭代切片的迭代器；每个窗口包含 `N` 个元素。
+/// A windowed iterator over a slice in overlapping chunks (`N` elements at a
+/// time), starting at the beginning of the slice
 ///
-/// 该结构体由 [切片][slices] 上的 [`array_windows`] 方法创建。
+/// This struct is created by the [`array_windows`] method on [slices].
 ///
-/// # 示例
+/// # Example
 ///
 /// ```
 /// let slice = [0, 1, 2, 3];
@@ -2143,7 +2189,7 @@ impl<'a, T: 'a, const N: usize> ArrayWindows<'a, T, N> {
     }
 }
 
-// FIXME(#26925) 改用 `#[derive(Clone)]` 后移除此实现。
+// FIXME(#26925) Remove in favor of `#[derive(Clone)]`
 #[stable(feature = "array_windows", since = "1.94.0")]
 impl<T, const N: usize> Clone for ArrayWindows<'_, T, N> {
     fn clone(&self) -> Self {
@@ -2188,9 +2234,10 @@ impl<'a, T, const N: usize> Iterator for ArrayWindows<'a, T, N> {
     }
 
     unsafe fn __iterator_get_unchecked(&mut self, idx: usize) -> Self::Item {
-        // SAFETY: 调用方保证 `idx` 在边界内，这意味着 `idx` 不可能溢出 `isize`；
-        // `cast_array` 创建的“切片”是 `self.v` 的子切片，
-        // 因而保证在 `self.v` 的生命周期 `'a` 内有效。
+        // SAFETY: since the caller guarantees that `idx` is in bounds,
+        // which means that `idx` cannot overflow an `isize`, and the
+        // "slice" created by `cast_array` is a subslice of `self.v`
+        // thus is guaranteed to be valid for the lifetime `'a` of `self.v`.
         unsafe { &*self.v.as_ptr().add(idx).cast_array() }
     }
 }
@@ -2237,14 +2284,15 @@ unsafe impl<T, const N: usize> TrustedRandomAccessNoCoerce for ArrayWindows<'_, 
     const MAY_HAVE_SIDE_EFFECT: bool = false;
 }
 
-/// 从切片末尾开始、按（不重叠的）chunk 迭代切片的迭代器；
-/// 每个 chunk 包含 `chunk_size` 个元素。
+/// An iterator over a slice in (non-overlapping) chunks (`chunk_size` elements at a
+/// time), starting at the end of the slice.
 ///
-/// 当切片长度不能被 chunk 大小整除时，迭代中的最后一个切片就是剩余部分。
+/// When the slice len is not evenly divided by the chunk size, the last slice
+/// of the iteration will be the remainder.
 ///
-/// 该结构体由 [切片][slices] 上的 [`rchunks`] 方法创建。
+/// This struct is created by the [`rchunks`] method on [slices].
 ///
-/// # 示例
+/// # Example
 ///
 /// ```
 /// let slice = ['l', 'o', 'r', 'e', 'm'];
@@ -2272,7 +2320,7 @@ impl<'a, T: 'a> RChunks<'a, T> {
     }
 }
 
-// FIXME(#26925) 改用 `#[derive(Clone)]` 后移除此实现。
+// FIXME(#26925) Remove in favor of `#[derive(Clone)]`
 #[stable(feature = "rchunks", since = "1.31.0")]
 impl<T> Clone for RChunks<'_, T> {
     fn clone(&self) -> Self {
@@ -2290,8 +2338,8 @@ impl<'a, T> Iterator for RChunks<'a, T> {
             None
         } else {
             let idx = self.v.len().saturating_sub(self.chunk_size);
-            // SAFETY: self.chunk_size() > 0，因此 0 <= idx < self.v.len()。
-            // 所以 `idx` 位于 `self.v` 边界内，可作为 `split_at_mut_unchecked` 的有效参数。
+            // SAFETY: self.chunk_size() > 0, so 0 <= idx < self.v.len().
+            // Thus `idx` is in-bounds for `self.v` and can be used as a valid argument for `split_at_mut_unchecked`.
             let (rest, chunk) = unsafe { self.v.split_at_unchecked(idx) };
             self.v = rest;
             Some(chunk)
@@ -2324,7 +2372,7 @@ impl<'a, T> Iterator for RChunks<'a, T> {
             self.v = rest;
             Some(chunk)
         } else {
-            self.v = &self.v[..0]; // 比 &[] 更便宜。
+            self.v = &self.v[..0]; // cheaper than &[]
             None
         }
     }
@@ -2343,7 +2391,7 @@ impl<'a, T> Iterator for RChunks<'a, T> {
     unsafe fn __iterator_get_unchecked(&mut self, idx: usize) -> Self::Item {
         let end = self.v.len() - idx * self.chunk_size;
         let start = end.saturating_sub(self.chunk_size);
-        // SAFETY: 与 `Chunks::__iterator_get_unchecked` 基本相同。
+        // SAFETY: mostly identical to `Chunks::__iterator_get_unchecked`.
         unsafe { from_raw_parts(self.v.as_ptr().add(start), end - start) }
     }
 }
@@ -2357,7 +2405,7 @@ impl<'a, T> DoubleEndedIterator for RChunks<'a, T> {
         } else {
             let remainder = self.v.len() % self.chunk_size;
             let chunksz = if remainder != 0 { remainder } else { self.chunk_size };
-            // SAFETY: 与 Chunks::next_back 类似。
+            // SAFETY: similar to Chunks::next_back
             let (fst, snd) = unsafe { self.v.split_at_unchecked(chunksz) };
             self.v = snd;
             Some(fst)
@@ -2375,7 +2423,7 @@ impl<'a, T> DoubleEndedIterator for RChunks<'a, T> {
             self.v = &self.v[end..];
             Some(nth_back)
         } else {
-            self.v = &self.v[..0]; // 比 &[] 更便宜。
+            self.v = &self.v[..0]; // cheaper than &[]
             None
         }
     }
@@ -2400,14 +2448,15 @@ unsafe impl<'a, T> TrustedRandomAccessNoCoerce for RChunks<'a, T> {
     const MAY_HAVE_SIDE_EFFECT: bool = false;
 }
 
-/// 从切片末尾开始、按（不重叠的）可变 chunk 迭代切片的迭代器；
-/// 每个 chunk 包含 `chunk_size` 个元素。
+/// An iterator over a slice in (non-overlapping) mutable chunks (`chunk_size`
+/// elements at a time), starting at the end of the slice.
 ///
-/// 当切片长度不能被 chunk 大小整除时，迭代中的最后一个切片就是剩余部分。
+/// When the slice len is not evenly divided by the chunk size, the last slice
+/// of the iteration will be the remainder.
 ///
-/// 该结构体由 [切片][slices] 上的 [`rchunks_mut`] 方法创建。
+/// This struct is created by the [`rchunks_mut`] method on [slices].
 ///
-/// # 示例
+/// # Example
 ///
 /// ```
 /// let mut slice = ['l', 'o', 'r', 'e', 'm'];
@@ -2420,12 +2469,12 @@ unsafe impl<'a, T> TrustedRandomAccessNoCoerce for RChunks<'a, T> {
 #[stable(feature = "rchunks", since = "1.31.0")]
 #[must_use = "iterators are lazy and do nothing unless consumed"]
 pub struct RChunksMut<'a, T: 'a> {
-    /// # 安全性(Safety）
-    /// 该切片指针必须指向至少有 `v.len()` 个 `T` 的有效区域。
-    /// 通常这些要求意味着这里可以改用 `&mut [T]`，但实际不能这样做：
-    /// `__iterator_get_unchecked` 需要返回 `&mut [T]`，而这保证了某些 aliasing
-    /// 属性；如果继续持有完整的原始 `&mut [T]`，就无法维护这些属性。
-    /// 包装裸切片则允许从被包装切片中分发互不重叠的 `&mut [T]` 子切片。
+    /// # Safety
+    /// This slice pointer must point at a valid region of `T` with at least length `v.len()`. Normally,
+    /// those requirements would mean that we could instead use a `&mut [T]` here, but we cannot
+    /// because `__iterator_get_unchecked` needs to return `&mut [T]`, which guarantees certain aliasing
+    /// properties that we cannot uphold if we hold on to the full original `&mut [T]`. Wrapping a raw
+    /// slice instead lets us hand out non-overlapping `&mut [T]` subslices of the slice we wrap.
     v: *mut [T],
     chunk_size: usize,
     _marker: PhantomData<&'a mut T>,
@@ -2448,11 +2497,11 @@ impl<'a, T> Iterator for RChunksMut<'a, T> {
             None
         } else {
             let idx = self.v.len().saturating_sub(self.chunk_size);
-            // SAFETY: self.chunk_size() > 0，因此 0 <= idx < self.v.len()。
-            // 所以 `idx` 位于 `self.v` 边界内，可作为 `split_at_mut_unchecked` 的有效参数。
+            // SAFETY: self.chunk_size() > 0, so 0 <= idx < self.v.len().
+            // Thus `idx` is in-bounds for `self.v` and can be used as a valid argument for `split_at_mut_unchecked`.
             let (rest, chunk) = unsafe { self.v.split_at_mut_unchecked(idx) };
             self.v = rest;
-            // SAFETY: 没有其它东西指向、或将会指向该切片的内容。
+            // SAFETY: Nothing else points to or will point to the contents of this slice.
             Some(unsafe { &mut *chunk })
         }
     }
@@ -2478,12 +2527,12 @@ impl<'a, T> Iterator for RChunksMut<'a, T> {
             && end < self.v.len()
         {
             let end = self.v.len() - end;
-            // SAFETY: self.v 的契约保证任意 split_at_mut 都有效。
+            // SAFETY: The self.v contract ensures that any split_at_mut is valid.
             let (rest, _) = unsafe { self.v.split_at_mut(end) };
-            // SAFETY: self.v 的契约保证任意 split_at_mut 都有效。
+            // SAFETY: The self.v contract ensures that any split_at_mut is valid.
             let (rest, chunk) = unsafe { rest.split_at_mut(end.saturating_sub(self.chunk_size)) };
             self.v = rest;
-            // SAFETY: 没有其它东西指向、或将会指向该切片的内容。
+            // SAFETY: Nothing else points to or will point to the contents of this slice.
             Some(unsafe { &mut *chunk })
         } else {
             self.v = &mut [];
@@ -2498,7 +2547,7 @@ impl<'a, T> Iterator for RChunksMut<'a, T> {
         } else {
             let rem = self.v.len() % self.chunk_size;
             let end = if rem == 0 { self.chunk_size } else { rem };
-            // SAFETY: 没有其它东西指向、或将会指向该切片的内容。
+            // SAFETY: Nothing else points to or will point to the contents of this slice.
             Some(unsafe { &mut *self.v.get_unchecked_mut(0..end) })
         }
     }
@@ -2506,8 +2555,8 @@ impl<'a, T> Iterator for RChunksMut<'a, T> {
     unsafe fn __iterator_get_unchecked(&mut self, idx: usize) -> Self::Item {
         let end = self.v.len() - idx * self.chunk_size;
         let start = end.saturating_sub(self.chunk_size);
-        // SAFETY: 见 `RChunks::__iterator_get_unchecked`、
-        // `ChunksMut::__iterator_get_unchecked` 和 `self.v` 的注释。
+        // SAFETY: see comments for `RChunks::__iterator_get_unchecked` and
+        // `ChunksMut::__iterator_get_unchecked`, `self.v`.
         unsafe { from_raw_parts_mut(self.v.as_mut_ptr().add(start), end - start) }
     }
 }
@@ -2521,10 +2570,10 @@ impl<'a, T> DoubleEndedIterator for RChunksMut<'a, T> {
         } else {
             let remainder = self.v.len() % self.chunk_size;
             let sz = if remainder != 0 { remainder } else { self.chunk_size };
-            // SAFETY: 与 `Chunks::next_back` 类似。
+            // SAFETY: Similar to `Chunks::next_back`
             let (head, tail) = unsafe { self.v.split_at_mut_unchecked(sz) };
             self.v = tail;
-            // SAFETY: 没有其它东西指向、或将会指向该切片的内容。
+            // SAFETY: Nothing else points to or will point to the contents of this slice.
             Some(unsafe { &mut *head })
         }
     }
@@ -2533,16 +2582,16 @@ impl<'a, T> DoubleEndedIterator for RChunksMut<'a, T> {
     fn nth_back(&mut self, n: usize) -> Option<Self::Item> {
         let len = self.len();
         if n < len {
-            // 不会下溢，因为 `n < len`。
+            // can't underflow because `n < len`
             let offset_from_end = (len - 1 - n) * self.chunk_size;
             let end = self.v.len() - offset_from_end;
             let start = end.saturating_sub(self.chunk_size);
-            // SAFETY: self.v 的契约保证任意 split_at_mut 都有效。
+            // SAFETY: The self.v contract ensures that any split_at_mut is valid.
             let (tmp, tail) = unsafe { self.v.split_at_mut(end) };
-            // SAFETY: self.v 的契约保证任意 split_at_mut 都有效。
+            // SAFETY: The self.v contract ensures that any split_at_mut is valid.
             let (_, nth_back) = unsafe { tmp.split_at_mut(start) };
             self.v = tail;
-            // SAFETY: 没有其它东西指向、或将会指向该切片的内容。
+            // SAFETY: Nothing else points to or will point to the contents of this slice.
             Some(unsafe { &mut *nth_back })
         } else {
             self.v = &mut [];
@@ -2576,15 +2625,16 @@ unsafe impl<T> Send for RChunksMut<'_, T> where T: Send {}
 #[stable(feature = "rchunks", since = "1.31.0")]
 unsafe impl<T> Sync for RChunksMut<'_, T> where T: Sync {}
 
-/// 从切片末尾开始、按（不重叠的）chunk 迭代切片的迭代器；
-/// 每个 chunk 包含 `chunk_size` 个元素。
+/// An iterator over a slice in (non-overlapping) chunks (`chunk_size` elements at a
+/// time), starting at the end of the slice.
 ///
-/// 当切片长度不能被 chunk 大小整除时，最后最多 `chunk_size-1` 个元素会被省略，
-/// 但可通过迭代器的 [`remainder`] 函数取回。
+/// When the slice len is not evenly divided by the chunk size, the last
+/// up to `chunk_size-1` elements will be omitted but can be retrieved from
+/// the [`remainder`] function from the iterator.
 ///
-/// 该结构体由 [切片][slices] 上的 [`rchunks_exact`] 方法创建。
+/// This struct is created by the [`rchunks_exact`] method on [slices].
 ///
-/// # 示例
+/// # Example
 ///
 /// ```
 /// let slice = ['l', 'o', 'r', 'e', 'm'];
@@ -2610,15 +2660,16 @@ impl<'a, T> RChunksExact<'a, T> {
     #[inline]
     pub(super) const fn new(slice: &'a [T], chunk_size: usize) -> Self {
         let rem = slice.len() % chunk_size;
-        // SAFETY: 根据上面的构造，0 <= rem <= slice.len()。
+        // SAFETY: 0 <= rem <= slice.len() by construction above
         let (fst, snd) = unsafe { slice.split_at_unchecked(rem) };
         Self { v: snd, rem: fst, chunk_size }
     }
 
-    /// 返回原始切片中不会被迭代器返回的剩余部分。
-    /// 返回切片最多包含 `chunk_size-1` 个元素。
+    /// Returns the remainder of the original slice that is not going to be
+    /// returned by the iterator. The returned slice has at most `chunk_size-1`
+    /// elements.
     ///
-    /// # 示例
+    /// # Example
     ///
     /// ```
     /// let slice = ['l', 'o', 'r', 'e', 'm'];
@@ -2639,7 +2690,7 @@ impl<'a, T> RChunksExact<'a, T> {
     }
 }
 
-// FIXME(#26925) 改用 `#[derive(Clone)]` 后移除此实现。
+// FIXME(#26925) Remove in favor of `#[derive(Clone)]`
 #[stable(feature = "rchunks", since = "1.31.0")]
 impl<'a, T> Clone for RChunksExact<'a, T> {
     fn clone(&self) -> RChunksExact<'a, T> {
@@ -2681,7 +2732,7 @@ impl<'a, T> Iterator for RChunksExact<'a, T> {
             self.v = &self.v[..self.v.len() - end];
             self.next()
         } else {
-            self.v = &self.v[..0]; // 比 &[] 更便宜。
+            self.v = &self.v[..0]; // cheaper than &[]
             None
         }
     }
@@ -2694,7 +2745,7 @@ impl<'a, T> Iterator for RChunksExact<'a, T> {
     unsafe fn __iterator_get_unchecked(&mut self, idx: usize) -> Self::Item {
         let end = self.v.len() - idx * self.chunk_size;
         let start = end - self.chunk_size;
-        // SAFETY: 与 `Chunks::__iterator_get_unchecked` 基本相同。
+        // SAFETY: mostly identical to `Chunks::__iterator_get_unchecked`.
         unsafe { from_raw_parts(self.v.as_ptr().add(start), self.chunk_size) }
     }
 }
@@ -2716,7 +2767,8 @@ impl<'a, T> DoubleEndedIterator for RChunksExact<'a, T> {
     fn nth_back(&mut self, n: usize) -> Option<Self::Item> {
         let len = self.len();
         if n < len {
-            // 现在已知 `n` 对应一个 chunk，因此这些操作都不会下溢或溢出。
+            // now that we know that `n` corresponds to a chunk,
+            // none of these operations can underflow/overflow
             let offset = (len - n) * self.chunk_size;
             let start = self.v.len() - offset;
             let end = start + self.chunk_size;
@@ -2724,7 +2776,7 @@ impl<'a, T> DoubleEndedIterator for RChunksExact<'a, T> {
             self.v = &self.v[end..];
             Some(nth_back)
         } else {
-            self.v = &self.v[..0]; // 比 &[] 更便宜。
+            self.v = &self.v[..0]; // cheaper than &[]
             None
         }
     }
@@ -2753,15 +2805,16 @@ unsafe impl<'a, T> TrustedRandomAccessNoCoerce for RChunksExact<'a, T> {
     const MAY_HAVE_SIDE_EFFECT: bool = false;
 }
 
-/// 从切片末尾开始、按（不重叠的）可变 chunk 迭代切片的迭代器；
-/// 每个 chunk 包含 `chunk_size` 个元素。
+/// An iterator over a slice in (non-overlapping) mutable chunks (`chunk_size`
+/// elements at a time), starting at the end of the slice.
 ///
-/// 当切片长度不能被 chunk 大小整除时，最后最多 `chunk_size-1` 个元素会被省略，
-/// 但可通过迭代器的 [`into_remainder`] 函数取回。
+/// When the slice len is not evenly divided by the chunk size, the last up to
+/// `chunk_size-1` elements will be omitted but can be retrieved from the
+/// [`into_remainder`] function from the iterator.
 ///
-/// 该结构体由 [切片][slices] 上的 [`rchunks_exact_mut`] 方法创建。
+/// This struct is created by the [`rchunks_exact_mut`] method on [slices].
 ///
-/// # 示例
+/// # Example
 ///
 /// ```
 /// let mut slice = ['l', 'o', 'r', 'e', 'm'];
@@ -2775,12 +2828,12 @@ unsafe impl<'a, T> TrustedRandomAccessNoCoerce for RChunksExact<'a, T> {
 #[stable(feature = "rchunks", since = "1.31.0")]
 #[must_use = "iterators are lazy and do nothing unless consumed"]
 pub struct RChunksExactMut<'a, T: 'a> {
-    /// # 安全性(Safety）
-    /// 该切片指针必须指向至少有 `v.len()` 个 `T` 的有效区域。
-    /// 通常这些要求意味着这里可以改用 `&mut [T]`，但实际不能这样做：
-    /// `__iterator_get_unchecked` 需要返回 `&mut [T]`，而这保证了某些 aliasing
-    /// 属性；如果继续持有完整的原始 `&mut [T]`，就无法维护这些属性。
-    /// 包装裸切片则允许从被包装切片中分发互不重叠的 `&mut [T]` 子切片。
+    /// # Safety
+    /// This slice pointer must point at a valid region of `T` with at least length `v.len()`. Normally,
+    /// those requirements would mean that we could instead use a `&mut [T]` here, but we cannot
+    /// because `__iterator_get_unchecked` needs to return `&mut [T]`, which guarantees certain aliasing
+    /// properties that we cannot uphold if we hold on to the full original `&mut [T]`. Wrapping a raw
+    /// slice instead lets us hand out non-overlapping `&mut [T]` subslices of the slice we wrap.
     v: *mut [T],
     rem: &'a mut [T],
     chunk_size: usize,
@@ -2790,14 +2843,14 @@ impl<'a, T> RChunksExactMut<'a, T> {
     #[inline]
     pub(super) const fn new(slice: &'a mut [T], chunk_size: usize) -> Self {
         let rem = slice.len() % chunk_size;
-        // SAFETY: 根据上面的构造，0 <= rem <= slice.len()。
+        // SAFETY: 0 <= rem <= slice.len() by construction above
         let (fst, snd) = unsafe { slice.split_at_mut_unchecked(rem) };
         Self { v: snd, rem: fst, chunk_size }
     }
 
-    /// 返回原始切片中不会由迭代器产出的 remainder。
-    ///
-    /// 返回的切片最多包含 `chunk_size-1` 个元素。
+    /// Returns the remainder of the original slice that is not going to be
+    /// returned by the iterator. The returned slice has at most `chunk_size-1`
+    /// elements.
     #[must_use = "`self` will be dropped if the result is not used"]
     #[stable(feature = "rchunks", since = "1.31.0")]
     #[rustc_const_unstable(feature = "const_slice_make_iter", issue = "137737")]
@@ -2816,10 +2869,10 @@ impl<'a, T> Iterator for RChunksExactMut<'a, T> {
             None
         } else {
             let len = self.v.len();
-            // SAFETY: self.v 的契约保证任意 split_at_mut 都有效。
+            // SAFETY: The self.v contract ensures that any split_at_mut is valid.
             let (head, tail) = unsafe { self.v.split_at_mut(len - self.chunk_size) };
             self.v = head;
-            // SAFETY: 没有其它东西指向、或将会指向该切片的内容。
+            // SAFETY: Nothing else points to or will point to the contents of this slice.
             Some(unsafe { &mut *tail })
         }
     }
@@ -2841,7 +2894,7 @@ impl<'a, T> Iterator for RChunksExactMut<'a, T> {
             && end < self.v.len()
         {
             let idx = self.v.len() - end;
-            // SAFETY: self.v 的契约保证任意 split_at_mut 都有效。
+            // SAFETY: The self.v contract ensures that any split_at_mut is valid.
             let (fst, _) = unsafe { self.v.split_at_mut(idx) };
             self.v = fst;
             self.next()
@@ -2859,7 +2912,7 @@ impl<'a, T> Iterator for RChunksExactMut<'a, T> {
     unsafe fn __iterator_get_unchecked(&mut self, idx: usize) -> Self::Item {
         let end = self.v.len() - idx * self.chunk_size;
         let start = end - self.chunk_size;
-        // SAFETY: 见 `RChunksMut::__iterator_get_unchecked` 和 `self.v` 的注释。
+        // SAFETY: see comments for `RChunksMut::__iterator_get_unchecked` and `self.v`.
         unsafe { from_raw_parts_mut(self.v.as_mut_ptr().add(start), self.chunk_size) }
     }
 }
@@ -2871,10 +2924,10 @@ impl<'a, T> DoubleEndedIterator for RChunksExactMut<'a, T> {
         if self.v.len() < self.chunk_size {
             None
         } else {
-            // SAFETY: self.v 的契约保证任意 split_at_mut 都有效。
+            // SAFETY: The self.v contract ensures that any split_at_mut is valid.
             let (head, tail) = unsafe { self.v.split_at_mut(self.chunk_size) };
             self.v = tail;
-            // SAFETY: 没有其它东西指向、或将会指向该切片的内容。
+            // SAFETY: Nothing else points to or will point to the contents of this slice.
             Some(unsafe { &mut *head })
         }
     }
@@ -2883,16 +2936,17 @@ impl<'a, T> DoubleEndedIterator for RChunksExactMut<'a, T> {
     fn nth_back(&mut self, n: usize) -> Option<Self::Item> {
         let len = self.len();
         if n < len {
-            // 现在已知 `n` 对应一个 chunk，因此这些操作都不会下溢或溢出。
+            // now that we know that `n` corresponds to a chunk,
+            // none of these operations can underflow/overflow
             let offset = (len - n) * self.chunk_size;
             let start = self.v.len() - offset;
             let end = start + self.chunk_size;
-            // SAFETY: self.v 的契约保证任意 split_at_mut 都有效。
+            // SAFETY: The self.v contract ensures that any split_at_mut is valid.
             let (tmp, tail) = unsafe { self.v.split_at_mut(end) };
-            // SAFETY: self.v 的契约保证任意 split_at_mut 都有效。
+            // SAFETY: The self.v contract ensures that any split_at_mut is valid.
             let (_, nth_back) = unsafe { tmp.split_at_mut(start) };
             self.v = tail;
-            // SAFETY: 没有其它东西指向、或将会指向该切片的内容。
+            // SAFETY: Nothing else points to or will point to the contents of this slice.
             Some(unsafe { &mut *nth_back })
         } else {
             self.v = &mut [];
@@ -2950,9 +3004,9 @@ unsafe impl<'a, T> TrustedRandomAccessNoCoerce for IterMut<'a, T> {
     const MAY_HAVE_SIDE_EFFECT: bool = false;
 }
 
-/// 按谓词分隔切片、产出（不重叠）chunk 的迭代器。
+/// An iterator over slice in (non-overlapping) chunks separated by a predicate.
 ///
-/// 该结构体由 [切片][slices] 上的 [`chunk_by`] 方法创建。
+/// This struct is created by the [`chunk_by`] method on [slices].
 ///
 /// [`chunk_by`]: slice::chunk_by
 /// [slices]: slice
@@ -3043,9 +3097,10 @@ impl<'a, T: 'a + fmt::Debug, P> fmt::Debug for ChunkBy<'a, T, P> {
     }
 }
 
-/// 按谓词分隔切片、产出（不重叠）可变 chunk 的迭代器。
+/// An iterator over slice in (non-overlapping) mutable chunks separated
+/// by a predicate.
 ///
-/// 该结构体由 [切片][slices] 上的 [`chunk_by_mut`] 方法创建。
+/// This struct is created by the [`chunk_by_mut`] method on [slices].
 ///
 /// [`chunk_by_mut`]: slice::chunk_by_mut
 /// [slices]: slice

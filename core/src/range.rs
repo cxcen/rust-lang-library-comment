@@ -1,7 +1,7 @@
-//! # 实验性的替代 range 类型
+//! # Experimental replacement range types
 //!
-//! 本模块中的类型计划在未来 edition 中取代现有的 `Range`、
-//! `RangeInclusive` 和 `RangeFrom` 类型。
+//! The types within this module are meant to replace the existing
+//! `Range`, `RangeInclusive`, and `RangeFrom` types in a future edition.
 //!
 //! ```
 //! #![feature(new_range_api)]
@@ -33,13 +33,13 @@ pub use crate::iter::Step;
 #[doc(inline)]
 pub use crate::ops::{Bound, IntoBounds, OneSidedRange, RangeBounds, RangeFull, RangeTo};
 
-/// 一个下界包含、上界排除的半开区间
-/// (未来 edition 中的 `start..end`)。
+/// A (half-open) range bounded inclusively below and exclusively above
+/// (`start..end` in a future edition).
 ///
-/// 区间 `start..end` 包含所有满足 `start <= x < end` 的值。
-/// 如果 `start >= end`,则该区间为空。
+/// The range `start..end` contains all values with `start <= x < end`.
+/// It is empty if `start >= end`.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// #![feature(new_range_api)]
@@ -53,10 +53,10 @@ pub use crate::ops::{Bound, IntoBounds, OneSidedRange, RangeBounds, RangeFull, R
 #[derive_const(Clone, Default, PartialEq, Eq)]
 #[unstable(feature = "new_range_api", issue = "125687")]
 pub struct Range<Idx> {
-    /// 区间的下界(包含)。
+    /// The lower bound of the range (inclusive).
     #[unstable(feature = "new_range_api", issue = "125687")]
     pub start: Idx,
-    /// 区间的上界(排除)。
+    /// The upper bound of the range (exclusive).
     #[unstable(feature = "new_range_api", issue = "125687")]
     pub end: Idx,
 }
@@ -72,11 +72,11 @@ impl<Idx: fmt::Debug> fmt::Debug for Range<Idx> {
 }
 
 impl<Idx: Step> Range<Idx> {
-    /// 创建一个遍历该区间内元素的迭代器。
+    /// Creates an iterator over the elements within this range.
     ///
-    /// 这是 `.clone().into_iter()` 的简写。
+    /// Shorthand for `.clone().into_iter()`
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// #![feature(new_range_api)]
@@ -95,9 +95,9 @@ impl<Idx: Step> Range<Idx> {
 }
 
 impl<Idx: PartialOrd<Idx>> Range<Idx> {
-    /// 如果 `item` 包含在区间内,则返回 `true`。
+    /// Returns `true` if `item` is contained in the range.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// #![feature(new_range_api)]
@@ -127,9 +127,9 @@ impl<Idx: PartialOrd<Idx>> Range<Idx> {
         <Self as RangeBounds<Idx>>::contains(self, item)
     }
 
-    /// 如果区间不包含任何元素,则返回 `true`。
+    /// Returns `true` if the range contains no items.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// #![feature(new_range_api)]
@@ -140,7 +140,7 @@ impl<Idx: PartialOrd<Idx>> Range<Idx> {
     /// assert!( Range::from(3..2).is_empty());
     /// ```
     ///
-    /// 如果任一边界不可比较,该区间也为空:
+    /// The range is empty if either side is incomparable:
     ///
     /// ```
     /// #![feature(new_range_api)]
@@ -172,12 +172,12 @@ impl<T> const RangeBounds<T> for Range<T> {
     }
 }
 
-// 这个 impl 有意不带 `T: ?Sized`;
-// 相关原因参见 https://github.com/rust-lang/rust/pull/61584 中的讨论。
+// This impl intentionally does not have `T: ?Sized`;
+// see https://github.com/rust-lang/rust/pull/61584 for discussion of why.
 //
-/// 如果需要在 `T` 为 unsized 的场景中使用这类边界,
-/// 请考虑使用 [`Bound<&T>`][Bound] 二元组的 `RangeBounds` impl,
-/// 也就是用 `(Bound::Included(start), Bound::Excluded(end))` 替代 `start..end`。
+/// If you need to use this implementation where `T` is unsized,
+/// consider using the `RangeBounds` impl for a 2-tuple of [`Bound<&T>`][Bound],
+/// i.e. replace `start..end` with `(Bound::Included(start), Bound::Excluded(end))`.
 #[unstable(feature = "new_range_api", issue = "125687")]
 #[rustc_const_unstable(feature = "const_range", issue = "none")]
 impl<T> const RangeBounds<T> for Range<&T> {
@@ -216,14 +216,14 @@ impl<T> const From<legacy::Range<T>> for Range<T> {
     }
 }
 
-/// 一个下界和上界都包含的区间(`start..=last`)。
+/// A range bounded inclusively below and above (`start..=last`).
 ///
-/// `RangeInclusive` `start..=last` 包含所有满足 `x >= start`
-/// 且 `x <= last` 的值。除非 `start <= last`,否则它为空。
+/// The `RangeInclusive` `start..=last` contains all values with `x >= start`
+/// and `x <= last`. It is empty unless `start <= last`.
 ///
-/// # 示例
+/// # Examples
 ///
-/// `start..=last` 语法会产生一个 `RangeInclusive`:
+/// The `start..=last` syntax is a `RangeInclusive`:
 ///
 /// ```
 /// #![feature(new_range_api)]
@@ -236,10 +236,10 @@ impl<T> const From<legacy::Range<T>> for Range<T> {
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 #[unstable(feature = "new_range_api", issue = "125687")]
 pub struct RangeInclusive<Idx> {
-    /// 区间的下界(包含)。
+    /// The lower bound of the range (inclusive).
     #[unstable(feature = "new_range_api", issue = "125687")]
     pub start: Idx,
-    /// 区间的上界(包含)。
+    /// The upper bound of the range (inclusive).
     #[unstable(feature = "new_range_api", issue = "125687")]
     pub last: Idx,
 }
@@ -255,9 +255,9 @@ impl<Idx: fmt::Debug> fmt::Debug for RangeInclusive<Idx> {
 }
 
 impl<Idx: PartialOrd<Idx>> RangeInclusive<Idx> {
-    /// 如果 `item` 包含在区间内,则返回 `true`。
+    /// Returns `true` if `item` is contained in the range.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// #![feature(new_range_api)]
@@ -288,9 +288,9 @@ impl<Idx: PartialOrd<Idx>> RangeInclusive<Idx> {
         <Self as RangeBounds<Idx>>::contains(self, item)
     }
 
-    /// 如果区间不包含任何元素,则返回 `true`。
+    /// Returns `true` if the range contains no items.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// #![feature(new_range_api)]
@@ -301,7 +301,7 @@ impl<Idx: PartialOrd<Idx>> RangeInclusive<Idx> {
     /// assert!( RangeInclusive::from(3..=2).is_empty());
     /// ```
     ///
-    /// 如果任一边界不可比较,该区间也为空:
+    /// The range is empty if either side is incomparable:
     ///
     /// ```
     /// #![feature(new_range_api)]
@@ -323,11 +323,11 @@ impl<Idx: PartialOrd<Idx>> RangeInclusive<Idx> {
 }
 
 impl<Idx: Step> RangeInclusive<Idx> {
-    /// 创建一个遍历该区间内元素的迭代器。
+    /// Creates an iterator over the elements within this range.
     ///
-    /// 这是 `.clone().into_iter()` 的简写。
+    /// Shorthand for `.clone().into_iter()`
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// #![feature(new_range_api)]
@@ -346,8 +346,8 @@ impl<Idx: Step> RangeInclusive<Idx> {
 }
 
 impl RangeInclusive<usize> {
-    /// 为 `SliceIndex` 实现转换成上界排除的 `Range`。
-    /// 调用者负责处理 `last == usize::MAX` 的情况。
+    /// Converts to an exclusive `Range` for `SliceIndex` implementations.
+    /// The caller is responsible for dealing with `last == usize::MAX`.
     #[inline]
     pub(crate) const fn into_slice_range(self) -> Range<usize> {
         Range { start: self.start, end: self.last + 1 }
@@ -365,12 +365,12 @@ impl<T> const RangeBounds<T> for RangeInclusive<T> {
     }
 }
 
-// 这个 impl 有意不带 `T: ?Sized`;
-// 相关原因参见 https://github.com/rust-lang/rust/pull/61584 中的讨论。
+// This impl intentionally does not have `T: ?Sized`;
+// see https://github.com/rust-lang/rust/pull/61584 for discussion of why.
 //
-/// 如果需要在 `T` 为 unsized 的场景中使用这类边界,
-/// 请考虑使用 [`Bound<&T>`][Bound] 二元组的 `RangeBounds` impl,
-/// 也就是用 `(Bound::Included(start), Bound::Included(end))` 替代 `start..=end`。
+/// If you need to use this implementation where `T` is unsized,
+/// consider using the `RangeBounds` impl for a 2-tuple of [`Bound<&T>`][Bound],
+/// i.e. replace `start..=end` with `(Bound::Included(start), Bound::Included(end))`.
 #[unstable(feature = "new_range_api", issue = "125687")]
 #[rustc_const_unstable(feature = "const_range", issue = "none")]
 impl<T> const RangeBounds<T> for RangeInclusive<&T> {
@@ -414,21 +414,24 @@ impl<T> const From<legacy::RangeInclusive<T>> for RangeInclusive<T> {
     }
 }
 
-/// 一个只有包含下界的区间(`start..`)。
+/// A range only bounded inclusively below (`start..`).
 ///
-/// `RangeFrom` `start..` 包含所有满足 `x >= start` 的值。
+/// The `RangeFrom` `start..` contains all values with `x >= start`.
 ///
-/// *注意*: [`Iterator`] 实现中的溢出(也就是内部数据类型到达其数值极限时)
-/// 可以 panic、回绕或饱和。该行为由 [`Step`] trait 的实现定义。对于原始整数,
-/// 它遵循常规规则,并服从溢出检查配置(debug 中 panic,release 中回绕)。还要注意,
-/// 溢出发生得可能比直觉更早:它会发生在产出最大值的那次 `next` 调用中,
-/// 因为区间必须同时更新到能够产出下一个值的状态。
+/// *Note*: Overflow in the [`Iterator`] implementation (when the contained
+/// data type reaches its numerical limit) is allowed to panic, wrap, or
+/// saturate. This behavior is defined by the implementation of the [`Step`]
+/// trait. For primitive integers, this follows the normal rules, and respects
+/// the overflow checks profile (panic in debug, wrap in release). Note also
+/// that overflow happens earlier than you might assume: the overflow happens
+/// in the call to `next` that yields the maximum value, as the range must be
+/// set to a state to yield the next value.
 ///
 /// [`Step`]: crate::iter::Step
 ///
-/// # 示例
+/// # Examples
 ///
-/// `start..` 语法会产生一个 `RangeFrom`:
+/// The `start..` syntax is a `RangeFrom`:
 ///
 /// ```
 /// #![feature(new_range_api)]
@@ -442,7 +445,7 @@ impl<T> const From<legacy::RangeInclusive<T>> for RangeInclusive<T> {
 #[derive_const(Clone, PartialEq, Eq)]
 #[unstable(feature = "new_range_api", issue = "125687")]
 pub struct RangeFrom<Idx> {
-    /// 区间的下界(包含)。
+    /// The lower bound of the range (inclusive).
     #[unstable(feature = "new_range_api", issue = "125687")]
     pub start: Idx,
 }
@@ -457,11 +460,11 @@ impl<Idx: fmt::Debug> fmt::Debug for RangeFrom<Idx> {
 }
 
 impl<Idx: Step> RangeFrom<Idx> {
-    /// 创建一个遍历该区间内元素的迭代器。
+    /// Creates an iterator over the elements within this range.
     ///
-    /// 这是 `.clone().into_iter()` 的简写。
+    /// Shorthand for `.clone().into_iter()`
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// #![feature(new_range_api)]
@@ -480,9 +483,9 @@ impl<Idx: Step> RangeFrom<Idx> {
 }
 
 impl<Idx: PartialOrd<Idx>> RangeFrom<Idx> {
-    /// 如果 `item` 包含在区间内,则返回 `true`。
+    /// Returns `true` if `item` is contained in the range.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// #![feature(new_range_api)]
@@ -519,12 +522,12 @@ impl<T> const RangeBounds<T> for RangeFrom<T> {
     }
 }
 
-// 这个 impl 有意不带 `T: ?Sized`;
-// 相关原因参见 https://github.com/rust-lang/rust/pull/61584 中的讨论。
+// This impl intentionally does not have `T: ?Sized`;
+// see https://github.com/rust-lang/rust/pull/61584 for discussion of why.
 //
-/// 如果需要在 `T` 为 unsized 的场景中使用这类边界,
-/// 请考虑使用 [`Bound<&T>`][Bound] 二元组的 `RangeBounds` impl,
-/// 也就是用 `(Bound::Included(start), Bound::Unbounded)` 替代 `start..`。
+/// If you need to use this implementation where `T` is unsized,
+/// consider using the `RangeBounds` impl for a 2-tuple of [`Bound<&T>`][Bound],
+/// i.e. replace `start..` with `(Bound::Included(start), Bound::Unbounded)`.
 #[unstable(feature = "new_range_api", issue = "125687")]
 #[rustc_const_unstable(feature = "const_range", issue = "none")]
 impl<T> const RangeBounds<T> for RangeFrom<&T> {
@@ -562,14 +565,14 @@ impl<T> const From<legacy::RangeFrom<T>> for RangeFrom<T> {
     }
 }
 
-/// 一个只有包含上界的区间(`..=last`)。
+/// A range only bounded inclusively above (`..=last`).
 ///
-/// `RangeToInclusive` `..=last` 包含所有满足 `x <= last` 的值。
-/// 因为它没有起点,所以不能作为 [`Iterator`]。
+/// The `RangeToInclusive` `..=last` contains all values with `x <= last`.
+/// It cannot serve as an [`Iterator`] because it doesn't have a starting point.
 ///
-/// # 示例
+/// # Examples
 ///
-/// `..=last` 语法会产生一个 `RangeToInclusive`:
+/// The `..=last` syntax is a `RangeToInclusive`:
 ///
 /// ```
 /// #![feature(new_range_api)]
@@ -577,8 +580,8 @@ impl<T> const From<legacy::RangeFrom<T>> for RangeFrom<T> {
 /// assert_eq!((..=5), std::range::RangeToInclusive{ last: 5 });
 /// ```
 ///
-/// 它没有 [`IntoIterator`] 实现,因此不能直接用于 `for` 循环。
-/// 下面的代码无法编译:
+/// It does not have an [`IntoIterator`] implementation, so you can't use it in a
+/// `for` loop directly. This won't compile:
 ///
 /// ```compile_fail,E0277
 /// // error[E0277]: the trait bound `std::range::RangeToInclusive<{integer}>:
@@ -588,26 +591,26 @@ impl<T> const From<legacy::RangeFrom<T>> for RangeFrom<T> {
 /// }
 /// ```
 ///
-/// 当用作[切片索引]时,`RangeToInclusive` 会生成一个切片,其中包含
-/// 从数组开头直到 `last` 指示索引(包含该索引)的所有元素。
+/// When used as a [slicing index], `RangeToInclusive` produces a slice of all
+/// array elements up to and including the index indicated by `last`.
 ///
 /// ```
 /// let arr = [0, 1, 2, 3, 4];
 /// assert_eq!(arr[ ..  ], [0, 1, 2, 3, 4]);
 /// assert_eq!(arr[ .. 3], [0, 1, 2      ]);
-/// assert_eq!(arr[ ..=3], [0, 1, 2, 3   ]); // 这是一个 `RangeToInclusive`
+/// assert_eq!(arr[ ..=3], [0, 1, 2, 3   ]); // This is a `RangeToInclusive`
 /// assert_eq!(arr[1..  ], [   1, 2, 3, 4]);
 /// assert_eq!(arr[1.. 3], [   1, 2      ]);
 /// assert_eq!(arr[1..=3], [   1, 2, 3   ]);
 /// ```
 ///
-/// [切片索引]: crate::slice::SliceIndex
+/// [slicing index]: crate::slice::SliceIndex
 #[lang = "RangeToInclusiveCopy"]
 #[doc(alias = "..=")]
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 #[unstable(feature = "new_range_api", issue = "125687")]
 pub struct RangeToInclusive<Idx> {
-    /// 区间的上界(包含)。
+    /// The upper bound of the range (inclusive)
     #[unstable(feature = "new_range_api", issue = "125687")]
     pub last: Idx,
 }
@@ -622,9 +625,9 @@ impl<Idx: fmt::Debug> fmt::Debug for RangeToInclusive<Idx> {
 }
 
 impl<Idx: PartialOrd<Idx>> RangeToInclusive<Idx> {
-    /// 如果 `item` 包含在区间内,则返回 `true`。
+    /// Returns `true` if `item` is contained in the range.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// assert!( (..=5).contains(&-1_000_000_000));
@@ -659,8 +662,8 @@ impl<T> From<RangeToInclusive<T>> for legacy::RangeToInclusive<T> {
     }
 }
 
-// RangeToInclusive<Idx> 不能实现 From<RangeTo<Idx>>,
-// 因为 (..0).into() 可能产生下溢。
+// RangeToInclusive<Idx> cannot impl From<RangeTo<Idx>>
+// because underflow would be possible with (..0).into()
 
 #[unstable(feature = "new_range_api", issue = "125687")]
 #[rustc_const_unstable(feature = "const_range", issue = "none")]

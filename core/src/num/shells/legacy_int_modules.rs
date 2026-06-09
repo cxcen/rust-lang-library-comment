@@ -10,22 +10,22 @@ macro_rules! legacy_int_module {
         )]
         #[rustc_diagnostic_item = concat!(stringify!($T), "_legacy_mod")]
         pub mod $T {
-            #![doc = concat!("用于 [`", stringify!($T), "` 原语类型][", stringify!($T), "] 的冗余常量模块。")]
+            #![doc = concat!("Redundant constants module for the [`", stringify!($T), "` primitive type][", stringify!($T), "].")]
             //!
-            //! 新代码应直接使用原语类型上的关联常量。
+            //! New code should use the associated constants directly on the primitive type.
 
             #[doc = concat!(
-                "此整数类型可表示的最小值。请改用 ",
-                "[`", stringify!($T), "::MIN", "`]。"
+                "The smallest value that can be represented by this integer type. Use ",
+                "[`", stringify!($T), "::MIN", "`] instead."
             )]
             ///
-            /// # 示例
+            /// # Examples
             ///
             /// ```rust
-            /// // 已弃用的写法
+            /// // deprecated way
             #[doc = concat!("let min = std::", stringify!($T), "::MIN;")]
             ///
-            /// // 推荐的写法
+            /// // intended way
             #[doc = concat!("let min = ", stringify!($T), "::MIN;")]
             /// ```
             ///
@@ -35,17 +35,17 @@ macro_rules! legacy_int_module {
             pub const MIN: $T = $T::MIN;
 
             #[doc = concat!(
-                "此整数类型可表示的最大值。请改用 ",
-                "[`", stringify!($T), "::MAX", "`]。"
+                "The largest value that can be represented by this integer type. Use ",
+                "[`", stringify!($T), "::MAX", "`] instead."
             )]
             ///
-            /// # 示例
+            /// # Examples
             ///
             /// ```rust
-            /// // 已弃用的写法
+            /// // deprecated way
             #[doc = concat!("let max = std::", stringify!($T), "::MAX;")]
             ///
-            /// // 推荐的写法
+            /// // intended way
             #[doc = concat!("let max = ", stringify!($T), "::MAX;")]
             /// ```
             ///

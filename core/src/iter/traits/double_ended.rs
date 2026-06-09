@@ -1,26 +1,26 @@
 use crate::num::NonZero;
 use crate::ops::{ControlFlow, Try};
 
-/// 能从两端产出元素的迭代器。
+/// An iterator able to yield elements from both ends.
 ///
-/// 实现 `DoubleEndedIterator` 的类型在 [`Iterator`] 的基础上增加了一项能力:
-/// 除了从前端通过 [`next()`] 取元素，也可以从后端通过 [`next_back()`] 取元素。
+/// Something that implements `DoubleEndedIterator` has one extra capability
+/// over something that implements [`Iterator`]: the ability to also take
+/// `Item`s from the back, as well as the front.
 ///
-/// 关键约束是两端操作的是同一个剩余区间。前端和后端不能交叉，不能重复产出同一
-/// 个元素；当两端在中间相遇时，迭代结束。实现者必须让 [`next()`] 和
-/// [`next_back()`] 共同维护同一份状态，例如一个前游标和一个后游标。
+/// It is important to note that both back and forth work on the same range,
+/// and do not cross: iteration is over when they meet in the middle.
 ///
-/// 与 [`Iterator`] 协议类似，`DoubleEndedIterator` 从 [`next_back()`] 返回
-/// [`None`] 后，再次调用并不一定永久返回 [`None`]。从这个角度看，[`next()`] 和
-/// [`next_back()`] 是同等的: 普通 trait 不提供 fused 保证，除非类型还实现
-/// [`FusedIterator`](crate::iter::FusedIterator) 或被 [`Iterator::fuse`] 包装。
+/// In a similar fashion to the [`Iterator`] protocol, once a
+/// `DoubleEndedIterator` returns [`None`] from a [`next_back()`], calling it
+/// again may or may not ever return [`Some`] again. [`next()`] and
+/// [`next_back()`] are interchangeable for this purpose.
 ///
 /// [`next_back()`]: DoubleEndedIterator::next_back
 /// [`next()`]: Iterator::next
 ///
-/// # 示例
+/// # Examples
 ///
-/// 基本用法:
+/// Basic usage:
 ///
 /// ```
 /// let numbers = vec![1, 2, 3, 4, 5, 6];
@@ -39,17 +39,17 @@ use crate::ops::{ControlFlow, Try};
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_diagnostic_item = "DoubleEndedIterator"]
 pub trait DoubleEndedIterator: Iterator {
-    /// 从迭代器末端移除并返回一个元素。
+    /// Removes and returns an element from the end of the iterator.
     ///
-    /// 没有更多元素时返回 `None`。
+    /// Returns `None` when there are no more elements.
     ///
-    /// trait 级文档说明了两端不重叠、结束后不默认 fused 等细节。
+    /// The [trait-level] docs contain more details.
     ///
     /// [trait-level]: DoubleEndedIterator
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 基本用法:
+    /// Basic usage:
     ///
     /// ```
     /// let numbers = vec![1, 2, 3, 4, 5, 6];
@@ -66,11 +66,10 @@ pub trait DoubleEndedIterator: Iterator {
     /// assert_eq!(None, iter.next_back());
     /// ```
     ///
-    /// # 说明
+    /// # Remarks
     ///
-    /// `DoubleEndedIterator` 方法产出的元素可能不同于只使用 [`Iterator`] 方法时的
-    /// 结果。原因是适配器的状态可能依赖遍历方向；实现仍必须保证两端不会产出同一
-    /// 个剩余元素。
+    /// The elements yielded by `DoubleEndedIterator`'s methods may differ from
+    /// the ones yielded by [`Iterator`]'s methods:
     ///
     /// ```
     /// let vec = vec![(1, 'a'), (1, 'b'), (1, 'c'), (2, 'a'), (2, 'b')];
@@ -94,27 +93,29 @@ pub trait DoubleEndedIterator: Iterator {
     #[stable(feature = "rust1", since = "1.0.0")]
     fn next_back(&mut self) -> Option<Self::Item>;
 
-    /// 从后端将迭代器推进 `n` 个元素。
+    /// Advances the iterator from the back by `n` elements.
     ///
-    /// `advance_back_by` 是 [`advance_by`] 的反向版本。该方法会急切地从后端跳过
-    /// 元素: 最多调用 [`next_back`] `n` 次，或在更早遇到 [`None`] 时停止。
+    /// `advance_back_by` is the reverse version of [`advance_by`]. This method will
+    /// eagerly skip `n` elements starting from the back by calling [`next_back`] up
+    /// to `n` times until [`None`] is encountered.
     ///
-    /// 如果成功推进 `n` 个元素，`advance_back_by(n)` 返回 `Ok(())`。如果中途遇到
-    /// [`None`]，则返回 `Err(NonZero<usize>)`，其中 `k` 表示因为迭代器耗尽而未能
-    /// 推进的剩余步数。若 `self` 为空且 `n` 非零，则返回 `Err(n)`；否则 `k` 总是
-    /// 小于 `n`。
+    /// `advance_back_by(n)` will return `Ok(())` if the iterator successfully advances by
+    /// `n` elements, or a `Err(NonZero<usize>)` with value `k` if [`None`] is encountered, where `k`
+    /// is remaining number of steps that could not be advanced because the iterator ran out.
+    /// If `self` is empty and `n` is non-zero, then this returns `Err(n)`.
+    /// Otherwise, `k` is always less than `n`.
     ///
-    /// 调用 `advance_back_by(0)` 也可能产生有意义的工作。例如 [`Flatten`] 可以推进
-    /// 外层迭代器直到找到非空的内层迭代器，从而让之后的 `size_hint()` 比初始状态
-    /// 更精确。
+    /// Calling `advance_back_by(0)` can do meaningful work, for example [`Flatten`] can advance its
+    /// outer iterator until it finds an inner iterator that is not empty, which then often
+    /// allows it to return a more accurate `size_hint()` than in its initial state.
     ///
     /// [`advance_by`]: Iterator::advance_by
     /// [`Flatten`]: crate::iter::Flatten
     /// [`next_back`]: DoubleEndedIterator::next_back
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 基本用法:
+    /// Basic usage:
     ///
     /// ```
     /// #![feature(iter_advance_by)]
@@ -127,7 +128,7 @@ pub trait DoubleEndedIterator: Iterator {
     /// assert_eq!(iter.advance_back_by(2), Ok(()));
     /// assert_eq!(iter.next_back(), Some(&4));
     /// assert_eq!(iter.advance_back_by(0), Ok(()));
-    /// assert_eq!(iter.advance_back_by(100), Err(NonZero::new(99).unwrap())); // 只跳过了 `&3`
+    /// assert_eq!(iter.advance_back_by(100), Err(NonZero::new(99).unwrap())); // only `&3` was skipped
     /// ```
     ///
     /// [`Ok(())`]: Ok
@@ -137,34 +138,38 @@ pub trait DoubleEndedIterator: Iterator {
     fn advance_back_by(&mut self, n: usize) -> Result<(), NonZero<usize>> {
         for i in 0..n {
             if self.next_back().is_none() {
-                // SAFETY: `i` 始终小于 `n`。
+                // SAFETY: `i` is always less than `n`.
                 return Err(unsafe { NonZero::new_unchecked(n - i) });
             }
         }
         Ok(())
     }
 
-    /// 返回从 iterator 末端数起第 `n` 个元素。
+    /// Returns the `n`th element from the end of the iterator.
     ///
-    /// 这本质上是 [`Iterator::nth()`] 的反向版本。和大多数索引操作一样，计数从
-    /// 零开始，因此 `nth_back(0)` 返回末端的第一个值，`nth_back(1)` 返回末端的
-    /// 第二个值，依此类推。
+    /// This is essentially the reversed version of [`Iterator::nth()`].
+    /// Although like most indexing operations, the count starts from zero, so
+    /// `nth_back(0)` returns the first value from the end, `nth_back(1)` the
+    /// second, and so on.
     ///
-    /// 注意，从末端到被返回元素之间的所有元素都会被消耗，被返回的元素本身也会被
-    /// 消耗。这也意味着，对同一个 iterator 多次调用 `nth_back(0)` 会返回不同元素。
+    /// Note that all elements between the end and the returned element will be
+    /// consumed, including the returned element. This also means that calling
+    /// `nth_back(0)` multiple times on the same iterator will return different
+    /// elements.
     ///
-    /// 如果 `n` 大于或等于 iterator 的长度，`nth_back()` 会返回 [`None`]。
+    /// `nth_back()` will return [`None`] if `n` is greater than or equal to the
+    /// length of the iterator.
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 基本用法:
+    /// Basic usage:
     ///
     /// ```
     /// let a = [1, 2, 3];
     /// assert_eq!(a.iter().nth_back(2), Some(&1));
     /// ```
     ///
-    /// 多次调用 `nth_back()` 不会倒回 iterator:
+    /// Calling `nth_back()` multiple times doesn't rewind the iterator:
     ///
     /// ```
     /// let a = [1, 2, 3];
@@ -175,7 +180,7 @@ pub trait DoubleEndedIterator: Iterator {
     /// assert_eq!(iter.nth_back(1), None);
     /// ```
     ///
-    /// 元素少于 `n + 1` 个时返回 `None`:
+    /// Returning `None` if there are less than `n + 1` elements:
     ///
     /// ```
     /// let a = [1, 2, 3];
@@ -190,11 +195,12 @@ pub trait DoubleEndedIterator: Iterator {
         self.next_back()
     }
 
-    /// 这是 [`Iterator::try_fold()`] 的反向版本: 它从 iterator 后端开始取得元素。
+    /// This is the reverse version of [`Iterator::try_fold()`]: it takes
+    /// elements starting from the back of the iterator.
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 基本用法:
+    /// Basic usage:
     ///
     /// ```
     /// let a = ["1", "2", "3"];
@@ -204,7 +210,7 @@ pub trait DoubleEndedIterator: Iterator {
     /// assert_eq!(sum, Ok(6));
     /// ```
     ///
-    /// 短路行为:
+    /// Short-circuiting:
     ///
     /// ```
     /// let a = ["1", "rust", "3"];
@@ -215,7 +221,8 @@ pub trait DoubleEndedIterator: Iterator {
     ///     .try_rfold(0, |acc, x| x.and_then(|y| Ok(acc + y)));
     /// assert!(sum.is_err());
     ///
-    /// // 由于发生了短路，剩余元素仍可通过 iterator 取得。
+    /// // Because it short-circuited, the remaining elements are still
+    /// // available through the iterator.
     /// assert_eq!(it.next_back(), Some(&"1"));
     /// ```
     #[inline]
@@ -233,41 +240,49 @@ pub trait DoubleEndedIterator: Iterator {
         try { accum }
     }
 
-    /// 一个从后端开始把 iterator 元素归约为单个最终值的 iterator 方法。
+    /// An iterator method that reduces the iterator's elements to a single,
+    /// final value, starting from the back.
     ///
-    /// 这是 [`Iterator::fold()`] 的反向版本: 它从 iterator 后端开始取得元素。
+    /// This is the reverse version of [`Iterator::fold()`]: it takes elements
+    /// starting from the back of the iterator.
     ///
-    /// `rfold()` 接收两个参数: 一个初始值，以及一个带有两个参数的闭包。闭包的两个
-    /// 参数分别是“累加器”和一个元素；闭包返回下一轮迭代中累加器应持有的值。
+    /// `rfold()` takes two arguments: an initial value, and a closure with two
+    /// arguments: an 'accumulator', and an element. The closure returns the value that
+    /// the accumulator should have for the next iteration.
     ///
-    /// 初始值就是第一次调用闭包时累加器持有的值。
+    /// The initial value is the value the accumulator will have on the first
+    /// call.
     ///
-    /// 将该闭包应用到 iterator 的每个元素之后，`rfold()` 返回累加器。
+    /// After applying this closure to every element of the iterator, `rfold()`
+    /// returns the accumulator.
     ///
-    /// 这个操作有时也称为“reduce”或“inject”。
+    /// This operation is sometimes called 'reduce' or 'inject'.
     ///
-    /// 当你有一组内容并希望从中产生单个值时，folding 很有用。
+    /// Folding is useful whenever you have a collection of something, and want
+    /// to produce a single value from it.
     ///
-    /// 注意: `rfold()` 以*右结合*方式组合元素。对于 `+` 这类满足结合律的运算符，
-    /// 元素组合顺序并不重要；但对于 `-` 这类不满足结合律的运算符，顺序会影响最终
-    /// 结果。需要 `rfold()` 的*左结合*版本时，见 [`Iterator::fold()`]。
+    /// Note: `rfold()` combines elements in a *right-associative* fashion. For associative
+    /// operators like `+`, the order the elements are combined in is not important, but for non-associative
+    /// operators like `-` the order will affect the final result.
+    /// For a *left-associative* version of `rfold()`, see [`Iterator::fold()`].
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 基本用法:
+    /// Basic usage:
     ///
     /// ```
     /// let a = [1, 2, 3];
     ///
-    /// // a 中所有元素的和
+    /// // the sum of all of the elements of a
     /// let sum = a.iter()
     ///            .rfold(0, |acc, &x| acc + x);
     ///
     /// assert_eq!(sum, 6);
     /// ```
     ///
-    /// 这个示例展示了 `rfold()` 的右结合性质: 它从初始值开始构造字符串，并从后往前
-    /// 依次处理每个元素:
+    /// This example demonstrates the right-associative nature of `rfold()`:
+    /// it builds a string, starting with an initial value
+    /// and continuing with each element from the back until the front:
     ///
     /// ```
     /// let numbers = [1, 2, 3, 4, 5];
@@ -295,22 +310,26 @@ pub trait DoubleEndedIterator: Iterator {
         accum
     }
 
-    /// 从后端开始搜索 iterator 中满足谓词的元素。
+    /// Searches for an element of an iterator from the back that satisfies a predicate.
     ///
-    /// `rfind()` 接收一个返回 `true` 或 `false` 的闭包。它从末端开始把该闭包应用到
-    /// iterator 的每个元素；如果某个元素使闭包返回 `true`，则 `rfind()` 返回
-    /// [`Some(element)`]。如果所有元素都返回 `false`，则返回 [`None`]。
+    /// `rfind()` takes a closure that returns `true` or `false`. It applies
+    /// this closure to each element of the iterator, starting at the end, and if any
+    /// of them return `true`, then `rfind()` returns [`Some(element)`]. If they all return
+    /// `false`, it returns [`None`].
     ///
-    /// `rfind()` 会短路；换句话说，一旦闭包返回 `true`，它就会停止处理。
+    /// `rfind()` is short-circuiting; in other words, it will stop processing
+    /// as soon as the closure returns `true`.
     ///
-    /// 因为 `rfind()` 接收引用，而很多 iterator 本身就迭代引用，所以可能出现让人
-    /// 困惑的“双重引用”参数。下面示例里的 `&&x` 展示了这种效果。
+    /// Because `rfind()` takes a reference, and many iterators iterate over
+    /// references, this leads to a possibly confusing situation where the
+    /// argument is a double reference. You can see this effect in the
+    /// examples below, with `&&x`.
     ///
     /// [`Some(element)`]: Some
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 基本用法:
+    /// Basic usage:
     ///
     /// ```
     /// let a = [1, 2, 3];
@@ -319,17 +338,18 @@ pub trait DoubleEndedIterator: Iterator {
     /// assert_eq!(a.into_iter().rfind(|&x| x == 5), None);
     /// ```
     ///
-    /// 迭代引用:
+    /// Iterating over references:
     ///
     /// ```
     /// let a = [1, 2, 3];
     ///
-    /// // `iter()` 产出引用，即 `&i32`；而 `rfind()` 会取得每个元素的引用。
+    /// // `iter()` yields references i.e. `&i32` and `rfind()` takes a
+    /// // reference to each element.
     /// assert_eq!(a.iter().rfind(|&&x| x == 2), Some(&2));
     /// assert_eq!(a.iter().rfind(|&&x| x == 5), None);
     /// ```
     ///
-    /// 在第一个 `true` 处停止:
+    /// Stopping at the first `true`:
     ///
     /// ```
     /// let a = [1, 2, 3];
@@ -338,7 +358,7 @@ pub trait DoubleEndedIterator: Iterator {
     ///
     /// assert_eq!(iter.rfind(|&&x| x == 2), Some(&2));
     ///
-    /// // 由于还有剩余元素，仍然可以继续使用 `iter`。
+    /// // we can still use `iter`, as there are more elements.
     /// assert_eq!(iter.next_back(), Some(&1));
     /// ```
     #[inline]
@@ -385,7 +405,7 @@ impl<'a, I: DoubleEndedIterator + ?Sized> DoubleEndedIterator for &'a mut I {
     }
 }
 
-/// 用于为 `&mut I where I: Sized` 特化 `rfold` 和 `rtry_fold` 的辅助 trait。
+/// Helper trait to specialize `rfold` and `rtry_fold` for `&mut I where I: Sized`
 trait DoubleEndedIteratorRefSpec: DoubleEndedIterator {
     fn spec_rfold<B, F>(self, init: B, f: F) -> B
     where

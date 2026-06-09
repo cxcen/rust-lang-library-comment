@@ -1,71 +1,84 @@
-//! 把十进制字符串转换为 IEEE 754 二进制浮点数。
+//! Converting decimal strings into IEEE 754 binary floating point numbers.
 //!
-//! # 问题陈述
+//! # Problem statement
 //!
-//! 输入是类似 `12.34e56` 的十进制字符串。它由整数部分(`12`)、小数部分(`34`)和指数
-//! 部分(`56`)组成；各部分在语法允许时可以缺省，并按对应的默认含义解释为 0 或 1。
+//! We are given a decimal string such as `12.34e56`. This string consists of integral (`12`),
+//! fractional (`34`), and exponent (`56`) parts. All parts are optional and interpreted as a
+//! default value (1 or 0) when missing.
 //!
-//! 目标是找出最接近该十进制精确值的 IEEE 754 浮点数。许多十进制值在二进制中没有有限
-//! 表示，因此结果必须舍入到最后一位的 0.5 ULP 以内，也就是尽可能接近。若十进制值
-//! 正好落在两个相邻浮点数中间，则采用 ties-to-even（也称 banker's rounding）规则。
+//! We seek the IEEE 754 floating point number that is closest to the exact value of the decimal
+//! string. It is well-known that many decimal strings do not have terminating representations in
+//! base two, so we round to 0.5 units in the last place (in other words, as well as possible).
+//! Ties, decimal values exactly half-way between two consecutive floats, are resolved with the
+//! half-to-even strategy, also known as banker's rounding.
 //!
-//! 这在实现复杂度和 CPU 成本上都很困难，因为解析器必须同时处理巨大指数、很多有效
-//! 数字、NaN/Inf 特殊值以及舍入边界。
+//! Needless to say, this is quite hard, both in terms of implementation complexity and in terms
+//! of CPU cycles taken.
 //!
-//! # 实现思路
+//! # Implementation
 //!
-//! 首先忽略符号。更准确地说，转换一开始就移除符号，最后再把符号应用回结果。IEEE
-//! 754 浮点数关于零对称，取负只翻转符号位，因此这种做法对零、有限数、Inf 和 NaN
-//! 等边界情况都成立。
+//! First, we ignore signs. Or rather, we remove it at the very beginning of the conversion
+//! process and re-apply it at the very end. This is correct in all edge cases since IEEE
+//! floats are symmetric around zero, negating one simply flips the first bit.
 //!
-//! 随后通过调整指数“移除”小数点：概念上，`12.34e56` 会变成 `1234e54`，并表示为
-//! 正整数 `f = 1234` 和整数指数 `e = 54`。解析阶段之后几乎所有代码都使用 `(f, e)`
-//! 这种表示。
+//! Then we remove the decimal point by adjusting the exponent: Conceptually, `12.34e56` turns
+//! into `1234e54`, which we describe with a positive integer `f = 1234` and an integer `e = 54`.
+//! The `(f, e)` representation is used by almost all code past the parsing stage.
 //!
-//! 然后依次尝试一串越来越通用、也越来越昂贵的特例路径：先使用机器字大小整数和小型
-//! 固定浮点数（`f32`/`f64`），再使用带 64 位 significand 的中间类型。扩展精度路径
-//! 使用 Eisel-Lemire algorithm，它借助 128 位（有时 192 位）表示快速且准确地覆盖绝大
-//! 多数输入。所有快速路径都无法给出正确舍入时，才退回大十进制表示：把数字移入合适
-//! 范围，计算高有效位，并精确舍入到最近的可表示值。
+//! We then try a long chain of progressively more general and expensive special cases using
+//! machine-sized integers and small, fixed-sized floating point numbers (first `f32`/`f64`, then
+//! a type with 64 bit significand). The extended-precision algorithm
+//! uses the Eisel-Lemire algorithm, which uses a 128-bit (or 192-bit)
+//! representation that can accurately and quickly compute the vast majority
+//! of floats. When all these fail, we bite the bullet and resort to using
+//! a large-decimal representation, shifting the digits into range, calculating
+//! the upper significant bits and exactly round to the nearest representation.
 //!
-//! 另一个关键点是几乎所有函数都通过 `RawFloat` trait 按目标浮点类型参数化。不能先解析
-//! 成 `f64` 再转换成 `f32`；那会引入二次舍入，而问题与使用二进制或 ties-to-even
-//! 本身无关。
+//! Another aspect that needs attention is the ``RawFloat`` trait by which almost all functions
+//! are parametrized. One might think that it's enough to parse to `f64` and cast the result to
+//! `f32`. Unfortunately this is not the world we live in, and this has nothing to do with using
+//! base two or half-to-even rounding.
 //!
-//! 举例说，假设有 `d2` 和 `d4` 两种十进制类型，分别保留两位和四位十进制数字，输入为
-//! `"0.01499"`，并采用 half-up rounding。直接舍入到两位会得到 `0.01`；但若先舍入到
-//! 四位，会得到 `0.0150`，再舍入到两位就变成 `0.02`。同样原则适用于浮点解析：若要
-//! 达到 0.5 ULP 精度，所有中间步骤都必须以目标类型所需的完整精度执行，并且只在最后
-//! 综合所有被截断位**舍入一次**。
+//! Consider for example two types `d2` and `d4` representing a decimal type with two decimal
+//! digits and four decimal digits each and take "0.01499" as input. Let's use half-up rounding.
+//! Going directly to two decimal digits gives `0.01`, but if we round to four digits first,
+//! we get `0.0150`, which is then rounded up to `0.02`. The same principle applies to other
+//! operations as well, if you want 0.5 ULP accuracy you need to do *everything* in full precision
+//! and round *exactly once, at the end*, by considering all truncated bits at once.
 //!
-//! 该模块及其子模块主要实现下列论文描述的算法：
-//! "Number Parsing at a Gigabyte per Second"，在线地址：
+//! Primarily, this module and its children implement the algorithms described in:
+//! "Number Parsing at a Gigabyte per Second", available online:
 //! <https://arxiv.org/abs/2101.11408>.
 //!
-//! # 其他约束
+//! # Other
 //!
-//! 转换过程原则上**不应 panic**。代码中确实存在断言和显式 panic，但它们只作为内部一致性
-//! 检查，正常输入不应触发；任何 panic 都应视为实现 bug。
+//! The conversion should *never* panic. There are assertions and explicit panics in the code,
+//! but they should never be triggered and only serve as internal sanity checks. Any panics should
+//! be considered a bug.
 //!
-//! 单元测试覆盖面不足，只能发现少量可能错误。更完整的浮点解析测试位于
-//! `src/tools/test-float-parse`，以 Rust 程序形式维护。
+//! There are unit tests but they are woefully inadequate at ensuring correctness, they only cover
+//! a small percentage of possible errors. Far more extensive tests are located in the directory
+//! `src/tools/test-float-parse` as a Rust program.
 //!
-//! 关于整数溢出：本文件很多地方会对十进制指数 `e` 做算术，主要是在移动小数点，例如
-//! 移到第一个十进制数字之前或最后一个十进制数字之后。若不谨慎，这些计算可能溢出。
-//! 因此解析子模块只会交出“足够小”的指数：这里的“足够”指 `指数 +/- 十进制数字个数`
-//! 仍能放进 64 位整数。更大的指数仍可被接受，但不会继续参与这类算术，而是立即归约为
-//! 正/负的零或 Inf。
+//! A note on integer overflow: Many parts of this file perform arithmetic with the decimal
+//! exponent `e`. Primarily, we shift the decimal point around: Before the first decimal digit,
+//! after the last decimal digit, and so on. This could overflow if done carelessly. We rely on
+//! the parsing submodule to only hand out sufficiently small exponents, where "sufficient" means
+//! "such that the exponent +/- the number of decimal digits fits into a 64 bit integer".
+//! Larger exponents are accepted, but we don't do arithmetic with them, they are immediately
+//! turned into {positive,negative} {zero,infinity}.
 //!
-//! # 记号
+//! # Notation
 //!
-//! 本模块使用与 Lemire 论文相同的记号：
+//! This module uses the same notation as the Lemire paper:
 //!
-//! - `m`：二进制 mantissa，始终非负
-//! - `p`：二进制 exponent，有符号整数
-//! - `w`：十进制 significand，始终非负
-//! - `q`：十进制 exponent，有符号整数
+//! - `m`: binary mantissa; always nonnegative
+//! - `p`: binary exponent; a signed integer
+//! - `w`: decimal significand; always nonnegative
+//! - `q`: decimal exponent; a signed integer
 //!
-//! 于是二进制浮点数表示为 `m * 2^p`，对应的十进制精确值表示为 `w * 10^q`。
+//! This gives `m * 2^p` for the binary floating-point number, with `w * 10^q` as the decimal
+//! equivalent.
 
 #![doc(hidden)]
 #![unstable(
@@ -89,7 +102,7 @@ pub mod decimal_seq;
 mod fpu;
 mod slow;
 mod table;
-// `float` 会被 flt2dec 使用；这些子模块也都会被单元测试直接覆盖。
+// float is used in flt2dec, and all are used in unit tests.
 pub mod float;
 pub mod lemire;
 pub mod parse;
@@ -100,11 +113,10 @@ macro_rules! from_str_float_impl {
         impl FromStr for $t {
             type Err = ParseFloatError;
 
-            /// 把十进制字符串转换为浮点数。
+            /// Converts a string in base 10 to a float.
+            /// Accepts an optional decimal exponent.
             ///
-            /// 支持可选的十进制指数部分。
-            ///
-            /// 该函数接受如下字符串：
+            /// This function accepts strings such as
             ///
             /// * '3.14'
             /// * '-3.14'
@@ -116,13 +128,14 @@ macro_rules! from_str_float_impl {
             /// * '007'
             /// * 'inf', '-inf', '+infinity', 'NaN'
             ///
-            /// 字母不区分大小写。
+            /// Note that alphabetical characters are not case-sensitive.
             ///
-            /// 前导或尾随空白字符会导致错误；调用方需要自行决定是否先 `trim`。
+            /// Leading and trailing whitespace represent an error.
             ///
             /// # Grammar
             ///
-            /// 字符串转成小写后，只要符合下面的 [EBNF] 文法，就会返回 [`Ok`]：
+            /// All strings that adhere to the following [EBNF] grammar when
+            /// lowercased will result in an [`Ok`] being returned:
             ///
             /// ```txt
             /// Float  ::= Sign? ( 'inf' | 'infinity' | 'nan' | Number )
@@ -136,19 +149,23 @@ macro_rules! from_str_float_impl {
             ///
             /// [EBNF]: https://www.w3.org/TR/REC-xml/#sec-notation
             ///
-            /// # 参数
+            /// # Arguments
             ///
-            /// * src - 待解析字符串
+            /// * src - A string
             ///
-            /// # 返回值
+            /// # Return value
             ///
-            /// 如果字符串不是有效浮点数字面量，返回 `Err(ParseFloatError)`。否则返回
-            /// `Ok(n)`，其中 `n` 是离 `src` 表示的精确数值最近的可表示浮点数，舍入规则
-            /// 与原始浮点运算结果一致。
-            // 这里添加 `#[inline(never)]`，因为函数体最终会被 `#[inline(always)]` 的
-            // `dec2flt` 填充。`dec2flt` 是泛型函数；若在这里使用普通 inline，且 `dec2flt`
-            // 本身不限制内联，就会重复生成大量 `dec2flt` 实例，尽管理论上最多只会有两个
-            // 目标类型实例。`#[inline(never)]` 可以避免这种代码体积膨胀。
+            /// `Err(ParseFloatError)` if the string did not represent a valid
+            /// number. Otherwise, `Ok(n)` where `n` is the closest
+            /// representable floating-point number to the number represented
+            /// by `src` (following the same rules for rounding as for the
+            /// results of primitive operations).
+            // We add the `#[inline(never)]` attribute, since its content will
+            // be filled with that of `dec2flt`, which has #[inline(always)].
+            // Since `dec2flt` is generic, a normal inline attribute on this function
+            // with `dec2flt` having no attributes results in heavily repeated
+            // generation of `dec2flt`, despite the fact only a maximum of 2
+            // possible instances can ever exist. Adding #[inline(never)] avoids this.
             #[inline(never)]
             fn from_str(src: &str) -> Result<Self, ParseFloatError> {
                 dec2flt(src)
@@ -162,7 +179,8 @@ from_str_float_impl!(f16);
 from_str_float_impl!(f32);
 from_str_float_impl!(f64);
 
-// FIXME(f16_f128): 当后端和目标平台不能可靠支持 f16 时使用 fallback，以避免 ICE。
+// FIXME(f16_f128): A fallback is used when the backend+target does not support f16 well, in order
+// to avoid ICEs.
 
 #[cfg(not(target_has_reliable_f16))]
 impl FromStr for f16 {
@@ -174,13 +192,12 @@ impl FromStr for f16 {
     }
 }
 
-/// 解析浮点数时可能返回的错误。
+/// An error which can be returned when parsing a float.
 ///
-/// 该错误是 [`f32`]、[`f64`] 以及受支持浮点类型的 [`FromStr`] 实现所使用的错误类型。
-/// 它只区分空输入和无效字面量；下溢、上溢以及精度损失不是解析错误，而会按 IEEE 754
-/// 规则产生零、Inf 或最近可表示值。
+/// This error is used as the error type for the [`FromStr`] implementation
+/// for [`f32`] and [`f64`].
 ///
-/// # 示例
+/// # Example
 ///
 /// ```
 /// use std::str::FromStr;
@@ -220,25 +237,22 @@ pub(super) fn pfe_empty() -> ParseFloatError {
     ParseFloatError { kind: FloatErrorKind::Empty }
 }
 
-// 供单元测试使用，保持公开。这样比公开 `FloatErrorKind` 和 `ParseFloatError::kind`
-// 更能保持错误类型的稳定封装边界。
+// Used in unit tests, keep public.
+// This is much better than making FloatErrorKind and ParseFloatError::kind public.
 #[inline]
 pub fn pfe_invalid() -> ParseFloatError {
     ParseFloatError { kind: FloatErrorKind::Invalid }
 }
 
-/// 把 `BiasedFp` 转换为对应的机器浮点类型。
-///
-/// 调用方已经完成舍入并给出了带偏置指数；这里仅把 mantissa 和 exponent 字段重新组装成
-/// IEEE 754 位模式。
+/// Converts a `BiasedFp` to the closest machine float type.
 fn biased_fp_to_float<F: RawFloat>(x: BiasedFp) -> F {
     let mut word = x.m;
     word |= (x.p_biased as u64) << F::SIG_BITS;
     F::from_u64_bits(word)
 }
 
-/// 把十进制字符串转换为浮点数。
-#[inline(always)] // 会内联进上面带 `#[inline(never)]` 的函数体。
+/// Converts a decimal string into a floating point number.
+#[inline(always)] // Will be inlined into a function with `#[inline(never)]`, see above
 pub fn dec2flt<F: RawFloat>(s: &str) -> Result<F, ParseFloatError> {
     let mut s = s.as_bytes();
     let Some(&c) = s.first() else { return Err(pfe_empty()) };
@@ -262,8 +276,10 @@ pub fn dec2flt<F: RawFloat>(s: &str) -> Result<F, ParseFloatError> {
         }
     }
 
-    // 如果有效数字曾被截断，只有当 `mantissa + 1` 会产生不同结果时才可能存在舍入误差。
-    // 同时，如果 Eisel-Lemire algorithm 第一次无法正确舍入，也避免重复尝试同一路径。
+    // If significant digits were truncated, then we can have rounding error
+    // only if `mantissa + 1` produces a different result. We also avoid
+    // redundantly using the Eisel-Lemire algorithm if it was unable to
+    // correctly round on the first pass.
     let mut fp = compute_float::<F>(num.exponent, num.mantissa);
     if num.many_digits
         && fp.p_biased >= 0
@@ -271,7 +287,8 @@ pub fn dec2flt<F: RawFloat>(s: &str) -> Result<F, ParseFloatError> {
     {
         fp.p_biased = -1;
     }
-    // Eisel-Lemire algorithm 无法正确舍入该浮点值；退回更慢但保证正确的算法。
+    // Unable to correctly round the float using the Eisel-Lemire algorithm.
+    // Fallback to a slower, but always correct algorithm.
     if fp.p_biased < 0 {
         fp = parse_long_mantissa::<F>(s);
     }

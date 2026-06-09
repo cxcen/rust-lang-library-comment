@@ -1,11 +1,23 @@
-//! 可选值。
+//! Optional values.
 //!
-//! [`Option`] 表示“可能有值，也可能没有值”的类型：每个 [`Option`] 要么是 [`Some`]，并且
-//! 携带一个 `T`，要么是 [`None`]，并且不携带值。它把 C/C++ 中常用的空指针、哨兵值和
-//! “调用者自己记住是否初始化”的约定显式放进类型系统，使编译器能强制调用方处理没有值的分支。
+//! Type [`Option`] represents an optional value: every [`Option`]
+//! is either [`Some`] and contains a value, or [`None`], and
+//! does not. [`Option`] types are very common in Rust code, as
+//! they have a number of uses:
 //!
-//! 常见用途包括：延迟初始化的字段、部分函数的返回值、用 [`None`] 表示简单失败、可选结构体字段、
-//! 可被暂时借出或 `take` 的字段、可选参数、可空指针抽象，以及在复杂控制流中把值安全地移出。
+//! * Initial values
+//! * Return values for functions that are not defined
+//!   over their entire input range (partial functions)
+//! * Return value for otherwise reporting simple errors, where [`None`] is
+//!   returned on error
+//! * Optional struct fields
+//! * Struct fields that can be loaned or "taken"
+//! * Optional function arguments
+//! * Nullable pointers
+//! * Swapping things out of difficult situations
+//!
+//! [`Option`]s are commonly paired with pattern matching to query the presence
+//! of a value and take action, always accounting for the [`None`] case.
 //!
 //! ```
 //! fn divide(numerator: f64, denominator: f64) -> Option<f64> {
@@ -16,28 +28,74 @@
 //!     }
 //! }
 //!
+//! // The return value of the function is an option
 //! let result = divide(2.0, 3.0);
+//!
+//! // Pattern match to retrieve the value
 //! match result {
+//!     // The division was valid
 //!     Some(x) => println!("Result: {x}"),
-//!     None => println!("Cannot divide by 0"),
+//!     // The division was invalid
+//!     None    => println!("Cannot divide by 0"),
 //! }
 //! ```
 //!
-// FIXME: 展示 `Option` 在真实代码中的更多方法组合用法。
 //
-//! # 指针和可空值
+// FIXME: Show how `Option` is used in practice, with lots of methods
+//
+//! # Options and pointers ("nullable" pointers)
 //!
-//! Rust 的引用必须总是指向有效位置，语言层没有“空引用”。需要表达“可能没有指向对象”时，使用
-//! [`Option`] 包住指针或拥有所有权的指针，例如 <code>[Option]<[Box\<T>]></code>、`Option<&T>`
-//! 或 `Option<NonNull<T>>`。这样调用方必须通过模式匹配、组合子或 `?` 明确处理 [`None`]，而不是
-//! 在某个运行时路径上偶然解引用空指针。
+//! Rust's pointer types must always point to a valid location; there are
+//! no "null" references. Instead, Rust has *optional* pointers, like
+//! the optional owned box, <code>[Option]<[Box\<T>]></code>.
 //!
 //! [Box\<T>]: ../../std/boxed/struct.Box.html
 //!
-//! # 问号运算符 `?`
+//! The following example uses [`Option`] to create an optional box of
+//! [`i32`]. Notice that in order to use the inner [`i32`] value, the
+//! `check_optional` function first needs to use pattern matching to
+//! determine whether the box has a value (i.e., it is [`Some(...)`][`Some`]) or
+//! not ([`None`]).
 //!
-//! 当函数返回 [`Option`] 时，`?` 会把 [`Some`] 中的值取出继续计算；如果表达式结果是 [`None`]，
-//! 则立即从外层函数返回 [`None`]。这是一种短路语义：后续表达式不会执行，也不会构造额外错误信息。
+//! ```
+//! let optional = None;
+//! check_optional(optional);
+//!
+//! let optional = Some(Box::new(9000));
+//! check_optional(optional);
+//!
+//! fn check_optional(optional: Option<Box<i32>>) {
+//!     match optional {
+//!         Some(p) => println!("has value {p}"),
+//!         None => println!("has no value"),
+//!     }
+//! }
+//! ```
+//!
+//! # The question mark operator, `?`
+//!
+//! Similar to the [`Result`] type, when writing code that calls many functions that return the
+//! [`Option`] type, handling `Some`/`None` can be tedious. The question mark
+//! operator, [`?`], hides some of the boilerplate of propagating values
+//! up the call stack.
+//!
+//! It replaces this:
+//!
+//! ```
+//! # #![allow(dead_code)]
+//! fn add_last_numbers(stack: &mut Vec<i32>) -> Option<i32> {
+//!     let a = stack.pop();
+//!     let b = stack.pop();
+//!
+//!     match (a, b) {
+//!         (Some(x), Some(y)) => Some(x + y),
+//!         _ => None,
+//!     }
+//! }
+//!
+//! ```
+//!
+//! With this:
 //!
 //! ```
 //! # #![allow(dead_code)]
@@ -46,36 +104,48 @@
 //! }
 //! ```
 //!
+//! *It's much nicer!*
+//!
+//! Ending the expression with [`?`] will result in the [`Some`]'s unwrapped value, unless the
+//! result is [`None`], in which case [`None`] is returned early from the enclosing function.
+//!
+//! [`?`] can be used in functions that return [`Option`] because of the
+//! early return of [`None`] that it provides.
+//!
 //! [`?`]: crate::ops::Try
 //! [`Some`]: Some
 //! [`None`]: None
 //!
-//! # 表示
+//! # Representation
 //!
-//! Rust 保证对若干类型 `T` 做空指针优化（null pointer optimization，NPO）：[`Option<T>`]
-//! 与 `T` 具有相同大小、对齐和 [function call ABI]。这些保证依赖 `T` 的某个 niche 值，例如
-//! 非空指针类型的空地址、[`num::NonZero*`] 的 0 值等；该 niche 被用来表示 [`None`]，因此
-//! `Option<NonZeroUsize>`、`Option<&T>` 等在内存布局上可以做到零额外开销。
+//! Rust guarantees to optimize the following types `T` such that [`Option<T>`]
+//! has the same size, alignment, and [function call ABI] as `T`. It is
+//! therefore sound, when `T` is one of these types, to transmute a value `t` of
+//! type `T` to type `Option<T>` (producing the value `Some(t)`) and to
+//! transmute a value `Some(t)` of type `Option<T>` to type `T` (producing the
+//! value `t`).
 //!
-//! 对下列类型，若 `T` 满足表中条件，则 `Option<T>` 与 `T` 有相同布局；在这些情况下，把有效的
-//! `T` 转成 `Option<T>` 会得到 `Some(t)`，把 `Some(t)` 转回 `T` 会得到 `t`。
+//! In some of these cases, Rust further guarantees the following:
+//! - `transmute::<_, Option<T>>([0u8; size_of::<T>()])` is sound and produces
+//!   `Option::<T>::None`
+//! - `transmute::<_, [u8; size_of::<T>()]>(Option::<T>::None)` is sound and produces
+//!   `[0u8; size_of::<T>()]`
 //!
-//! | `T`                                                                 | `[0u8; size_of::<T>()]` 与 `Option::<T>::None` 互转是否 sound |
-//! |---------------------------------------------------------------------|----------------------------------------------------------------|
-//! | [`Box<U>`]（仅 `Box<U, Global>`）                                   | 当 `U: Sized` 时                                               |
-//! | `&U`                                                                | 当 `U: Sized` 时                                               |
-//! | `&mut U`                                                            | 当 `U: Sized` 时                                               |
-//! | `fn`, `extern "C" fn`[^extern_fn]                                  | 总是                                                           |
-//! | [`num::NonZero*`]                                                   | 总是                                                           |
-//! | [`ptr::NonNull<U>`]                                                 | 当 `U: Sized` 时                                               |
-//! | 包住这些类型之一的 `#[repr(transparent)]` 结构体                    | 当内部类型满足条件时                                           |
+//! These cases are identified by the second column:
 //!
-//! [^extern_fn]: 对 `unsafe` 变体、任意参数/返回类型以及任意 ABI 都成立：`[unsafe] extern "abi" fn`，例如 `extern "system" fn`。
+//! | `T`                                                                 | Transmuting between `[0u8; size_of::<T>()]` and `Option::<T>::None` sound? |
+//! |---------------------------------------------------------------------|----------------------------------------------------------------------------|
+//! | [`Box<U>`] (specifically, only `Box<U, Global>`)                    | when `U: Sized`                                                            |
+//! | `&U`                                                                | when `U: Sized`                                                            |
+//! | `&mut U`                                                            | when `U: Sized`                                                            |
+//! | `fn`, `extern "C" fn`[^extern_fn]                                   | always                                                                     |
+//! | [`num::NonZero*`]                                                   | always                                                                     |
+//! | [`ptr::NonNull<U>`]                                                 | when `U: Sized`                                                            |
+//! | `#[repr(transparent)]` struct around one of the types in this list. | when it holds for the inner type                                           |
 //!
-//! 在某些条件下，上述类型 `T` 包在 [`Result`][result_repr] 中也能获得类似优化。需要特别注意：
-//! 对上述类型，可以从所有有效的 `T` 通过 [`mem::transmute`] 得到 `Option<T>`，也可以从
-//! `Some::<T>(_)` 转回 `T`；但把 `None::<T>` 转成 `T` 是未定义行为(UB)，因为那会构造出
-//! `T` 明确禁止的 niche 值。
+//! [^extern_fn]: this remains true for `unsafe` variants, any argument/return types, and any other ABI: `[unsafe] extern "abi" fn` (_e.g._, `extern "system" fn`)
+//!
+//! Under some conditions the above types `T` are also null pointer optimized when wrapped in a [`Result`][result_repr].
 //!
 //! [`Box<U>`]: ../../std/boxed/struct.Box.html
 //! [`num::NonZero*`]: crate::num
@@ -83,52 +153,430 @@
 //! [function call ABI]: ../primitive.fn.html#abi-compatibility
 //! [result_repr]: crate::result#representation
 //!
-//! # 方法概览
+//! This is called the "null pointer optimization" or NPO.
 //!
-//! [`Option`] 的方法大致分为几类：查询变体（[`is_some`]、[`is_none`]、[`is_some_and`]、
-//! [`is_none_or`]）、把 `Option<T>` 变成引用或切片（[`as_ref`]、[`as_mut`]、[`as_slice`]、
-//! [`as_mut_slice`]、pin 相关适配器）、提取值（[`unwrap`]、[`expect`]、`unwrap_or*`）、
-//! 转换值（[`map`]、[`and_then`]、[`filter`]、[`transpose`]）、以及原地插入/取出（[`insert`]、
-//! [`take`]、[`replace`]）。
+//! It is further guaranteed that, for the cases above, one can
+//! [`mem::transmute`] from all valid values of `T` to `Option<T>` and
+//! from `Some::<T>(_)` to `T` (but transmuting `None::<T>` to `T`
+//! is undefined behavior).
 //!
-//! [`unwrap`] 和 [`expect`] 只在 `self` 为 [`Some`] 时返回内部值；当 `self` 为 [`None`] 时会
-//! panic，并通过 `#[track_caller]` 把位置报告到调用点。[`expect`] 使用调用方提供的消息，
-//! [`unwrap`] 使用通用消息。相对地，[`unwrap_unchecked`] 不检查变体；调用方必须保证值为
-//! [`Some`]，否则立即违反 unsafe 前置条件并造成 UB。
+//! # Method overview
 //!
-//! 组合子遵循短路规则：[`map`] 只处理 [`Some`]，[`and_then`] 只在 [`Some`] 时调用闭包并可改变
-//! 内部类型，[`or_else`] 只在 [`None`] 时延迟计算替代值，[`ok_or_else`] 只在 [`None`] 时构造
-//! 错误。理解这些立即/惰性求值区别有助于避免无谓计算或意外移动。
+//! In addition to working with pattern matching, [`Option`] provides a wide
+//! variety of different methods.
 //!
-//! [`and_then`]: Option::and_then
-//! [`as_mut`]: Option::as_mut
-//! [`as_mut_slice`]: Option::as_mut_slice
-//! [`as_ref`]: Option::as_ref
-//! [`as_slice`]: Option::as_slice
-//! [`expect`]: Option::expect
-//! [`filter`]: Option::filter
-//! [`insert`]: Option::insert
+//! ## Querying the variant
+//!
+//! The [`is_some`] and [`is_none`] methods return [`true`] if the [`Option`]
+//! is [`Some`] or [`None`], respectively.
+//!
+//! The [`is_some_and`] and [`is_none_or`] methods apply the provided function
+//! to the contents of the [`Option`] to produce a boolean value.
+//! If this is [`None`] then a default result is returned instead without executing the function.
+//!
 //! [`is_none`]: Option::is_none
-//! [`is_none_or`]: Option::is_none_or
 //! [`is_some`]: Option::is_some
 //! [`is_some_and`]: Option::is_some_and
-//! [`map`]: Option::map
+//! [`is_none_or`]: Option::is_none_or
+//!
+//! ## Adapters for working with references
+//!
+//! * [`as_ref`] converts from <code>[&][][Option]\<T></code> to <code>[Option]<[&]T></code>
+//! * [`as_mut`] converts from <code>[&mut] [Option]\<T></code> to <code>[Option]<[&mut] T></code>
+//! * [`as_deref`] converts from <code>[&][][Option]\<T></code> to
+//!   <code>[Option]<[&]T::[Target]></code>
+//! * [`as_deref_mut`] converts from <code>[&mut] [Option]\<T></code> to
+//!   <code>[Option]<[&mut] T::[Target]></code>
+//! * [`as_pin_ref`] converts from <code>[Pin]<[&][][Option]\<T>></code> to
+//!   <code>[Option]<[Pin]<[&]T>></code>
+//! * [`as_pin_mut`] converts from <code>[Pin]<[&mut] [Option]\<T>></code> to
+//!   <code>[Option]<[Pin]<[&mut] T>></code>
+//! * [`as_slice`] returns a one-element slice of the contained value, if any.
+//!   If this is [`None`], an empty slice is returned.
+//! * [`as_mut_slice`] returns a mutable one-element slice of the contained value, if any.
+//!   If this is [`None`], an empty slice is returned.
+//!
+//! [&]: reference "shared reference"
+//! [&mut]: reference "mutable reference"
+//! [Target]: Deref::Target "ops::Deref::Target"
+//! [`as_deref`]: Option::as_deref
+//! [`as_deref_mut`]: Option::as_deref_mut
+//! [`as_mut`]: Option::as_mut
+//! [`as_pin_mut`]: Option::as_pin_mut
+//! [`as_pin_ref`]: Option::as_pin_ref
+//! [`as_ref`]: Option::as_ref
+//! [`as_slice`]: Option::as_slice
+//! [`as_mut_slice`]: Option::as_mut_slice
+//!
+//! ## Extracting the contained value
+//!
+//! These methods extract the contained value in an [`Option<T>`] when it
+//! is the [`Some`] variant. If the [`Option`] is [`None`]:
+//!
+//! * [`expect`] panics with a provided custom message
+//! * [`unwrap`] panics with a generic message
+//! * [`unwrap_or`] returns the provided default value
+//! * [`unwrap_or_default`] returns the default value of the type `T`
+//!   (which must implement the [`Default`] trait)
+//! * [`unwrap_or_else`] returns the result of evaluating the provided
+//!   function
+//! * [`unwrap_unchecked`] produces *[undefined behavior]*
+//!
+//! [`expect`]: Option::expect
+//! [`unwrap`]: Option::unwrap
+//! [`unwrap_or`]: Option::unwrap_or
+//! [`unwrap_or_default`]: Option::unwrap_or_default
+//! [`unwrap_or_else`]: Option::unwrap_or_else
+//! [`unwrap_unchecked`]: Option::unwrap_unchecked
+//! [undefined behavior]: https://doc.rust-lang.org/reference/behavior-considered-undefined.html
+//!
+//! ## Transforming contained values
+//!
+//! These methods transform [`Option`] to [`Result`]:
+//!
+//! * [`ok_or`] transforms [`Some(v)`] to [`Ok(v)`], and [`None`] to
+//!   [`Err(err)`] using the provided default `err` value
+//! * [`ok_or_else`] transforms [`Some(v)`] to [`Ok(v)`], and [`None`] to
+//!   a value of [`Err`] using the provided function
+//! * [`transpose`] transposes an [`Option`] of a [`Result`] into a
+//!   [`Result`] of an [`Option`]
+//!
+//! [`Err(err)`]: Err
+//! [`Ok(v)`]: Ok
+//! [`Some(v)`]: Some
+//! [`ok_or`]: Option::ok_or
 //! [`ok_or_else`]: Option::ok_or_else
+//! [`transpose`]: Option::transpose
+//!
+//! These methods transform the [`Some`] variant:
+//!
+//! * [`filter`] calls the provided predicate function on the contained
+//!   value `t` if the [`Option`] is [`Some(t)`], and returns [`Some(t)`]
+//!   if the function returns `true`; otherwise, returns [`None`]
+//! * [`flatten`] removes one level of nesting from an [`Option<Option<T>>`]
+//! * [`inspect`] method takes ownership of the [`Option`] and applies
+//!   the provided function to the contained value by reference if [`Some`]
+//! * [`map`] transforms [`Option<T>`] to [`Option<U>`] by applying the
+//!   provided function to the contained value of [`Some`] and leaving
+//!   [`None`] values unchanged
+//!
+//! [`Some(t)`]: Some
+//! [`filter`]: Option::filter
+//! [`flatten`]: Option::flatten
+//! [`inspect`]: Option::inspect
+//! [`map`]: Option::map
+//!
+//! These methods transform [`Option<T>`] to a value of a possibly
+//! different type `U`:
+//!
+//! * [`map_or`] applies the provided function to the contained value of
+//!   [`Some`], or returns the provided default value if the [`Option`] is
+//!   [`None`]
+//! * [`map_or_else`] applies the provided function to the contained value
+//!   of [`Some`], or returns the result of evaluating the provided
+//!   fallback function if the [`Option`] is [`None`]
+//!
+//! [`map_or`]: Option::map_or
+//! [`map_or_else`]: Option::map_or_else
+//!
+//! These methods combine the [`Some`] variants of two [`Option`] values:
+//!
+//! * [`zip`] returns [`Some((s, o))`] if `self` is [`Some(s)`] and the
+//!   provided [`Option`] value is [`Some(o)`]; otherwise, returns [`None`]
+//! * [`zip_with`] calls the provided function `f` and returns
+//!   [`Some(f(s, o))`] if `self` is [`Some(s)`] and the provided
+//!   [`Option`] value is [`Some(o)`]; otherwise, returns [`None`]
+//!
+//! [`Some(f(s, o))`]: Some
+//! [`Some(o)`]: Some
+//! [`Some(s)`]: Some
+//! [`Some((s, o))`]: Some
+//! [`zip`]: Option::zip
+//! [`zip_with`]: Option::zip_with
+//!
+//! ## Boolean operators
+//!
+//! These methods treat the [`Option`] as a boolean value, where [`Some`]
+//! acts like [`true`] and [`None`] acts like [`false`]. There are two
+//! categories of these methods: ones that take an [`Option`] as input, and
+//! ones that take a function as input (to be lazily evaluated).
+//!
+//! The [`and`], [`or`], and [`xor`] methods take another [`Option`] as
+//! input, and produce an [`Option`] as output. Only the [`and`] method can
+//! produce an [`Option<U>`] value having a different inner type `U` than
+//! [`Option<T>`].
+//!
+//! | method  | self      | input     | output    |
+//! |---------|-----------|-----------|-----------|
+//! | [`and`] | `None`    | (ignored) | `None`    |
+//! | [`and`] | `Some(x)` | `None`    | `None`    |
+//! | [`and`] | `Some(x)` | `Some(y)` | `Some(y)` |
+//! | [`or`]  | `None`    | `None`    | `None`    |
+//! | [`or`]  | `None`    | `Some(y)` | `Some(y)` |
+//! | [`or`]  | `Some(x)` | (ignored) | `Some(x)` |
+//! | [`xor`] | `None`    | `None`    | `None`    |
+//! | [`xor`] | `None`    | `Some(y)` | `Some(y)` |
+//! | [`xor`] | `Some(x)` | `None`    | `Some(x)` |
+//! | [`xor`] | `Some(x)` | `Some(y)` | `None`    |
+//!
+//! [`and`]: Option::and
+//! [`or`]: Option::or
+//! [`xor`]: Option::xor
+//!
+//! The [`and_then`] and [`or_else`] methods take a function as input, and
+//! only evaluate the function when they need to produce a new value. Only
+//! the [`and_then`] method can produce an [`Option<U>`] value having a
+//! different inner type `U` than [`Option<T>`].
+//!
+//! | method       | self      | function input | function result | output    |
+//! |--------------|-----------|----------------|-----------------|-----------|
+//! | [`and_then`] | `None`    | (not provided) | (not evaluated) | `None`    |
+//! | [`and_then`] | `Some(x)` | `x`            | `None`          | `None`    |
+//! | [`and_then`] | `Some(x)` | `x`            | `Some(y)`       | `Some(y)` |
+//! | [`or_else`]  | `None`    | (not provided) | `None`          | `None`    |
+//! | [`or_else`]  | `None`    | (not provided) | `Some(y)`       | `Some(y)` |
+//! | [`or_else`]  | `Some(x)` | (not provided) | (not evaluated) | `Some(x)` |
+//!
+//! [`and_then`]: Option::and_then
 //! [`or_else`]: Option::or_else
+//!
+//! This is an example of using methods like [`and_then`] and [`or`] in a
+//! pipeline of method calls. Early stages of the pipeline pass failure
+//! values ([`None`]) through unchanged, and continue processing on
+//! success values ([`Some`]). Toward the end, [`or`] substitutes an error
+//! message if it receives [`None`].
+//!
+//! ```
+//! # use std::collections::BTreeMap;
+//! let mut bt = BTreeMap::new();
+//! bt.insert(20u8, "foo");
+//! bt.insert(42u8, "bar");
+//! let res = [0u8, 1, 11, 200, 22]
+//!     .into_iter()
+//!     .map(|x| {
+//!         // `checked_sub()` returns `None` on error
+//!         x.checked_sub(1)
+//!             // same with `checked_mul()`
+//!             .and_then(|x| x.checked_mul(2))
+//!             // `BTreeMap::get` returns `None` on error
+//!             .and_then(|x| bt.get(&x))
+//!             // Substitute an error message if we have `None` so far
+//!             .or(Some(&"error!"))
+//!             .copied()
+//!             // Won't panic because we unconditionally used `Some` above
+//!             .unwrap()
+//!     })
+//!     .collect::<Vec<_>>();
+//! assert_eq!(res, ["error!", "error!", "foo", "error!", "bar"]);
+//! ```
+//!
+//! ## Comparison operators
+//!
+//! If `T` implements [`PartialOrd`] then [`Option<T>`] will derive its
+//! [`PartialOrd`] implementation.  With this order, [`None`] compares as
+//! less than any [`Some`], and two [`Some`] compare the same way as their
+//! contained values would in `T`.  If `T` also implements
+//! [`Ord`], then so does [`Option<T>`].
+//!
+//! ```
+//! assert!(None < Some(0));
+//! assert!(Some(0) < Some(1));
+//! ```
+//!
+//! ## Iterating over `Option`
+//!
+//! An [`Option`] can be iterated over. This can be helpful if you need an
+//! iterator that is conditionally empty. The iterator will either produce
+//! a single value (when the [`Option`] is [`Some`]), or produce no values
+//! (when the [`Option`] is [`None`]). For example, [`into_iter`] acts like
+//! [`once(v)`] if the [`Option`] is [`Some(v)`], and like [`empty()`] if
+//! the [`Option`] is [`None`].
+//!
+//! [`Some(v)`]: Some
+//! [`empty()`]: crate::iter::empty
+//! [`once(v)`]: crate::iter::once
+//!
+//! Iterators over [`Option<T>`] come in three types:
+//!
+//! * [`into_iter`] consumes the [`Option`] and produces the contained
+//!   value
+//! * [`iter`] produces an immutable reference of type `&T` to the
+//!   contained value
+//! * [`iter_mut`] produces a mutable reference of type `&mut T` to the
+//!   contained value
+//!
+//! [`into_iter`]: Option::into_iter
+//! [`iter`]: Option::iter
+//! [`iter_mut`]: Option::iter_mut
+//!
+//! An iterator over [`Option`] can be useful when chaining iterators, for
+//! example, to conditionally insert items. (It's not always necessary to
+//! explicitly call an iterator constructor: many [`Iterator`] methods that
+//! accept other iterators will also accept iterable types that implement
+//! [`IntoIterator`], which includes [`Option`].)
+//!
+//! ```
+//! let yep = Some(42);
+//! let nope = None;
+//! // chain() already calls into_iter(), so we don't have to do so
+//! let nums: Vec<i32> = (0..4).chain(yep).chain(4..8).collect();
+//! assert_eq!(nums, [0, 1, 2, 3, 42, 4, 5, 6, 7]);
+//! let nums: Vec<i32> = (0..4).chain(nope).chain(4..8).collect();
+//! assert_eq!(nums, [0, 1, 2, 3, 4, 5, 6, 7]);
+//! ```
+//!
+//! One reason to chain iterators in this way is that a function returning
+//! `impl Iterator` must have all possible return values be of the same
+//! concrete type. Chaining an iterated [`Option`] can help with that.
+//!
+//! ```
+//! fn make_iter(do_insert: bool) -> impl Iterator<Item = i32> {
+//!     // Explicit returns to illustrate return types matching
+//!     match do_insert {
+//!         true => return (0..4).chain(Some(42)).chain(4..8),
+//!         false => return (0..4).chain(None).chain(4..8),
+//!     }
+//! }
+//! println!("{:?}", make_iter(true).collect::<Vec<_>>());
+//! println!("{:?}", make_iter(false).collect::<Vec<_>>());
+//! ```
+//!
+//! If we try to do the same thing, but using [`once()`] and [`empty()`],
+//! we can't return `impl Iterator` anymore because the concrete types of
+//! the return values differ.
+//!
+//! [`empty()`]: crate::iter::empty
+//! [`once()`]: crate::iter::once
+//!
+//! ```compile_fail,E0308
+//! # use std::iter::{empty, once};
+//! // This won't compile because all possible returns from the function
+//! // must have the same concrete type.
+//! fn make_iter(do_insert: bool) -> impl Iterator<Item = i32> {
+//!     // Explicit returns to illustrate return types not matching
+//!     match do_insert {
+//!         true => return (0..4).chain(once(42)).chain(4..8),
+//!         false => return (0..4).chain(empty()).chain(4..8),
+//!     }
+//! }
+//! ```
+//!
+//! ## Collecting into `Option`
+//!
+//! [`Option`] implements the [`FromIterator`][impl-FromIterator] trait,
+//! which allows an iterator over [`Option`] values to be collected into an
+//! [`Option`] of a collection of each contained value of the original
+//! [`Option`] values, or [`None`] if any of the elements was [`None`].
+//!
+//! [impl-FromIterator]: Option#impl-FromIterator%3COption%3CA%3E%3E-for-Option%3CV%3E
+//!
+//! ```
+//! let v = [Some(2), Some(4), None, Some(8)];
+//! let res: Option<Vec<_>> = v.into_iter().collect();
+//! assert_eq!(res, None);
+//! let v = [Some(2), Some(4), Some(8)];
+//! let res: Option<Vec<_>> = v.into_iter().collect();
+//! assert_eq!(res, Some(vec![2, 4, 8]));
+//! ```
+//!
+//! [`Option`] also implements the [`Product`][impl-Product] and
+//! [`Sum`][impl-Sum] traits, allowing an iterator over [`Option`] values
+//! to provide the [`product`][Iterator::product] and
+//! [`sum`][Iterator::sum] methods.
+//!
+//! [impl-Product]: Option#impl-Product%3COption%3CU%3E%3E-for-Option%3CT%3E
+//! [impl-Sum]: Option#impl-Sum%3COption%3CU%3E%3E-for-Option%3CT%3E
+//!
+//! ```
+//! let v = [None, Some(1), Some(2), Some(3)];
+//! let res: Option<i32> = v.into_iter().sum();
+//! assert_eq!(res, None);
+//! let v = [Some(1), Some(2), Some(21)];
+//! let res: Option<i32> = v.into_iter().product();
+//! assert_eq!(res, Some(42));
+//! ```
+//!
+//! ## Modifying an [`Option`] in-place
+//!
+//! These methods return a mutable reference to the contained value of an
+//! [`Option<T>`]:
+//!
+//! * [`insert`] inserts a value, dropping any old contents
+//! * [`get_or_insert`] gets the current value, inserting a provided
+//!   default value if it is [`None`]
+//! * [`get_or_insert_default`] gets the current value, inserting the
+//!   default value of type `T` (which must implement [`Default`]) if it is
+//!   [`None`]
+//! * [`get_or_insert_with`] gets the current value, inserting a default
+//!   computed by the provided function if it is [`None`]
+//!
+//! [`get_or_insert`]: Option::get_or_insert
+//! [`get_or_insert_default`]: Option::get_or_insert_default
+//! [`get_or_insert_with`]: Option::get_or_insert_with
+//! [`insert`]: Option::insert
+//!
+//! These methods transfer ownership of the contained value of an
+//! [`Option`]:
+//!
+//! * [`take`] takes ownership of the contained value of an [`Option`], if
+//!   any, replacing the [`Option`] with [`None`]
+//! * [`replace`] takes ownership of the contained value of an [`Option`],
+//!   if any, replacing the [`Option`] with a [`Some`] containing the
+//!   provided value
+//!
 //! [`replace`]: Option::replace
 //! [`take`]: Option::take
-//! [`transpose`]: Option::transpose
-//! [`unwrap`]: Option::unwrap
-//! [`unwrap_unchecked`]: Option::unwrap_unchecked
 //!
-//! # 示例
+//! # Examples
+//!
+//! Basic pattern matching on [`Option`]:
 //!
 //! ```
 //! let msg = Some("howdy");
+//!
+//! // Take a reference to the contained string
 //! if let Some(m) = &msg {
 //!     println!("{}", *m);
 //! }
+//!
+//! // Remove the contained string, destroying the Option
 //! let unwrapped_msg = msg.unwrap_or("default message");
+//! ```
+//!
+//! Initialize a result to [`None`] before a loop:
+//!
+//! ```
+//! enum Kingdom { Plant(u32, &'static str), Animal(u32, &'static str) }
+//!
+//! // A list of data to search through.
+//! let all_the_big_things = [
+//!     Kingdom::Plant(250, "redwood"),
+//!     Kingdom::Plant(230, "noble fir"),
+//!     Kingdom::Plant(229, "sugar pine"),
+//!     Kingdom::Animal(25, "blue whale"),
+//!     Kingdom::Animal(19, "fin whale"),
+//!     Kingdom::Animal(15, "north pacific right whale"),
+//! ];
+//!
+//! // We're going to search for the name of the biggest animal,
+//! // but to start with we've just got `None`.
+//! let mut name_of_biggest_animal = None;
+//! let mut size_of_biggest_animal = 0;
+//! for big_thing in &all_the_big_things {
+//!     match *big_thing {
+//!         Kingdom::Animal(size, name) if size > size_of_biggest_animal => {
+//!             // Now we've found the name of some big animal
+//!             size_of_biggest_animal = size;
+//!             name_of_biggest_animal = Some(name);
+//!         }
+//!         Kingdom::Animal(..) | Kingdom::Plant(..) => ()
+//!     }
+//! }
+//!
+//! match name_of_biggest_animal {
+//!     Some(name) => println!("the biggest animal is {name}"),
+//!     None => println!("there are no animals :("),
+//! }
 //! ```
 
 #![stable(feature = "rust1", since = "1.0.0")]
@@ -141,43 +589,45 @@ use crate::panicking::{panic, panic_display};
 use crate::pin::Pin;
 use crate::{cmp, convert, hint, mem, slice};
 
-/// `Option` 类型。更多设计背景见本模块级文档。
-///
-/// `Option<T>` 是编译器识别的基础枚举，`Some(T)` 表示有值，`None` 表示无值。
+/// The `Option` type. See [the module level documentation](self) for more.
 #[doc(search_unbox)]
 #[derive(Copy, Debug, Hash)]
 #[derive_const(Eq)]
 #[rustc_diagnostic_item = "Option"]
 #[lang = "Option"]
 #[stable(feature = "rust1", since = "1.0.0")]
-#[allow(clippy::derived_hash_with_manual_eq)] // PartialEq 已用等价方式手动实现。
+#[allow(clippy::derived_hash_with_manual_eq)] // PartialEq is manually implemented equivalently
 pub enum Option<T> {
-    /// 没有值。
-    ///
-    /// 该变体表示缺失、失败或尚未初始化；它不携带 `T`，也不会构造或 drop `T`。
+    /// No value.
     #[lang = "None"]
     #[stable(feature = "rust1", since = "1.0.0")]
     None,
-    /// 携带一个类型为 `T` 的值。
-    ///
-    /// 该变体表示值存在，提取、映射和组合子通常只在此分支继续处理内部值。
+    /// Some value of type `T`.
     #[lang = "Some"]
     #[stable(feature = "rust1", since = "1.0.0")]
     Some(#[stable(feature = "rust1", since = "1.0.0")] T),
 }
 
 /////////////////////////////////////////////////////////////////////////////
-// 类型实现
+// Type implementation
 /////////////////////////////////////////////////////////////////////////////
 
 impl<T> Option<T> {
     /////////////////////////////////////////////////////////////////////////
-    // 查询包含的值
+    // Querying the contained values
     /////////////////////////////////////////////////////////////////////////
 
-    /// 如果 `self` 是 [`Some`]，返回 `true`。
+    /// Returns `true` if the option is a [`Some`] value.
     ///
-    /// 此方法只查询变体，不移动内部值；需要断言一定有值时，应使用模式匹配、[`expect`] 或 [`unwrap`]。
+    /// # Examples
+    ///
+    /// ```
+    /// let x: Option<u32> = Some(2);
+    /// assert_eq!(x.is_some(), true);
+    ///
+    /// let x: Option<u32> = None;
+    /// assert_eq!(x.is_some(), false);
+    /// ```
     #[must_use = "if you intended to assert that this has a value, consider `.unwrap()` instead"]
     #[inline]
     #[stable(feature = "rust1", since = "1.0.0")]
@@ -186,9 +636,24 @@ impl<T> Option<T> {
         matches!(*self, Some(_))
     }
 
-    /// 如果 `self` 是 [`Some`] 且内部值满足谓词 `f`，返回 `true`。
+    /// Returns `true` if the option is a [`Some`] and the value inside of it matches a predicate.
     ///
-    /// 当 `self` 为 [`None`] 时闭包不会执行，并直接返回 `false`；这是按需求值的查询组合子。
+    /// # Examples
+    ///
+    /// ```
+    /// let x: Option<u32> = Some(2);
+    /// assert_eq!(x.is_some_and(|x| x > 1), true);
+    ///
+    /// let x: Option<u32> = Some(0);
+    /// assert_eq!(x.is_some_and(|x| x > 1), false);
+    ///
+    /// let x: Option<u32> = None;
+    /// assert_eq!(x.is_some_and(|x| x > 1), false);
+    ///
+    /// let x: Option<String> = Some("ownership".to_string());
+    /// assert_eq!(x.as_ref().is_some_and(|x| x.len() > 1), true);
+    /// println!("still alive {:?}", x);
+    /// ```
     #[must_use]
     #[inline]
     #[stable(feature = "is_some_and", since = "1.70.0")]
@@ -200,9 +665,17 @@ impl<T> Option<T> {
         }
     }
 
-    /// 如果 `self` 是 [`None`]，返回 `true`。
+    /// Returns `true` if the option is a [`None`] value.
     ///
-    /// 此方法只查询变体，不移动内部值。
+    /// # Examples
+    ///
+    /// ```
+    /// let x: Option<u32> = Some(2);
+    /// assert_eq!(x.is_none(), false);
+    ///
+    /// let x: Option<u32> = None;
+    /// assert_eq!(x.is_none(), true);
+    /// ```
     #[must_use = "if you intended to assert that this doesn't have a value, consider \
                   wrapping this in an `assert!()` instead"]
     #[inline]
@@ -212,9 +685,24 @@ impl<T> Option<T> {
         !self.is_some()
     }
 
-    /// 如果 `self` 是 [`None`]，或 `self` 是 [`Some`] 且内部值满足谓词 `f`，返回 `true`。
+    /// Returns `true` if the option is a [`None`] or the value inside of it matches a predicate.
     ///
-    /// 当 `self` 为 [`None`] 时闭包不会执行；当有值时才把 `T` 交给闭包检查。
+    /// # Examples
+    ///
+    /// ```
+    /// let x: Option<u32> = Some(2);
+    /// assert_eq!(x.is_none_or(|x| x > 1), true);
+    ///
+    /// let x: Option<u32> = Some(0);
+    /// assert_eq!(x.is_none_or(|x| x > 1), false);
+    ///
+    /// let x: Option<u32> = None;
+    /// assert_eq!(x.is_none_or(|x| x > 1), true);
+    ///
+    /// let x: Option<String> = Some("ownership".to_string());
+    /// assert_eq!(x.as_ref().is_none_or(|x| x.len() > 1), true);
+    /// println!("still alive {:?}", x);
+    /// ```
     #[must_use]
     #[inline]
     #[stable(feature = "is_none_or", since = "1.82.0")]
@@ -227,12 +715,29 @@ impl<T> Option<T> {
     }
 
     /////////////////////////////////////////////////////////////////////////
-    // 引用适配器
+    // Adapter for working with references
     /////////////////////////////////////////////////////////////////////////
 
-    /// 把 `&Option<T>` 转换为 `Option<&T>`。
+    /// Converts from `&Option<T>` to `Option<&T>`.
     ///
-    /// 该方法保留原 `Option` 的所有权，只把内部值重新借用出来，适合在不移动 `T` 的情况下调用组合子。
+    /// # Examples
+    ///
+    /// Calculates the length of an <code>Option<[String]></code> as an <code>Option<[usize]></code>
+    /// without moving the [`String`]. The [`map`] method takes the `self` argument by value,
+    /// consuming the original, so this technique uses `as_ref` to first take an `Option` to a
+    /// reference to the value inside the original.
+    ///
+    /// [`map`]: Option::map
+    /// [String]: ../../std/string/struct.String.html "String"
+    /// [`String`]: ../../std/string/struct.String.html "String"
+    ///
+    /// ```
+    /// let text: Option<String> = Some("Hello, world!".to_string());
+    /// // First, cast `Option<String>` to `Option<&String>` with `as_ref`,
+    /// // then consume *that* with `map`, leaving `text` on the stack.
+    /// let text_length: Option<usize> = text.as_ref().map(|s| s.len());
+    /// println!("still can print text: {text:?}");
+    /// ```
     #[inline]
     #[rustc_const_stable(feature = "const_option_basics", since = "1.48.0")]
     #[stable(feature = "rust1", since = "1.0.0")]
@@ -243,9 +748,18 @@ impl<T> Option<T> {
         }
     }
 
-    /// 把 `&mut Option<T>` 转换为 `Option<&mut T>`。
+    /// Converts from `&mut Option<T>` to `Option<&mut T>`.
     ///
-    /// 该方法保留外层 `Option`，只在为 [`Some`] 时提供内部值的唯一可变借用。
+    /// # Examples
+    ///
+    /// ```
+    /// let mut x = Some(2);
+    /// match x.as_mut() {
+    ///     Some(v) => *v = 42,
+    ///     None => {},
+    /// }
+    /// assert_eq!(x, Some(42));
+    /// ```
     #[inline]
     #[stable(feature = "rust1", since = "1.0.0")]
     #[rustc_const_stable(feature = "const_option", since = "1.83.0")]
@@ -256,34 +770,35 @@ impl<T> Option<T> {
         }
     }
 
-    /// 把 `Pin<&Option<T>>` 转换为 `Option<Pin<&T>>`。
+    /// Converts from <code>[Pin]<[&]Option\<T>></code> to <code>Option<[Pin]<[&]T>></code>.
     ///
-    /// 如果有值，返回指向内部值的 pinned 共享引用；如果为 [`None`]，返回 [`None`]。
+    /// [&]: reference "shared reference"
     #[inline]
     #[must_use]
     #[stable(feature = "pin", since = "1.33.0")]
     #[rustc_const_stable(feature = "const_option_ext", since = "1.84.0")]
     pub const fn as_pin_ref(self: Pin<&Self>) -> Option<Pin<&T>> {
-        // FIXME(const-hack): 等 `map` 可用于这里后，改回使用 `map`。
+        // FIXME(const-hack): use `map` once that is possible
         match Pin::get_ref(self).as_ref() {
-            // SAFETY: `x` 来自已经 pinned 的 `self`，因此它同样保证处于 pinned 状态。
+            // SAFETY: `x` is guaranteed to be pinned because it comes from `self`
+            // which is pinned.
             Some(x) => unsafe { Some(Pin::new_unchecked(x)) },
             None => None,
         }
     }
 
-    /// 把 `Pin<&mut Option<T>>` 转换为 `Option<Pin<&mut T>>`。
+    /// Converts from <code>[Pin]<[&mut] Option\<T>></code> to <code>Option<[Pin]<[&mut] T>></code>.
     ///
-    /// 该投影不会移动内部值，因此在 `Option` 已经被 pin 住时可以安全地访问其中的 `T`。
+    /// [&mut]: reference "mutable reference"
     #[inline]
     #[must_use]
     #[stable(feature = "pin", since = "1.33.0")]
     #[rustc_const_stable(feature = "const_option_ext", since = "1.84.0")]
     pub const fn as_pin_mut(self: Pin<&mut Self>) -> Option<Pin<&mut T>> {
-        // SAFETY: `get_unchecked_mut` 不会用来移动 `self` 内部的 `Option`。
-        // `x` 来自已经 pinned 的 `self`，因此它同样保证处于 pinned 状态。
+        // SAFETY: `get_unchecked_mut` is never used to move the `Option` inside `self`.
+        // `x` is guaranteed to be pinned because it comes from `self` which is pinned.
         unsafe {
-            // FIXME(const-hack): 等 `map` 可用于这里后，改回使用 `map`。
+            // FIXME(const-hack): use `map` once that is possible
             match Pin::get_unchecked_mut(self).as_mut() {
                 Some(x) => Some(Pin::new_unchecked(x)),
                 None => None,
@@ -293,26 +808,50 @@ impl<T> Option<T> {
 
     #[inline]
     const fn len(&self) -> usize {
-        // 使用 intrinsic 可避免为了得到 0 或 1 而生成分支。
+        // Using the intrinsic avoids emitting a branch to get the 0 or 1.
         let discriminant: isize = crate::intrinsics::discriminant_value(self);
         discriminant as usize
     }
 
-    /// 以切片形式查看可能存在的单个值。
+    /// Returns a slice of the contained value, if any. If this is `None`, an
+    /// empty slice is returned. This can be useful to have a single type of
+    /// iterator over an `Option` or slice.
     ///
-    /// 当 `self` 为 [`Some`] 时返回长度为 1 的切片；为 [`None`] 时返回空切片。这样可把 `Option<T>` 当作 0 或 1 个元素的序列处理。
+    /// Note: Should you have an `Option<&T>` and wish to get a slice of `T`,
+    /// you can unpack it via `opt.map_or(&[], std::slice::from_ref)`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// assert_eq!(
+    ///     [Some(1234).as_slice(), None.as_slice()],
+    ///     [&[1234][..], &[][..]],
+    /// );
+    /// ```
+    ///
+    /// The inverse of this function is (discounting
+    /// borrowing) [`[_]::first`](slice::first):
+    ///
+    /// ```rust
+    /// for i in [Some(1234_u16), None] {
+    ///     assert_eq!(i.as_ref(), i.as_slice().first());
+    /// }
+    /// ```
     #[inline]
     #[must_use]
     #[stable(feature = "option_as_slice", since = "1.75.0")]
     #[rustc_const_stable(feature = "const_option_ext", since = "1.84.0")]
     pub const fn as_slice(&self) -> &[T] {
-        // SAFETY: 当 `Option` 为 `Some` 时，这里使用的是指向 payload 的真实指针，
-        // 且长度为 1，因此等价于 `slice::from_ref`。
-        // 当 `Option` 为 `None` 时，长度为 0；此时只需要指针对齐即可。`&self`
-        // 已经对齐，并且所用偏移是对齐量的倍数。
+        // SAFETY: When the `Option` is `Some`, we're using the actual pointer
+        // to the payload, with a length of 1, so this is equivalent to
+        // `slice::from_ref`, and thus is safe.
+        // When the `Option` is `None`, the length used is 0, so to be safe it
+        // just needs to be aligned, which it is because `&self` is aligned and
+        // the offset used is a multiple of alignment.
         //
-        // 这里假设 `offset_of!` 总是返回一个对 `T` 来说位于对象范围内且正确对齐的位置；
-        // 即使在 `None` 分支中该位置只是 padding。
+        // Here we assume that `offset_of!` always returns an offset to an
+        // in-bounds and correctly aligned position for a `T` (even if in the
+        // `None` case it's just padding).
         unsafe {
             slice::from_raw_parts(
                 (self as *const Self).byte_add(core::mem::offset_of!(Self, Some.0)).cast(),
@@ -321,22 +860,55 @@ impl<T> Option<T> {
         }
     }
 
-    /// 以可变切片形式查看可能存在的单个值。
+    /// Returns a mutable slice of the contained value, if any. If this is
+    /// `None`, an empty slice is returned. This can be useful to have a
+    /// single type of iterator over an `Option` or slice.
     ///
-    /// 当 `self` 为 [`Some`] 时返回长度为 1 的可变切片；为 [`None`] 时返回空切片。
+    /// Note: Should you have an `Option<&mut T>` instead of a
+    /// `&mut Option<T>`, which this method takes, you can obtain a mutable
+    /// slice via `opt.map_or(&mut [], std::slice::from_mut)`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// assert_eq!(
+    ///     [Some(1234).as_mut_slice(), None.as_mut_slice()],
+    ///     [&mut [1234][..], &mut [][..]],
+    /// );
+    /// ```
+    ///
+    /// The result is a mutable slice of zero or one items that points into
+    /// our original `Option`:
+    ///
+    /// ```rust
+    /// let mut x = Some(1234);
+    /// x.as_mut_slice()[0] += 1;
+    /// assert_eq!(x, Some(1235));
+    /// ```
+    ///
+    /// The inverse of this method (discounting borrowing)
+    /// is [`[_]::first_mut`](slice::first_mut):
+    ///
+    /// ```rust
+    /// assert_eq!(Some(123).as_mut_slice().first_mut(), Some(&mut 123))
+    /// ```
     #[inline]
     #[must_use]
     #[stable(feature = "option_as_slice", since = "1.75.0")]
     #[rustc_const_stable(feature = "const_option_ext", since = "1.84.0")]
     pub const fn as_mut_slice(&mut self) -> &mut [T] {
-        // SAFETY: 当 `Option` 为 `Some` 时，这里使用的是指向 payload 的真实指针，
-        // 且长度为 1，因此等价于 `slice::from_mut`。
-        // 当 `Option` 为 `None` 时，长度为 0；此时只需要指针对齐即可。`&self`
-        // 已经对齐，并且所用偏移是对齐量的倍数。
+        // SAFETY: When the `Option` is `Some`, we're using the actual pointer
+        // to the payload, with a length of 1, so this is equivalent to
+        // `slice::from_mut`, and thus is safe.
+        // When the `Option` is `None`, the length used is 0, so to be safe it
+        // just needs to be aligned, which it is because `&self` is aligned and
+        // the offset used is a multiple of alignment.
         //
-        // 在当前实现中，intrinsic 会从可变引用创建 `*const T`，因此这里把它转回
-        // 可变指针是安全的。与 `as_slice` 一样，intrinsic 总是返回一个对 `T` 来说
-        // 位于对象范围内且正确对齐的位置；即使在 `None` 分支中该位置只是 padding。
+        // In the new version, the intrinsic creates a `*const T` from a
+        // mutable reference  so it is safe to cast back to a mutable pointer
+        // here. As with `as_slice`, the intrinsic always returns a pointer to
+        // an in-bounds and correctly aligned position for a `T` (even if in
+        // the `None` case it's just padding).
         unsafe {
             slice::from_raw_parts_mut(
                 (self as *mut Self).byte_add(core::mem::offset_of!(Self, Some.0)).cast(),
@@ -346,14 +918,47 @@ impl<T> Option<T> {
     }
 
     /////////////////////////////////////////////////////////////////////////
-    // 取得包含的值
+    // Getting to contained values
     /////////////////////////////////////////////////////////////////////////
 
-    /// 消费 `self` 并返回其中的 [`Some`] 值。
+    /// Returns the contained [`Some`] value, consuming the `self` value.
     ///
     /// # Panics
     ///
-    /// 如果 `self` 为 [`None`]，以调用方提供的 `msg` 触发 panic。`#[track_caller]` 会把 panic 位置报告到调用 `expect` 的位置，而不是库内部。
+    /// Panics if the value is a [`None`] with a custom panic message provided by
+    /// `msg`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let x = Some("value");
+    /// assert_eq!(x.expect("fruits are healthy"), "value");
+    /// ```
+    ///
+    /// ```should_panic
+    /// let x: Option<&str> = None;
+    /// x.expect("fruits are healthy"); // panics with `fruits are healthy`
+    /// ```
+    ///
+    /// # Recommended Message Style
+    ///
+    /// We recommend that `expect` messages are used to describe the reason you
+    /// _expect_ the `Option` should be `Some`.
+    ///
+    /// ```should_panic
+    /// # let slice: &[u8] = &[];
+    /// let item = slice.get(0)
+    ///     .expect("slice should not be empty");
+    /// ```
+    ///
+    /// **Hint**: If you're having trouble remembering how to phrase expect
+    /// error messages remember to focus on the word "should" as in "env
+    /// variable should be set by blah" or "the given binary should be available
+    /// and executable by the current user".
+    ///
+    /// For more detail on expect message styles and the reasoning behind our
+    /// recommendation please refer to the section on ["Common Message
+    /// Styles"](../../std/error/index.html#common-message-styles) in the [`std::error`](../../std/error/index.html) module docs.
     #[inline]
     #[track_caller]
     #[stable(feature = "rust1", since = "1.0.0")]
@@ -367,11 +972,38 @@ impl<T> Option<T> {
         }
     }
 
-    /// 消费 `self` 并返回其中的 [`Some`] 值。
+    /// Returns the contained [`Some`] value, consuming the `self` value.
+    ///
+    /// Because this function may panic, its use is generally discouraged.
+    /// Panics are meant for unrecoverable errors, and
+    /// [may abort the entire program][panic-abort].
+    ///
+    /// Instead, prefer to use pattern matching and handle the [`None`]
+    /// case explicitly, or call [`unwrap_or`], [`unwrap_or_else`], or
+    /// [`unwrap_or_default`]. In functions returning `Option`, you can use
+    /// [the `?` (try) operator][try-option].
+    ///
+    /// [panic-abort]: https://doc.rust-lang.org/book/ch09-01-unrecoverable-errors-with-panic.html
+    /// [try-option]: https://doc.rust-lang.org/book/ch09-02-recoverable-errors-with-result.html#where-the--operator-can-be-used
+    /// [`unwrap_or`]: Option::unwrap_or
+    /// [`unwrap_or_else`]: Option::unwrap_or_else
+    /// [`unwrap_or_default`]: Option::unwrap_or_default
     ///
     /// # Panics
     ///
-    /// 如果 `self` 为 [`None`]，以通用消息触发 panic。需要给 panic 消息补充业务上下文时，应使用 [`expect`]。
+    /// Panics if the self value equals [`None`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let x = Some("air");
+    /// assert_eq!(x.unwrap(), "air");
+    /// ```
+    ///
+    /// ```should_panic
+    /// let x: Option<&str> = None;
+    /// assert_eq!(x.unwrap(), "air"); // fails
+    /// ```
     #[inline(always)]
     #[track_caller]
     #[stable(feature = "rust1", since = "1.0.0")]
@@ -385,9 +1017,20 @@ impl<T> Option<T> {
         }
     }
 
-    /// 消费 `self`；若为 [`Some`]，返回内部值，否则返回给定的 `default`。
+    /// Returns the contained [`Some`] value or a provided default.
     ///
-    /// `default` 会在调用前被求值；如果默认值构造有成本，优先使用 [`unwrap_or_else`]。
+    /// Arguments passed to `unwrap_or` are eagerly evaluated; if you are passing
+    /// the result of a function call, it is recommended to use [`unwrap_or_else`],
+    /// which is lazily evaluated.
+    ///
+    /// [`unwrap_or_else`]: Option::unwrap_or_else
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// assert_eq!(Some("car").unwrap_or("bike"), "car");
+    /// assert_eq!(None.unwrap_or("bike"), "bike");
+    /// ```
     #[inline]
     #[stable(feature = "rust1", since = "1.0.0")]
     #[rustc_allow_const_fn_unstable(const_precise_live_drops)]
@@ -402,9 +1045,15 @@ impl<T> Option<T> {
         }
     }
 
-    /// 消费 `self`；若为 [`Some`]，返回内部值，否则调用闭包 `f` 计算默认值。
+    /// Returns the contained [`Some`] value or computes it from a closure.
     ///
-    /// 闭包只在 [`None`] 分支执行，适合把昂贵计算或需要移动的后备值延迟到确实需要时。
+    /// # Examples
+    ///
+    /// ```
+    /// let k = 10;
+    /// assert_eq!(Some(4).unwrap_or_else(|| 2 * k), 4);
+    /// assert_eq!(None.unwrap_or_else(|| 2 * k), 20);
+    /// ```
     #[inline]
     #[track_caller]
     #[stable(feature = "rust1", since = "1.0.0")]
@@ -419,9 +1068,25 @@ impl<T> Option<T> {
         }
     }
 
-    /// 消费 `self`；若为 [`Some`]，返回内部值，否则返回 `T::default()`。
+    /// Returns the contained [`Some`] value or a default.
     ///
-    /// 该方法要求 `T: Default`，并只在 [`None`] 分支构造默认值。
+    /// Consumes the `self` argument then, if [`Some`], returns the contained
+    /// value, otherwise if [`None`], returns the [default value] for that
+    /// type.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let x: Option<u32> = None;
+    /// let y: Option<u32> = Some(12);
+    ///
+    /// assert_eq!(x.unwrap_or_default(), 0);
+    /// assert_eq!(y.unwrap_or_default(), 12);
+    /// ```
+    ///
+    /// [default value]: Default::default
+    /// [`parse`]: str::parse
+    /// [`FromStr`]: crate::str::FromStr
     #[inline]
     #[stable(feature = "rust1", since = "1.0.0")]
     #[rustc_const_unstable(feature = "const_option_ops", issue = "143956")]
@@ -435,11 +1100,26 @@ impl<T> Option<T> {
         }
     }
 
-    /// 消费 `self` 并在不检查变体的情况下返回内部 [`Some`] 值。
+    /// Returns the contained [`Some`] value, consuming the `self` value,
+    /// without checking that the value is not [`None`].
     ///
-    /// # 安全性(Safety）
+    /// # Safety
     ///
-    /// 调用方必须保证 `self` 确实是 [`Some`]。如果传入 [`None`]，会调用 `unreachable_unchecked` 路径，编译器可据此假设该分支不可能发生；违反此前置条件是未定义行为(UB)。
+    /// Calling this method on [`None`] is *[undefined behavior]*.
+    ///
+    /// [undefined behavior]: https://doc.rust-lang.org/reference/behavior-considered-undefined.html
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let x = Some("air");
+    /// assert_eq!(unsafe { x.unwrap_unchecked() }, "air");
+    /// ```
+    ///
+    /// ```no_run
+    /// let x: Option<&str> = None;
+    /// assert_eq!(unsafe { x.unwrap_unchecked() }, "air"); // Undefined behavior!
+    /// ```
     #[inline]
     #[track_caller]
     #[stable(feature = "option_result_unwrap_unchecked", since = "1.58.0")]
@@ -448,18 +1128,32 @@ impl<T> Option<T> {
     pub const unsafe fn unwrap_unchecked(self) -> T {
         match self {
             Some(val) => val,
-            // SAFETY: 调用方必须保证 `self` 是 `Some`，因此 `None` 分支不可达。
+            // SAFETY: the safety contract must be upheld by the caller.
             None => unsafe { hint::unreachable_unchecked() },
         }
     }
 
     /////////////////////////////////////////////////////////////////////////
-    // 转换包含的值
+    // Transforming contained values
     /////////////////////////////////////////////////////////////////////////
 
-    /// 如果 `self` 为 [`Some`]，把内部值交给函数 `f` 并返回 `Some(f(value))`；如果为 [`None`]，保持 [`None`]。
+    /// Maps an `Option<T>` to `Option<U>` by applying a function to a contained value (if `Some`) or returns `None` (if `None`).
     ///
-    /// 该方法消费原 `Option`，常用于只转换存在的值而保留缺失状态。
+    /// # Examples
+    ///
+    /// Calculates the length of an <code>Option<[String]></code> as an
+    /// <code>Option<[usize]></code>, consuming the original:
+    ///
+    /// [String]: ../../std/string/struct.String.html "String"
+    /// ```
+    /// let maybe_some_string = Some(String::from("Hello, World!"));
+    /// // `Option::map` takes self *by value*, consuming `maybe_some_string`
+    /// let maybe_some_len = maybe_some_string.map(|s| s.len());
+    /// assert_eq!(maybe_some_len, Some(13));
+    ///
+    /// let x: Option<&str> = None;
+    /// assert_eq!(x.map(|s| s.len()), None);
+    /// ```
     #[inline]
     #[stable(feature = "rust1", since = "1.0.0")]
     #[rustc_const_unstable(feature = "const_option_ops", issue = "143956")]
@@ -473,9 +1167,24 @@ impl<T> Option<T> {
         }
     }
 
-    /// 如果 `self` 为 [`Some`]，以共享引用形式把内部值传给闭包 `f`，然后返回原 `Option`。
+    /// Calls a function with a reference to the contained value if [`Some`].
     ///
-    /// 该方法适合插入调试、日志或断言逻辑，不改变成功/缺失状态，也不把内部值交给闭包所有权。
+    /// Returns the original option.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let list = vec![1, 2, 3];
+    ///
+    /// // prints "got: 2"
+    /// let x = list
+    ///     .get(1)
+    ///     .inspect(|x| println!("got: {x}"))
+    ///     .expect("list should be long enough");
+    ///
+    /// // prints nothing
+    /// list.get(5).inspect(|x| println!("got: {x}"));
+    /// ```
     #[inline]
     #[stable(feature = "result_option_inspect", since = "1.76.0")]
     #[rustc_const_unstable(feature = "const_option_ops", issue = "143956")]
@@ -490,9 +1199,24 @@ impl<T> Option<T> {
         self
     }
 
-    /// 把 `Option<T>` 转换为普通值 `U`。
+    /// Returns the provided default result (if none),
+    /// or applies a function to the contained value (if any).
     ///
-    /// 若为 [`Some`]，对内部值执行 `f`；若为 [`None`]，返回已经求值的 `default`。默认值总会在调用前求值。
+    /// Arguments passed to `map_or` are eagerly evaluated; if you are passing
+    /// the result of a function call, it is recommended to use [`map_or_else`],
+    /// which is lazily evaluated.
+    ///
+    /// [`map_or_else`]: Option::map_or_else
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let x = Some("foo");
+    /// assert_eq!(x.map_or(42, |v| v.len()), 3);
+    ///
+    /// let x: Option<&str> = None;
+    /// assert_eq!(x.map_or(42, |v| v.len()), 42);
+    /// ```
     #[inline]
     #[stable(feature = "rust1", since = "1.0.0")]
     #[must_use = "if you don't need the returned value, use `if let` instead"]
@@ -508,9 +1232,39 @@ impl<T> Option<T> {
         }
     }
 
-    /// 把 `Option<T>` 转换为普通值 `U`，并延迟计算默认值。
+    /// Computes a default function result (if none), or
+    /// applies a different function to the contained value (if any).
     ///
-    /// 若为 [`Some`]，对内部值执行 `f`；若为 [`None`]，才调用 `default` 闭包。
+    /// # Basic examples
+    ///
+    /// ```
+    /// let k = 21;
+    ///
+    /// let x = Some("foo");
+    /// assert_eq!(x.map_or_else(|| 2 * k, |v| v.len()), 3);
+    ///
+    /// let x: Option<&str> = None;
+    /// assert_eq!(x.map_or_else(|| 2 * k, |v| v.len()), 42);
+    /// ```
+    ///
+    /// # Handling a Result-based fallback
+    ///
+    /// A somewhat common occurrence when dealing with optional values
+    /// in combination with [`Result<T, E>`] is the case where one wants to invoke
+    /// a fallible fallback if the option is not present.  This example
+    /// parses a command line argument (if present), or the contents of a file to
+    /// an integer.  However, unlike accessing the command line argument, reading
+    /// the file is fallible, so it must be wrapped with `Ok`.
+    ///
+    /// ```no_run
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let v: u64 = std::env::args()
+    ///    .nth(1)
+    ///    .map_or_else(|| std::fs::read_to_string("/etc/someconfig.conf"), Ok)?
+    ///    .parse()?;
+    /// #   Ok(())
+    /// # }
+    /// ```
     #[inline]
     #[stable(feature = "rust1", since = "1.0.0")]
     #[rustc_const_unstable(feature = "const_option_ops", issue = "143956")]
@@ -525,9 +1279,23 @@ impl<T> Option<T> {
         }
     }
 
-    /// 把 `Option<T>` 转换为 `U`。
+    /// Maps an `Option<T>` to a `U` by applying function `f` to the contained
+    /// value if the option is [`Some`], otherwise if [`None`], returns the
+    /// [default value] for the type `U`.
     ///
-    /// 若为 [`Some`]，对内部值执行 `f`；若为 [`None`]，返回 `U::default()`。
+    /// # Examples
+    ///
+    /// ```
+    /// #![feature(result_option_map_or_default)]
+    ///
+    /// let x: Option<&str> = Some("hi");
+    /// let y: Option<&str> = None;
+    ///
+    /// assert_eq!(x.map_or_default(|x| x.len()), 2);
+    /// assert_eq!(y.map_or_default(|y| y.len()), 0);
+    /// ```
+    ///
+    /// [default value]: Default::default
     #[inline]
     #[unstable(feature = "result_option_map_or_default", issue = "138099")]
     #[rustc_const_unstable(feature = "const_option_ops", issue = "143956")]
@@ -542,9 +1310,27 @@ impl<T> Option<T> {
         }
     }
 
-    /// 把 `Option<T>` 转换为 [`Result<T, E>`]。
+    /// Transforms the `Option<T>` into a [`Result<T, E>`], mapping [`Some(v)`] to
+    /// [`Ok(v)`] and [`None`] to [`Err(err)`].
     ///
-    /// [`Some(v)`] 变为 [`Ok(v)`]；[`None`] 变为使用给定 `err` 的 [`Err(err)`]。`err` 会在调用前求值。
+    /// Arguments passed to `ok_or` are eagerly evaluated; if you are passing the
+    /// result of a function call, it is recommended to use [`ok_or_else`], which is
+    /// lazily evaluated.
+    ///
+    /// [`Ok(v)`]: Ok
+    /// [`Err(err)`]: Err
+    /// [`Some(v)`]: Some
+    /// [`ok_or_else`]: Option::ok_or_else
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let x = Some("foo");
+    /// assert_eq!(x.ok_or(0), Ok("foo"));
+    ///
+    /// let x: Option<&str> = None;
+    /// assert_eq!(x.ok_or(0), Err(0));
+    /// ```
     #[inline]
     #[stable(feature = "rust1", since = "1.0.0")]
     #[rustc_const_unstable(feature = "const_option_ops", issue = "143956")]
@@ -555,9 +1341,22 @@ impl<T> Option<T> {
         }
     }
 
-    /// 把 `Option<T>` 转换为 [`Result<T, E>`]，并延迟构造错误。
+    /// Transforms the `Option<T>` into a [`Result<T, E>`], mapping [`Some(v)`] to
+    /// [`Ok(v)`] and [`None`] to [`Err(err())`].
     ///
-    /// [`Some(v)`] 变为 [`Ok(v)`]；[`None`] 时才调用闭包生成 [`Err`]，适合错误构造有成本的场景。
+    /// [`Ok(v)`]: Ok
+    /// [`Err(err())`]: Err
+    /// [`Some(v)`]: Some
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let x = Some("foo");
+    /// assert_eq!(x.ok_or_else(|| 0), Ok("foo"));
+    ///
+    /// let x: Option<&str> = None;
+    /// assert_eq!(x.ok_or_else(|| 0), Err(0));
+    /// ```
     #[inline]
     #[stable(feature = "rust1", since = "1.0.0")]
     #[rustc_const_unstable(feature = "const_option_ops", issue = "143956")]
@@ -571,9 +1370,20 @@ impl<T> Option<T> {
         }
     }
 
-    /// 把 `Option<T>` 或 `&Option<T>` 转换为 `Option<&T::Target>`。
+    /// Converts from `Option<T>` (or `&Option<T>`) to `Option<&T::Target>`.
     ///
-    /// 该方法结合 [`Deref`]，常用于把 `Option<String>`、`Option<Box<T>>` 等转换为目标类型的借用。
+    /// Leaves the original Option in-place, creating a new one with a reference
+    /// to the original one, additionally coercing the contents via [`Deref`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let x: Option<String> = Some("hey".to_owned());
+    /// assert_eq!(x.as_deref(), Some("hey"));
+    ///
+    /// let x: Option<String> = None;
+    /// assert_eq!(x.as_deref(), None);
+    /// ```
     #[inline]
     #[stable(feature = "option_deref", since = "1.40.0")]
     #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
@@ -584,9 +1394,20 @@ impl<T> Option<T> {
         self.as_ref().map(Deref::deref)
     }
 
-    /// 把 `Option<T>` 或 `&mut Option<T>` 转换为 `Option<&mut T::Target>`。
+    /// Converts from `Option<T>` (or `&mut Option<T>`) to `Option<&mut T::Target>`.
     ///
-    /// 该方法结合 [`DerefMut`]，在存在值时返回目标类型的可变借用。
+    /// Leaves the original `Option` in-place, creating a new one containing a mutable reference to
+    /// the inner type's [`Deref::Target`] type.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut x: Option<String> = Some("hey".to_owned());
+    /// assert_eq!(x.as_deref_mut().map(|x| {
+    ///     x.make_ascii_uppercase();
+    ///     x
+    /// }), Some("HEY".to_owned().as_mut_str()));
+    /// ```
     #[inline]
     #[stable(feature = "option_deref", since = "1.40.0")]
     #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
@@ -598,21 +1419,41 @@ impl<T> Option<T> {
     }
 
     /////////////////////////////////////////////////////////////////////////
-    // 迭代器构造器
+    // Iterator constructors
     /////////////////////////////////////////////////////////////////////////
 
-    /// 返回遍历可能存在值的迭代器。
+    /// Returns an iterator over the possibly contained value.
     ///
-    /// 若为 [`Some`]，迭代器产生一个 `&T`；若为 [`None`]，迭代器为空。
+    /// # Examples
+    ///
+    /// ```
+    /// let x = Some(4);
+    /// assert_eq!(x.iter().next(), Some(&4));
+    ///
+    /// let x: Option<u32> = None;
+    /// assert_eq!(x.iter().next(), None);
+    /// ```
     #[inline]
     #[stable(feature = "rust1", since = "1.0.0")]
     pub fn iter(&self) -> Iter<'_, T> {
         Iter { inner: Item { opt: self.as_ref() } }
     }
 
-    /// 返回遍历可能存在值的可变迭代器。
+    /// Returns a mutable iterator over the possibly contained value.
     ///
-    /// 若为 [`Some`]，迭代器产生一个 `&mut T`；若为 [`None`]，迭代器为空。
+    /// # Examples
+    ///
+    /// ```
+    /// let mut x = Some(4);
+    /// match x.iter_mut().next() {
+    ///     Some(v) => *v = 42,
+    ///     None => {},
+    /// }
+    /// assert_eq!(x, Some(42));
+    ///
+    /// let mut x: Option<u32> = None;
+    /// assert_eq!(x.iter_mut().next(), None);
+    /// ```
     #[inline]
     #[stable(feature = "rust1", since = "1.0.0")]
     pub fn iter_mut(&mut self) -> IterMut<'_, T> {
@@ -620,12 +1461,36 @@ impl<T> Option<T> {
     }
 
     /////////////////////////////////////////////////////////////////////////
-    // 对值执行立即/惰性布尔组合
+    // Boolean operations on the values, eager and lazy
     /////////////////////////////////////////////////////////////////////////
 
-    /// 如果 `self` 为 [`None`]，返回 [`None`]；否则返回参数 `optb`。
+    /// Returns [`None`] if the option is [`None`], otherwise returns `optb`.
     ///
-    /// `optb` 会在调用前求值；需要在 [`Some`] 分支延迟计算时使用 [`and_then`]。
+    /// Arguments passed to `and` are eagerly evaluated; if you are passing the
+    /// result of a function call, it is recommended to use [`and_then`], which is
+    /// lazily evaluated.
+    ///
+    /// [`and_then`]: Option::and_then
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let x = Some(2);
+    /// let y: Option<&str> = None;
+    /// assert_eq!(x.and(y), None);
+    ///
+    /// let x: Option<u32> = None;
+    /// let y = Some("foo");
+    /// assert_eq!(x.and(y), None);
+    ///
+    /// let x = Some(2);
+    /// let y = Some("foo");
+    /// assert_eq!(x.and(y), Some("foo"));
+    ///
+    /// let x: Option<u32> = None;
+    /// let y: Option<&str> = None;
+    /// assert_eq!(x.and(y), None);
+    /// ```
     #[inline]
     #[stable(feature = "rust1", since = "1.0.0")]
     #[rustc_const_unstable(feature = "const_option_ops", issue = "143956")]
@@ -640,9 +1505,34 @@ impl<T> Option<T> {
         }
     }
 
-    /// 如果 `self` 为 [`Some`]，把内部值交给闭包 `f` 并返回其结果；如果为 [`None`]，直接返回 [`None`]。
+    /// Returns [`None`] if the option is [`None`], otherwise calls `f` with the
+    /// wrapped value and returns the result.
     ///
-    /// 这是 `Option` 的扁平映射组合子，适合串联多个可能失败的计算，并在任一步为 [`None`] 时短路。
+    /// Some languages call this operation flatmap.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// fn sq_then_to_string(x: u32) -> Option<String> {
+    ///     x.checked_mul(x).map(|sq| sq.to_string())
+    /// }
+    ///
+    /// assert_eq!(Some(2).and_then(sq_then_to_string), Some(4.to_string()));
+    /// assert_eq!(Some(1_000_000).and_then(sq_then_to_string), None); // overflowed!
+    /// assert_eq!(None.and_then(sq_then_to_string), None);
+    /// ```
+    ///
+    /// Often used to chain fallible operations that may return [`None`].
+    ///
+    /// ```
+    /// let arr_2d = [["A0", "A1"], ["B0", "B1"]];
+    ///
+    /// let item_0_1 = arr_2d.get(0).and_then(|row| row.get(1));
+    /// assert_eq!(item_0_1, Some(&"A1"));
+    ///
+    /// let item_2_0 = arr_2d.get(2).and_then(|row| row.get(0));
+    /// assert_eq!(item_2_0, None);
+    /// ```
     #[doc(alias = "flatmap")]
     #[inline]
     #[stable(feature = "rust1", since = "1.0.0")]
@@ -658,9 +1548,30 @@ impl<T> Option<T> {
         }
     }
 
-    /// 如果 `self` 为 [`Some`]，用谓词检查内部值；谓词返回 `true` 时保留该值，否则返回 [`None`]。
+    /// Returns [`None`] if the option is [`None`], otherwise calls `predicate`
+    /// with the wrapped value and returns:
     ///
-    /// 如果 `self` 为 [`None`]，谓词不会执行。
+    /// - [`Some(t)`] if `predicate` returns `true` (where `t` is the wrapped
+    ///   value), and
+    /// - [`None`] if `predicate` returns `false`.
+    ///
+    /// This function works similar to [`Iterator::filter()`]. You can imagine
+    /// the `Option<T>` being an iterator over one or zero elements. `filter()`
+    /// lets you decide which elements to keep.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// fn is_even(n: &i32) -> bool {
+    ///     n % 2 == 0
+    /// }
+    ///
+    /// assert_eq!(None.filter(is_even), None);
+    /// assert_eq!(Some(3).filter(is_even), None);
+    /// assert_eq!(Some(4).filter(is_even), Some(4));
+    /// ```
+    ///
+    /// [`Some(t)`]: Some
     #[inline]
     #[stable(feature = "option_filter", since = "1.27.0")]
     #[rustc_const_unstable(feature = "const_option_ops", issue = "143956")]
@@ -677,9 +1588,33 @@ impl<T> Option<T> {
         None
     }
 
-    /// 如果 `self` 为 [`Some`]，返回 `self`；否则返回参数 `optb`。
+    /// Returns the option if it contains a value, otherwise returns `optb`.
     ///
-    /// `optb` 会在调用前求值；需要延迟构造替代值时使用 [`or_else`]。
+    /// Arguments passed to `or` are eagerly evaluated; if you are passing the
+    /// result of a function call, it is recommended to use [`or_else`], which is
+    /// lazily evaluated.
+    ///
+    /// [`or_else`]: Option::or_else
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let x = Some(2);
+    /// let y = None;
+    /// assert_eq!(x.or(y), Some(2));
+    ///
+    /// let x = None;
+    /// let y = Some(100);
+    /// assert_eq!(x.or(y), Some(100));
+    ///
+    /// let x = Some(2);
+    /// let y = Some(100);
+    /// assert_eq!(x.or(y), Some(2));
+    ///
+    /// let x: Option<u32> = None;
+    /// let y = None;
+    /// assert_eq!(x.or(y), None);
+    /// ```
     #[inline]
     #[stable(feature = "rust1", since = "1.0.0")]
     #[rustc_const_unstable(feature = "const_option_ops", issue = "143956")]
@@ -693,17 +1628,27 @@ impl<T> Option<T> {
         }
     }
 
-    /// 如果 `self` 为 [`Some`]，返回 `self`；否则调用闭包 `f` 生成替代 `Option`。
+    /// Returns the option if it contains a value, otherwise calls `f` and
+    /// returns the result.
     ///
-    /// 闭包只在 [`None`] 分支执行。
+    /// # Examples
+    ///
+    /// ```
+    /// fn nobody() -> Option<&'static str> { None }
+    /// fn vikings() -> Option<&'static str> { Some("vikings") }
+    ///
+    /// assert_eq!(Some("barbarians").or_else(vikings), Some("barbarians"));
+    /// assert_eq!(None.or_else(vikings), Some("vikings"));
+    /// assert_eq!(None.or_else(nobody), None);
+    /// ```
     #[inline]
     #[stable(feature = "rust1", since = "1.0.0")]
     #[rustc_const_unstable(feature = "const_option_ops", issue = "143956")]
     pub const fn or_else<F>(self, f: F) -> Option<T>
     where
         F: [const] FnOnce() -> Option<T> + [const] Destruct,
-        // FIXME(const_hack): 这里的 `T: [const] Destruct` 实际不必要，但即使精确 live-drop
-        // 分析也还无法证明此处不会 drop 任何 `T` 类型的值。
+        //FIXME(const_hack): this `T: [const] Destruct` is unnecessary, but even precise live drops can't tell
+        // no value of type `T` gets dropped here
         T: [const] Destruct,
     {
         match self {
@@ -712,7 +1657,27 @@ impl<T> Option<T> {
         }
     }
 
-    /// 当 `self` 和 `optb` 中恰好一个是 [`Some`] 时返回那个 [`Some`]；两者都为 [`Some`] 或都为 [`None`] 时返回 [`None`]。
+    /// Returns [`Some`] if exactly one of `self`, `optb` is [`Some`], otherwise returns [`None`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let x = Some(2);
+    /// let y: Option<u32> = None;
+    /// assert_eq!(x.xor(y), Some(2));
+    ///
+    /// let x: Option<u32> = None;
+    /// let y = Some(2);
+    /// assert_eq!(x.xor(y), Some(2));
+    ///
+    /// let x = Some(2);
+    /// let y = Some(2);
+    /// assert_eq!(x.xor(y), None);
+    ///
+    /// let x: Option<u32> = None;
+    /// let y: Option<u32> = None;
+    /// assert_eq!(x.xor(y), None);
+    /// ```
     #[inline]
     #[stable(feature = "option_xor", since = "1.37.0")]
     #[rustc_const_unstable(feature = "const_option_ops", issue = "143956")]
@@ -728,12 +1693,28 @@ impl<T> Option<T> {
     }
 
     /////////////////////////////////////////////////////////////////////////
-    // 类 entry 操作：插入值并返回引用
+    // Entry-like operations to insert a value and return a reference
     /////////////////////////////////////////////////////////////////////////
 
-    /// 把 `value` 插入到 `Option` 中，并返回指向新值的可变引用。
+    /// Inserts `value` into the option, then returns a mutable reference to it.
     ///
-    /// 如果原来已经是 [`Some`]，旧值会先被 drop。
+    /// If the option already contains a value, the old value is dropped.
+    ///
+    /// See also [`Option::get_or_insert`], which doesn't update the value if
+    /// the option already contains [`Some`].
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let mut opt = None;
+    /// let val = opt.insert(1);
+    /// assert_eq!(*val, 1);
+    /// assert_eq!(opt.unwrap(), 1);
+    /// let val = opt.insert(2);
+    /// assert_eq!(*val, 2);
+    /// *val = 3;
+    /// assert_eq!(opt.unwrap(), 3);
+    /// ```
     #[must_use = "if you intended to set a value, consider assignment instead"]
     #[inline]
     #[stable(feature = "option_insert", since = "1.53.0")]
@@ -744,20 +1725,53 @@ impl<T> Option<T> {
     {
         *self = Some(value);
 
-        // SAFETY: 上面的赋值刚刚把该 `Option` 填成 `Some`。
+        // SAFETY: the code above just filled the option
         unsafe { self.as_mut().unwrap_unchecked() }
     }
 
-    /// 如果 `self` 为 [`None`]，插入给定 `value`；随后返回内部值的可变引用。
+    /// Inserts `value` into the option if it is [`None`], then
+    /// returns a mutable reference to the contained value.
     ///
-    /// `value` 会在调用前求值；需要延迟构造时使用 [`get_or_insert_with`]。
+    /// See also [`Option::insert`], which updates the value even if
+    /// the option already contains [`Some`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut x = None;
+    ///
+    /// {
+    ///     let y: &mut u32 = x.get_or_insert(5);
+    ///     assert_eq!(y, &5);
+    ///
+    ///     *y = 7;
+    /// }
+    ///
+    /// assert_eq!(x, Some(7));
+    /// ```
     #[inline]
     #[stable(feature = "option_entry", since = "1.20.0")]
     pub fn get_or_insert(&mut self, value: T) -> &mut T {
         self.get_or_insert_with(|| value)
     }
 
-    /// 如果 `self` 为 [`None`]，插入 `T::default()`；随后返回内部值的可变引用。
+    /// Inserts the default value into the option if it is [`None`], then
+    /// returns a mutable reference to the contained value.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut x = None;
+    ///
+    /// {
+    ///     let y: &mut u32 = x.get_or_insert_default();
+    ///     assert_eq!(y, &0);
+    ///
+    ///     *y = 7;
+    /// }
+    ///
+    /// assert_eq!(x, Some(7));
+    /// ```
     #[inline]
     #[stable(feature = "option_get_or_insert_default", since = "1.83.0")]
     #[rustc_const_unstable(feature = "const_option_ops", issue = "143956")]
@@ -768,9 +1782,23 @@ impl<T> Option<T> {
         self.get_or_insert_with(T::default)
     }
 
-    /// 如果 `self` 为 [`None`]，调用闭包 `f` 生成并插入值；随后返回内部值的可变引用。
+    /// Inserts a value computed from `f` into the option if it is [`None`],
+    /// then returns a mutable reference to the contained value.
     ///
-    /// 闭包只在缺值时执行。
+    /// # Examples
+    ///
+    /// ```
+    /// let mut x = None;
+    ///
+    /// {
+    ///     let y: &mut u32 = x.get_or_insert_with(|| 5);
+    ///     assert_eq!(y, &5);
+    ///
+    ///     *y = 7;
+    /// }
+    ///
+    /// assert_eq!(x, Some(7));
+    /// ```
     #[inline]
     #[stable(feature = "option_entry", since = "1.20.0")]
     #[rustc_const_unstable(feature = "const_option_ops", issue = "143956")]
@@ -783,28 +1811,62 @@ impl<T> Option<T> {
             *self = Some(f());
         }
 
-        // SAFETY: 如果 `self` 原本是 `None`，上面的代码已经把它替换为 `Some`。
+        // SAFETY: a `None` variant for `self` would have been replaced by a `Some`
+        // variant in the code above.
         unsafe { self.as_mut().unwrap_unchecked() }
     }
 
     /////////////////////////////////////////////////////////////////////////
-    // 其他操作
+    // Misc
     /////////////////////////////////////////////////////////////////////////
 
-    /// 从 `Option` 中取出值，并在原位置留下 [`None`]。
+    /// Takes the value out of the option, leaving a [`None`] in its place.
     ///
-    /// 若原来为 [`Some`]，返回原值；若原来为 [`None`]，返回 [`None`]。
+    /// # Examples
+    ///
+    /// ```
+    /// let mut x = Some(2);
+    /// let y = x.take();
+    /// assert_eq!(x, None);
+    /// assert_eq!(y, Some(2));
+    ///
+    /// let mut x: Option<u32> = None;
+    /// let y = x.take();
+    /// assert_eq!(x, None);
+    /// assert_eq!(y, None);
+    /// ```
     #[inline]
     #[stable(feature = "rust1", since = "1.0.0")]
     #[rustc_const_stable(feature = "const_option", since = "1.83.0")]
     pub const fn take(&mut self) -> Option<T> {
-        // FIXME(const-hack): 等 `mem::take` 支持 const 后，用它替换 `mem::replace`。
+        // FIXME(const-hack) replace `mem::replace` by `mem::take` when the latter is const ready
         mem::replace(self, None)
     }
 
-    /// 仅当谓词对内部值返回 `true` 时，从 `Option` 中取出值并留下 [`None`]。
+    /// Takes the value out of the option, but only if the predicate evaluates to
+    /// `true` on a mutable reference to the value.
     ///
-    /// 谓词接收 `&mut T`，因此可以在决定是否取出前检查或修改内部值。
+    /// In other words, replaces `self` with `None` if the predicate returns `true`.
+    /// This method operates similar to [`Option::take`] but conditional.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut x = Some(42);
+    ///
+    /// let prev = x.take_if(|v| if *v == 42 {
+    ///     *v += 1;
+    ///     false
+    /// } else {
+    ///     false
+    /// });
+    /// assert_eq!(x, Some(43));
+    /// assert_eq!(prev, None);
+    ///
+    /// let prev = x.take_if(|v| *v == 43);
+    /// assert_eq!(x, None);
+    /// assert_eq!(prev, Some(43));
+    /// ```
     #[inline]
     #[stable(feature = "option_take_if", since = "1.80.0")]
     #[rustc_const_unstable(feature = "const_option_ops", issue = "143956")]
@@ -815,9 +1877,23 @@ impl<T> Option<T> {
         if self.as_mut().map_or(false, predicate) { self.take() } else { None }
     }
 
-    /// 用给定 `value` 替换 `Option` 当前内容，并返回旧内容。
+    /// Replaces the actual value in the option by the value given in parameter,
+    /// returning the old value if present,
+    /// leaving a [`Some`] in its place without deinitializing either one.
     ///
-    /// 替换后 `self` 一定为 [`Some(value)`]；旧值如果存在会作为返回值交还给调用方，而不是在此处 drop。
+    /// # Examples
+    ///
+    /// ```
+    /// let mut x = Some(2);
+    /// let old = x.replace(5);
+    /// assert_eq!(x, Some(5));
+    /// assert_eq!(old, Some(2));
+    ///
+    /// let mut x = None;
+    /// let old = x.replace(3);
+    /// assert_eq!(x, Some(3));
+    /// assert_eq!(old, None);
+    /// ```
     #[inline]
     #[stable(feature = "option_replace", since = "1.31.0")]
     #[rustc_const_stable(feature = "const_option", since = "1.83.0")]
@@ -825,9 +1901,21 @@ impl<T> Option<T> {
         mem::replace(self, Some(value))
     }
 
-    /// 把两个 `Option` 合并。
+    /// Zips `self` with another `Option`.
     ///
-    /// 只有当两者都是 [`Some`] 时返回 `Some((a, b))`；任一为 [`None`] 时返回 [`None`]。
+    /// If `self` is `Some(s)` and `other` is `Some(o)`, this method returns `Some((s, o))`.
+    /// Otherwise, `None` is returned.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let x = Some(1);
+    /// let y = Some("hi");
+    /// let z = None::<u8>;
+    ///
+    /// assert_eq!(x.zip(y), Some((1, "hi")));
+    /// assert_eq!(x.zip(z), None);
+    /// ```
     #[stable(feature = "option_zip_option", since = "1.46.0")]
     #[rustc_const_unstable(feature = "const_option_ops", issue = "143956")]
     pub const fn zip<U>(self, other: Option<U>) -> Option<(T, U)>
@@ -841,9 +1929,34 @@ impl<T> Option<T> {
         }
     }
 
-    /// 把两个 `Option` 合并，并在两者都是 [`Some`] 时用函数 `f` 计算结果。
+    /// Zips `self` and another `Option` with function `f`.
     ///
-    /// 如果任一输入为 [`None`]，函数不会执行并返回 [`None`]。
+    /// If `self` is `Some(s)` and `other` is `Some(o)`, this method returns `Some(f(s, o))`.
+    /// Otherwise, `None` is returned.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// #![feature(option_zip)]
+    ///
+    /// #[derive(Debug, PartialEq)]
+    /// struct Point {
+    ///     x: f64,
+    ///     y: f64,
+    /// }
+    ///
+    /// impl Point {
+    ///     fn new(x: f64, y: f64) -> Self {
+    ///         Self { x, y }
+    ///     }
+    /// }
+    ///
+    /// let x = Some(17.5);
+    /// let y = Some(42.7);
+    ///
+    /// assert_eq!(x.zip_with(y, Point::new), Some(Point { x: 17.5, y: 42.7 }));
+    /// assert_eq!(x.zip_with(None, Point::new), None);
+    /// ```
     #[unstable(feature = "option_zip", issue = "70086")]
     #[rustc_const_unstable(feature = "const_option_ops", issue = "143956")]
     pub const fn zip_with<U, F, R>(self, other: Option<U>, f: F) -> Option<R>
@@ -858,9 +1971,27 @@ impl<T> Option<T> {
         }
     }
 
-    /// 把两个 `Option` 归约为一个。
+    /// Reduces two options into one, using the provided function if both are `Some`.
     ///
-    /// 两者都是 [`Some`] 时调用函数合并；只有一边是 [`Some`] 时返回那一边；两边都是 [`None`] 时返回 [`None`]。
+    /// If `self` is `Some(s)` and `other` is `Some(o)`, this method returns `Some(f(s, o))`.
+    /// Otherwise, if only one of `self` and `other` is `Some`, that one is returned.
+    /// If both `self` and `other` are `None`, `None` is returned.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// #![feature(option_reduce)]
+    ///
+    /// let s12 = Some(12);
+    /// let s17 = Some(17);
+    /// let n = None;
+    /// let f = |a, b| a + b;
+    ///
+    /// assert_eq!(s12.reduce(s17, f), Some(29));
+    /// assert_eq!(s12.reduce(n, f), Some(12));
+    /// assert_eq!(n.reduce(s17, f), Some(17));
+    /// assert_eq!(n.reduce(n, f), None);
+    /// ```
     #[unstable(feature = "option_reduce", issue = "144273")]
     pub fn reduce<U, R, F>(self, other: Option<U>, f: F) -> Option<R>
     where
@@ -878,9 +2009,20 @@ impl<T> Option<T> {
 }
 
 impl<T: IntoIterator> Option<T> {
-    /// 把可选迭代器转换为迭代器。
+    /// Transforms an optional iterator into an iterator.
     ///
-    /// 当 `self` 为 [`Some(iterable)`] 时迭代其中元素；当为 [`None`] 时产生空迭代器。
+    /// If `self` is `None`, the resulting iterator is empty.
+    /// Otherwise, an iterator is made from the `Some` value and returned.
+    /// # Examples
+    /// ```
+    /// #![feature(option_into_flat_iter)]
+    ///
+    /// let o1 = Some([1, 2]);
+    /// let o2 = None::<&[usize]>;
+    ///
+    /// assert_eq!(o1.into_flat_iter().collect::<Vec<_>>(), [1, 2]);
+    /// assert_eq!(o2.into_flat_iter().collect::<Vec<_>>(), Vec::<&usize>::new());
+    /// ```
     #[unstable(feature = "option_into_flat_iter", issue = "148441")]
     pub fn into_flat_iter<A>(self) -> OptionFlatten<A>
     where
@@ -891,9 +2033,20 @@ impl<T: IntoIterator> Option<T> {
 }
 
 impl<T, U> Option<(T, U)> {
-    /// 把包含二元组的 `Option<(T, U)>` 拆成 `(Option<T>, Option<U>)`。
+    /// Unzips an option containing a tuple of two options.
     ///
-    /// 若原值为 [`Some((a, b))`]，结果为 `(Some(a), Some(b))`；若为 [`None`]，两边都为 [`None`]。
+    /// If `self` is `Some((a, b))` this method returns `(Some(a), Some(b))`.
+    /// Otherwise, `(None, None)` is returned.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let x = Some((1, "hi"));
+    /// let y = None::<(u8, u32)>;
+    ///
+    /// assert_eq!(x.unzip(), (Some(1), Some("hi")));
+    /// assert_eq!(y.unzip(), (None, None));
+    /// ```
     #[inline]
     #[stable(feature = "unzip_option", since = "1.66.0")]
     pub fn unzip(self) -> (Option<T>, Option<U>) {
@@ -905,9 +2058,18 @@ impl<T, U> Option<(T, U)> {
 }
 
 impl<T> Option<&T> {
-    /// 把 `Option<&T>` 或 `Option<&mut T>` 转换为 `Option<T>`，通过复制内部值完成转换。
+    /// Maps an `Option<&T>` to an `Option<T>` by copying the contents of the
+    /// option.
     ///
-    /// 该方法要求 `T: Copy`。
+    /// # Examples
+    ///
+    /// ```
+    /// let x = 12;
+    /// let opt_x = Some(&x);
+    /// assert_eq!(opt_x, Some(&12));
+    /// let copied = opt_x.copied();
+    /// assert_eq!(copied, Some(12));
+    /// ```
     #[must_use = "`self` will be dropped if the result is not used"]
     #[stable(feature = "copied", since = "1.35.0")]
     #[rustc_const_stable(feature = "const_option", since = "1.83.0")]
@@ -915,17 +2077,26 @@ impl<T> Option<&T> {
     where
         T: Copy,
     {
-        // FIXME(const-hack): 这个实现绕开了尚未 const-ready 的 `Option::map`；
-        // 等可行时应改回去以避免重复代码。
+        // FIXME(const-hack): this implementation, which sidesteps using `Option::map` since it's not const
+        // ready yet, should be reverted when possible to avoid code repetition
         match self {
             Some(&v) => Some(v),
             None => None,
         }
     }
 
-    /// 把 `Option<&T>` 或 `Option<&mut T>` 转换为 `Option<T>`，通过克隆内部值完成转换。
+    /// Maps an `Option<&T>` to an `Option<T>` by cloning the contents of the
+    /// option.
     ///
-    /// 该方法要求 `T: Clone`，并只在 [`Some`] 分支调用 `clone`。
+    /// # Examples
+    ///
+    /// ```
+    /// let x = 12;
+    /// let opt_x = Some(&x);
+    /// assert_eq!(opt_x, Some(&12));
+    /// let cloned = opt_x.cloned();
+    /// assert_eq!(cloned, Some(12));
+    /// ```
     #[must_use = "`self` will be dropped if the result is not used"]
     #[stable(feature = "rust1", since = "1.0.0")]
     pub fn cloned(self) -> Option<T>
@@ -940,9 +2111,18 @@ impl<T> Option<&T> {
 }
 
 impl<T> Option<&mut T> {
-    /// 把 `Option<&T>` 或 `Option<&mut T>` 转换为 `Option<T>`，通过复制内部值完成转换。
+    /// Maps an `Option<&mut T>` to an `Option<T>` by copying the contents of the
+    /// option.
     ///
-    /// 该方法要求 `T: Copy`。
+    /// # Examples
+    ///
+    /// ```
+    /// let mut x = 12;
+    /// let opt_x = Some(&mut x);
+    /// assert_eq!(opt_x, Some(&mut 12));
+    /// let copied = opt_x.copied();
+    /// assert_eq!(copied, Some(12));
+    /// ```
     #[must_use = "`self` will be dropped if the result is not used"]
     #[stable(feature = "copied", since = "1.35.0")]
     #[rustc_const_stable(feature = "const_option", since = "1.83.0")]
@@ -956,9 +2136,18 @@ impl<T> Option<&mut T> {
         }
     }
 
-    /// 把 `Option<&T>` 或 `Option<&mut T>` 转换为 `Option<T>`，通过克隆内部值完成转换。
+    /// Maps an `Option<&mut T>` to an `Option<T>` by cloning the contents of the
+    /// option.
     ///
-    /// 该方法要求 `T: Clone`，并只在 [`Some`] 分支调用 `clone`。
+    /// # Examples
+    ///
+    /// ```
+    /// let mut x = 12;
+    /// let opt_x = Some(&mut x);
+    /// assert_eq!(opt_x, Some(&mut 12));
+    /// let cloned = opt_x.cloned();
+    /// assert_eq!(cloned, Some(12));
+    /// ```
     #[must_use = "`self` will be dropped if the result is not used"]
     #[stable(since = "1.26.0", feature = "option_ref_mut_cloned")]
     pub fn cloned(self) -> Option<T>
@@ -973,9 +2162,22 @@ impl<T> Option<&mut T> {
 }
 
 impl<T, E> Option<Result<T, E>> {
-    /// 在 `Option` 与另一层容器之间交换嵌套顺序。
+    /// Transposes an `Option` of a [`Result`] into a [`Result`] of an `Option`.
     ///
-    /// 对 `Option<Result<T, E>>`，`Some(Ok(v))` 变为 `Ok(Some(v))`，`Some(Err(e))` 变为 `Err(e)`，`None` 变为 `Ok(None)`。对数组形式则把 `[Option<T>; N]` 转为 `Option<[T; N]>`，任一元素为 [`None`] 即整体为 [`None`]。
+    /// <code>[Some]\([Ok]\(\_))</code> is mapped to <code>[Ok]\([Some]\(\_))</code>,
+    /// <code>[Some]\([Err]\(\_))</code> is mapped to <code>[Err]\(\_)</code>,
+    /// and [`None`] will be mapped to <code>[Ok]\([None])</code>.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// #[derive(Debug, Eq, PartialEq)]
+    /// struct SomeErr;
+    ///
+    /// let x: Option<Result<i32, SomeErr>> = Some(Ok(5));
+    /// let y: Result<Option<i32>, SomeErr> = Ok(Some(5));
+    /// assert_eq!(x.transpose(), y);
+    /// ```
     #[inline]
     #[stable(feature = "transpose_result", since = "1.33.0")]
     #[rustc_allow_const_fn_unstable(const_precise_live_drops)]
@@ -997,7 +2199,7 @@ const fn unwrap_failed() -> ! {
     panic("called `Option::unwrap()` on a `None` value")
 }
 
-// 单独拆出此函数，用于减小 .expect() 自身的代码体积。
+// This is a separate function to reduce the code size of .expect() itself.
 #[cfg_attr(not(panic = "immediate-abort"), inline(never))]
 #[cfg_attr(panic = "immediate-abort", inline)]
 #[cold]
@@ -1007,15 +2209,15 @@ const fn expect_failed(msg: &str) -> ! {
 }
 
 /////////////////////////////////////////////////////////////////////////////
-// trait 实现
+// Trait implementations
 /////////////////////////////////////////////////////////////////////////////
 
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_const_unstable(feature = "const_clone", issue = "142757")]
 impl<T> const Clone for Option<T>
 where
-    // FIXME(const_hack): `clone_from` 中的 `T: [const] Destruct` 应能从
-    // `Self: [const] Destruct` 推导出来。参见 https://github.com/rust-lang/rust/issues/144207
+    // FIXME(const_hack): the T: [const] Destruct should be inferred from the Self: [const] Destruct in clone_from.
+    // See https://github.com/rust-lang/rust/issues/144207
     T: [const] Clone + [const] Destruct,
 {
     #[inline]
@@ -1046,9 +2248,14 @@ unsafe impl<T> const TrivialClone for Option<T> where T: [const] TrivialClone + 
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_const_unstable(feature = "const_default", issue = "143894")]
 impl<T> const Default for Option<T> {
-    /// 返回 [`None`][Option::None]。
+    /// Returns [`None`][Option::None].
     ///
-    /// `Option<T>` 的默认值表示“尚无值”，不会构造任何 `T`。
+    /// # Examples
+    ///
+    /// ```
+    /// let opt: Option<u32> = Option::default();
+    /// assert!(opt.is_none());
+    /// ```
     #[inline]
     fn default() -> Option<T> {
         None
@@ -1060,9 +2267,19 @@ impl<T> IntoIterator for Option<T> {
     type Item = T;
     type IntoIter = IntoIter<T>;
 
-    /// 消费 `Option` 并返回迭代器。
+    /// Returns a consuming iterator over the possibly contained value.
     ///
-    /// 若为 [`Some`]，迭代器产生一个 `T`；若为 [`None`]，迭代器为空。
+    /// # Examples
+    ///
+    /// ```
+    /// let x = Some("string");
+    /// let v: Vec<&str> = x.into_iter().collect();
+    /// assert_eq!(v, ["string"]);
+    ///
+    /// let x = None;
+    /// let v: Vec<&str> = x.into_iter().collect();
+    /// assert!(v.is_empty());
+    /// ```
     #[inline]
     fn into_iter(self) -> IntoIter<T> {
         IntoIter { inner: Item { opt: self } }
@@ -1092,9 +2309,15 @@ impl<'a, T> IntoIterator for &'a mut Option<T> {
 #[stable(since = "1.12.0", feature = "option_from")]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
 impl<T> const From<T> for Option<T> {
-    /// 执行 `Option` 的标准转换。
+    /// Moves `val` into a new [`Some`].
     ///
-    /// 从 `T` 转换会得到 [`Some(val)`]；从 `&Option<T>` 或 `&mut Option<T>` 转换会借用内部值，而不移动原 `Option`。
+    /// # Examples
+    ///
+    /// ```
+    /// let o: Option<u8> = Option::from(67);
+    ///
+    /// assert_eq!(Some(67), o);
+    /// ```
     fn from(val: T) -> Option<T> {
         Some(val)
     }
@@ -1103,9 +2326,26 @@ impl<T> const From<T> for Option<T> {
 #[stable(feature = "option_ref_from_ref_option", since = "1.30.0")]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
 impl<'a, T> const From<&'a Option<T>> for Option<&'a T> {
-    /// 执行 `Option` 的标准转换。
+    /// Converts from `&Option<T>` to `Option<&T>`.
     ///
-    /// 从 `T` 转换会得到 [`Some(val)`]；从 `&Option<T>` 或 `&mut Option<T>` 转换会借用内部值，而不移动原 `Option`。
+    /// # Examples
+    ///
+    /// Converts an <code>[Option]<[String]></code> into an <code>[Option]<[usize]></code>, preserving
+    /// the original. The [`map`] method takes the `self` argument by value, consuming the original,
+    /// so this technique uses `from` to first take an [`Option`] to a reference
+    /// to the value inside the original.
+    ///
+    /// [`map`]: Option::map
+    /// [String]: ../../std/string/struct.String.html "String"
+    ///
+    /// ```
+    /// let s: Option<String> = Some(String::from("Hello, Rustaceans!"));
+    /// let o: Option<usize> = Option::from(&s).map(|ss: &String| ss.len());
+    ///
+    /// println!("Can still print s: {s:?}");
+    ///
+    /// assert_eq!(o, Some(18));
+    /// ```
     fn from(o: &'a Option<T>) -> Option<&'a T> {
         o.as_ref()
     }
@@ -1114,16 +2354,29 @@ impl<'a, T> const From<&'a Option<T>> for Option<&'a T> {
 #[stable(feature = "option_ref_from_ref_option", since = "1.30.0")]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
 impl<'a, T> const From<&'a mut Option<T>> for Option<&'a mut T> {
-    /// 执行 `Option` 的标准转换。
+    /// Converts from `&mut Option<T>` to `Option<&mut T>`
     ///
-    /// 从 `T` 转换会得到 [`Some(val)`]；从 `&Option<T>` 或 `&mut Option<T>` 转换会借用内部值，而不移动原 `Option`。
+    /// # Examples
+    ///
+    /// ```
+    /// let mut s = Some(String::from("Hello"));
+    /// let o: Option<&mut String> = Option::from(&mut s);
+    ///
+    /// match o {
+    ///     Some(t) => *t = String::from("Hello, Rustaceans!"),
+    ///     None => (),
+    /// }
+    ///
+    /// assert_eq!(s, Some(String::from("Hello, Rustaceans!")));
+    /// ```
     fn from(o: &'a mut Option<T>) -> Option<&'a mut T> {
         o.as_mut()
     }
 }
 
-// 理想情况下，LLVM 应能把 derive 生成的代码优化到这种形式。
-// 等 https://github.com/llvm/llvm-project/issues/52622 修复后，可以改回 derive `PartialEq`。
+// Ideally, LLVM should be able to optimize our derive code to this.
+// Once https://github.com/llvm/llvm-project/issues/52622 is fixed, we can
+// go back to deriving `PartialEq`.
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<T> crate::marker::StructuralPartialEq for Option<T> {}
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -1131,7 +2384,8 @@ impl<T> crate::marker::StructuralPartialEq for Option<T> {}
 impl<T: [const] PartialEq> const PartialEq for Option<T> {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        // 显式写出各个分支比 `_ => false` 优化效果更好。
+        // Spelling out the cases explicitly optimizes better than
+        // `_ => false`
         match (self, other) {
             (Some(l), Some(r)) => *l == *r,
             (Some(_), None) => false,
@@ -1141,8 +2395,9 @@ impl<T: [const] PartialEq> const PartialEq for Option<T> {
     }
 }
 
-// 这里手动实现可以稍微改善 https://github.com/rust-lang/rust/issues/49892 的 codegen，
-// 尽管结果仍非最优。
+// Manually implementing here somewhat improves codegen for
+// https://github.com/rust-lang/rust/issues/49892, although still
+// not optimal.
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_const_unstable(feature = "const_cmp", issue = "143800")]
 impl<T: [const] PartialOrd> const PartialOrd for Option<T> {
@@ -1172,7 +2427,7 @@ impl<T: [const] Ord> const Ord for Option<T> {
 }
 
 /////////////////////////////////////////////////////////////////////////////
-// Option 迭代器
+// The Option Iterators
 /////////////////////////////////////////////////////////////////////////////
 
 #[derive(Clone, Debug)]
@@ -1211,9 +2466,11 @@ impl<A> ExactSizeIterator for Item<A> {
 impl<A> FusedIterator for Item<A> {}
 unsafe impl<A> TrustedLen for Item<A> {}
 
-/// 遍历 [`Option`] 或 [`Result`] 中共享引用的迭代器。
+/// An iterator over a reference to the [`Some`] variant of an [`Option`].
 ///
-/// 它最多产生一个元素：存在成功/有效值时产生引用，否则为空。
+/// The iterator yields one value if the [`Option`] is a [`Some`], otherwise none.
+///
+/// This `struct` is created by the [`Option::iter`] function.
 #[stable(feature = "rust1", since = "1.0.0")]
 #[derive(Debug)]
 pub struct Iter<'a, A: 'a> {
@@ -1259,9 +2516,11 @@ impl<A> Clone for Iter<'_, A> {
     }
 }
 
-/// 遍历 [`Option`] 或 [`Result`] 中可变引用的迭代器。
+/// An iterator over a mutable reference to the [`Some`] variant of an [`Option`].
 ///
-/// 它最多产生一个元素：存在成功/有效值时产生可变引用，否则为空。
+/// The iterator yields one value if the [`Option`] is a [`Some`], otherwise none.
+///
+/// This `struct` is created by the [`Option::iter_mut`] function.
 #[stable(feature = "rust1", since = "1.0.0")]
 #[derive(Debug)]
 pub struct IterMut<'a, A: 'a> {
@@ -1298,9 +2557,11 @@ impl<A> FusedIterator for IterMut<'_, A> {}
 #[unstable(feature = "trusted_len", issue = "37572")]
 unsafe impl<A> TrustedLen for IterMut<'_, A> {}
 
-/// 消费 [`Option`] 或 [`Result`] 并遍历其中值的迭代器。
+/// An iterator over the value in [`Some`] variant of an [`Option`].
 ///
-/// 它最多产生一个元素，缺值或错误分支会表现为空迭代器。
+/// The iterator yields one value if the [`Option`] is a [`Some`], otherwise none.
+///
+/// This `struct` is created by the [`Option::into_iter`] function.
 #[derive(Clone, Debug)]
 #[stable(feature = "rust1", since = "1.0.0")]
 pub struct IntoIter<A> {
@@ -1338,9 +2599,7 @@ impl<A> FusedIterator for IntoIter<A> {}
 #[unstable(feature = "trusted_len", issue = "37572")]
 unsafe impl<A> TrustedLen for IntoIter<A> {}
 
-/// 由 [`Option::into_flat_iter`] 产生的迭代器。
-///
-/// 它在外层 [`Option`] 为 [`Some`] 时委托给内部迭代器，为 [`None`] 时为空。
+/// The iterator produced by [`Option::into_flat_iter`]. See its documentation for more.
 #[derive(Clone, Debug)]
 #[unstable(feature = "option_into_flat_iter", issue = "148441")]
 pub struct OptionFlatten<A> {
@@ -1377,17 +2636,75 @@ impl<A: FusedIterator> FusedIterator for OptionFlatten<A> {}
 unsafe impl<A: TrustedLen> TrustedLen for OptionFlatten<A> {}
 
 /////////////////////////////////////////////////////////////////////////////
-// FromIterator 实现
+// FromIterator
 /////////////////////////////////////////////////////////////////////////////
 
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<A, V: FromIterator<A>> FromIterator<Option<A>> for Option<V> {
-    /// 从 `Iterator<Item = Option<A>>` 收集出 `Option<V>`。
+    /// Takes each element in the [`Iterator`]: if it is [`None`][Option::None],
+    /// no further elements are taken, and the [`None`][Option::None] is
+    /// returned. Should no [`None`][Option::None] occur, a container of type
+    /// `V` containing the values of each [`Option`] is returned.
     ///
-    /// 迭代过程中只要遇到 [`None`] 就短路并返回 [`None`]；如果全部为 [`Some`]，则把所有内部值收集进目标集合。
+    /// # Examples
+    ///
+    /// Here is an example which increments every integer in a vector.
+    /// We use the checked variant of `add` that returns `None` when the
+    /// calculation would result in an overflow.
+    ///
+    /// ```
+    /// let items = vec![0_u16, 1, 2];
+    ///
+    /// let res: Option<Vec<u16>> = items
+    ///     .iter()
+    ///     .map(|x| x.checked_add(1))
+    ///     .collect();
+    ///
+    /// assert_eq!(res, Some(vec![1, 2, 3]));
+    /// ```
+    ///
+    /// As you can see, this will return the expected, valid items.
+    ///
+    /// Here is another example that tries to subtract one from another list
+    /// of integers, this time checking for underflow:
+    ///
+    /// ```
+    /// let items = vec![2_u16, 1, 0];
+    ///
+    /// let res: Option<Vec<u16>> = items
+    ///     .iter()
+    ///     .map(|x| x.checked_sub(1))
+    ///     .collect();
+    ///
+    /// assert_eq!(res, None);
+    /// ```
+    ///
+    /// Since the last element is zero, it would underflow. Thus, the resulting
+    /// value is `None`.
+    ///
+    /// Here is a variation on the previous example, showing that no
+    /// further elements are taken from `iter` after the first `None`.
+    ///
+    /// ```
+    /// let items = vec![3_u16, 2, 1, 10];
+    ///
+    /// let mut shared = 0;
+    ///
+    /// let res: Option<Vec<u16>> = items
+    ///     .iter()
+    ///     .map(|x| { shared += x; x.checked_sub(2) })
+    ///     .collect();
+    ///
+    /// assert_eq!(res, None);
+    /// assert_eq!(shared, 6);
+    /// ```
+    ///
+    /// Since the third element caused an underflow, no further elements were taken,
+    /// so the final value of `shared` is 6 (= `3 + 2 + 1`), not 16.
     #[inline]
     fn from_iter<I: IntoIterator<Item = Option<A>>>(iter: I) -> Option<V> {
-        // FIXME(#11084): 等这个性能问题修复后，可以用 Iterator::scan 替换这里。
+        // FIXME(#11084): This could be replaced with Iterator::scan when this
+        // performance bug is closed.
 
         iter::try_process(iter.into_iter(), |i| i.collect())
     }
@@ -1415,7 +2732,7 @@ impl<T> const ops::Try for Option<T> {
 
 #[unstable(feature = "try_trait_v2", issue = "84277", old_name = "try_trait")]
 #[rustc_const_unstable(feature = "const_try", issue = "74935")]
-// 注意：这里手动指定 residual 类型，而不是使用默认值，以绕过
+// Note: manually specifying the residual type instead of using the default to work around
 // https://github.com/rust-lang/rust/issues/99940
 impl<T> const ops::FromResidual<Option<convert::Infallible>> for Option<T> {
     #[inline]
@@ -1443,15 +2760,36 @@ impl<T> const ops::Residual<T> for Option<convert::Infallible> {
 }
 
 impl<T> Option<Option<T>> {
-    /// 移除一层 `Option` 嵌套。
+    /// Converts from `Option<Option<T>>` to `Option<T>`.
     ///
-    /// `Some(Some(v))` 变为 `Some(v)`，`Some(None)` 和 `None` 都变为 [`None`]。
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```
+    /// let x: Option<Option<u32>> = Some(Some(6));
+    /// assert_eq!(Some(6), x.flatten());
+    ///
+    /// let x: Option<Option<u32>> = Some(None);
+    /// assert_eq!(None, x.flatten());
+    ///
+    /// let x: Option<Option<u32>> = None;
+    /// assert_eq!(None, x.flatten());
+    /// ```
+    ///
+    /// Flattening only removes one level of nesting at a time:
+    ///
+    /// ```
+    /// let x: Option<Option<Option<u32>>> = Some(Some(Some(6)));
+    /// assert_eq!(Some(Some(6)), x.flatten());
+    /// assert_eq!(Some(6), x.flatten().flatten());
+    /// ```
     #[inline]
     #[stable(feature = "option_flattening", since = "1.40.0")]
     #[rustc_allow_const_fn_unstable(const_precise_live_drops)]
     #[rustc_const_stable(feature = "const_option", since = "1.83.0")]
     pub const fn flatten(self) -> Option<T> {
-        // FIXME(const-hack): 可以改写为 `and_then`。
+        // FIXME(const-hack): could be written with `and_then`
         match self {
             Some(inner) => inner,
             None => None,
@@ -1460,9 +2798,24 @@ impl<T> Option<Option<T>> {
 }
 
 impl<'a, T> Option<&'a Option<T>> {
-    /// 把嵌套在引用中的 `Option` 展平为内部值的共享引用。
+    /// Converts from `Option<&Option<T>>` to `Option<&T>`.
     ///
-    /// 该方法不移动被借用的 `Option` 或内部值。
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```
+    /// #![feature(option_reference_flattening)]
+    ///
+    /// let x: Option<&Option<u32>> = Some(&Some(6));
+    /// assert_eq!(Some(&6), x.flatten_ref());
+    ///
+    /// let x: Option<&Option<u32>> = Some(&None);
+    /// assert_eq!(None, x.flatten_ref());
+    ///
+    /// let x: Option<&Option<u32>> = None;
+    /// assert_eq!(None, x.flatten_ref());
+    /// ```
     #[inline]
     #[unstable(feature = "option_reference_flattening", issue = "149221")]
     pub const fn flatten_ref(self) -> Option<&'a T> {
@@ -1474,9 +2827,26 @@ impl<'a, T> Option<&'a Option<T>> {
 }
 
 impl<'a, T> Option<&'a mut Option<T>> {
-    /// 把嵌套在引用中的 `Option` 展平为内部值的共享引用。
+    /// Converts from `Option<&mut Option<T>>` to `&Option<T>`.
     ///
-    /// 该方法不移动被借用的 `Option` 或内部值。
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```
+    /// #![feature(option_reference_flattening)]
+    ///
+    /// let y = &mut Some(6);
+    /// let x: Option<&mut Option<u32>> = Some(y);
+    /// assert_eq!(Some(&6), x.flatten_ref());
+    ///
+    /// let y: &mut Option<u32> = &mut None;
+    /// let x: Option<&mut Option<u32>> = Some(y);
+    /// assert_eq!(None, x.flatten_ref());
+    ///
+    /// let x: Option<&mut Option<u32>> = None;
+    /// assert_eq!(None, x.flatten_ref());
+    /// ```
     #[inline]
     #[unstable(feature = "option_reference_flattening", issue = "149221")]
     pub const fn flatten_ref(self) -> Option<&'a T> {
@@ -1486,9 +2856,26 @@ impl<'a, T> Option<&'a mut Option<T>> {
         }
     }
 
-    /// 把嵌套在可变引用中的 `Option` 展平为内部值的可变引用。
+    /// Converts from `Option<&mut Option<T>>` to `Option<&mut T>`.
     ///
-    /// 该方法不移动被借用的 `Option`，只在存在内部值时给出唯一可变借用。
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```
+    /// #![feature(option_reference_flattening)]
+    ///
+    /// let y: &mut Option<u32> = &mut Some(6);
+    /// let x: Option<&mut Option<u32>> = Some(y);
+    /// assert_eq!(Some(&mut 6), x.flatten_mut());
+    ///
+    /// let y: &mut Option<u32> = &mut None;
+    /// let x: Option<&mut Option<u32>> = Some(y);
+    /// assert_eq!(None, x.flatten_mut());
+    ///
+    /// let x: Option<&mut Option<u32>> = None;
+    /// assert_eq!(None, x.flatten_mut());
+    /// ```
     #[inline]
     #[unstable(feature = "option_reference_flattening", issue = "149221")]
     pub const fn flatten_mut(self) -> Option<&'a mut T> {
@@ -1500,9 +2887,22 @@ impl<'a, T> Option<&'a mut Option<T>> {
 }
 
 impl<T, const N: usize> [Option<T>; N] {
-    /// 在 `Option` 与另一层容器之间交换嵌套顺序。
+    /// Transposes a `[Option<T>; N]` into a `Option<[T; N]>`.
     ///
-    /// 对 `Option<Result<T, E>>`，`Some(Ok(v))` 变为 `Ok(Some(v))`，`Some(Err(e))` 变为 `Err(e)`，`None` 变为 `Ok(None)`。对数组形式则把 `[Option<T>; N]` 转为 `Option<[T; N]>`，任一元素为 [`None`] 即整体为 [`None`]。
+    /// # Examples
+    ///
+    /// ```
+    /// #![feature(option_array_transpose)]
+    /// # use std::option::Option;
+    ///
+    /// let data = [Some(0); 1000];
+    /// let data: Option<[u8; 1000]> = data.transpose();
+    /// assert_eq!(data, Some([0; 1000]));
+    ///
+    /// let data = [Some(0), None];
+    /// let data: Option<[u8; 2]> = data.transpose();
+    /// assert_eq!(data, None);
+    /// ```
     #[inline]
     #[unstable(feature = "option_array_transpose", issue = "130828")]
     pub fn transpose(self) -> Option<[T; N]> {

@@ -124,7 +124,7 @@ where
     }
 }
 
-// NOTE: 为减少代码体积,省略了一些较不重要的 impl。
+// NOTE: some less important impls are omitted to reduce code bloat
 // __impl_slice_eq2! { [A; $N], &'b [B; $N] }
 // __impl_slice_eq2! { [A; $N], &'b mut [B; $N] }
 
@@ -151,8 +151,9 @@ impl<T: [const] PartialEq<Other>, Other, const N: usize> const SpecArrayEq<Other
 #[rustc_const_unstable(feature = "const_cmp", issue = "143800")]
 impl<T: [const] BytewiseEq<U>, U, const N: usize> const SpecArrayEq<U, N> for T {
     fn spec_eq(a: &[T; N], b: &[U; N]) -> bool {
-        // SAFETY: 数组按元素比较,且元素之间不会添加额外 padding。因此当元素满足
-        // `BytewiseEq` 时,可以一次性比较整个数组。
+        // SAFETY: Arrays are compared element-wise, and don't add any padding
+        // between elements, so when the elements are `BytewiseEq`, we can
+        // compare the entire array at once.
         unsafe { crate::intrinsics::raw_eq(a, crate::mem::transmute(b)) }
     }
     fn spec_ne(a: &[T; N], b: &[U; N]) -> bool {

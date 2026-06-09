@@ -1,14 +1,14 @@
-/// 用于在不可变上下文中进行索引操作(`container[index]`)。
+/// Used for indexing operations (`container[index]`) in immutable contexts.
 ///
-/// `container[index]` 实际上是 `*container.index(index)` 的语法糖,但仅当它被
-/// 当作不可变值使用时如此。如果请求的是可变值,则改用 [`IndexMut`]。这使得诸如
-/// `let value = v[index]`(当 `value` 的类型实现了 [`Copy`] 时)这样的写法成为
-/// 可能。
+/// `container[index]` is actually syntactic sugar for `*container.index(index)`,
+/// but only when used as an immutable value. If a mutable value is requested,
+/// [`IndexMut`] is used instead. This allows nice things such as
+/// `let value = v[index]` if the type of `value` implements [`Copy`].
 ///
-/// # 示例
+/// # Examples
 ///
-/// 下面的示例为一个只读的 `NucleotideCount` 容器实现了 `Index`,从而可以用
-/// 索引语法取出各个计数。
+/// The following example implements `Index` on a read-only `NucleotideCount`
+/// container, enabling individual counts to be retrieved with index syntax.
 ///
 /// ```
 /// use std::ops::Index;
@@ -57,32 +57,33 @@
 #[doc(alias = "[]")]
 #[rustc_const_unstable(feature = "const_index", issue = "143775")]
 pub const trait Index<Idx: ?Sized> {
-    /// 索引之后返回的类型。
+    /// The returned type after indexing.
     #[stable(feature = "rust1", since = "1.0.0")]
     #[rustc_diagnostic_item = "IndexOutput"]
     type Output: ?Sized;
 
-    /// 执行索引操作(`container[index]`)。
+    /// Performs the indexing (`container[index]`) operation.
     ///
     /// # Panics
     ///
-    /// 如果索引越界,可能会 panic。
+    /// May panic if the index is out of bounds.
     #[stable(feature = "rust1", since = "1.0.0")]
     #[rustc_no_implicit_autorefs]
     #[track_caller]
     fn index(&self, index: Idx) -> &Self::Output;
 }
 
-/// 用于在可变上下文中进行索引操作(`container[index]`)。
+/// Used for indexing operations (`container[index]`) in mutable contexts.
 ///
-/// `container[index]` 实际上是 `*container.index_mut(index)` 的语法糖,但仅当
-/// 它被当作可变值使用时如此。如果请求的是不可变值,则改用 [`Index`] trait。这
-/// 使得诸如 `v[index] = value` 这样的写法成为可能。
+/// `container[index]` is actually syntactic sugar for
+/// `*container.index_mut(index)`, but only when used as a mutable value. If
+/// an immutable value is requested, the [`Index`] trait is used instead. This
+/// allows nice things such as `v[index] = value`.
 ///
-/// # 示例
+/// # Examples
 ///
-/// 一个非常简单的 `Balance`(天平)结构体实现,它有两侧,每一侧都可被可变地和
-/// 不可变地索引。
+/// A very simple implementation of a `Balance` struct that has two sides, where
+/// each can be indexed mutably and immutably.
 ///
 /// ```
 /// use std::ops::{Index, IndexMut};
@@ -131,12 +132,14 @@ pub const trait Index<Idx: ?Sized> {
 ///     left: Weight::Pound(1.5),
 /// };
 ///
-/// // 在这里,`balance[Side::Right]` 是 `*balance.index(Side::Right)` 的语法糖,
-/// // 因为我们只是在 *读取* `balance[Side::Right]`,而非写入它。
+/// // In this case, `balance[Side::Right]` is sugar for
+/// // `*balance.index(Side::Right)`, since we are only *reading*
+/// // `balance[Side::Right]`, not writing it.
 /// assert_eq!(balance[Side::Right], Weight::Kilogram(2.5));
 ///
-/// // 然而在这里,`balance[Side::Left]` 是 `*balance.index_mut(Side::Left)` 的
-/// // 语法糖,因为我们在写入 `balance[Side::Left]`。
+/// // However, in this case `balance[Side::Left]` is sugar for
+/// // `*balance.index_mut(Side::Left)`, since we are writing
+/// // `balance[Side::Left]`.
 /// balance[Side::Left] = Weight::Kilogram(3.0);
 /// ```
 #[lang = "index_mut"]
@@ -165,11 +168,11 @@ see chapter in The Book <https://doc.rust-lang.org/book/ch08-02-strings.html#ind
 #[doc(alias = "[]")]
 #[rustc_const_unstable(feature = "const_index", issue = "143775")]
 pub const trait IndexMut<Idx: ?Sized>: [const] Index<Idx> {
-    /// 执行可变索引操作(`container[index]`)。
+    /// Performs the mutable indexing (`container[index]`) operation.
     ///
     /// # Panics
     ///
-    /// 如果索引越界,可能会 panic。
+    /// May panic if the index is out of bounds.
     #[stable(feature = "rust1", since = "1.0.0")]
     #[rustc_no_implicit_autorefs]
     #[track_caller]

@@ -1,5 +1,5 @@
-等价于 C 的 `unsigned long long` 类型。
+Equivalent to C's `unsigned long long` type.
 
-本类型几乎总是 [`u64`],但在某些系统上可能不同。C 标准技术上只要求它是与 [`long long`] 大小相同的无符号整数;实践中几乎没有系统会让 `long long` 不是 `u64`,因为大多数系统没有标准化的 [`u128`] 类型。
+This type will almost always be [`u64`], but may differ on some systems. The C standard technically only requires that this type be an unsigned integer with the size of a [`long long`], although in practice, no system would have a `long long` that is not a `u64`, as most systems do not have a standardised [`u128`] type.
 
 [`long long`]: c_longlong

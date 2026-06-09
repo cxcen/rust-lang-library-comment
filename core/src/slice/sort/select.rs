@@ -1,9 +1,10 @@
-//! 本模块包含 `slice::select_nth_unstable` 的实现。
-//! 它使用基于 Lukas Bergdoll 和 Orson Peters 的 ipnsort 的 introselect 算法，
-//! 发布位置：<https://github.com/Voultapher/sort-research-rs/tree/main/ipnsort>
+//! This module contains the implementation for `slice::select_nth_unstable`.
+//! It uses an introselect algorithm based on ipnsort by Lukas Bergdoll and Orson Peters,
+//! published at: <https://github.com/Voultapher/sort-research-rs/tree/main/ipnsort>
 //!
-//! introselect 的 fallback 算法是 Median of Medians，并用 Tukey's Ninther 选择枢轴。
-//! 把它作为 fallback 可确保 O(n) 最坏运行时间，同时性能优于用 heapsort 作为 fallback。
+//! The fallback algorithm used for introselect is Median of Medians using Tukey's Ninther
+//! for pivot selection. Using this as a fallback ensures O(n) worst case running time with
+//! better performance than one would get using heapsort as fallback.
 
 use crate::cfg_select;
 use crate::mem::{self, SizedTypeProperties};
@@ -12,7 +13,7 @@ use crate::slice::sort::shared::pivot::choose_pivot;
 use crate::slice::sort::shared::smallsort::insertion_sort_shift_left;
 use crate::slice::sort::unstable::quicksort::partition;
 
-/// 重排切片，使 `index` 处元素位于最终排序位置。
+/// Reorders the slice such that the element at `index` is at its final sorted position.
 pub(crate) fn partition_at_index<T, F>(
     v: &mut [T],
     index: usize,
@@ -23,19 +24,21 @@ where
 {
     let len = v.len();
 
-    // 给 `len` 设置下限 1；越界或空切片会在这里 panic。
+    // Puts a lower limit of 1 on `len`.
     if index >= len {
         panic!("partition_at_index index {} greater than length of slice {}", index, len);
     }
 
     if T::IS_ZST {
-        // zero-sized type 上排序没有有意义的行为，直接不做事。
+        // Sorting has no meaningful behavior on zero-sized types. Do nothing.
     } else if index == len - 1 {
-        // 找到最大元素并放到数组最后位置。前面已经检查 `v` 非空，因此可使用 `unwrap()`。
+        // Find max element and place it in the last position of the array. We're free to use
+        // `unwrap()` here because we checked that `v` is not empty.
         let max_idx = max_index(v, &mut is_less).unwrap();
         v.swap(max_idx, index);
     } else if index == 0 {
-        // 找到最小元素并放到数组第一位置。前面已经检查 `v` 非空，因此可使用 `unwrap()`。
+        // Find min element and place it in the first position of the array. We're free to use
+        // `unwrap()` here because we checked that `v` is not empty.
         let min_idx = min_index(v, &mut is_less).unwrap();
         v.swap(min_idx, index);
     } else {
@@ -55,7 +58,8 @@ where
     (left, pivot, right)
 }
 
-// 对小子切片，专用 small-sort 更快；但这里最多只调用一次，使用比插入排序更复杂的算法没有意义。
+// For small sub-slices it's faster to use a dedicated small-sort, but because it is only called at
+// most once, it doesn't make sense to use something more sophisticated than insertion-sort.
 const INSERTION_SORT_THRESHOLD: usize = 16;
 
 #[cfg(not(feature = "optimize_for_size"))]
@@ -67,10 +71,12 @@ fn partition_at_index_loop<'a, T, F>(
 ) where
     F: FnMut(&T, &T) -> bool,
 {
-    // 限制迭代次数，并在达到限制时退回到快速确定性选择，以确保 O(n) 最坏运行时间。
-    // 该限制必须是常量；如果像 `sort` 一样使用 `ilog2(len)`，会导致 O(n log n) 复杂度。
-    // 具体数值有一定经验性，但多数输入中坏枢轴选择应较少；达到限制时剩余子切片通常已缩小到
-    // len / 2^limit 或更少，fallback 的相对工作量也就很小。
+    // Limit the amount of iterations and fall back to fast deterministic selection to ensure O(n)
+    // worst case running time. This limit needs to be constant, because using `ilog2(len)` like in
+    // `sort` would result in O(n log n) time complexity. The exact value of the limit is chosen
+    // somewhat arbitrarily, but for most inputs bad pivot selections should be relatively rare, so
+    // the limit is reached for sub-slices len / (2^limit or less). Which makes the remaining work
+    // with the fallback minimal in relative terms.
     let mut limit = 16;
 
     loop {
@@ -88,21 +94,23 @@ fn partition_at_index_loop<'a, T, F>(
 
         limit -= 1;
 
-        // 选择枢轴。
+        // Choose a pivot
         let pivot_pos = choose_pivot(v, is_less);
 
-        // 如果选出的枢轴等于祖先枢轴，则它是当前切片中的最小元素。把切片分成等于枢轴的元素
-        // 和大于枢轴的元素。切片包含大量重复元素时通常会进入该分支。
+        // If the chosen pivot is equal to the predecessor, then it's the smallest element in the
+        // slice. Partition the slice into elements equal to and elements greater than the pivot.
+        // This case is usually hit when the slice contains many duplicate elements.
         if let Some(p) = ancestor_pivot {
             let pivot = &v[pivot_pos];
 
             if !is_less(p, pivot) {
                 let num_lt = partition(v, pivot_pos, &mut |a, b| !is_less(b, a));
 
-                // 继续处理大于枢轴的元素。已知 `mid` 含有枢轴，因此可以从 `mid` 之后继续。
+                // Continue sorting elements greater than the pivot. We know that `mid` contains
+                // the pivot. So we can continue after `mid`.
                 let mid = num_lt + 1;
 
-                // 如果已经越过目标 index，说明目标位置已满足要求。
+                // If we've passed our index, then we're good.
                 if mid > index {
                     return;
                 }
@@ -116,7 +124,7 @@ fn partition_at_index_loop<'a, T, F>(
 
         let mid = partition(v, pivot_pos, is_less);
 
-        // 把切片分成 `left`、`pivot` 和 `right`。
+        // Split the slice into `left`, `pivot`, and `right`.
         let (left, right) = v.split_at_mut(mid);
         let (pivot, right) = right.split_at_mut(1);
         let pivot = &pivot[0];
@@ -128,13 +136,15 @@ fn partition_at_index_loop<'a, T, F>(
         } else if mid > index {
             v = left;
         } else {
-            // 如果 mid == index，就完成了；partition() 已保证 mid 之后所有元素都大于或等于 mid。
+            // If mid == index, then we're done, since partition() guaranteed that all elements
+            // after mid are greater than or equal to mid.
             return;
         }
     }
 }
 
-/// 使用给定比较函数返回切片最小元素索引的辅助函数。
+/// Helper function that returns the index of the minimum element in the slice using the given
+/// comparator function
 fn min_index<T, F: FnMut(&T, &T) -> bool>(slice: &[T], is_less: &mut F) -> Option<usize> {
     slice
         .iter()
@@ -143,7 +153,8 @@ fn min_index<T, F: FnMut(&T, &T) -> bool>(slice: &[T], is_less: &mut F) -> Optio
         .map(|(i, _)| i)
 }
 
-/// 使用给定比较函数返回切片最大元素索引的辅助函数。
+/// Helper function that returns the index of the maximum element in the slice using the given
+/// comparator function
 fn max_index<T, F: FnMut(&T, &T) -> bool>(slice: &[T], is_less: &mut F) -> Option<usize> {
     slice
         .iter()
@@ -152,16 +163,16 @@ fn max_index<T, F: FnMut(&T, &T) -> bool>(slice: &[T], is_less: &mut F) -> Optio
         .map(|(i, _)| i)
 }
 
-/// 从切片中选择第 k 个元素的选择算法，保证 O(n) 时间。
-/// 它本质上是使用 Tukey's Ninther 选择枢轴的 quickselect。
+/// Selection algorithm to select the k-th element from the slice in guaranteed O(n) time.
+/// This is essentially a quickselect that uses Tukey's Ninther for pivot selection
 fn median_of_medians<T, F: FnMut(&T, &T) -> bool>(mut v: &mut [T], is_less: &mut F, mut k: usize) {
-    // 该函数不是公开 API，不应使用越界索引调用。
+    // Since this function isn't public, it should never be called with an out-of-bounds index.
     debug_assert!(k < v.len());
 
-    // 如果 T 是 ZST，`partition_at_index` 已经会提前返回。
+    // If T is as ZST, `partition_at_index` will already return early.
     debug_assert!(!T::IS_ZST);
 
-    // 现在已知 `k < v.len() <= isize::MAX`。
+    // We now know that `k < v.len() <= isize::MAX`
     loop {
         if v.len() <= INSERTION_SORT_THRESHOLD {
             if v.len() >= 2 {
@@ -171,15 +182,17 @@ fn median_of_medians<T, F: FnMut(&T, &T) -> bool>(mut v: &mut [T], is_less: &mut
             return;
         }
 
-        // `median_of_{minima,maxima}` 无法处理第一个/最后一个元素这类极端情况，
-        // 因此在这里捕获并直接做线性搜索。
+        // `median_of_{minima,maxima}` can't handle the extreme cases of the first/last element,
+        // so we catch them here and just do a linear search.
         if k == v.len() - 1 {
-            // 找到最大元素并放到数组最后位置。已知 v 非空，因此可使用 `unwrap()`。
+            // Find max element and place it in the last position of the array. We're free to use
+            // `unwrap()` here because we know v must not be empty.
             let max_idx = max_index(v, is_less).unwrap();
             v.swap(max_idx, k);
             return;
         } else if k == 0 {
-            // 找到最小元素并放到数组第一位置。已知 v 非空，因此可使用 `unwrap()`。
+            // Find min element and place it in the first position of the array. We're free to use
+            // `unwrap()` here because we know v must not be empty.
             let min_idx = min_index(v, is_less).unwrap();
             v.swap(min_idx, k);
             return;
@@ -192,17 +205,19 @@ fn median_of_medians<T, F: FnMut(&T, &T) -> bool>(mut v: &mut [T], is_less: &mut
         } else if p > k {
             v = &mut v[..p];
         } else {
-            // 因为 `p < k < v.len()`，`p + 1` 不会溢出，并且是切片内有效索引。
+            // Since `p < k < v.len()`, `p + 1` doesn't overflow and is
+            // a valid index into the slice.
             v = &mut v[p + 1..];
             k -= p + 1;
         }
     }
 }
 
-// 针对 `k` 位于切片中部附近的情况优化。它选择尽可能接近切片中位数的枢轴。
-// 算法细节见论文 <https://drops.dagstuhl.de/opus/volltexte/2017/7612/pdf/LIPIcs-SEA-2017-24.pdf>。
+// Optimized for when `k` lies somewhere in the middle of the slice. Selects a pivot
+// as close as possible to the median of the slice. For more details on how the algorithm
+// operates, refer to the paper <https://drops.dagstuhl.de/opus/volltexte/2017/7612/pdf/LIPIcs-SEA-2017-24.pdf>.
 fn median_of_ninthers<T, F: FnMut(&T, &T) -> bool>(v: &mut [T], is_less: &mut F) -> usize {
-    // 使用 `saturating_mul`，避免乘法在 16 位平台上溢出。
+    // use `saturating_mul` so the multiplication doesn't overflow on 16-bit platforms.
     let frac = if v.len() <= 1024 {
         v.len() / 12
     } else if v.len() <= 128_usize.saturating_mul(1024) {
@@ -228,8 +243,9 @@ fn median_of_ninthers<T, F: FnMut(&T, &T) -> bool>(v: &mut [T], is_less: &mut F)
     partition(v, lo + pivot, is_less)
 }
 
-/// 移动索引 a..i 指定的 9 个元素，使 `v[d]` 包含这 9 个元素的中位数，
-/// 其它元素围绕它分区。
+/// Moves around the 9 elements at the indices a..i, such that
+/// `v[d]` contains the median of the 9 elements and the other
+/// elements are partitioned around it.
 fn ninther<T, F: FnMut(&T, &T) -> bool>(
     v: &mut [T],
     is_less: &mut F,
@@ -252,7 +268,7 @@ fn ninther<T, F: FnMut(&T, &T) -> bool>(
         mem::swap(&mut d, &mut f);
     }
     if is_less(&v[e], &v[d]) {
-        // 不需要做任何事。
+        // do nothing
     } else if is_less(&v[f], &v[e]) {
         d = f;
     } else {
@@ -272,7 +288,8 @@ fn ninther<T, F: FnMut(&T, &T) -> bool>(
     v.swap(d, e);
 }
 
-/// 返回指向 `v[a]`、`v[b]`、`v[c]` 三个元素中位数的索引。
+/// returns the index pointing to the median of the 3
+/// elements `v[a]`, `v[b]` and `v[c]`
 fn median_idx<T, F: FnMut(&T, &T) -> bool>(
     v: &[T],
     is_less: &mut F,

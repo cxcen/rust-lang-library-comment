@@ -1,14 +1,11 @@
 use crate::fmt::{self, Display};
 use crate::panic::Location;
 
-/// 提供 panic 现场信息的结构体。
+/// A struct providing information about a panic.
 ///
-/// `PanicInfo` 会传给由 `#[panic_handler]` 定义的 panic handler。它描述的是 `core`
-/// 层面的 panic：包含格式化消息、发生位置、以及该 panic 是否允许 unwind。`no_std`
-/// 程序通常只能通过这个结构决定如何终止或停机。
+/// A `PanicInfo` structure is passed to the panic handler defined by `#[panic_handler]`.
 ///
-/// `std` 中 panic hook 机制使用的类型请参见 [`std::panic::PanicHookInfo`]；它和这里的
-/// `PanicInfo` 角色相近，但用于 `std` 的 hook/runtime 路径。
+/// For the type used by the panic hook mechanism in `std`, see [`std::panic::PanicHookInfo`].
 ///
 /// [`std::panic::PanicHookInfo`]: ../../std/panic/struct.PanicHookInfo.html
 #[lang = "panic_info"]
@@ -21,12 +18,12 @@ pub struct PanicInfo<'a> {
     force_no_backtrace: bool,
 }
 
-/// 传给 `panic!()` 宏的消息。
+/// A message that was given to the `panic!()` macro.
 ///
-/// 这个类型的 [`Display`] 实现会把 `panic!()` 宏收到的格式化参数一起格式化出来。
-/// 因此 panic handler 或 hook 可以延迟到真正输出时再把消息写入目标缓冲区。
+/// The [`Display`] implementation of this type will format the message with the arguments
+/// that were given to the `panic!()` macro.
 ///
-/// 参见 [`PanicInfo::message`]。
+/// See [`PanicInfo::message`].
 #[stable(feature = "panic_info_message", since = "1.81.0")]
 pub struct PanicMessage<'a> {
     message: &'a fmt::Arguments<'a>,
@@ -43,12 +40,12 @@ impl<'a> PanicInfo<'a> {
         PanicInfo { location, message, can_unwind, force_no_backtrace }
     }
 
-    /// 返回传给 `panic!` 宏的消息。
+    /// The message that was given to the `panic!` macro.
     ///
-    /// # 示例
+    /// # Example
     ///
-    /// 此方法返回的类型实现了 `Display`，因此可以直接传给 [`write!()`] 和类似宏。对
-    /// `no_std` panic handler 来说，这通常是把 panic 消息写入串口、调试输出或板级日志的入口。
+    /// The type returned by this method implements `Display`, so it can
+    /// be passed directly to [`write!()`] and similar macros.
     ///
     /// [`write!()`]: core::write
     ///
@@ -65,12 +62,13 @@ impl<'a> PanicInfo<'a> {
         PanicMessage { message: self.message }
     }
 
-    /// 在可用时，返回 panic 起源位置的信息。
+    /// Returns information about the location from which the panic originated,
+    /// if available.
     ///
-    /// 当前实现总是返回 [`Some`]，但未来版本可能改变这一点。调用方不应把存在位置信息写成
-    /// 永久不变量；panic hook 和 panic handler 都应保留处理 [`None`] 的分支。
+    /// This method will currently always return [`Some`], but this may change
+    /// in future versions.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```should_panic
     /// use std::panic;
@@ -91,17 +89,18 @@ impl<'a> PanicInfo<'a> {
     #[must_use]
     #[stable(feature = "panic_hooks", since = "1.10.0")]
     pub fn location(&self) -> Option<&Location<'_>> {
-        // NOTE: 如果这里将来可能返回 None，需要同步处理
-        // std::panicking::default_hook 和 core::panicking::panic_fmt 中的对应分支。
+        // NOTE: If this is changed to sometimes return None,
+        // deal with that case in std::panicking::default_hook and core::panicking::panic_fmt.
         Some(&self.location)
     }
 
-    /// 返回与 panic 关联的载荷。
+    /// Returns the payload associated with the panic.
     ///
-    /// 对 `core::panic::PanicInfo` 这个类型来说，此方法永远不会返回有用内容。它只因与
-    /// [`std::panic::PanicHookInfo`] 的兼容性而存在；二者曾经是同一个类型。
+    /// On this type, `core::panic::PanicInfo`, this method never returns anything useful.
+    /// It only exists because of compatibility with [`std::panic::PanicHookInfo`],
+    /// which used to be the same type.
     ///
-    /// 参见 [`std::panic::PanicHookInfo::payload`]。
+    /// See [`std::panic::PanicHookInfo::payload`].
     ///
     /// [`std::panic::PanicHookInfo`]: ../../std/panic/struct.PanicHookInfo.html
     /// [`std::panic::PanicHookInfo::payload`]: ../../std/panic/struct.PanicHookInfo.html#method.payload
@@ -113,14 +112,16 @@ impl<'a> PanicInfo<'a> {
         &NoPayload
     }
 
-    /// 返回 panic handler 是否允许从 panic 发生点开始 unwind 栈。
+    /// Returns whether the panic handler is allowed to unwind the stack from
+    /// the point where the panic occurred.
     ///
-    /// 大多数 panic 都会返回 `true`。例外包括试图从 `Drop` 实现中继续 unwind 的 panic，
-    /// 以及从 ABI 不支持 unwinding 的函数中向外 unwind 的 panic。
+    /// This is true for most kinds of panics with the exception of panics
+    /// caused by trying to unwind out of a `Drop` implementation or a function
+    /// whose ABI does not support unwinding.
     ///
-    /// 即使此函数返回 `false`，panic handler 继续 unwind 在内存安全意义上仍是安全的；但
-    /// 结果只是再次调用 panic handler，通常最终走向 abort。这一标志主要用于区分 unwind
-    /// 和 abort 策略，而不是给用户代码提供可依赖的恢复机制。
+    /// It is safe for a panic handler to unwind even when this function returns
+    /// false, however this will simply cause the panic handler to be called
+    /// again.
     #[must_use]
     #[unstable(feature = "panic_can_unwind", issue = "92988")]
     pub fn can_unwind(&self) -> bool {
@@ -151,17 +152,18 @@ impl Display for PanicInfo<'_> {
 }
 
 impl<'a> PanicMessage<'a> {
-    /// 如果消息没有需要在运行期格式化的参数，则取得格式化后的静态消息。
+    /// Gets the formatted message, if it has no arguments to be formatted at runtime.
     ///
-    /// 这在某些场景下可用于避免分配，例如 `no_std` 或极早期 panic 输出路径。
+    /// This can be used to avoid allocations in some cases.
     ///
-    /// # 保证
+    /// # Guarantees
     ///
-    /// 对 `panic!("just a literal")`，此函数保证返回 `Some("just a literal")`。
+    /// For `panic!("just a literal")`, this function is guaranteed to
+    /// return `Some("just a literal")`.
     ///
-    /// 对大多数带占位符的情况，此函数会返回 `None`。
+    /// For most cases with placeholders, this function will return `None`.
     ///
-    /// 细节见 [`fmt::Arguments::as_str`]。
+    /// See [`fmt::Arguments::as_str`] for details.
     #[stable(feature = "panic_info_message", since = "1.81.0")]
     #[rustc_const_stable(feature = "const_arguments_as_str", since = "1.84.0")]
     #[must_use]

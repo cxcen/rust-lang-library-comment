@@ -1,91 +1,120 @@
 /*!
 
-浮点数到十进制的转换例程。
+Floating-point number to decimal conversion routines.
 
-# 问题陈述
+# Problem statement
 
-给定浮点数 `v = f * 2^e`（其中 `f` 是整数），以及它的误差边界 `minus` 和 `plus`：
-任意落在 `v - minus` 与 `v + plus` 之间的数都会舍入回 `v`。为简化说明，先把这个区间
-视为开区间。我们希望得到唯一的十进制表示 `V = 0.d[0..n-1] * 10^k`，并满足：
+We are given the floating-point number `v = f * 2^e` with an integer `f`,
+and its bounds `minus` and `plus` such that any number between `v - minus` and
+`v + plus` will be rounded to `v`. For the simplicity we assume that
+this range is exclusive. Then we would like to get the unique decimal
+representation `V = 0.d[0..n-1] * 10^k` such that:
 
-- `d[0]` 非零。
+- `d[0]` is non-zero.
 
-- 回读时能正确舍入：`v - minus < V < v + plus`。并且它是满足该条件的最短表示，
-  也就是说不存在少于 `n` 位数字的表示同样能正确舍入回 `v`。
+- It's correctly rounded when parsed back: `v - minus < V < v + plus`.
+  Furthermore it is shortest such one, i.e., there is no representation
+  with less than `n` digits that is correctly rounded.
 
-- 它最接近原始值：`abs(V - v) <= 10^(k-n) / 2`。注意可能同时有两个表示满足这个
-  唯一性要求，此时需要额外的 tie-breaking 机制。
+- It's closest to the original value: `abs(V - v) <= 10^(k-n) / 2`. Note that
+  there might be two representations satisfying this uniqueness requirement,
+  in which case some tie-breaking mechanism is used.
 
-我们把这种操作模式称为 *shortest* mode。没有额外约束时会使用该模式，也可以把它看作
-“自然”模式，因为它符合通常直觉（至少会把 `0.1f32` 打印成 `"0.1"`）。
+We will call this mode of operation as to the *shortest* mode. This mode is used
+when there is no additional constraint, and can be thought as a "natural" mode
+as it matches the ordinary intuition (it at least prints `0.1f32` as "0.1").
 
-另外还有两个彼此密切相关的模式。在这些模式中，调用方会给出有效数字个数 `n`，或给出
-最后一位位置限制 `limit`（由它决定实际 `n`）。目标仍是得到
-`V = 0.d[0..n-1] * 10^k`，并满足：
+We have two more modes of operation closely related to each other. In these modes
+we are given either the number of significant digits `n` or the last-digit
+limitation `limit` (which determines the actual `n`), and we would like to get
+the representation `V = 0.d[0..n-1] * 10^k` such that:
 
-- `d[0]` 非零；除非 `n` 为零，此时只返回 `k`。
+- `d[0]` is non-zero, unless `n` was zero in which case only `k` is returned.
 
-- 它最接近原始值：`abs(V - v) <= 10^(k-n) / 2`。同样，必要时会使用 tie-breaking。
+- It's closest to the original value: `abs(V - v) <= 10^(k-n) / 2`. Again,
+  there might be some tie-breaking mechanism.
 
-当给出 `limit` 但没有给出 `n` 时，会选择满足 `k - n = limit` 的 `n`，使最后一位
-`d[n-1]` 的尺度为 `10^(k-n) = 10^limit`。如果得到的 `n` 为负，则把它截到零，
-于是只返回 `k`。同时还受调用方提供的缓冲区限制；这种限制用于在事先不知道正确 `k`
-的情况下，打印给定小数位数以内的数字。
+When `limit` is given but not `n`, we set `n` such that `k - n = limit`
+so that the last digit `d[n-1]` is scaled by `10^(k-n) = 10^limit`.
+If such `n` is negative, we clip it to zero so that we will only get `k`.
+We are also limited by the supplied buffer. This limitation is used to print
+the number up to given number of fractional digits without knowing
+the correct `k` beforehand.
 
-需要 `n` 的模式称为 *exact* mode，需要 `limit` 的模式称为 *fixed* mode。exact mode 是
-fixed mode 的子集：足够宽松的最后一位限制最终会填满调用方缓冲区并让算法返回。
+We will call the mode of operation requiring `n` as to the *exact* mode,
+and one requiring `limit` as to the *fixed* mode. The exact mode is a subset of
+the fixed mode: the sufficiently large last-digit limitation will eventually fill
+the supplied buffer and let the algorithm to return.
 
-# 实现概览
+# Implementation overview
 
-让浮点打印正确但很慢并不难（Russ Cox 已经[演示](https://research.swtch.com/ftoa)过），
-让它错误但很快也不难（朴素除法和取模即可）。真正困难的是同时做到正确且高效。
+It is easy to get the floating point printing correct but slow (Russ Cox has
+[demonstrated](https://research.swtch.com/ftoa) how it's easy), or incorrect but
+fast (naïve division and modulo). But it is surprisingly hard to print
+floating point numbers correctly *and* efficiently.
 
-广泛认为正确的算法大致有两类。
+There are two classes of algorithms widely known to be correct.
 
-- "Dragon" algorithm family 最早由 Guy L. Steele Jr. 和 Jon L. White 描述。它们依赖
-  固定大小大整数来保证正确性。后来 Robert G. Burger 和 R. Kent Dybvig 在后续论文中
-  描述了一个小改进；David Gay 的 `dtoa.c` 是该策略的知名实现。
+- The "Dragon" family of algorithm is first described by Guy L. Steele Jr. and
+  Jon L. White. They rely on the fixed-size big integer for their correctness.
+  A slight improvement was found later, which is posthumously described by
+  Robert G. Burger and R. Kent Dybvig. David Gay's `dtoa.c` routine is
+  a popular implementation of this strategy.
 
-- "Grisu" algorithm family 最早由 Florian Loitsch 描述。它们使用非常便宜的纯整数过程
-  找到接近正确的表示，并至少保证结果是 shortest。其变体 Grisu3 会主动检测结果表示
-  是否不正确。
+- The "Grisu" family of algorithm is first described by Florian Loitsch.
+  They use very cheap integer-only procedure to determine the close-to-correct
+  representation which is at least guaranteed to be shortest. The variant,
+  Grisu3, actively detects if the resulting representation is incorrect.
 
-这里同时实现两类算法，并按 Rust 的需求做必要调整。尤其是公开文献通常不会细讲实际实现
-困难，例如如何避免算术溢出。`strategy::dragon` 和 `strategy::grisu` 中各自记录了所需
-论证和许多证明。（即便如此仍然很难读，提前说明。）
+We implement both algorithms with necessary tweaks to suit our requirements.
+In particular, published literatures are short of the actual implementation
+difficulties like how to avoid arithmetic overflows. Each implementation,
+available in `strategy::dragon` and `strategy::grisu` respectively,
+extensively describes all necessary justifications and many proofs for them.
+(It is still difficult to follow though. You have been warned.)
 
-两个实现都暴露两个公共函数：
+Both implementations expose two public functions:
 
-- `format_shortest(decoded, buf)`：始终需要至少 `MAX_SIG_DIGITS` 位数字的缓冲区，实现
-  shortest mode。
+- `format_shortest(decoded, buf)`, which always needs at least
+  `MAX_SIG_DIGITS` digits of buffer. Implements the shortest mode.
 
-- `format_exact(decoded, buf, limit)`：可接受小到 1 位数字的缓冲区，实现 exact 和 fixed
-  mode。
+- `format_exact(decoded, buf, limit)`, which accepts as small as
+  one digit of buffer. Implements exact and fixed modes.
 
-它们会尝试用数字填充 `u8` 缓冲区，并返回已写入数字数量和 exponent `k`。对所有有限
-`f32` 和 `f64` 输入它们都是全函数（必要时 Grisu 会在内部退回 Dragon）。
+They try to fill the `u8` buffer with digits and returns the number of digits
+written and the exponent `k`. They are total for all finite `f32` and `f64`
+inputs (Grisu internally falls back to Dragon if necessary).
 
-渲染出的数字再由四个函数格式化成实际字符串形式：
+The rendered digits are formatted into the actual string form with
+four functions:
 
-- `to_shortest_str` 打印 shortest 表示，并可补零到**至少**给定小数位数。
+- `to_shortest_str` prints the shortest representation, which can be padded by
+  zeroes to make *at least* given number of fractional digits.
 
-- `to_shortest_exp_str` 打印 shortest 表示；当 exponent 落在指定范围内时可补零，
-  否则可打印为 `1.23e45` 这样的指数形式。
+- `to_shortest_exp_str` prints the shortest representation, which can be
+  padded by zeroes when its exponent is in the specified ranges,
+  or can be printed in the exponential form such as `1.23e45`.
 
-- `to_exact_exp_str` 以指数形式打印给定位数的 exact 表示。
+- `to_exact_exp_str` prints the exact representation with given number of
+  digits in the exponential form.
 
-- `to_exact_fixed_str` 以**恰好**给定小数位数打印 fixed 表示。
+- `to_exact_fixed_str` prints the fixed representation with *exactly*
+  given number of fractional digits.
 
-这些函数都会返回预分配 `Part` 数组中的一个切片；每个 `Part` 对应字符串的一部分：
-固定字符串、已渲染数字的一段、若干零，或一个小型(`u16`)数字。调用方需要提供足够大的
-缓冲区和 `Part` 数组，并自行把返回的 `Part` 组装成最终字符串。
+They all return a slice of preallocated `Part` array, which corresponds to
+the individual part of strings: a fixed string, a part of rendered digits,
+a number of zeroes or a small (`u16`) number. The caller is expected to
+provide a large enough buffer and `Part` array, and to assemble the final
+string from resulting `Part`s itself.
 
-所有算法和格式化函数都在 `coretests::num::flt2dec` 模块中有较完整测试，该模块也展示了
-各函数的独立用法。
+All algorithms and formatting functions are accompanied by extensive tests
+in `coretests::num::flt2dec` module. It also shows how to use individual
+functions.
 
 */
 
-// 虽然这里有大量文档，但原则上仍是私有实现；公开只是为了测试。不要把它暴露成稳定 API。
+// while this is extensively documented, this is in principle private which is
+// only made public for testing. do not expose us.
 #![doc(hidden)]
 #![unstable(
     feature = "flt2dec",
@@ -100,36 +129,36 @@ use crate::mem::MaybeUninit;
 pub mod decoder;
 pub mod estimator;
 
-/// 数字生成算法。
+/// Digit-generation algorithms.
 pub mod strategy {
     pub mod dragon;
     pub mod grisu;
 }
 
-/// shortest mode 所需的最小缓冲区大小。
+/// The minimum size of buffer necessary for the shortest mode.
 ///
-/// 这个值的推导并不完全直观：它等于 shortest 结果中最大有效十进制数字数量再加一。
-/// 精确公式是 `ceil(mantissa 位数 * log_10 2 + 1)`。
+/// It is a bit non-trivial to derive, but this is one plus the maximal number of
+/// significant decimal digits from formatting algorithms with the shortest result.
+/// The exact formula is `ceil(# bits in mantissa * log_10 2 + 1)`.
 pub const MAX_SIG_DIGITS: usize = 17;
 
-/// 当 `d` 包含十进制数字时，增加最后一位并传播进位。
-///
-/// 如果进位导致长度变化，则返回新的下一位数字。
+/// When `d` contains decimal digits, increase the last digit and propagate carry.
+/// Returns a next digit when it causes the length to change.
 #[doc(hidden)]
 pub fn round_up(d: &mut [u8]) -> Option<u8> {
     match d.iter().rposition(|&c| c != b'9') {
         Some(i) => {
-            // `d[i + 1..]` 全是 9。
+            // d[i+1..n] is all nines
             d[i] += 1;
             d[i + 1..].fill(b'0');
             None
         }
         None if d.is_empty() => {
-            // 空缓冲区向上舍入会得到 1；这有些奇怪但合理。
+            // an empty buffer rounds up (a bit strange but reasonable)
             Some(b'1')
         }
         None => {
-            // 999..999 会舍入成 1000..000，并增加 exponent。
+            // 999..999 rounds to 1000..000 with an increased exponent
             d[0] = b'1';
             d[1..].fill(b'0');
             Some(b'0')
@@ -137,14 +166,14 @@ pub fn round_up(d: &mut [u8]) -> Option<u8> {
     }
 }
 
-/// 把给定十进制数字 `0.<...buf...> * 10^exp` 格式化为十进制形式，并至少包含给定数量的
-/// 小数位。
+/// Formats given decimal digits `0.<...buf...> * 10^exp` into the decimal form
+/// with at least given number of fractional digits. The result is stored to
+/// the supplied parts array and a slice of written parts is returned.
 ///
-/// 结果写入调用方提供的 parts 数组，并返回已写入的 `Part` 切片。
-///
-/// `frac_digits` 可以小于 `buf` 中实际小数位数；这种情况下它会被忽略，所有已有数字都会
-/// 被打印。它只用于在已渲染数字之后追加额外零。因此 `frac_digits == 0` 表示只打印给定
-/// 数字，不再补任何内容。
+/// `frac_digits` can be less than the number of actual fractional digits in `buf`;
+/// it will be ignored and full digits will be printed. It is only used to print
+/// additional zeroes after rendered digits. Thus `frac_digits` of 0 means that
+/// it will only print given digits and nothing else.
 fn digits_to_dec_str<'a>(
     buf: &'a [u8],
     exp: i16,
@@ -155,9 +184,10 @@ fn digits_to_dec_str<'a>(
     assert!(buf[0] > b'0');
     assert!(parts.len() >= 4);
 
-    // 如果存在最后一位位置限制，则把 `buf` 视为左侧带有虚拟零。虚拟零数量 `nzeroes`
-    // 等于 `max(0, exp + frac_digits - buf.len())`，从而最后一位的位置
-    // `exp - buf.len() - nzeroes` 不大于 `-frac_digits`：
+    // if there is the restriction on the last digit position, `buf` is assumed to be
+    // left-padded with the virtual zeroes. the number of virtual zeroes, `nzeroes`,
+    // equals to `max(0, exp + frac_digits - buf.len())`, so that the position of
+    // the last digit `exp - buf.len() - nzeroes` is no more than `-frac_digits`:
     //
     //                       |<-virtual->|
     //       |<---- buf ---->|  zeroes   |     exp
@@ -165,63 +195,63 @@ fn digits_to_dec_str<'a>(
     //    |                  |           |
     // 10^exp    10^(exp-buf.len())   10^(exp-buf.len()-nzeroes)
     //
-    // 为避免溢出，`nzeroes` 会在每种情况中单独计算。
+    // `nzeroes` is individually calculated for each case in order to avoid overflow.
 
     if exp <= 0 {
-        // 小数点位于已渲染数字之前：[0.][000...000][1234][____]。
+        // the decimal point is before rendered digits: [0.][000...000][1234][____]
         let minus_exp = -(exp as i32) as usize;
         parts[0] = MaybeUninit::new(Part::Copy(b"0."));
         parts[1] = MaybeUninit::new(Part::Zero(minus_exp));
         parts[2] = MaybeUninit::new(Part::Copy(buf));
         if frac_digits > buf.len() && frac_digits - buf.len() > minus_exp {
             parts[3] = MaybeUninit::new(Part::Zero((frac_digits - buf.len()) - minus_exp));
-            // SAFETY: 刚刚初始化了 `..4` 中的元素。
+            // SAFETY: we just initialized the elements `..4`.
             unsafe { parts[..4].assume_init_ref() }
         } else {
-            // SAFETY: 刚刚初始化了 `..3` 中的元素。
+            // SAFETY: we just initialized the elements `..3`.
             unsafe { parts[..3].assume_init_ref() }
         }
     } else {
         let exp = exp as usize;
         if exp < buf.len() {
-            // 小数点位于已渲染数字内部：[12][.][34][____]。
+            // the decimal point is inside rendered digits: [12][.][34][____]
             parts[0] = MaybeUninit::new(Part::Copy(&buf[..exp]));
             parts[1] = MaybeUninit::new(Part::Copy(b"."));
             parts[2] = MaybeUninit::new(Part::Copy(&buf[exp..]));
             if frac_digits > buf.len() - exp {
                 parts[3] = MaybeUninit::new(Part::Zero(frac_digits - (buf.len() - exp)));
-                // SAFETY: 刚刚初始化了 `..4` 中的元素。
+                // SAFETY: we just initialized the elements `..4`.
                 unsafe { parts[..4].assume_init_ref() }
             } else {
-                // SAFETY: 刚刚初始化了 `..3` 中的元素。
+                // SAFETY: we just initialized the elements `..3`.
                 unsafe { parts[..3].assume_init_ref() }
             }
         } else {
-            // 小数点位于已渲染数字之后：[1234][____0000] 或 [1234][__][.][__]。
+            // the decimal point is after rendered digits: [1234][____0000] or [1234][__][.][__].
             parts[0] = MaybeUninit::new(Part::Copy(buf));
             parts[1] = MaybeUninit::new(Part::Zero(exp - buf.len()));
             if frac_digits > 0 {
                 parts[2] = MaybeUninit::new(Part::Copy(b"."));
                 parts[3] = MaybeUninit::new(Part::Zero(frac_digits));
-                // SAFETY: 刚刚初始化了 `..4` 中的元素。
+                // SAFETY: we just initialized the elements `..4`.
                 unsafe { parts[..4].assume_init_ref() }
             } else {
-                // SAFETY: 刚刚初始化了 `..2` 中的元素。
+                // SAFETY: we just initialized the elements `..2`.
                 unsafe { parts[..2].assume_init_ref() }
             }
         }
     }
 }
 
-/// 把给定十进制数字 `0.<...buf...> * 10^exp` 格式化为指数形式，并至少包含给定数量的
-/// 有效数字。
+/// Formats the given decimal digits `0.<...buf...> * 10^exp` into the exponential
+/// form with at least the given number of significant digits. When `upper` is `true`,
+/// the exponent will be prefixed by `E`; otherwise that's `e`. The result is
+/// stored to the supplied parts array and a slice of written parts is returned.
 ///
-/// 当 `upper` 为 `true` 时，exponent 前缀使用 `E`；否则使用 `e`。结果写入调用方提供的
-/// parts 数组，并返回已写入的 `Part` 切片。
-///
-/// `min_digits` 可以小于 `buf` 中实际有效数字数量；这种情况下它会被忽略，所有已有数字
-/// 都会被打印。它只用于在已渲染数字之后追加额外零。因此 `min_digits == 0` 表示只打印
-/// 给定数字，不再补任何内容。
+/// `min_digits` can be less than the number of actual significant digits in `buf`;
+/// it will be ignored and full digits will be printed. It is only used to print
+/// additional zeroes after rendered digits. Thus, `min_digits == 0` means that
+/// it will only print the given digits and nothing else.
 fn digits_to_exp_str<'a>(
     buf: &'a [u8],
     exp: i16,
@@ -248,8 +278,8 @@ fn digits_to_exp_str<'a>(
         }
     }
 
-    // 0.1234 x 10^exp = 1.234 x 10^(exp-1)。
-    let exp = exp as i32 - 1; // 避免 `exp == i16::MIN` 时下溢。
+    // 0.1234 x 10^exp = 1.234 x 10^(exp-1)
+    let exp = exp as i32 - 1; // avoid underflow when exp is i16::MIN
     if exp < 0 {
         parts[n] = MaybeUninit::new(Part::Copy(if upper { b"E-" } else { b"e-" }));
         parts[n + 1] = MaybeUninit::new(Part::Num(-exp as u16));
@@ -257,22 +287,21 @@ fn digits_to_exp_str<'a>(
         parts[n] = MaybeUninit::new(Part::Copy(if upper { b"E" } else { b"e" }));
         parts[n + 1] = MaybeUninit::new(Part::Num(exp as u16));
     }
-    // SAFETY: 刚刚初始化了 `..n + 2` 中的元素。
+    // SAFETY: we just initialized the elements `..n + 2`.
     unsafe { parts[..n + 2].assume_init_ref() }
 }
 
-/// 符号格式化选项。
+/// Sign formatting options.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum Sign {
-    /// 对任意负值打印 `-`。
+    /// Prints `-` for any negative value.
     Minus, // -inf -1 -0  0  1  inf nan
-    /// 对任意负值打印 `-`，否则打印 `+`。
+    /// Prints `-` for any negative value, or `+` otherwise.
     MinusPlus, // -inf -1 -0 +0 +1 +inf nan
 }
 
-/// 返回待格式化符号对应的静态字节字符串。
-///
-/// 结果只可能是 `""`、`"+"` 或 `"-"`。
+/// Returns the static byte string corresponding to the sign to be formatted.
+/// It can be either `""`, `"+"` or `"-"`.
 fn determine_sign(sign: Sign, decoded: &FullDecoded, negative: bool) -> &'static str {
     match (*decoded, sign) {
         (FullDecoded::Nan, _) => "",
@@ -293,21 +322,25 @@ fn determine_sign(sign: Sign, decoded: &FullDecoded, negative: bool) -> &'static
     }
 }
 
-/// 把给定浮点数格式化为十进制形式，并至少包含给定数量的小数位。
+/// Formats the given floating point number into the decimal form with at least
+/// given number of fractional digits. The result is stored to the supplied parts
+/// array while utilizing given byte buffer as a scratch. `upper` is currently
+/// unused but left for the future decision to change the case of non-finite values,
+/// i.e., `inf` and `nan`. The first part to be rendered is always a `Part::Sign`
+/// (which can be an empty string if no sign is rendered).
 ///
-/// 结果写入调用方提供的 parts 数组，同时使用给定字节缓冲区作为 scratch。`upper` 目前未用，
-/// 但保留给未来决定非有限值（`inf` 和 `nan`）大小写。渲染的第一部分始终是符号字符串，
-/// 如果不需要符号则为空字符串。
+/// `format_shortest` should be the underlying digit-generation function.
+/// It should return the part of the buffer that it initialized.
+/// You probably would want `strategy::grisu::format_shortest` for this.
 ///
-/// `format_shortest` 应是底层数字生成函数。它需要返回自己初始化过的缓冲区部分。
-/// 通常这里会使用 `strategy::grisu::format_shortest`。
+/// `frac_digits` can be less than the number of actual fractional digits in `v`;
+/// it will be ignored and full digits will be printed. It is only used to print
+/// additional zeroes after rendered digits. Thus `frac_digits` of 0 means that
+/// it will only print given digits and nothing else.
 ///
-/// `frac_digits` 可以小于 `v` 的实际小数位数；这种情况下它会被忽略，所有已有数字都会
-/// 被打印。它只用于在已渲染数字之后追加额外零。因此 `frac_digits == 0` 表示只打印给定
-/// 数字，不再补任何内容。
-///
-/// 字节缓冲区长度至少应为 `MAX_SIG_DIGITS`。parts 至少要有 4 个元素，因为最坏情况类似
-/// `frac_digits = 10` 时的 `[+][0.][0000][2][0000]`。
+/// The byte buffer should be at least `MAX_SIG_DIGITS` bytes long.
+/// There should be at least 4 parts available, due to the worst case like
+/// `[+][0.][0000][2][0000]` with `frac_digits = 10`.
 pub fn to_shortest_str<'a, T, F>(
     mut format_shortest: F,
     v: T,
@@ -328,12 +361,12 @@ where
     match full_decoded {
         FullDecoded::Nan => {
             parts[0] = MaybeUninit::new(Part::Copy(b"NaN"));
-            // SAFETY: 刚刚初始化了 `..1` 中的元素。
+            // SAFETY: we just initialized the elements `..1`.
             Formatted { sign, parts: unsafe { parts[..1].assume_init_ref() } }
         }
         FullDecoded::Infinite => {
             parts[0] = MaybeUninit::new(Part::Copy(b"inf"));
-            // SAFETY: 刚刚初始化了 `..1` 中的元素。
+            // SAFETY: we just initialized the elements `..1`.
             Formatted { sign, parts: unsafe { parts[..1].assume_init_ref() } }
         }
         FullDecoded::Zero => {
@@ -343,14 +376,14 @@ where
                 parts[1] = MaybeUninit::new(Part::Zero(frac_digits));
                 Formatted {
                     sign,
-                    // SAFETY: 刚刚初始化了 `..2` 中的元素。
+                    // SAFETY: we just initialized the elements `..2`.
                     parts: unsafe { parts[..2].assume_init_ref() },
                 }
             } else {
                 parts[0] = MaybeUninit::new(Part::Copy(b"0"));
                 Formatted {
                     sign,
-                    // SAFETY: 刚刚初始化了 `..1` 中的元素。
+                    // SAFETY: we just initialized the elements `..1`.
                     parts: unsafe { parts[..1].assume_init_ref() },
                 }
             }
@@ -362,21 +395,26 @@ where
     }
 }
 
-/// 根据结果 exponent，把给定浮点数格式化为十进制形式或指数形式。
+/// Formats the given floating point number into the decimal form or
+/// the exponential form, depending on the resulting exponent. The result is
+/// stored to the supplied parts array while utilizing given byte buffer
+/// as a scratch. `upper` is used to determine the case of non-finite values
+/// (`inf` and `nan`) or the case of the exponent prefix (`e` or `E`).
+/// The first part to be rendered is always a `Part::Sign` (which can be
+/// an empty string if no sign is rendered).
 ///
-/// 结果写入调用方提供的 parts 数组，同时使用给定字节缓冲区作为 scratch。`upper` 用来决定
-/// 非有限值（`inf` 和 `nan`）大小写，或 exponent 前缀使用 `e` 还是 `E`。渲染的第一部分
-/// 始终是符号字符串；如果不需要符号则为空字符串。
+/// `format_shortest` should be the underlying digit-generation function.
+/// It should return the part of the buffer that it initialized.
+/// You probably would want `strategy::grisu::format_shortest` for this.
 ///
-/// `format_shortest` 应是底层数字生成函数。它需要返回自己初始化过的缓冲区部分。
-/// 通常这里会使用 `strategy::grisu::format_shortest`。
+/// The `dec_bounds` is a tuple `(lo, hi)` such that the number is formatted
+/// as decimal only when `10^lo <= V < 10^hi`. Note that this is the *apparent* `V`
+/// instead of the actual `v`! Thus any printed exponent in the exponential form
+/// cannot be in this range, avoiding any confusion.
 ///
-/// `dec_bounds` 是 `(lo, hi)` 元组：只有当 `10^lo <= V < 10^hi` 时才使用十进制形式。
-/// 注意这里的 `V` 是**表观**十进制值，而不是实际 `v`。因此指数形式中打印出的 exponent
-/// 不会落在该范围内，避免歧义。
-///
-/// 字节缓冲区长度至少应为 `MAX_SIG_DIGITS`。parts 至少要有 6 个元素，因为最坏情况类似
-/// `[+][1][.][2345][e][-][6]`。
+/// The byte buffer should be at least `MAX_SIG_DIGITS` bytes long.
+/// There should be at least 6 parts available, due to the worst case like
+/// `[+][1][.][2345][e][-][6]`.
 pub fn to_shortest_exp_str<'a, T, F>(
     mut format_shortest: F,
     v: T,
@@ -399,12 +437,12 @@ where
     match full_decoded {
         FullDecoded::Nan => {
             parts[0] = MaybeUninit::new(Part::Copy(b"NaN"));
-            // SAFETY: 刚刚初始化了 `..1` 中的元素。
+            // SAFETY: we just initialized the elements `..1`.
             Formatted { sign, parts: unsafe { parts[..1].assume_init_ref() } }
         }
         FullDecoded::Infinite => {
             parts[0] = MaybeUninit::new(Part::Copy(b"inf"));
-            // SAFETY: 刚刚初始化了 `..1` 中的元素。
+            // SAFETY: we just initialized the elements `..1`.
             Formatted { sign, parts: unsafe { parts[..1].assume_init_ref() } }
         }
         FullDecoded::Zero => {
@@ -413,7 +451,7 @@ where
             } else {
                 MaybeUninit::new(Part::Copy(if upper { b"0E0" } else { b"0e0" }))
             };
-            // SAFETY: 刚刚初始化了 `..1` 中的元素。
+            // SAFETY: we just initialized the elements `..1`.
             Formatted { sign, parts: unsafe { parts[..1].assume_init_ref() } }
         }
         FullDecoded::Finite(ref decoded) => {
@@ -429,38 +467,46 @@ where
     }
 }
 
-/// 根据解码后的 exponent 返回最大缓冲区大小的粗略近似（上界）。
+/// Returns a rather crude approximation (upper bound) for the maximum buffer size
+/// calculated from the given decoded exponent.
 ///
-/// 精确上界为：
+/// The exact limit is:
 ///
-/// - 当 `exp < 0` 时，最大长度是 `ceil(log_10 (5^-exp * (2^64 - 1)))`。
-/// - 当 `exp >= 0` 时，最大长度是 `ceil(log_10 (2^exp * (2^64 - 1)))`。
+/// - when `exp < 0`, the maximum length is `ceil(log_10 (5^-exp * (2^64 - 1)))`.
+/// - when `exp >= 0`, the maximum length is `ceil(log_10 (2^exp * (2^64 - 1)))`.
 ///
-/// `ceil(log_10 (x^exp * (2^64 - 1)))` 小于
-/// `ceil(log_10 (2^64 - 1)) + ceil(exp * log_10 x)`，后者又小于
-/// `20 + (1 + exp * log_10 x)`。这里利用 `log_10 2 < 5/16` 和
-/// `log_10 5 < 12/16`，对我们的上界估计已经足够。
+/// `ceil(log_10 (x^exp * (2^64 - 1)))` is less than `ceil(log_10 (2^64 - 1)) +
+/// ceil(exp * log_10 x)`, which is in turn less than `20 + (1 + exp * log_10 x)`.
+/// We use the facts that `log_10 2 < 5/16` and `log_10 5 < 12/16`, which is
+/// enough for our purposes.
 ///
-/// 为什么需要该上界？`format_exact` 函数会填满整个缓冲区，除非受到最后一位限制约束；
-/// 但调用方请求的数字位数可能极大（例如 30,000 位）。其中绝大多数缓冲区都会被零填充，
-/// 因此不希望预先分配完整大小。由此可知，对任意参数，`f64` 使用 826 字节缓冲区就足够；
-/// 作为对比，实际最坏情况（`exp = -1074`）需要 770 字节。
+/// Why do we need this? `format_exact` functions will fill the entire buffer
+/// unless limited by the last digit restriction, but it is possible that
+/// the number of digits requested is ridiculously large (say, 30,000 digits).
+/// The vast majority of buffer will be filled with zeroes, so we don't want to
+/// allocate all the buffer beforehand. Consequently, for any given arguments,
+/// 826 bytes of buffer should be sufficient for `f64`. Compare this with
+/// the actual number for the worst case: 770 bytes (when `exp = -1074`).
 fn estimate_max_buf_len(exp: i16) -> usize {
     21 + ((if exp < 0 { -12 } else { 5 } * exp as i32) as usize >> 4)
 }
 
-/// 把给定浮点数格式化为指数形式，并恰好包含给定数量的有效数字。
+/// Formats given floating point number into the exponential form with
+/// exactly given number of significant digits. The result is stored to
+/// the supplied parts array while utilizing given byte buffer as a scratch.
+/// `upper` is used to determine the case of the exponent prefix (`e` or `E`).
+/// The first part to be rendered is always a `Part::Sign` (which can be
+/// an empty string if no sign is rendered).
 ///
-/// 结果写入调用方提供的 parts 数组，同时使用给定字节缓冲区作为 scratch。`upper` 用来决定
-/// exponent 前缀使用 `e` 还是 `E`。渲染的第一部分始终是符号字符串；如果不需要符号则
-/// 为空字符串。
+/// `format_exact` should be the underlying digit-generation function.
+/// It should return the part of the buffer that it initialized.
+/// You probably would want `strategy::grisu::format_exact` for this.
 ///
-/// `format_exact` 应是底层数字生成函数。它需要返回自己初始化过的缓冲区部分。
-/// 通常这里会使用 `strategy::grisu::format_exact`。
-///
-/// 字节缓冲区长度至少应为 `ndigits`，除非 `ndigits` 大到算法无论如何只会写入固定数量数字。
-/// 对 `f64`，临界点约为 800，因此 1000 字节应当足够。parts 至少要有 6 个元素，因为
-/// 最坏情况类似 `[+][1][.][2345][e][-][6]`。
+/// The byte buffer should be at least `ndigits` bytes long unless `ndigits` is
+/// so large that only the fixed number of digits will be ever written.
+/// (The tipping point for `f64` is about 800, so 1000 bytes should be enough.)
+/// There should be at least 6 parts available, due to the worst case like
+/// `[+][1][.][2345][e][-][6]`.
 pub fn to_exact_exp_str<'a, T, F>(
     mut format_exact: F,
     v: T,
@@ -482,12 +528,12 @@ where
     match full_decoded {
         FullDecoded::Nan => {
             parts[0] = MaybeUninit::new(Part::Copy(b"NaN"));
-            // SAFETY: 刚刚初始化了 `..1` 中的元素。
+            // SAFETY: we just initialized the elements `..1`.
             Formatted { sign, parts: unsafe { parts[..1].assume_init_ref() } }
         }
         FullDecoded::Infinite => {
             parts[0] = MaybeUninit::new(Part::Copy(b"inf"));
-            // SAFETY: 刚刚初始化了 `..1` 中的元素。
+            // SAFETY: we just initialized the elements `..1`.
             Formatted { sign, parts: unsafe { parts[..1].assume_init_ref() } }
         }
         FullDecoded::Zero => {
@@ -498,14 +544,14 @@ where
                 parts[2] = MaybeUninit::new(Part::Copy(if upper { b"E0" } else { b"e0" }));
                 Formatted {
                     sign,
-                    // SAFETY: 刚刚初始化了 `..3` 中的元素。
+                    // SAFETY: we just initialized the elements `..3`.
                     parts: unsafe { parts[..3].assume_init_ref() },
                 }
             } else {
                 parts[0] = MaybeUninit::new(Part::Copy(if upper { b"0E0" } else { b"0e0" }));
                 Formatted {
                     sign,
-                    // SAFETY: 刚刚初始化了 `..1` 中的元素。
+                    // SAFETY: we just initialized the elements `..1`.
                     parts: unsafe { parts[..1].assume_init_ref() },
                 }
             }
@@ -521,18 +567,22 @@ where
     }
 }
 
-/// 把给定浮点数格式化为十进制形式，并恰好包含给定数量的小数位。
+/// Formats given floating point number into the decimal form with exactly
+/// given number of fractional digits. The result is stored to the supplied parts
+/// array while utilizing given byte buffer as a scratch. `upper` is currently
+/// unused but left for the future decision to change the case of non-finite values,
+/// i.e., `inf` and `nan`. The first part to be rendered is always a `Part::Sign`
+/// (which can be an empty string if no sign is rendered).
 ///
-/// 结果写入调用方提供的 parts 数组，同时使用给定字节缓冲区作为 scratch。`upper` 目前未用，
-/// 但保留给未来决定非有限值（`inf` 和 `nan`）大小写。渲染的第一部分始终是符号字符串；
-/// 如果不需要符号则为空字符串。
+/// `format_exact` should be the underlying digit-generation function.
+/// It should return the part of the buffer that it initialized.
+/// You probably would want `strategy::grisu::format_exact` for this.
 ///
-/// `format_exact` 应是底层数字生成函数。它需要返回自己初始化过的缓冲区部分。
-/// 通常这里会使用 `strategy::grisu::format_exact`。
-///
-/// 字节缓冲区应足以容纳输出，除非 `frac_digits` 大到算法无论如何只会写入固定数量数字。
-/// 对 `f64`，临界点约为 800，因此 1000 字节应当足够。parts 至少要有 4 个元素，因为
-/// 最坏情况类似 `frac_digits = 10` 时的 `[+][0.][0000][2][0000]`。
+/// The byte buffer should be enough for the output unless `frac_digits` is
+/// so large that only the fixed number of digits will be ever written.
+/// (The tipping point for `f64` is about 800, and 1000 bytes should be enough.)
+/// There should be at least 4 parts available, due to the worst case like
+/// `[+][0.][0000][2][0000]` with `frac_digits = 10`.
 pub fn to_exact_fixed_str<'a, T, F>(
     mut format_exact: F,
     v: T,
@@ -552,12 +602,12 @@ where
     match full_decoded {
         FullDecoded::Nan => {
             parts[0] = MaybeUninit::new(Part::Copy(b"NaN"));
-            // SAFETY: 刚刚初始化了 `..1` 中的元素。
+            // SAFETY: we just initialized the elements `..1`.
             Formatted { sign, parts: unsafe { parts[..1].assume_init_ref() } }
         }
         FullDecoded::Infinite => {
             parts[0] = MaybeUninit::new(Part::Copy(b"inf"));
-            // SAFETY: 刚刚初始化了 `..1` 中的元素。
+            // SAFETY: we just initialized the elements `..1`.
             Formatted { sign, parts: unsafe { parts[..1].assume_init_ref() } }
         }
         FullDecoded::Zero => {
@@ -567,14 +617,14 @@ where
                 parts[1] = MaybeUninit::new(Part::Zero(frac_digits));
                 Formatted {
                     sign,
-                    // SAFETY: 刚刚初始化了 `..2` 中的元素。
+                    // SAFETY: we just initialized the elements `..2`.
                     parts: unsafe { parts[..2].assume_init_ref() },
                 }
             } else {
                 parts[0] = MaybeUninit::new(Part::Copy(b"0"));
                 Formatted {
                     sign,
-                    // SAFETY: 刚刚初始化了 `..1` 中的元素。
+                    // SAFETY: we just initialized the elements `..1`.
                     parts: unsafe { parts[..1].assume_init_ref() },
                 }
             }
@@ -583,13 +633,15 @@ where
             let maxlen = estimate_max_buf_len(decoded.exp);
             assert!(buf.len() >= maxlen);
 
-            // `frac_digits` 的确可能大得离谱。此时 `format_exact` 会早得多地结束数字渲染，
-            // 因为我们严格受 `maxlen` 限制。
+            // it *is* possible that `frac_digits` is ridiculously large.
+            // `format_exact` will end rendering digits much earlier in this case,
+            // because we are strictly limited by `maxlen`.
             let limit = if frac_digits < 0x8000 { -(frac_digits as i16) } else { i16::MIN };
             let (buf, exp) = format_exact(decoded, &mut buf[..maxlen], limit);
             if exp <= limit {
-                // 无法满足最后一位限制，因此无论 `exp` 是什么都应渲染得像零。这不包括只有
-                // 经过最终向上舍入后才满足限制的情况；那是 `exp = limit + 1` 的常规路径。
+                // the restriction couldn't been met, so this should render like zero no matter
+                // `exp` was. this does not include the case that the restriction has been met
+                // only after the final rounding-up; it's a regular case with `exp = limit + 1`.
                 debug_assert_eq!(buf.len(), 0);
                 if frac_digits > 0 {
                     // [0.][0000]
@@ -597,14 +649,14 @@ where
                     parts[1] = MaybeUninit::new(Part::Zero(frac_digits));
                     Formatted {
                         sign,
-                    // SAFETY: 刚刚初始化了 `..2` 中的元素。
+                        // SAFETY: we just initialized the elements `..2`.
                         parts: unsafe { parts[..2].assume_init_ref() },
                     }
                 } else {
                     parts[0] = MaybeUninit::new(Part::Copy(b"0"));
                     Formatted {
                         sign,
-                        // SAFETY: 刚刚初始化了 `..1` 中的元素。
+                        // SAFETY: we just initialized the elements `..1`.
                         parts: unsafe { parts[..1].assume_init_ref() },
                     }
                 }

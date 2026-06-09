@@ -6,15 +6,18 @@ use crate::iter::{
 };
 use crate::ops::Try;
 
-/// 底层迭代器第一次产出 `None` 后，就永远继续产出 `None` 的迭代器。
+/// An iterator that yields `None` forever after the underlying iterator
+/// yields `None` once.
 ///
-/// 该 `struct` 由 [`Iterator::fuse`] 创建。更多语义见该方法文档。
+/// This `struct` is created by [`Iterator::fuse`]. See its documentation
+/// for more.
 #[derive(Clone, Debug)]
 #[must_use = "iterators are lazy and do nothing unless consumed"]
 #[stable(feature = "rust1", since = "1.0.0")]
 pub struct Fuse<I> {
-    // 注意: 对 `I: FusedIterator`，我们通常不会主动把这里设成 `None`，
-    // 但由于型变相关原因仍必须能处理该状态。见 rust-lang/rust#85863。
+    // NOTE: for `I: FusedIterator`, we never bother setting `None`, but
+    // we still have to be prepared for that state due to variance.
+    // See rust-lang/rust#85863
     iter: Option<I>,
 }
 impl<I> Fuse<I> {
@@ -33,7 +36,8 @@ impl<I> FusedIterator for Fuse<I> where I: Iterator {}
 #[unstable(issue = "none", feature = "trusted_fused")]
 unsafe impl<I> TrustedFused for Fuse<I> where I: TrustedFused {}
 
-// 这里的所有特化实现都保持为内部细节，避免把 default fn 暴露到 trait 外部。
+// Any specialized implementation here is made internal
+// to avoid exposing default fns outside this trait.
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<I> Iterator for Fuse<I>
 where
@@ -110,9 +114,10 @@ where
         Self: TrustedRandomAccessNoCoerce,
     {
         match self.iter {
-            // SAFETY: 调用方必须维护 `Iterator::__iterator_get_unchecked` 的契约。
+            // SAFETY: the caller must uphold the contract for
+            // `Iterator::__iterator_get_unchecked`.
             Some(ref mut iter) => unsafe { try_get_unchecked(iter, idx) },
-            // SAFETY: 调用方断言索引处存在元素，因此当前不可能已耗尽。
+            // SAFETY: the caller asserts there is an item at `i`, so we're not exhausted.
             None => unsafe { intrinsics::unreachable() },
         }
     }
@@ -185,7 +190,7 @@ where
 
 #[stable(feature = "default_iters", since = "1.70.0")]
 impl<I: Default> Default for Fuse<I> {
-    /// 从 `I` 的默认值创建一个 `Fuse` 迭代器。
+    /// Creates a `Fuse` iterator from the default value of `I`.
     ///
     /// ```
     /// # use core::slice;
@@ -194,8 +199,9 @@ impl<I: Default> Default for Fuse<I> {
     /// assert_eq!(iter.len(), 0);
     /// ```
     ///
-    /// 这等同于 `I::default().fuse()`[^fuse_note]。例如，如果 `I::default()` 不是空
-    /// 迭代器，那么这里得到的迭代器也不是空迭代器。
+    /// This is equivalent to `I::default().fuse()`[^fuse_note]; e.g. if
+    /// `I::default()` is not an empty iterator, then this will not be
+    /// an empty iterator.
     ///
     /// ```
     /// # use std::iter::Fuse;
@@ -213,25 +219,25 @@ impl<I: Default> Default for Fuse<I> {
     /// assert_eq!(iter.next(), Some(4));
     /// ```
     ///
-    /// [^fuse_note]: 前提是 `I` 没有覆盖 `Iterator::fuse` 的默认实现。
+    /// [^fuse_note]: if `I` does not override `Iterator::fuse`'s default implementation
     fn default() -> Self {
         Fuse { iter: Some(I::default()) }
     }
 }
 
 #[unstable(feature = "trusted_len", issue = "37572")]
-// SAFETY: `TrustedLen` 要求 `size_hint()` 报告准确长度。`Fuse` 只是把该信息转发给被
-// 包装的迭代器 `I`；一旦自身记录为耗尽，则报告空迭代器。因此该性质被保留，可以
-// 在这里实现 `TrustedLen`。
+// SAFETY: `TrustedLen` requires that an accurate length is reported via `size_hint()`. As `Fuse`
+// is just forwarding this to the wrapped iterator `I` this property is preserved and it is safe to
+// implement `TrustedLen` here.
 unsafe impl<I> TrustedLen for Fuse<I> where I: TrustedLen {}
 
 #[doc(hidden)]
 #[unstable(feature = "trusted_random_access", issue = "none")]
-// SAFETY: `TrustedRandomAccess` 要求 `size_hint()` 精确且调用开销低，并且
-// `Iterator::__iterator_get_unchecked()` 必须按相同长度契约实现。
+// SAFETY: `TrustedRandomAccess` requires that `size_hint()` must be exact and cheap to call, and
+// `Iterator::__iterator_get_unchecked()` must be implemented accordingly.
 //
-// `Fuse` 只是把这些操作转发给被包装的迭代器 `I`，并在耗尽状态下阻止不可达访问，
-// 因此这些性质被保留。
+// This is safe to implement as `Fuse` is just forwarding these to the wrapped iterator `I`, which
+// preserves these properties.
 unsafe impl<I> TrustedRandomAccess for Fuse<I> where I: TrustedRandomAccess {}
 
 #[doc(hidden)]
@@ -243,14 +249,15 @@ where
     const MAY_HAVE_SIDE_EFFECT: bool = I::MAY_HAVE_SIDE_EFFECT;
 }
 
-/// `Fuse` 特化 trait。
+/// Fuse specialization trait
 ///
-/// 只需关注 `&mut self` 方法，因为这些方法可能在不消耗迭代器本身的情况下耗尽它。
+/// We only need to worry about `&mut self` methods, which
+/// may exhaust the iterator without consuming it.
 #[doc(hidden)]
 trait FuseImpl<I> {
     type Item;
 
-    // 普通 `Iterator` 特有的函数。
+    // Functions specific to any normal Iterators
     fn next(&mut self) -> Option<Self::Item>;
     fn nth(&mut self, n: usize) -> Option<Self::Item>;
     fn try_fold<Acc, Fold, R>(&mut self, acc: Acc, fold: Fold) -> R
@@ -262,7 +269,7 @@ trait FuseImpl<I> {
     where
         P: FnMut(&Self::Item) -> bool;
 
-    // `DoubleEndedIterator` 特有的函数。
+    // Functions specific to DoubleEndedIterators
     fn next_back(&mut self) -> Option<Self::Item>
     where
         I: DoubleEndedIterator;
@@ -281,7 +288,7 @@ trait FuseImpl<I> {
         I: DoubleEndedIterator;
 }
 
-/// 通用 `Fuse` 实现: 耗尽后把 `iter` 设为 `None`。
+/// General `Fuse` impl which sets `iter = None` when exhausted.
 #[doc(hidden)]
 impl<I> FuseImpl<I> for Fuse<I>
 where
@@ -362,8 +369,8 @@ where
     }
 }
 
-/// 特化的 `Fuse` 实现: 耗尽时不会特意清空 `iter`。
-/// 但仍必须准备好处理它已经被清空的可能性！
+/// Specialized `Fuse` impl which doesn't bother clearing `iter` when exhausted.
+/// However, we must still be prepared for the possibility that it was already cleared!
 #[doc(hidden)]
 impl<I> FuseImpl<I> for Fuse<I>
 where
@@ -440,7 +447,7 @@ where
     }
 }
 
-// 这被 Flatten 的 SourceIter impl 使用。
+// This is used by Flatten's SourceIter impl
 #[unstable(issue = "none", feature = "inplace_iteration")]
 unsafe impl<I> SourceIter for Fuse<I>
 where
@@ -450,8 +457,9 @@ where
 
     #[inline]
     unsafe fn as_inner(&mut self) -> &mut I::Source {
-        // SAFETY: 将 unsafe 函数转发到具有相同要求的 unsafe 函数。
-        // TrustedFused 保证永远不会遇到 `self.iter` 被设为 None 的情况。
+        // SAFETY: unsafe function forwarding to unsafe function with the same requirements.
+        // TrustedFused guarantees that we'll never encounter a case where `self.iter` would
+        // be set to None.
         unsafe { SourceIter::as_inner(self.iter.as_mut().unwrap_unchecked()) }
     }
 }

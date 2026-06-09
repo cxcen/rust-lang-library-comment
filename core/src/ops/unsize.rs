@@ -1,29 +1,32 @@
 use crate::marker::{PointeeSized, Unsize};
 
-/// 这个 trait 表明:此类型是一个指针、或是对指针的包装,并且可以对其指向的对象
-/// (pointee)执行 unsizing(去尺寸化,即把已知大小类型转为 DST)。
+/// Trait that indicates that this is a pointer or a wrapper for one,
+/// where unsizing can be performed on the pointee.
 ///
-/// 更多细节参见 [DST coercion RFC][dst-coerce] 以及 [Nomicon 中关于强转的条目][nomicon-coerce]。
+/// See the [DST coercion RFC][dst-coerce] and [the nomicon entry on coercion][nomicon-coerce]
+/// for more details.
 ///
-/// 对于内建指针类型,若 `T: Unsize<U>`,则指向 `T` 的指针会强转为指向 `U` 的指针,
-/// 其做法是从瘦指针(thin pointer)转换为胖指针(fat pointer)。
+/// For builtin pointer types, pointers to `T` will coerce to pointers to `U` if `T: Unsize<U>`
+/// by converting from a thin pointer to a fat pointer.
 ///
-/// 对于自定义类型,这里的强转通过把 `Foo<T>` 强转为 `Foo<U>` 来实现,前提是存在
-/// 一个 `CoerceUnsized<Foo<U>> for Foo<T>` 的实现。只有当 `Foo<T>` 仅有单个非
-/// phantomdata、且涉及 `T` 的字段时,才能写出这样的实现。如果那个字段的类型是
-/// `Bar<T>`,那么必须存在一个 `CoerceUnsized<Bar<U>> for Bar<T>` 的实现。强转的
-/// 做法是:把那个 `Bar<T>` 字段强转为 `Bar<U>`,并把 `Foo<T>` 其余的字段填进去,
-/// 从而构造出一个 `Foo<U>`。这实际上会层层向下,最终钻到一个指针字段并对其进行强转。
+/// For custom types, the coercion here works by coercing `Foo<T>` to `Foo<U>`
+/// provided an impl of `CoerceUnsized<Foo<U>> for Foo<T>` exists.
+/// Such an impl can only be written if `Foo<T>` has only a single non-phantomdata
+/// field involving `T`. If the type of that field is `Bar<T>`, an implementation
+/// of `CoerceUnsized<Bar<U>> for Bar<T>` must exist. The coercion will work by
+/// coercing the `Bar<T>` field into `Bar<U>` and filling in the rest of the fields
+/// from `Foo<T>` to create a `Foo<U>`. This will effectively drill down to a pointer
+/// field and coerce that.
 ///
-/// 一般而言,对于智能指针,你会实现
-/// `CoerceUnsized<Ptr<U>> for Ptr<T> where T: Unsize<U>, U: ?Sized`,其中 `T`
-/// 本身可以带一个可选的 `?Sized` 约束。对于像 `Cell<T>` 和 `RefCell<T>` 那样直接
-/// 内嵌 `T` 的包装类型,你可以直接实现
-/// `CoerceUnsized<Wrap<U>> for Wrap<T> where T: CoerceUnsized<U>`。这能让诸如
-/// `Cell<Box<T>>` 之类的类型强转正常工作。
+/// Generally, for smart pointers you will implement
+/// `CoerceUnsized<Ptr<U>> for Ptr<T> where T: Unsize<U>, U: ?Sized`, with an
+/// optional `?Sized` bound on `T` itself. For wrapper types that directly embed `T`
+/// like `Cell<T>` and `RefCell<T>`, you
+/// can directly implement `CoerceUnsized<Wrap<U>> for Wrap<T> where T: CoerceUnsized<U>`.
+/// This will let coercions of types like `Cell<Box<T>>` work.
 ///
-/// [`Unsize`][unsize] 用于标记那些“处于指针之后时可以被强转为 DST”的类型。它由
-/// 编译器自动实现。
+/// [`Unsize`][unsize] is used to mark types which can be coerced to DSTs if behind
+/// pointers. It is implemented automatically by the compiler.
 ///
 /// [dst-coerce]: https://github.com/rust-lang/rfcs/blob/master/text/0982-dst-coercion.md
 /// [unsize]: crate::marker::Unsize
@@ -31,7 +34,7 @@ use crate::marker::{PointeeSized, Unsize};
 #[unstable(feature = "coerce_unsized", issue = "18598")]
 #[lang = "coerce_unsized"]
 pub trait CoerceUnsized<T: PointeeSized> {
-    // 空。
+    // Empty.
 }
 
 // &mut T -> &mut U
@@ -65,37 +68,40 @@ impl<T: PointeeSized + Unsize<U>, U: PointeeSized> CoerceUnsized<*const U> for *
 #[unstable(feature = "coerce_unsized", issue = "18598")]
 impl<T: PointeeSized + Unsize<U>, U: PointeeSized> CoerceUnsized<*const U> for *const T {}
 
-/// `DispatchFromDyn` 用在 dyn 兼容性[^1] 检查的实现中(尤其是允许任意 self 类型
-/// 的场景),用来保证某个方法的接收者类型可以在其上进行动态分派(dispatch)。
+/// `DispatchFromDyn` is used in the implementation of dyn-compatibility[^1] checks (specifically
+/// allowing arbitrary self types), to guarantee that a method's receiver type can be dispatched on.
 ///
-/// 注意:`DispatchFromDyn` 曾一度被命名为 `CoerceSized`(且当时的解释略有不同)。
+/// Note: `DispatchFromDyn` was briefly named `CoerceSized` (and had a slightly different
+/// interpretation).
 ///
-/// 设想我们有一个 trait 对象 `t`,其类型为 `&dyn Tr`,其中 `Tr` 是某个带有方法
-/// `m`(定义为 `fn m(&self);`)的 trait。调用 `t.m()` 时,接收者 `t` 是一个宽指针
-/// (wide pointer),但 `m` 的实现期望 `&self` 是一个窄指针(narrow pointer,即
-/// 指向具体类型的引用)。编译器必须生成一个从 trait 对象 / 宽指针到具体引用 /
-/// 窄指针的隐式转换。实现 `DispatchFromDyn` 表明允许这种转换,因而表明实现了
-/// `DispatchFromDyn` 的类型可以安全地用作 dyn 兼容方法中的 self 类型。(在上面的
-/// 例子中,编译器会要求 `&'a U` 实现 `DispatchFromDyn`。)
+/// Imagine we have a trait object `t` with type `&dyn Tr`, where `Tr` is some trait with a method
+/// `m` defined as `fn m(&self);`. When calling `t.m()`, the receiver `t` is a wide pointer, but an
+/// implementation of `m` will expect a narrow pointer as `&self` (a reference to the concrete
+/// type). The compiler must generate an implicit conversion from the trait object/wide pointer to
+/// the concrete reference/narrow pointer. Implementing `DispatchFromDyn` indicates that that
+/// conversion is allowed and thus that the type implementing `DispatchFromDyn` is safe to use as
+/// the self type in an dyn-compatible method. (in the above example, the compiler will require
+/// `DispatchFromDyn` is implemented for `&'a U`).
 ///
-/// `DispatchFromDyn` 并不指定从宽指针到窄指针的具体转换方式;该转换是硬编码在
-/// 编译器里的。为了让转换得以工作,下列性质必须成立(也就是说,只有具备这些性质
-/// 的类型实现 `DispatchFromDyn` 才是安全的,编译器也会检查这些性质):
+/// `DispatchFromDyn` does not specify the conversion from wide pointer to narrow pointer; the
+/// conversion is hard-wired into the compiler. For the conversion to work, the following
+/// properties must hold (i.e., it is only safe to implement `DispatchFromDyn` for types which have
+/// these properties, these are also checked by the compiler):
 ///
-/// * 要么 `Self` 和 `T` 同为引用、或同为裸指针;且无论哪种情形,可变性都相同。
-/// * 要么以下各项全部成立:
-///   - `Self` 和 `T` 必须具有相同的类型构造器(type constructor),且仅在单个类型
-///     参数(即 *被强转类型*,coerced type)上有所不同(例如
-///     `impl DispatchFromDyn<Rc<T>> for Rc<U>` 是允许的,其单个类型参数(用 `T`
-///     或 `U` 实例化)就是被强转类型;而 `impl DispatchFromDyn<Arc<T>> for Rc<U>`
-///     则不允许)。
-///   - `Self` 的定义必须是一个结构体。
-///   - `Self` 的定义不得是 `#[repr(packed)]` 或 `#[repr(C)]`。
-///   - 除了对齐为 1、大小为零的字段之外,`Self` 的定义必须恰好有一个字段,且该
-///     字段的类型必须是被强转类型。此外,`Self` 的字段类型必须实现
-///     `DispatchFromDyn<F>`,其中 `F` 是 `T` 的字段类型。
+/// * EITHER `Self` and `T` are either both references or both raw pointers; in either case, with
+///   the same mutability.
+/// * OR, all of the following hold
+///   - `Self` and `T` must have the same type constructor, and only vary in a single type parameter
+///     formal (the *coerced type*, e.g., `impl DispatchFromDyn<Rc<T>> for Rc<U>` is ok and the
+///     single type parameter (instantiated with `T` or `U`) is the coerced type,
+///     `impl DispatchFromDyn<Arc<T>> for Rc<U>` is not ok).
+///   - The definition for `Self` must be a struct.
+///   - The definition for `Self` must not be `#[repr(packed)]` or `#[repr(C)]`.
+///   - Other than one-aligned, zero-sized fields, the definition for `Self` must have exactly one
+///     field and that field's type must be the coerced type. Furthermore, `Self`'s field type must
+///     implement `DispatchFromDyn<F>` where `F` is the type of `T`'s field type.
 ///
-/// 该 trait 的一个实现示例:
+/// An example implementation of the trait:
 ///
 /// ```
 /// # #![feature(dispatch_from_dyn, unsize)]
@@ -107,11 +113,11 @@ impl<T: PointeeSized + Unsize<U>, U: PointeeSized> CoerceUnsized<*const U> for *
 /// {}
 /// ```
 ///
-/// [^1]: 此前被称为 *对象安全(object safety)*。
+/// [^1]: Formerly known as *object safety*.
 #[unstable(feature = "dispatch_from_dyn", issue = "none")]
 #[lang = "dispatch_from_dyn"]
 pub trait DispatchFromDyn<T> {
-    // 空。
+    // Empty.
 }
 
 // &T -> &U

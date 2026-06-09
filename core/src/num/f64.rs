@@ -1,13 +1,13 @@
-//! `f64` 浮点类型的常量。
+//! Constants for the `f64` double-precision floating point type.
 //!
-//! *另请参阅 [`f64` 原始类型][f64]。*
+//! *[See also the `f64` primitive type][f64].*
 //!
-//! 具有数学意义的常数位于 `consts` 子模块中。
+//! Mathematically significant numbers are provided in the `consts` sub-module.
 //!
-//! 对于直接定义在本模块中的常量
-//! （不同于 `consts` 子模块中的数学常数），
-//! 新代码应改用
-//! 直接定义在 `f64` 类型上的关联常量。
+//! For the constants defined directly in this module
+//! (as distinct from those defined in the `consts` sub-module),
+//! new code should instead use the associated constants
+//! defined directly on the `f64` type.
 
 #![stable(feature = "rust1", since = "1.0.0")]
 
@@ -16,17 +16,17 @@ use crate::num::FpCategory;
 use crate::panic::const_assert;
 use crate::{intrinsics, mem};
 
-/// `f64` 内部表示使用的基数。
-/// 请改用 [`f64::RADIX`]。
+/// The radix or base of the internal representation of `f64`.
+/// Use [`f64::RADIX`] instead.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```rust
-/// // 已弃用的方式
+/// // deprecated way
 /// # #[allow(deprecated, deprecated_in_future)]
 /// let r = std::f64::RADIX;
 ///
-/// // 推荐的方式
+/// // intended way
 /// let r = f64::RADIX;
 /// ```
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -34,17 +34,17 @@ use crate::{intrinsics, mem};
 #[rustc_diagnostic_item = "f64_legacy_const_radix"]
 pub const RADIX: u32 = f64::RADIX;
 
-/// 以 2 为底的有效数字位数。
-/// 请改用 [`f64::MANTISSA_DIGITS`]。
+/// Number of significant digits in base 2.
+/// Use [`f64::MANTISSA_DIGITS`] instead.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```rust
-/// // 已弃用的方式
+/// // deprecated way
 /// # #[allow(deprecated, deprecated_in_future)]
 /// let d = std::f64::MANTISSA_DIGITS;
 ///
-/// // 推荐的方式
+/// // intended way
 /// let d = f64::MANTISSA_DIGITS;
 /// ```
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -55,17 +55,17 @@ pub const RADIX: u32 = f64::RADIX;
 #[rustc_diagnostic_item = "f64_legacy_const_mantissa_dig"]
 pub const MANTISSA_DIGITS: u32 = f64::MANTISSA_DIGITS;
 
-/// 以 10 为底时近似的有效十进制数字位数。
-/// 请改用 [`f64::DIGITS`]。
+/// Approximate number of significant digits in base 10.
+/// Use [`f64::DIGITS`] instead.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```rust
-/// // 已弃用的方式
+/// // deprecated way
 /// # #[allow(deprecated, deprecated_in_future)]
 /// let d = std::f64::DIGITS;
 ///
-/// // 推荐的方式
+/// // intended way
 /// let d = f64::DIGITS;
 /// ```
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -73,21 +73,21 @@ pub const MANTISSA_DIGITS: u32 = f64::MANTISSA_DIGITS;
 #[rustc_diagnostic_item = "f64_legacy_const_digits"]
 pub const DIGITS: u32 = f64::DIGITS;
 
-/// `f64` 的 [Machine epsilon] 值。
-/// 请改用 [`f64::EPSILON`]。
+/// [Machine epsilon] value for `f64`.
+/// Use [`f64::EPSILON`] instead.
 ///
-/// 这是 `1.0` 与下一个更大的可表示数之间的差值。
+/// This is the difference between `1.0` and the next larger representable number.
 ///
 /// [Machine epsilon]: https://en.wikipedia.org/wiki/Machine_epsilon
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```rust
-/// // 已弃用的方式
+/// // deprecated way
 /// # #[allow(deprecated, deprecated_in_future)]
 /// let e = std::f64::EPSILON;
 ///
-/// // 推荐的方式
+/// // intended way
 /// let e = f64::EPSILON;
 /// ```
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -95,17 +95,17 @@ pub const DIGITS: u32 = f64::DIGITS;
 #[rustc_diagnostic_item = "f64_legacy_const_epsilon"]
 pub const EPSILON: f64 = f64::EPSILON;
 
-/// 最小的有限 `f64` 值。
-/// 请改用 [`f64::MIN`]。
+/// Smallest finite `f64` value.
+/// Use [`f64::MIN`] instead.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```rust
-/// // 已弃用的方式
+/// // deprecated way
 /// # #[allow(deprecated, deprecated_in_future)]
 /// let min = std::f64::MIN;
 ///
-/// // 推荐的方式
+/// // intended way
 /// let min = f64::MIN;
 /// ```
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -113,17 +113,17 @@ pub const EPSILON: f64 = f64::EPSILON;
 #[rustc_diagnostic_item = "f64_legacy_const_min"]
 pub const MIN: f64 = f64::MIN;
 
-/// 最小的正正规 `f64` 值。
-/// 请改用 [`f64::MIN_POSITIVE`]。
+/// Smallest positive normal `f64` value.
+/// Use [`f64::MIN_POSITIVE`] instead.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```rust
-/// // 已弃用的方式
+/// // deprecated way
 /// # #[allow(deprecated, deprecated_in_future)]
 /// let min = std::f64::MIN_POSITIVE;
 ///
-/// // 推荐的方式
+/// // intended way
 /// let min = f64::MIN_POSITIVE;
 /// ```
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -131,17 +131,17 @@ pub const MIN: f64 = f64::MIN;
 #[rustc_diagnostic_item = "f64_legacy_const_min_positive"]
 pub const MIN_POSITIVE: f64 = f64::MIN_POSITIVE;
 
-/// 最大的有限 `f64` 值。
-/// 请改用 [`f64::MAX`]。
+/// Largest finite `f64` value.
+/// Use [`f64::MAX`] instead.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```rust
-/// // 已弃用的方式
+/// // deprecated way
 /// # #[allow(deprecated, deprecated_in_future)]
 /// let max = std::f64::MAX;
 ///
-/// // 推荐的方式
+/// // intended way
 /// let max = f64::MAX;
 /// ```
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -149,17 +149,17 @@ pub const MIN_POSITIVE: f64 = f64::MIN_POSITIVE;
 #[rustc_diagnostic_item = "f64_legacy_const_max"]
 pub const MAX: f64 = f64::MAX;
 
-/// 比可能的最小正规 2 次幂指数大 1 的值。
-/// 请改用 [`f64::MIN_EXP`]。
+/// One greater than the minimum possible normal power of 2 exponent.
+/// Use [`f64::MIN_EXP`] instead.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```rust
-/// // 已弃用的方式
+/// // deprecated way
 /// # #[allow(deprecated, deprecated_in_future)]
 /// let min = std::f64::MIN_EXP;
 ///
-/// // 推荐的方式
+/// // intended way
 /// let min = f64::MIN_EXP;
 /// ```
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -167,17 +167,17 @@ pub const MAX: f64 = f64::MAX;
 #[rustc_diagnostic_item = "f64_legacy_const_min_exp"]
 pub const MIN_EXP: i32 = f64::MIN_EXP;
 
-/// 可能的最大 2 次幂指数。
-/// 请改用 [`f64::MAX_EXP`]。
+/// Maximum possible power of 2 exponent.
+/// Use [`f64::MAX_EXP`] instead.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```rust
-/// // 已弃用的方式
+/// // deprecated way
 /// # #[allow(deprecated, deprecated_in_future)]
 /// let max = std::f64::MAX_EXP;
 ///
-/// // 推荐的方式
+/// // intended way
 /// let max = f64::MAX_EXP;
 /// ```
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -185,17 +185,17 @@ pub const MIN_EXP: i32 = f64::MIN_EXP;
 #[rustc_diagnostic_item = "f64_legacy_const_max_exp"]
 pub const MAX_EXP: i32 = f64::MAX_EXP;
 
-/// 可能的最小正规 10 次幂指数。
-/// 请改用 [`f64::MIN_10_EXP`]。
+/// Minimum possible normal power of 10 exponent.
+/// Use [`f64::MIN_10_EXP`] instead.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```rust
-/// // 已弃用的方式
+/// // deprecated way
 /// # #[allow(deprecated, deprecated_in_future)]
 /// let min = std::f64::MIN_10_EXP;
 ///
-/// // 推荐的方式
+/// // intended way
 /// let min = f64::MIN_10_EXP;
 /// ```
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -203,17 +203,17 @@ pub const MAX_EXP: i32 = f64::MAX_EXP;
 #[rustc_diagnostic_item = "f64_legacy_const_min_10_exp"]
 pub const MIN_10_EXP: i32 = f64::MIN_10_EXP;
 
-/// 可能的最大 10 次幂指数。
-/// 请改用 [`f64::MAX_10_EXP`]。
+/// Maximum possible power of 10 exponent.
+/// Use [`f64::MAX_10_EXP`] instead.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```rust
-/// // 已弃用的方式
+/// // deprecated way
 /// # #[allow(deprecated, deprecated_in_future)]
 /// let max = std::f64::MAX_10_EXP;
 ///
-/// // 推荐的方式
+/// // intended way
 /// let max = f64::MAX_10_EXP;
 /// ```
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -221,17 +221,17 @@ pub const MIN_10_EXP: i32 = f64::MIN_10_EXP;
 #[rustc_diagnostic_item = "f64_legacy_const_max_10_exp"]
 pub const MAX_10_EXP: i32 = f64::MAX_10_EXP;
 
-/// 非数（NaN）。
-/// 请改用 [`f64::NAN`]。
+/// Not a Number (NaN).
+/// Use [`f64::NAN`] instead.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```rust
-/// // 已弃用的方式
+/// // deprecated way
 /// # #[allow(deprecated, deprecated_in_future)]
 /// let nan = std::f64::NAN;
 ///
-/// // 推荐的方式
+/// // intended way
 /// let nan = f64::NAN;
 /// ```
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -239,17 +239,17 @@ pub const MAX_10_EXP: i32 = f64::MAX_10_EXP;
 #[rustc_diagnostic_item = "f64_legacy_const_nan"]
 pub const NAN: f64 = f64::NAN;
 
-/// 正无穷（Inf，∞）。
-/// 请改用 [`f64::INFINITY`]。
+/// Infinity (∞).
+/// Use [`f64::INFINITY`] instead.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```rust
-/// // 已弃用的方式
+/// // deprecated way
 /// # #[allow(deprecated, deprecated_in_future)]
 /// let inf = std::f64::INFINITY;
 ///
-/// // 推荐的方式
+/// // intended way
 /// let inf = f64::INFINITY;
 /// ```
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -257,17 +257,17 @@ pub const NAN: f64 = f64::NAN;
 #[rustc_diagnostic_item = "f64_legacy_const_infinity"]
 pub const INFINITY: f64 = f64::INFINITY;
 
-/// 负无穷（-Inf，−∞）。
-/// 请改用 [`f64::NEG_INFINITY`]。
+/// Negative infinity (−∞).
+/// Use [`f64::NEG_INFINITY`] instead.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```rust
-/// // 已弃用的方式
+/// // deprecated way
 /// # #[allow(deprecated, deprecated_in_future)]
 /// let ninf = std::f64::NEG_INFINITY;
 ///
-/// // 推荐的方式
+/// // intended way
 /// let ninf = f64::NEG_INFINITY;
 /// ```
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -275,27 +275,27 @@ pub const INFINITY: f64 = f64::INFINITY;
 #[rustc_diagnostic_item = "f64_legacy_const_neg_infinity"]
 pub const NEG_INFINITY: f64 = f64::NEG_INFINITY;
 
-/// 基本数学常数。
+/// Basic mathematical constants.
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_diagnostic_item = "f64_consts_mod"]
 pub mod consts {
-    // FIXME: 后续可替换为来自 cmath 的数学常数。
+    // FIXME: replace with mathematical constants from cmath.
 
-    /// 阿基米德常数（π）
+    /// Archimedes' constant (π)
     #[stable(feature = "rust1", since = "1.0.0")]
     pub const PI: f64 = 3.14159265358979323846264338327950288_f64;
 
-    /// 整圆常数（τ）
+    /// The full circle constant (τ)
     ///
-    /// 等于 2π。
+    /// Equal to 2π.
     #[stable(feature = "tau_constant", since = "1.47.0")]
     pub const TAU: f64 = 6.28318530717958647692528676655900577_f64;
 
-    /// 黄金比例（φ）
+    /// The golden ratio (φ)
     #[stable(feature = "euler_gamma_golden_ratio", since = "1.94.0")]
     pub const GOLDEN_RATIO: f64 = 1.618033988749894848204586834365638118_f64;
 
-    /// 欧拉-马歇罗尼常数（γ）
+    /// The Euler-Mascheroni constant (γ)
     #[stable(feature = "euler_gamma_golden_ratio", since = "1.94.0")]
     pub const EULER_GAMMA: f64 = 0.577215664901532860606512090082402431_f64;
 
@@ -323,11 +323,11 @@ pub mod consts {
     #[stable(feature = "rust1", since = "1.0.0")]
     pub const FRAC_1_PI: f64 = 0.318309886183790671537767526745028724_f64;
 
-    /// 1/sqrt（π）
+    /// 1/sqrt(π)
     #[unstable(feature = "more_float_constants", issue = "146939")]
     pub const FRAC_1_SQRT_PI: f64 = 0.564189583547756286948079451560772586_f64;
 
-    /// 1/sqrt（2π）
+    /// 1/sqrt(2π)
     #[doc(alias = "FRAC_1_SQRT_TAU")]
     #[unstable(feature = "more_float_constants", issue = "146939")]
     pub const FRAC_1_SQRT_2PI: f64 = 0.398942280401432677939946059934381868_f64;
@@ -336,27 +336,27 @@ pub mod consts {
     #[stable(feature = "rust1", since = "1.0.0")]
     pub const FRAC_2_PI: f64 = 0.636619772367581343075535053490057448_f64;
 
-    /// 2/sqrt（π）
+    /// 2/sqrt(π)
     #[stable(feature = "rust1", since = "1.0.0")]
     pub const FRAC_2_SQRT_PI: f64 = 1.12837916709551257389615890312154517_f64;
 
-    /// sqrt（2）
+    /// sqrt(2)
     #[stable(feature = "rust1", since = "1.0.0")]
     pub const SQRT_2: f64 = 1.41421356237309504880168872420969808_f64;
 
-    /// 1/sqrt（2）
+    /// 1/sqrt(2)
     #[stable(feature = "rust1", since = "1.0.0")]
     pub const FRAC_1_SQRT_2: f64 = 0.707106781186547524400844362104849039_f64;
 
-    /// sqrt（3）
+    /// sqrt(3)
     #[unstable(feature = "more_float_constants", issue = "146939")]
     pub const SQRT_3: f64 = 1.732050807568877293527446341505872367_f64;
 
-    /// 1/sqrt（3）
+    /// 1/sqrt(3)
     #[unstable(feature = "more_float_constants", issue = "146939")]
     pub const FRAC_1_SQRT_3: f64 = 0.577350269189625764509148780501957456_f64;
 
-    /// 欧拉数（e）
+    /// Euler's number (e)
     #[stable(feature = "rust1", since = "1.0.0")]
     pub const E: f64 = 2.71828182845904523536028747135266250_f64;
 
@@ -386,32 +386,32 @@ pub mod consts {
 }
 
 impl f64 {
-    /// `f64` 内部表示使用的基数。
+    /// The radix or base of the internal representation of `f64`.
     #[stable(feature = "assoc_int_consts", since = "1.43.0")]
     pub const RADIX: u32 = 2;
 
-    /// 以 2 为底的有效数字位数。
+    /// Number of significant digits in base 2.
     ///
-    /// 注意，按位表示里的尾数字段大小比这个值小 1，
-    /// 因为前导 1 不会显式存储。
+    /// Note that the size of the mantissa in the bitwise representation is one
+    /// smaller than this since the leading 1 is not stored explicitly.
     #[stable(feature = "assoc_int_consts", since = "1.43.0")]
     pub const MANTISSA_DIGITS: u32 = 53;
-    /// 以 10 为底时近似的有效十进制数字位数。
+    /// Approximate number of significant digits in base 10.
     ///
-    /// 这是最大的 <i>x</i>，使得任何具有 <i>x</i>
-    /// 位有效数字的十进制数都能无损转换为 `f64` 再转换回来。
+    /// This is the maximum <i>x</i> such that any decimal number with <i>x</i>
+    /// significant digits can be converted to `f64` and back without loss.
     ///
-    /// 等于 floor(log<sub>10</sub>&nbsp;2<sup>[`MANTISSA_DIGITS`]&nbsp;&minus;&nbsp;1</sup>)。
+    /// Equal to floor(log<sub>10</sub>&nbsp;2<sup>[`MANTISSA_DIGITS`]&nbsp;&minus;&nbsp;1</sup>).
     ///
     /// [`MANTISSA_DIGITS`]: f64::MANTISSA_DIGITS
     #[stable(feature = "assoc_int_consts", since = "1.43.0")]
     pub const DIGITS: u32 = 15;
 
-    /// `f64` 的 [Machine epsilon] 值。
+    /// [Machine epsilon] value for `f64`.
     ///
-    /// 这是 `1.0` 与下一个更大的可表示数之间的差值。
+    /// This is the difference between `1.0` and the next larger representable number.
     ///
-    /// 等于 2<sup>1&nbsp;&minus;&nbsp;[`MANTISSA_DIGITS`]</sup>。
+    /// Equal to 2<sup>1&nbsp;&minus;&nbsp;[`MANTISSA_DIGITS`]</sup>.
     ///
     /// [Machine epsilon]: https://en.wikipedia.org/wiki/Machine_epsilon
     /// [`MANTISSA_DIGITS`]: f64::MANTISSA_DIGITS
@@ -419,103 +419,103 @@ impl f64 {
     #[rustc_diagnostic_item = "f64_epsilon"]
     pub const EPSILON: f64 = 2.2204460492503131e-16_f64;
 
-    /// 最小的有限 `f64` 值。
+    /// Smallest finite `f64` value.
     ///
-    /// 等于 &minus;[`MAX`]。
+    /// Equal to &minus;[`MAX`].
     ///
     /// [`MAX`]: f64::MAX
     #[stable(feature = "assoc_int_consts", since = "1.43.0")]
     pub const MIN: f64 = -1.7976931348623157e+308_f64;
-    /// 最小的正正规 `f64` 值。
+    /// Smallest positive normal `f64` value.
     ///
-    /// 等于 2<sup>[`MIN_EXP`]&nbsp;&minus;&nbsp;1</sup>。
+    /// Equal to 2<sup>[`MIN_EXP`]&nbsp;&minus;&nbsp;1</sup>.
     ///
     /// [`MIN_EXP`]: f64::MIN_EXP
     #[stable(feature = "assoc_int_consts", since = "1.43.0")]
     pub const MIN_POSITIVE: f64 = 2.2250738585072014e-308_f64;
-    /// 最大的有限 `f64` 值。
+    /// Largest finite `f64` value.
     ///
-    /// 等于
-    /// (1&nbsp;&minus;&nbsp;2<sup>&minus;[`MANTISSA_DIGITS`]</sup>)&nbsp;2<sup>[`MAX_EXP`]</sup>。
+    /// Equal to
+    /// (1&nbsp;&minus;&nbsp;2<sup>&minus;[`MANTISSA_DIGITS`]</sup>)&nbsp;2<sup>[`MAX_EXP`]</sup>.
     ///
     /// [`MANTISSA_DIGITS`]: f64::MANTISSA_DIGITS
     /// [`MAX_EXP`]: f64::MAX_EXP
     #[stable(feature = "assoc_int_consts", since = "1.43.0")]
     pub const MAX: f64 = 1.7976931348623157e+308_f64;
 
-    /// 比可能的最小*正规* 2 次幂指数大 1 的值
-    /// 其中有效数范围为 1 ≤ x < 2（即 IEEE 定义）。
+    /// One greater than the minimum possible *normal* power of 2 exponent
+    /// for a significand bounded by 1 ≤ x < 2 (i.e. the IEEE definition).
     ///
-    /// 这对应于可能的精确最小*正规* 2 次幂指数，
-    /// 其中有效数范围为 0.5 ≤ x < 1（即 C 定义）。
-    /// 换言之，该类型能表示的所有正规数都
-    /// 大于或等于 0.5&nbsp;×&nbsp;2<sup><i>MIN_EXP</i></sup>。
+    /// This corresponds to the exact minimum possible *normal* power of 2 exponent
+    /// for a significand bounded by 0.5 ≤ x < 1 (i.e. the C definition).
+    /// In other words, all normal numbers representable by this type are
+    /// greater than or equal to 0.5&nbsp;×&nbsp;2<sup><i>MIN_EXP</i></sup>.
     #[stable(feature = "assoc_int_consts", since = "1.43.0")]
     pub const MIN_EXP: i32 = -1021;
-    /// 比可能的最大 2 次幂指数大 1 的值
-    /// 其中有效数范围为 1 ≤ x < 2（即 IEEE 定义）。
+    /// One greater than the maximum possible power of 2 exponent
+    /// for a significand bounded by 1 ≤ x < 2 (i.e. the IEEE definition).
     ///
-    /// 这对应于可能的精确最大 2 次幂指数，
-    /// 其中有效数范围为 0.5 ≤ x < 1（即 C 定义）。
-    /// 换言之，该类型能表示的所有数都
-    /// 严格小于 2<sup><i>MAX_EXP</i></sup>。
+    /// This corresponds to the exact maximum possible power of 2 exponent
+    /// for a significand bounded by 0.5 ≤ x < 1 (i.e. the C definition).
+    /// In other words, all numbers representable by this type are
+    /// strictly less than 2<sup><i>MAX_EXP</i></sup>.
     #[stable(feature = "assoc_int_consts", since = "1.43.0")]
     pub const MAX_EXP: i32 = 1024;
 
-    /// 使 10<sup><i>x</i></sup> 成为正规数的最小 <i>x</i>。
+    /// Minimum <i>x</i> for which 10<sup><i>x</i></sup> is normal.
     ///
-    /// 等于 ceil(log<sub>10</sub>&nbsp;[`MIN_POSITIVE`])。
+    /// Equal to ceil(log<sub>10</sub>&nbsp;[`MIN_POSITIVE`]).
     ///
     /// [`MIN_POSITIVE`]: f64::MIN_POSITIVE
     #[stable(feature = "assoc_int_consts", since = "1.43.0")]
     pub const MIN_10_EXP: i32 = -307;
-    /// 使 10<sup><i>x</i></sup> 成为正规数的最大 <i>x</i>。
+    /// Maximum <i>x</i> for which 10<sup><i>x</i></sup> is normal.
     ///
-    /// 等于 floor(log<sub>10</sub>&nbsp;[`MAX`])。
+    /// Equal to floor(log<sub>10</sub>&nbsp;[`MAX`]).
     ///
     /// [`MAX`]: f64::MAX
     #[stable(feature = "assoc_int_consts", since = "1.43.0")]
     pub const MAX_10_EXP: i32 = 308;
 
-    /// 非数（NaN）。
+    /// Not a Number (NaN).
     ///
-    /// 注意，IEEE 754 并不只定义单一的 NaN 值；大量不同的位模式都会
-    /// 被视为 NaN。此外，标准区分 "signaling" NaN 和
-    /// "quiet" NaN，并允许检查其 "payload"（位模式中未指定的位）
-    /// 及符号。更多信息见 [NaN 位模式规范](f32#nan-bit-patterns)。
+    /// Note that IEEE 754 doesn't define just a single NaN value; a plethora of bit patterns are
+    /// considered to be NaN. Furthermore, the standard makes a difference between a "signaling" and
+    /// a "quiet" NaN, and allows inspecting its "payload" (the unspecified bits in the bit pattern)
+    /// and its sign. See the [specification of NaN bit patterns](f32#nan-bit-patterns) for more
+    /// info.
     ///
-    ///
-    /// 该常量保证是 quiet NaN（在遵循 Rust 假设的目标上，
-    /// quiet/signaling 位为 1 表示 quiet NaN）。除此之外，
-    /// 这里选择的具体位模式没有额外保证：payload 和符号都是任意的。
-    /// 具体位模式可能随 Rust 版本和目标平台变化。
+    /// This constant is guaranteed to be a quiet NaN (on targets that follow the Rust assumptions
+    /// that the quiet/signaling bit being set to 1 indicates a quiet NaN). Beyond that, nothing is
+    /// guaranteed about the specific bit pattern chosen here: both payload and sign are arbitrary.
+    /// The concrete bit pattern may change across Rust versions and target platforms.
     #[rustc_diagnostic_item = "f64_nan"]
     #[stable(feature = "assoc_int_consts", since = "1.43.0")]
     #[allow(clippy::eq_op)]
     pub const NAN: f64 = 0.0_f64 / 0.0_f64;
-    /// 正无穷（Inf，∞）。
+    /// Infinity (∞).
     #[stable(feature = "assoc_int_consts", since = "1.43.0")]
     pub const INFINITY: f64 = 1.0_f64 / 0.0_f64;
-    /// 负无穷（-Inf，−∞）。
+    /// Negative infinity (−∞).
     #[stable(feature = "assoc_int_consts", since = "1.43.0")]
     pub const NEG_INFINITY: f64 = -1.0_f64 / 0.0_f64;
 
-    /// 符号位
+    /// Sign bit
     pub(crate) const SIGN_MASK: u64 = 0x8000_0000_0000_0000;
 
-    /// 指数掩码
+    /// Exponent mask
     pub(crate) const EXP_MASK: u64 = 0x7ff0_0000_0000_0000;
 
-    /// 尾数掩码
+    /// Mantissa mask
     pub(crate) const MAN_MASK: u64 = 0x000f_ffff_ffff_ffff;
 
-    /// 最小可表示正值（最小次正规数）
+    /// Minimum representable positive value (min subnormal)
     const TINY_BITS: u64 = 0x1;
 
-    /// 最小可表示负值（最小负次正规数）
+    /// Minimum representable negative value (min negative subnormal)
     const NEG_TINY_BITS: u64 = Self::TINY_BITS | Self::SIGN_MASK;
 
-    /// 如果该值是 NaN，则返回 `true`。
+    /// Returns `true` if this value is NaN.
     ///
     /// ```
     /// let nan = f64::NAN;
@@ -533,8 +533,8 @@ impl f64 {
         self != self
     }
 
-    /// 如果该值是正无穷或负无穷，则返回 `true`；
-    /// 否则返回 `false`。
+    /// Returns `true` if this value is positive infinity or negative infinity, and
+    /// `false` otherwise.
     ///
     /// ```
     /// let f = 7.0f64;
@@ -553,13 +553,13 @@ impl f64 {
     #[rustc_const_stable(feature = "const_float_classify", since = "1.83.0")]
     #[inline]
     pub const fn is_infinite(self) -> bool {
-        // 在某些 FPU 上，试图用 transmutation 取巧可能得到错误答案
-        // FIXME: 修改 Rust <-> Rust 调用约定以避免这个问题。
-        // 见 https://github.com/rust-lang/rust/issues/72327
+        // Getting clever with transmutation can result in incorrect answers on some FPUs
+        // FIXME: alter the Rust <-> Rust calling convention to prevent this problem.
+        // See https://github.com/rust-lang/rust/issues/72327
         (self == f64::INFINITY) | (self == f64::NEG_INFINITY)
     }
 
-    /// 如果该数既不是无穷也不是 NaN，则返回 `true`。
+    /// Returns `true` if this number is neither infinite nor NaN.
     ///
     /// ```
     /// let f = 7.0f64;
@@ -578,12 +578,12 @@ impl f64 {
     #[rustc_const_stable(feature = "const_float_classify", since = "1.83.0")]
     #[inline]
     pub const fn is_finite(self) -> bool {
-        // 无需单独处理 NaN：如果 self 是 NaN，
-        // 比较结果正好不是 true。
+        // There's no need to handle NaN separately: if self is NaN,
+        // the comparison is not true, exactly as desired.
         self.abs() < Self::INFINITY
     }
 
-    /// 如果该数是[次正规数]，则返回 `true`。
+    /// Returns `true` if the number is [subnormal].
     ///
     /// ```
     /// let min = f64::MIN_POSITIVE; // 2.2250738585072014e-308_f64
@@ -597,7 +597,7 @@ impl f64 {
     /// assert!(!zero.is_subnormal());
     /// assert!(!f64::NAN.is_subnormal());
     /// assert!(!f64::INFINITY.is_subnormal());
-    /// // `0` 和 `min` 之间的值是次正规数（Subnormal）。
+    /// // Values between `0` and `min` are Subnormal.
     /// assert!(lower_than_min.is_subnormal());
     /// ```
     /// [subnormal]: https://en.wikipedia.org/wiki/Denormal_number
@@ -609,8 +609,8 @@ impl f64 {
         matches!(self.classify(), FpCategory::Subnormal)
     }
 
-    /// 如果该数既不是零、无穷、
-    /// [次正规数]，也不是 NaN，则返回 `true`。
+    /// Returns `true` if the number is neither zero, infinite,
+    /// [subnormal], or NaN.
     ///
     /// ```
     /// let min = f64::MIN_POSITIVE; // 2.2250738585072014e-308f64
@@ -624,7 +624,7 @@ impl f64 {
     /// assert!(!zero.is_normal());
     /// assert!(!f64::NAN.is_normal());
     /// assert!(!f64::INFINITY.is_normal());
-    /// // `0` 和 `min` 之间的值是次正规数（Subnormal）。
+    /// // Values between `0` and `min` are Subnormal.
     /// assert!(!lower_than_min.is_normal());
     /// ```
     /// [subnormal]: https://en.wikipedia.org/wiki/Denormal_number
@@ -636,9 +636,9 @@ impl f64 {
         matches!(self.classify(), FpCategory::Normal)
     }
 
-    /// 返回该数的浮点分类。如果只需要测试一个性质
-    /// 通常使用对应的专用谓词会更快，
-    /// 而不是先调用 `classify`。
+    /// Returns the floating point category of the number. If only one property
+    /// is going to be tested, it is generally faster to use the specific
+    /// predicate instead.
     ///
     /// ```
     /// use std::num::FpCategory;
@@ -652,11 +652,11 @@ impl f64 {
     #[stable(feature = "rust1", since = "1.0.0")]
     #[rustc_const_stable(feature = "const_float_classify", since = "1.83.0")]
     pub const fn classify(self) -> FpCategory {
-        // 这里曾经使用复杂逻辑，避开简单的按位测试，以便
-        // 绕过 x87 目标上的错误代码生成（见
-        // https://github.com/rust-lang/rust/issues/114479）。但经历若干 LLVM 版本后，
-        // 我们的测试已无法发现复杂版本与朴素版本
-        // 之间有差异，因此现在回到朴素版本。
+        // We used to have complicated logic here that avoids the simple bit-based tests to work
+        // around buggy codegen for x87 targets (see
+        // https://github.com/rust-lang/rust/issues/114479). However, some LLVM versions later, none
+        // of our tests is able to find any difference between the complicated and the naive
+        // version, so now we are back to the naive version.
         let b = self.to_bits();
         match (b & Self::MAN_MASK, b & Self::EXP_MASK) {
             (0, Self::EXP_MASK) => FpCategory::Infinite,
@@ -667,15 +667,15 @@ impl f64 {
         }
     }
 
-    /// 如果 `self` 带正号则返回 `true`，这包括 `+0.0`、
-    /// 符号位为正的 NaN 以及正无穷。
+    /// Returns `true` if `self` has a positive sign, including `+0.0`, NaNs with
+    /// positive sign bit and positive infinity.
     ///
-    /// 注意，IEEE 754 并不为 NaN 情形下的符号位赋予数学含义，
-    /// 而 Rust 也不保证 NaN 的位模式会在算术运算中
-    /// 保持不变，因此对 NaN 调用 `is_sign_positive` 的结果
-    /// 可能产生意外或不可移植的结果。更多信息见[规范
-    /// 中的 NaN 位模式](f32#nan-bit-patterns)。如果需要完全可移植的行为，请使用 `self.signum() == 1.0`
-    /// （它会对所有 NaN 返回 `false`）。
+    /// Note that IEEE 754 doesn't assign any meaning to the sign bit in case of
+    /// a NaN, and as Rust doesn't guarantee that the bit pattern of NaNs are
+    /// conserved over arithmetic operations, the result of `is_sign_positive` on
+    /// a NaN might produce an unexpected or non-portable result. See the [specification
+    /// of NaN bit patterns](f32#nan-bit-patterns) for more info. Use `self.signum() == 1.0`
+    /// if you need fully portable behavior (will return `false` for all NaNs).
     ///
     /// ```
     /// let f = 7.0_f64;
@@ -701,15 +701,15 @@ impl f64 {
         self.is_sign_positive()
     }
 
-    /// 如果 `self` 带负号则返回 `true`，这包括 `-0.0`、
-    /// 符号位为负的 NaN 以及负无穷。
+    /// Returns `true` if `self` has a negative sign, including `-0.0`, NaNs with
+    /// negative sign bit and negative infinity.
     ///
-    /// 注意，IEEE 754 并不为 NaN 情形下的符号位赋予数学含义，
-    /// 而 Rust 也不保证 NaN 的位模式会在算术运算中
-    /// 保持不变，因此对 NaN 调用 `is_sign_negative` 的结果
-    /// 可能产生意外或不可移植的结果。更多信息见[规范
-    /// 中的 NaN 位模式](f32#nan-bit-patterns)。如果需要完全可移植的行为，请使用 `self.signum() == -1.0`
-    /// （它会对所有 NaN 返回 `false`）。
+    /// Note that IEEE 754 doesn't assign any meaning to the sign bit in case of
+    /// a NaN, and as Rust doesn't guarantee that the bit pattern of NaNs are
+    /// conserved over arithmetic operations, the result of `is_sign_negative` on
+    /// a NaN might produce an unexpected or non-portable result. See the [specification
+    /// of NaN bit patterns](f32#nan-bit-patterns) for more info. Use `self.signum() == -1.0`
+    /// if you need fully portable behavior (will return `false` for all NaNs).
     ///
     /// ```
     /// let f = 7.0_f64;
@@ -723,8 +723,8 @@ impl f64 {
     #[rustc_const_stable(feature = "const_float_classify", since = "1.83.0")]
     #[inline]
     pub const fn is_sign_negative(self) -> bool {
-        // IEEE 754 规定：当且仅当 x 带负号时，isSignMinus(x) 为 true。isSignMinus
-        // 同样适用于零和 NaN。
+        // IEEE754 says: isSignMinus(x) is true if and only if x has negative sign. isSignMinus
+        // applies to zeros and NaNs as well.
         self.to_bits() & Self::SIGN_MASK != 0
     }
 
@@ -737,28 +737,28 @@ impl f64 {
         self.is_sign_negative()
     }
 
-    /// 返回严格大于 `self` 的最小可表示数。
+    /// Returns the least number greater than `self`.
     ///
-    /// 设 `TINY` 为最小可表示正 `f64` 值，则：
-    ///   - 如果 `self.is_nan()`，返回 `self`；
-    ///   - 如果 `self` 是 [`NEG_INFINITY`]，返回 [`MIN`]；
-    ///   - 如果 `self` 是 `-TINY`，返回 -0.0；
-    ///   - 如果 `self` 是 -0.0 或 +0.0，返回 `TINY`；
-    ///   - 如果 `self` 是 [`MAX`] 或 [`INFINITY`]，返回 [`INFINITY`]；
-    ///   - 否则返回唯一一个严格大于 `self` 的最小值。
+    /// Let `TINY` be the smallest representable positive `f64`. Then,
+    ///  - if `self.is_nan()`, this returns `self`;
+    ///  - if `self` is [`NEG_INFINITY`], this returns [`MIN`];
+    ///  - if `self` is `-TINY`, this returns -0.0;
+    ///  - if `self` is -0.0 or +0.0, this returns `TINY`;
+    ///  - if `self` is [`MAX`] or [`INFINITY`], this returns [`INFINITY`];
+    ///  - otherwise the unique least value greater than `self` is returned.
     ///
-    /// 对所有非 NaN 的 `x`，恒等式 `x.next_up() == -(-x).next_down()` 成立。当 `x`
-    /// 为有限值时，`x == x.next_up().next_down()` 也成立。
+    /// The identity `x.next_up() == -(-x).next_down()` holds for all non-NaN `x`. When `x`
+    /// is finite `x == x.next_up().next_down()` also holds.
     ///
     /// ```rust
-    /// // f64::EPSILON 是 1.0 与下一个更大的数之间的差值。
+    /// // f64::EPSILON is the difference between 1.0 and the next number up.
     /// assert_eq!(1.0f64.next_up(), 1.0 + f64::EPSILON);
-    /// // 但对大多数数字而言并非如此。
+    /// // But not for most numbers.
     /// assert!(0.1f64.next_up() < 0.1 + f64::EPSILON);
     /// assert_eq!(9007199254740992f64.next_up(), 9007199254740994.0);
     /// ```
     ///
-    /// 该操作对应 IEEE 754 的 `nextUp`。
+    /// This operation corresponds to IEEE-754 `nextUp`.
     ///
     /// [`NEG_INFINITY`]: Self::NEG_INFINITY
     /// [`INFINITY`]: Self::INFINITY
@@ -769,9 +769,9 @@ impl f64 {
     #[stable(feature = "float_next_up_down", since = "1.86.0")]
     #[rustc_const_stable(feature = "float_next_up_down", since = "1.86.0")]
     pub const fn next_up(self) -> Self {
-        // 某些目标会违反 Rust 对 IEEE 语义的假设，例如把
-        // 非正规数刷新为零。这通常是不 sound 且不受支持的，但这里
-        // 仍尽力在这些目标上产生正确结果。
+        // Some targets violate Rust's assumption of IEEE semantics, e.g. by flushing
+        // denormals to zero. This is in general unsound and unsupported, but here
+        // we do our best to still produce the correct result on such targets.
         let bits = self.to_bits();
         if self.is_nan() || bits == Self::INFINITY.to_bits() {
             return self;
@@ -788,28 +788,28 @@ impl f64 {
         Self::from_bits(next_bits)
     }
 
-    /// 返回严格小于 `self` 的最大可表示数。
+    /// Returns the greatest number less than `self`.
     ///
-    /// 设 `TINY` 为最小可表示正 `f64` 值，则：
-    ///   - 如果 `self.is_nan()`，返回 `self`；
-    ///   - 如果 `self` 是 [`INFINITY`]，返回 [`MAX`]；
-    ///   - 如果 `self` 是 `TINY`，返回 0.0；
-    ///   - 如果 `self` 是 -0.0 或 +0.0，返回 `-TINY`；
-    ///   - 如果 `self` 是 [`MIN`] 或 [`NEG_INFINITY`]，返回 [`NEG_INFINITY`]；
-    ///   - 否则返回唯一一个严格小于 `self` 的最大值。
+    /// Let `TINY` be the smallest representable positive `f64`. Then,
+    ///  - if `self.is_nan()`, this returns `self`;
+    ///  - if `self` is [`INFINITY`], this returns [`MAX`];
+    ///  - if `self` is `TINY`, this returns 0.0;
+    ///  - if `self` is -0.0 or +0.0, this returns `-TINY`;
+    ///  - if `self` is [`MIN`] or [`NEG_INFINITY`], this returns [`NEG_INFINITY`];
+    ///  - otherwise the unique greatest value less than `self` is returned.
     ///
-    /// 对所有非 NaN 的 `x`，恒等式 `x.next_down() == -(-x).next_up()` 成立。当 `x`
-    /// 为有限值时，`x == x.next_down().next_up()` 也成立。
+    /// The identity `x.next_down() == -(-x).next_up()` holds for all non-NaN `x`. When `x`
+    /// is finite `x == x.next_down().next_up()` also holds.
     ///
     /// ```rust
     /// let x = 1.0f64;
-    /// // 将值限制到范围 [0, 1) 内。
+    /// // Clamp value into range [0, 1).
     /// let clamped = x.clamp(0.0, 1.0f64.next_down());
     /// assert!(clamped < 1.0);
     /// assert_eq!(clamped.next_up(), 1.0);
     /// ```
     ///
-    /// 该操作对应 IEEE 754 的 `nextDown`。
+    /// This operation corresponds to IEEE-754 `nextDown`.
     ///
     /// [`NEG_INFINITY`]: Self::NEG_INFINITY
     /// [`INFINITY`]: Self::INFINITY
@@ -820,9 +820,9 @@ impl f64 {
     #[stable(feature = "float_next_up_down", since = "1.86.0")]
     #[rustc_const_stable(feature = "float_next_up_down", since = "1.86.0")]
     pub const fn next_down(self) -> Self {
-        // 某些目标会违反 Rust 对 IEEE 语义的假设，例如把
-        // 非正规数刷新为零。这通常是不 sound 且不受支持的，但这里
-        // 仍尽力在这些目标上产生正确结果。
+        // Some targets violate Rust's assumption of IEEE semantics, e.g. by flushing
+        // denormals to zero. This is in general unsound and unsupported, but here
+        // we do our best to still produce the correct result on such targets.
         let bits = self.to_bits();
         if self.is_nan() || bits == Self::NEG_INFINITY.to_bits() {
             return self;
@@ -839,7 +839,7 @@ impl f64 {
         Self::from_bits(next_bits)
     }
 
-    /// 取一个数的倒数（逆），即 `1/x`。
+    /// Takes the reciprocal (inverse) of a number, `1/x`.
     ///
     /// ```
     /// let x = 2.0_f64;
@@ -855,14 +855,14 @@ impl f64 {
         1.0 / self
     }
 
-    /// 将弧度转换为角度。
+    /// Converts radians to degrees.
     ///
-    /// # 未指定精度
+    /// # Unspecified precision
     ///
-    /// 该函数的精度是不确定的；这意味着它会随平台、
-    /// Rust 版本变化，甚至同一次执行中不同调用之间也可能不同。
+    /// The precision of this function is non-deterministic. This means it varies by platform,
+    /// Rust version, and can even differ within the same execution from one invocation to the next.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let angle = std::f64::consts::PI;
@@ -877,21 +877,21 @@ impl f64 {
     #[rustc_const_stable(feature = "const_float_methods", since = "1.85.0")]
     #[inline]
     pub const fn to_degrees(self) -> f64 {
-        // 这里的除法相对于 180/π 的真实值正确舍入。
-        // 虽然 π 是无理数且已经被舍入，但这里发生的双重舍入
-        // 恰好能为 `f64` 产生正确结果。
+        // The division here is correctly rounded with respect to the true value of 180/π.
+        // Although π is irrational and already rounded, the double rounding happens
+        // to produce correct result for f64.
         const PIS_IN_180: f64 = 180.0 / consts::PI;
         self * PIS_IN_180
     }
 
-    /// 将角度转换为弧度。
+    /// Converts degrees to radians.
     ///
-    /// # 未指定精度
+    /// # Unspecified precision
     ///
-    /// 该函数的精度是不确定的；这意味着它会随平台、
-    /// Rust 版本变化，甚至同一次执行中不同调用之间也可能不同。
+    /// The precision of this function is non-deterministic. This means it varies by platform,
+    /// Rust version, and can even differ within the same execution from one invocation to the next.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let angle = 180.0_f64;
@@ -906,24 +906,24 @@ impl f64 {
     #[rustc_const_stable(feature = "const_float_methods", since = "1.85.0")]
     #[inline]
     pub const fn to_radians(self) -> f64 {
-        // 这里的除法相对于 π/180 的真实值正确舍入。
-        // 虽然 π 是无理数且已经被舍入，但这里发生的双重舍入
-        // 恰好能为 `f64` 产生正确结果。
+        // The division here is correctly rounded with respect to the true value of π/180.
+        // Although π is irrational and already rounded, the double rounding happens
+        // to produce correct result for f64.
         const RADS_PER_DEG: f64 = consts::PI / 180.0;
         self * RADS_PER_DEG
     }
 
-    /// 返回两个数中的最大值，并忽略 NaN。
+    /// Returns the maximum of the two numbers, ignoring NaN.
     ///
-    /// 如果恰好一个参数是 NaN（quiet 或 signaling），则返回另一个参数；
-    /// 如果两个参数都是 NaN，则返回 NaN，其位模式会
-    /// 按照通常的[算术运算规则](f32#nan-bit-patterns) 选择。如果输入
-    /// 比较为相等（例如 `+0.0` 和 `-0.0`），则可能以非确定方式
-    /// 返回任一输入。
+    /// If exactly one of the arguments is NaN (quiet or signaling), then the other argument is
+    /// returned. If both arguments are NaN, the return value is NaN, with the bit pattern picked
+    /// using the usual [rules for arithmetic operations](f32#nan-bit-patterns). If the inputs
+    /// compare equal (such as for the case of `+0.0` and `-0.0`), either input may be returned
+    /// non-deterministically.
     ///
-    /// NaN 的处理遵循 IEEE 754-2019 中 `maximumNumber` 的语义，将所有
-    /// NaN 同等处理以确保操作满足结合律。有符号零的处理
-    /// 遵循 IEEE 754-2008 中 `maxNum` 的语义。
+    /// The handling of NaNs follows the IEEE 754-2019 semantics for `maximumNumber`, treating all
+    /// NaNs the same way to ensure the operation is associative. The handling of signed zeros
+    /// follows the IEEE 754-2008 semantics for `maxNum`.
     ///
     /// ```
     /// let x = 1.0_f64;
@@ -940,17 +940,17 @@ impl f64 {
         intrinsics::maxnumf64(self, other)
     }
 
-    /// 返回两个数中的最小值，并忽略 NaN。
+    /// Returns the minimum of the two numbers, ignoring NaN.
     ///
-    /// 如果恰好一个参数是 NaN（quiet 或 signaling），则返回另一个参数；
-    /// 如果两个参数都是 NaN，则返回 NaN，其位模式会
-    /// 按照通常的[算术运算规则](f32#nan-bit-patterns) 选择。如果输入
-    /// 比较为相等（例如 `+0.0` 和 `-0.0`），则可能以非确定方式
-    /// 返回任一输入。
+    /// If exactly one of the arguments is NaN (quiet or signaling), then the other argument is
+    /// returned. If both arguments are NaN, the return value is NaN, with the bit pattern picked
+    /// using the usual [rules for arithmetic operations](f32#nan-bit-patterns). If the inputs
+    /// compare equal (such as for the case of `+0.0` and `-0.0`), either input may be returned
+    /// non-deterministically.
     ///
-    /// NaN 的处理遵循 IEEE 754-2019 中 `minimumNumber` 的语义，将所有
-    /// NaN 同等处理以确保操作满足结合律。有符号零的处理
-    /// 遵循 IEEE 754-2008 中 `minNum` 的语义。
+    /// The handling of NaNs follows the IEEE 754-2019 semantics for `minimumNumber`, treating all
+    /// NaNs the same way to ensure the operation is associative. The handling of signed zeros
+    /// follows the IEEE 754-2008 semantics for `minNum`.
     ///
     /// ```
     /// let x = 1.0_f64;
@@ -967,17 +967,17 @@ impl f64 {
         intrinsics::minnumf64(self, other)
     }
 
-    /// 返回两个数中的最大值，并传播 NaN。
+    /// Returns the maximum of the two numbers, propagating NaN.
     ///
-    /// 如果至少一个参数是 NaN，则返回 NaN，其位模式
-    /// 按照通常的[算术运算规则](f32#nan-bit-patterns) 选择。此外，
-    /// `-0.0` 被认为小于 `+0.0`，因此该函数对
-    /// 非 NaN 输入完全确定。
+    /// If at least one of the arguments is NaN, the return value is NaN, with the bit pattern
+    /// picked using the usual [rules for arithmetic operations](f32#nan-bit-patterns). Furthermore,
+    /// `-0.0` is considered to be less than `+0.0`, making this function fully deterministic for
+    /// non-NaN inputs.
     ///
-    /// 这与 [`f64::max`] 不同：后者只有在*两个*参数都是 NaN 时才返回 NaN，
-    /// 且不会可靠地为 `-0.0` 与 `+0.0` 排序。
+    /// This is in contrast to [`f64::max`] which only returns NaN when *both* arguments are NaN,
+    /// and which does not reliably order `-0.0` and `+0.0`.
     ///
-    /// 这遵循 IEEE 754-2019 中 `maximum` 的语义。
+    /// This follows the IEEE 754-2019 semantics for `maximum`.
     ///
     /// ```
     /// #![feature(float_minimum_maximum)]
@@ -994,17 +994,17 @@ impl f64 {
         intrinsics::maximumf64(self, other)
     }
 
-    /// 返回两个数中的最小值，并传播 NaN。
+    /// Returns the minimum of the two numbers, propagating NaN.
     ///
-    /// 如果至少一个参数是 NaN，则返回 NaN，其位模式
-    /// 按照通常的[算术运算规则](f32#nan-bit-patterns) 选择。此外，
-    /// `-0.0` 被认为小于 `+0.0`，因此该函数对
-    /// 非 NaN 输入完全确定。
+    /// If at least one of the arguments is NaN, the return value is NaN, with the bit pattern
+    /// picked using the usual [rules for arithmetic operations](f32#nan-bit-patterns). Furthermore,
+    /// `-0.0` is considered to be less than `+0.0`, making this function fully deterministic for
+    /// non-NaN inputs.
     ///
-    /// 这与 [`f64::min`] 不同：后者只有在*两个*参数都是 NaN 时才返回 NaN，
-    /// 且不会可靠地为 `-0.0` 与 `+0.0` 排序。
+    /// This is in contrast to [`f64::min`] which only returns NaN when *both* arguments are NaN,
+    /// and which does not reliably order `-0.0` and `+0.0`.
     ///
-    /// 这遵循 IEEE 754-2019 中 `minimum` 的语义。
+    /// This follows the IEEE 754-2019 semantics for `minimum`.
     ///
     /// ```
     /// #![feature(float_minimum_maximum)]
@@ -1021,12 +1021,12 @@ impl f64 {
         intrinsics::minimumf64(self, other)
     }
 
-    /// 计算 `self` 与 `rhs` 之间的中点（平均值）。
+    /// Calculates the midpoint (average) between `self` and `rhs`.
     ///
-    /// 如果*任一*参数是 NaN，或者参数组合为
-    /// +inf 与 -inf，则返回 NaN。
+    /// This returns NaN when *either* argument is NaN or if a combination of
+    /// +inf and -inf is provided as arguments.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// assert_eq!(1f64.midpoint(4.0), 2.5);
@@ -1044,15 +1044,15 @@ impl f64 {
         let abs_b = b.abs();
 
         if abs_a <= HI && abs_b <= HI {
-            // 溢出不可能发生
+            // Overflow is impossible
             (a + b) / 2.
         } else {
             (a / 2.) + (b / 2.)
         }
     }
 
-    /// 向零舍入，并转换为任意原始整数类型，
-    /// 前提是该值有限且能放入目标类型。
+    /// Rounds toward zero and converts to any primitive integer type,
+    /// assuming that the value is finite and fits in that type.
     ///
     /// ```
     /// let value = 4.6_f64;
@@ -1064,13 +1064,13 @@ impl f64 {
     /// assert_eq!(rounded, i8::MIN);
     /// ```
     ///
-    /// # 安全性(Safety）
+    /// # Safety
     ///
-    /// 该值必须满足：
+    /// The value must:
     ///
-    /// * 不是 `NaN`
-    /// * 不是无穷
-    /// * 截断小数部分之后，能用返回类型 `Int` 表示
+    /// * Not be `NaN`
+    /// * Not be infinite
+    /// * Be representable in the return type `Int`, after truncating off its fractional part
     #[must_use = "this returns the result of the operation, \
                   without modifying the original"]
     #[stable(feature = "float_approx_unchecked_to", since = "1.44.0")]
@@ -1079,25 +1079,25 @@ impl f64 {
     where
         Self: FloatToInt<Int>,
     {
-        // SAFETY: 调用方必须满足
-        // `FloatToInt::to_int_unchecked` 的安全契约。
+        // SAFETY: the caller must uphold the safety contract for
+        // `FloatToInt::to_int_unchecked`.
         unsafe { FloatToInt::<Int>::to_int_unchecked(self) }
     }
 
-    /// 原始 transmutation 到 `u64`。
+    /// Raw transmutation to `u64`.
     ///
-    /// 目前在所有平台上，它都等同于 `transmute::<f64, u64>(self)`。
+    /// This is currently identical to `transmute::<f64, u64>(self)` on all platforms.
     ///
-    /// 关于该操作可移植性的讨论见 [`from_bits`](Self::from_bits)
-    /// （几乎没有问题）。
+    /// See [`from_bits`](Self::from_bits) for some discussion of the
+    /// portability of this operation (there are almost no issues).
     ///
-    /// 注意，该函数不同于 `as` 转换；`as` 试图
-    /// 保留*数值*，而不是位级值。
+    /// Note that this function is distinct from `as` casting, which attempts to
+    /// preserve the *numeric* value, and not the bitwise value.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
-    /// assert!((1f64).to_bits() != 1f64 as u64); // to_bits() 不是类型转换！
+    /// assert!((1f64).to_bits() != 1f64 as u64); // to_bits() is not casting!
     /// assert_eq!((12.5f64).to_bits(), 0x4029000000000000);
     /// ```
     #[must_use = "this returns the result of the operation, \
@@ -1107,41 +1107,41 @@ impl f64 {
     #[allow(unnecessary_transmutes)]
     #[inline]
     pub const fn to_bits(self) -> u64 {
-        // SAFETY: `u64` 是普通旧数据类型，因此总能 transmute 到它。
+        // SAFETY: `u64` is a plain old datatype so we can always transmute to it.
         unsafe { mem::transmute(self) }
     }
 
-    /// 从 `u64` 原始 transmutation。
+    /// Raw transmutation from `u64`.
     ///
-    /// 目前在所有平台上，它都等同于 `transmute::<u64, f64>(v)`。
-    /// 事实证明这具有很强的可移植性，原因有两个：
+    /// This is currently identical to `transmute::<u64, f64>(v)` on all platforms.
+    /// It turns out this is incredibly portable, for two reasons:
     ///
-    /// * 在所有受支持平台上，浮点数与整数具有相同端序。
-    /// * IEEE 754 对浮点数位布局作出了非常精确的规定。
+    /// * Floats and Ints have the same endianness on all supported platforms.
+    /// * IEEE 754 very precisely specifies the bit layout of floats.
     ///
-    /// 但有一个注意点：在 IEEE 754 的 2008 版本之前，
-    /// NaN signaling 位的解释方式并未实际指定。大多数平台
-    /// （尤其是 x86 和 ARM）选择了后来最终
-    /// 在 2008 年标准化的解释，但有些平台并非如此（尤其是 MIPS）。因此，
-    /// MIPS 上的 signaling NaN 在 x86 上会是 quiet NaN，反之亦然。
+    /// However there is one caveat: prior to the 2008 version of IEEE 754, how
+    /// to interpret the NaN signaling bit wasn't actually specified. Most platforms
+    /// (notably x86 and ARM) picked the interpretation that was ultimately
+    /// standardized in 2008, but some didn't (notably MIPS). As a result, all
+    /// signaling NaNs on MIPS are quiet NaNs on x86, and vice-versa.
     ///
-    /// 该实现并不试图跨平台保留 signaling/quiet 属性，
-    /// 而是优先保留精确位模式。这意味着
-    /// 即使该方法的结果从一台 x86 机器经网络发送到一台 MIPS 机器，
-    /// 编码在 NaN 中的任何 payload 也会保留下来。
+    /// Rather than trying to preserve signaling-ness cross-platform, this
+    /// implementation favors preserving the exact bits. This means that
+    /// any payloads encoded in NaNs will be preserved even if the result of
+    /// this method is sent over the network from an x86 machine to a MIPS one.
     ///
-    /// 如果该方法的结果只由产生它们的同一种
-    /// 架构继续处理，则不存在可移植性问题。
+    /// If the results of this method are only manipulated by the same
+    /// architecture that produced them, then there is no portability concern.
     ///
-    /// 如果输入不是 NaN，则不存在可移植性问题。
+    /// If the input isn't NaN, then there is no portability concern.
     ///
-    /// 如果你不关心 signaling/quiet 属性（通常如此），则不存在
-    /// 可移植性问题。
+    /// If you don't care about signaling-ness (very likely), then there is no
+    /// portability concern.
     ///
-    /// 注意，该函数不同于 `as` 转换；`as` 试图
-    /// 保留*数值*，而不是位级值。
+    /// Note that this function is distinct from `as` casting, which attempts to
+    /// preserve the *numeric* value, and not the bitwise value.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let v = f64::from_bits(0x4029000000000000);
@@ -1153,18 +1153,18 @@ impl f64 {
     #[inline]
     #[allow(unnecessary_transmutes)]
     pub const fn from_bits(v: u64) -> Self {
-        // 事实证明 sNaN 相关的安全问题被高估了。
-        // SAFETY: `u64` 是普通旧数据类型，因此总能从它 transmute。
+        // It turns out the safety issues with sNaN were overblown! Hooray!
+        // SAFETY: `u64` is a plain old datatype so we can always transmute from it.
         unsafe { mem::transmute(v) }
     }
 
-    /// 返回该浮点数的内存表示，形式为字节数组，端序为
-    /// 大端（网络）字节序。
+    /// Returns the memory representation of this floating point number as a byte array in
+    /// big-endian (network) byte order.
     ///
-    /// 关于该操作可移植性的讨论见 [`from_bits`](Self::from_bits)
-    /// （几乎没有问题）。
+    /// See [`from_bits`](Self::from_bits) for some discussion of the
+    /// portability of this operation (there are almost no issues).
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let bytes = 12.5f64.to_be_bytes();
@@ -1179,13 +1179,13 @@ impl f64 {
         self.to_bits().to_be_bytes()
     }
 
-    /// 返回该浮点数的内存表示，形式为字节数组，端序为
-    /// 小端字节序。
+    /// Returns the memory representation of this floating point number as a byte array in
+    /// little-endian byte order.
     ///
-    /// 关于该操作可移植性的讨论见 [`from_bits`](Self::from_bits)
-    /// （几乎没有问题）。
+    /// See [`from_bits`](Self::from_bits) for some discussion of the
+    /// portability of this operation (there are almost no issues).
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let bytes = 12.5f64.to_le_bytes();
@@ -1200,19 +1200,19 @@ impl f64 {
         self.to_bits().to_le_bytes()
     }
 
-    /// 返回该浮点数的内存表示，形式为字节数组，端序为
-    /// 本机字节序。
+    /// Returns the memory representation of this floating point number as a byte array in
+    /// native byte order.
     ///
-    /// 由于使用目标平台的本机端序，可移植代码
-    /// 应按需要改用 [`to_be_bytes`] 或 [`to_le_bytes`]。
+    /// As the target platform's native endianness is used, portable code
+    /// should use [`to_be_bytes`] or [`to_le_bytes`], as appropriate, instead.
     ///
     /// [`to_be_bytes`]: f64::to_be_bytes
     /// [`to_le_bytes`]: f64::to_le_bytes
     ///
-    /// 关于该操作可移植性的讨论见 [`from_bits`](Self::from_bits)
-    /// （几乎没有问题）。
+    /// See [`from_bits`](Self::from_bits) for some discussion of the
+    /// portability of this operation (there are almost no issues).
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let bytes = 12.5f64.to_ne_bytes();
@@ -1234,12 +1234,12 @@ impl f64 {
         self.to_bits().to_ne_bytes()
     }
 
-    /// 从大端字节序数组表示创建浮点值。
+    /// Creates a floating point value from its representation as a byte array in big endian.
     ///
-    /// 关于该操作可移植性的讨论见 [`from_bits`](Self::from_bits)
-    /// （几乎没有问题）。
+    /// See [`from_bits`](Self::from_bits) for some discussion of the
+    /// portability of this operation (there are almost no issues).
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let value = f64::from_be_bytes([0x40, 0x29, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
@@ -1253,12 +1253,12 @@ impl f64 {
         Self::from_bits(u64::from_be_bytes(bytes))
     }
 
-    /// 从小端字节序数组表示创建浮点值。
+    /// Creates a floating point value from its representation as a byte array in little endian.
     ///
-    /// 关于该操作可移植性的讨论见 [`from_bits`](Self::from_bits)
-    /// （几乎没有问题）。
+    /// See [`from_bits`](Self::from_bits) for some discussion of the
+    /// portability of this operation (there are almost no issues).
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let value = f64::from_le_bytes([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x29, 0x40]);
@@ -1272,19 +1272,19 @@ impl f64 {
         Self::from_bits(u64::from_le_bytes(bytes))
     }
 
-    /// 从本机端序字节数组表示创建浮点值。
+    /// Creates a floating point value from its representation as a byte array in native endian.
     ///
-    /// 由于使用目标平台的本机端序，可移植代码
-    /// 通常应按需要改用 [`from_be_bytes`] 或 [`from_le_bytes`]，
-    /// 以保持可移植性。
+    /// As the target platform's native endianness is used, portable code
+    /// likely wants to use [`from_be_bytes`] or [`from_le_bytes`], as
+    /// appropriate instead.
     ///
     /// [`from_be_bytes`]: f64::from_be_bytes
     /// [`from_le_bytes`]: f64::from_le_bytes
     ///
-    /// 关于该操作可移植性的讨论见 [`from_bits`](Self::from_bits)
-    /// （几乎没有问题）。
+    /// See [`from_bits`](Self::from_bits) for some discussion of the
+    /// portability of this operation (there are almost no issues).
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let value = f64::from_ne_bytes(if cfg!(target_endian = "big") {
@@ -1302,36 +1302,36 @@ impl f64 {
         Self::from_bits(u64::from_ne_bytes(bytes))
     }
 
-    /// 返回 `self` 与 `other` 之间的排序。
+    /// Returns the ordering between `self` and `other`.
     ///
-    /// 不同于浮点数标准偏序比较，
-    /// 该比较总是按照
-    /// IEEE 754（2008 修订版）浮点标准中定义的 `totalOrder` 谓词
-    /// 产生全序。值按以下顺序排列：
+    /// Unlike the standard partial comparison between floating point numbers,
+    /// this comparison always produces an ordering in accordance to
+    /// the `totalOrder` predicate as defined in the IEEE 754 (2008 revision)
+    /// floating point standard. The values are ordered in the following sequence:
     ///
-    /// - 负 quiet NaN
-    /// - 负 signaling NaN
-    /// - 负无穷
-    /// - 负数
-    /// - 负次正规数
-    /// - 负零
-    /// - 正零
-    /// - 正次正规数
-    /// - 正数
-    /// - 正无穷
-    /// - 正 signaling NaN
-    /// - 正 quiet NaN。
+    /// - negative quiet NaN
+    /// - negative signaling NaN
+    /// - negative infinity
+    /// - negative numbers
+    /// - negative subnormal numbers
+    /// - negative zero
+    /// - positive zero
+    /// - positive subnormal numbers
+    /// - positive numbers
+    /// - positive infinity
+    /// - positive signaling NaN
+    /// - positive quiet NaN.
     ///
-    /// 该函数建立的顺序并不总是与
-    /// `f64` 的 [`PartialOrd`] 和 [`PartialEq`] 实现一致。例如，
-    /// 这些实现认为负零和正零相等，而 `total_cmp`
-    /// 不会。
+    /// The ordering established by this function does not always agree with the
+    /// [`PartialOrd`] and [`PartialEq`] implementations of `f64`. For example,
+    /// they consider negative and positive zero equal, while `total_cmp`
+    /// doesn't.
     ///
-    /// 对 signaling NaN 位的解释遵循
-    /// IEEE 754 标准的定义，这可能与某些
-    /// 较旧且不符合标准的硬件实现（例如 MIPS）的解释不同。
+    /// The interpretation of the signaling NaN bit follows the definition in
+    /// the IEEE 754 standard, which may not match the interpretation by some of
+    /// the older, non-conformant (e.g. MIPS) hardware implementations.
     ///
-    /// # 示例
+    /// # Example
     ///
     /// ```
     /// struct GoodBoy {
@@ -1350,7 +1350,7 @@ impl f64 {
     ///
     /// bois.sort_by(|a, b| a.weight.total_cmp(&b.weight));
     ///
-    /// // `f64::NAN` 可能为正也可能为负，这会影响排序顺序。
+    /// // `f64::NAN` could be positive or negative, which will affect the sort order.
     /// if f64::NAN.is_sign_negative() {
     ///     assert!(bois.into_iter().map(|b| b.weight)
     ///         .zip([f64::NAN, -5.0, 0.1, 10.0, 99.0, f64::INFINITY].iter())
@@ -1369,48 +1369,48 @@ impl f64 {
         let mut left = self.to_bits() as i64;
         let mut right = other.to_bits() as i64;
 
-        // 对于负数，翻转除符号位以外的所有位，
-        // 从而得到类似二进制补码整数的布局
+        // In case of negatives, flip all the bits except the sign
+        // to achieve a similar layout as two's complement integers
         //
-        // 为什么这样可行？IEEE 754 浮点数由三个字段组成：
-        // 符号位, exponent and mantissa. The set of exponent and mantissa
-        // 字段整体具有一个性质：其按位顺序
-        // 等于已定义数值大小处的数值幅度顺序。
-        // NaN 值通常没有定义幅度，但
-        // IEEE 754 totalOrder 也定义 NaN 值遵循
-        // 按位顺序。这就得到文档注释中说明的排序。
-        // 不过，负数和正数的幅度表示相同，
-        // 只有符号位不同。
-        // 为了便于把浮点数当作有符号整数比较，
-        // 需要在负数情形下翻转指数和尾数位。
-        // 这实际上把这些数转换成了“二进制补码”形式。
+        // Why does this work? IEEE 754 floats consist of three fields:
+        // Sign bit, exponent and mantissa. The set of exponent and mantissa
+        // fields as a whole have the property that their bitwise order is
+        // equal to the numeric magnitude where the magnitude is defined.
+        // The magnitude is not normally defined on NaN values, but
+        // IEEE 754 totalOrder defines the NaN values also to follow the
+        // bitwise order. This leads to order explained in the doc comment.
+        // However, the representation of magnitude is the same for negative
+        // and positive numbers – only the sign bit is different.
+        // To easily compare the floats as signed integers, we need to
+        // flip the exponent and mantissa bits in case of negative numbers.
+        // We effectively convert the numbers to "two's complement" form.
         //
-        // 为了执行翻转，我们构造一个掩码并与其异或。
-        // 我们以无分支方式从负号值计算出“除符号位外全为 1”的
-        // 掩码：右移会进行符号扩展，
-        // 因此用符号位“填满”掩码，然后
-        // 转换为无符号值以再推入一个零位。
-        // 对于正值，掩码全为零，因此这是空操作。
+        // To do the flipping, we construct a mask and XOR against it.
+        // We branchlessly calculate an "all-ones except for the sign bit"
+        // mask from negative-signed values: right shifting sign-extends
+        // the integer, so we "fill" the mask with sign bits, and then
+        // convert to unsigned to push one more zero bit.
+        // On positive values, the mask is all zeros, so it's a no-op.
         left ^= (((left >> 63) as u64) >> 1) as i64;
         right ^= (((right >> 63) as u64) >> 1) as i64;
 
         left.cmp(&right)
     }
 
-    /// 将值限制在某个区间内，但 NaN 除外。
+    /// Restrict a value to a certain interval unless it is NaN.
     ///
-    /// 如果 `self` 大于 `max` 则返回 `max`；如果 `self`
-    /// 小于 `min` 则返回 `min`；否则返回 `self`。
+    /// Returns `max` if `self` is greater than `max`, and `min` if `self` is
+    /// less than `min`. Otherwise this returns `self`.
     ///
-    /// 注意，如果初始值是 NaN，该函数也返回 NaN。
-    /// 如果结果为零，并且 `self`、`min`、`max` 三个输入中存在
-    /// zeros with different sign, either `0.0` or `-0.0` is returned 返回任一输入。
+    /// Note that this function returns NaN if the initial value was NaN as
+    /// well. If the result is zero and among the three inputs `self`, `min`, and `max` there are
+    /// zeros with different sign, either `0.0` or `-0.0` is returned non-deterministically.
     ///
     /// # Panics
     ///
-    /// 如果 `min > max`、`min` 是 NaN 或 `max` 是 NaN，则 panic。
+    /// Panics if `min > max`, `min` is NaN, or `max` is NaN.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// assert!((-3.0f64).clamp(-2.0, 1.0) == -2.0);
@@ -1418,10 +1418,10 @@ impl f64 {
     /// assert!((2.0f64).clamp(-2.0, 1.0) == 1.0);
     /// assert!((f64::NAN).clamp(-2.0, 1.0).is_nan());
     ///
-    /// // 这些总是返回零，但其符号（被 `==` 忽略）是不确定的。
+    /// // These always returns zero, but the sign (which is ignored by `==`) is non-deterministic.
     /// assert!((0.0f64).clamp(-0.0, -0.0) == 0.0);
     /// assert!((1.0f64).clamp(-0.0, 0.0) == 0.0);
-    /// // 这肯定是一个负零。
+    /// // This is definitely a negative zero.
     /// assert!((-1.0f64).clamp(-0.0, 1.0).is_sign_negative());
     /// ```
     #[must_use = "method returns a new number and does not mutate the original value"]
@@ -1446,18 +1446,18 @@ impl f64 {
         self
     }
 
-    /// 把该数限制在以零为中心的对称范围内。
+    /// Clamps this number to a symmetric range centered around zero.
     ///
-    /// 该方法把该数的幅度（绝对值）限制为不超过 `limit`。
+    /// The method clamps the number's magnitude (absolute value) to be at most `limit`.
     ///
-    /// 它在功能上等价于 `self.clamp(-limit, limit)`，但更
-    /// 明确表达调用意图。
+    /// This is functionally equivalent to `self.clamp(-limit, limit)`, but is more
+    /// explicit about the intent.
     ///
     /// # Panics
     ///
-    /// 如果 `limit` 为负或 NaN，则 panic，因为这表示逻辑错误。
+    /// Panics if `limit` is negative or NaN, as this indicates a logic error.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// #![feature(clamp_magnitude)]
@@ -1475,11 +1475,11 @@ impl f64 {
         self.clamp(-limit, limit)
     }
 
-    /// 计算 `self` 的绝对值。
+    /// Computes the absolute value of `self`.
     ///
-    /// 该函数总是返回精确结果。
+    /// This function always returns the precise result.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let x = 3.5_f64;
@@ -1498,13 +1498,13 @@ impl f64 {
         intrinsics::fabsf64(self)
     }
 
-    /// 返回一个表示 `self` 符号的数。
+    /// Returns a number that represents the sign of `self`.
     ///
-    /// - 如果该数为正、`+0.0` 或 `INFINITY`，返回 `1.0`
-    /// - 如果该数为负、`-0.0` 或 `NEG_INFINITY`，返回 `-1.0`
-    /// - 如果该数是 NaN，则返回 NaN
+    /// - `1.0` if the number is positive, `+0.0` or `INFINITY`
+    /// - `-1.0` if the number is negative, `-0.0` or `NEG_INFINITY`
+    /// - NaN if the number is NaN
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let f = 3.5_f64;
@@ -1522,21 +1522,21 @@ impl f64 {
         if self.is_nan() { Self::NAN } else { 1.0_f64.copysign(self) }
     }
 
-    /// 返回一个由 `self` 的幅度和
-    /// `sign` 的符号组成的数。
+    /// Returns a number composed of the magnitude of `self` and the sign of
+    /// `sign`.
     ///
-    /// 如果 `self` 与 `sign` 的符号相同，则等于 `self`；否则等于 `-self`。
-    /// 如果 `self` 是 NaN，则返回一个 payload 与 `self` 相同、符号位来自 `sign` 的 NaN。
+    /// Equal to `self` if the sign of `self` and `sign` are the same, otherwise equal to `-self`.
+    /// If `self` is a NaN, then a NaN with the same payload as `self` and the sign bit of `sign` is
+    /// returned.
     ///
+    /// If `sign` is a NaN, then this operation will still carry over its sign into the result. Note
+    /// that IEEE 754 doesn't assign any meaning to the sign bit in case of a NaN, and as Rust
+    /// doesn't guarantee that the bit pattern of NaNs are conserved over arithmetic operations, the
+    /// result of `copysign` with `sign` being a NaN might produce an unexpected or non-portable
+    /// result. See the [specification of NaN bit patterns](primitive@f32#nan-bit-patterns) for more
+    /// info.
     ///
-    /// 如果 `sign` 是 NaN，该操作仍会把它的符号带到结果中。注意，
-    /// IEEE 754 并不为 NaN 情形下的符号位赋予数学含义，而 Rust
-    /// 也不保证 NaN 的位模式会在算术运算中保持不变，
-    /// 当 `sign` 为 NaN 时，`copysign` 的结果可能产生意外或不可移植的
-    /// 结果。更多信息见 [NaN 位模式规范](primitive@f32#nan-bit-patterns)。
-    ///
-    ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let f = 3.5_f64;
@@ -1556,9 +1556,9 @@ impl f64 {
         intrinsics::copysignf64(self, sign)
     }
 
-    /// 允许基于代数规则进行优化的浮点加法。
+    /// Float addition that allows optimizations based on algebraic rules.
     ///
-    /// 更多信息见[代数运算符](primitive@f32#algebraic-operators)。
+    /// See [algebraic operators](primitive@f32#algebraic-operators) for more info.
     #[must_use = "method returns a new number and does not mutate the original value"]
     #[unstable(feature = "float_algebraic", issue = "136469")]
     #[rustc_const_unstable(feature = "float_algebraic", issue = "136469")]
@@ -1567,9 +1567,9 @@ impl f64 {
         intrinsics::fadd_algebraic(self, rhs)
     }
 
-    /// 允许基于代数规则进行优化的浮点减法。
+    /// Float subtraction that allows optimizations based on algebraic rules.
     ///
-    /// 更多信息见[代数运算符](primitive@f32#algebraic-operators)。
+    /// See [algebraic operators](primitive@f32#algebraic-operators) for more info.
     #[must_use = "method returns a new number and does not mutate the original value"]
     #[unstable(feature = "float_algebraic", issue = "136469")]
     #[rustc_const_unstable(feature = "float_algebraic", issue = "136469")]
@@ -1578,9 +1578,9 @@ impl f64 {
         intrinsics::fsub_algebraic(self, rhs)
     }
 
-    /// 允许基于代数规则进行优化的浮点乘法。
+    /// Float multiplication that allows optimizations based on algebraic rules.
     ///
-    /// 更多信息见[代数运算符](primitive@f32#algebraic-operators)。
+    /// See [algebraic operators](primitive@f32#algebraic-operators) for more info.
     #[must_use = "method returns a new number and does not mutate the original value"]
     #[unstable(feature = "float_algebraic", issue = "136469")]
     #[rustc_const_unstable(feature = "float_algebraic", issue = "136469")]
@@ -1589,9 +1589,9 @@ impl f64 {
         intrinsics::fmul_algebraic(self, rhs)
     }
 
-    /// 允许基于代数规则进行优化的浮点除法。
+    /// Float division that allows optimizations based on algebraic rules.
     ///
-    /// 更多信息见[代数运算符](primitive@f32#algebraic-operators)。
+    /// See [algebraic operators](primitive@f32#algebraic-operators) for more info.
     #[must_use = "method returns a new number and does not mutate the original value"]
     #[unstable(feature = "float_algebraic", issue = "136469")]
     #[rustc_const_unstable(feature = "float_algebraic", issue = "136469")]
@@ -1600,9 +1600,9 @@ impl f64 {
         intrinsics::fdiv_algebraic(self, rhs)
     }
 
-    /// 允许基于代数规则进行优化的浮点取余。
+    /// Float remainder that allows optimizations based on algebraic rules.
     ///
-    /// 更多信息见[代数运算符](primitive@f32#algebraic-operators)。
+    /// See [algebraic operators](primitive@f32#algebraic-operators) for more info.
     #[must_use = "method returns a new number and does not mutate the original value"]
     #[unstable(feature = "float_algebraic", issue = "136469")]
     #[rustc_const_unstable(feature = "float_algebraic", issue = "136469")]
@@ -1613,17 +1613,17 @@ impl f64 {
 }
 
 #[unstable(feature = "core_float_math", issue = "137578")]
-/// `core` 中浮点函数的实验性实现。
+/// Experimental implementations of floating point functions in `core`.
 ///
-/// _本模块中的独立函数仅用于测试。
-/// 它们将作为固有方法稳定下来。_
+/// _The standalone functions in this module are for testing only.
+/// They will be stabilized as inherent methods._
 pub mod math {
     use crate::intrinsics;
     use crate::num::libm;
 
-    /// `core` 中 `floor` 的实验版本。详细行为见 [`f64::floor`]。
+    /// Experimental version of `floor` in `core`. See [`f64::floor`] for details.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// #![feature(core_float_math)]
@@ -1639,8 +1639,8 @@ pub mod math {
     /// assert_eq!(f64::math::floor(h), -4.0);
     /// ```
     ///
-    /// _这个独立函数仅用于测试。
-    /// 它将作为固有方法稳定下来。_
+    /// _This standalone function is for testing only.
+    /// It will be stabilized as an inherent method._
     ///
     /// [`f64::floor`]: ../../../std/primitive.f64.html#method.floor
     #[inline]
@@ -1650,9 +1650,9 @@ pub mod math {
         intrinsics::floorf64(x)
     }
 
-    /// `core` 中 `ceil` 的实验版本。详细行为见 [`f64::ceil`]。
+    /// Experimental version of `ceil` in `core`. See [`f64::ceil`] for details.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// #![feature(core_float_math)]
@@ -1666,8 +1666,8 @@ pub mod math {
     /// assert_eq!(f64::math::ceil(g), 4.0);
     /// ```
     ///
-    /// _这个独立函数仅用于测试。
-    /// 它将作为固有方法稳定下来。_
+    /// _This standalone function is for testing only.
+    /// It will be stabilized as an inherent method._
     ///
     /// [`f64::ceil`]: ../../../std/primitive.f64.html#method.ceil
     #[inline]
@@ -1678,9 +1678,9 @@ pub mod math {
         intrinsics::ceilf64(x)
     }
 
-    /// `core` 中 `round` 的实验版本。详细行为见 [`f64::round`]。
+    /// Experimental version of `round` in `core`. See [`f64::round`] for details.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// #![feature(core_float_math)]
@@ -1700,8 +1700,8 @@ pub mod math {
     /// assert_eq!(f64::math::round(j), 5.0);
     /// ```
     ///
-    /// _这个独立函数仅用于测试。
-    /// 它将作为固有方法稳定下来。_
+    /// _This standalone function is for testing only.
+    /// It will be stabilized as an inherent method._
     ///
     /// [`f64::round`]: ../../../std/primitive.f64.html#method.round
     #[inline]
@@ -1711,10 +1711,10 @@ pub mod math {
         intrinsics::roundf64(x)
     }
 
-    /// `core` 中 `round_ties_even` 的实验版本。详细行为见 [`f64::round_ties_even`]。
-    /// 详细信息。
+    /// Experimental version of `round_ties_even` in `core`. See [`f64::round_ties_even`] for
+    /// details.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// #![feature(core_float_math)]
@@ -1732,8 +1732,8 @@ pub mod math {
     /// assert_eq!(f64::math::round_ties_even(i), 4.0);
     /// ```
     ///
-    /// _这个独立函数仅用于测试。
-    /// 它将作为固有方法稳定下来。_
+    /// _This standalone function is for testing only.
+    /// It will be stabilized as an inherent method._
     ///
     /// [`f64::round_ties_even`]: ../../../std/primitive.f64.html#method.round_ties_even
     #[inline]
@@ -1743,9 +1743,9 @@ pub mod math {
         intrinsics::round_ties_even_f64(x)
     }
 
-    /// `core` 中 `trunc` 的实验版本。详细行为见 [`f64::trunc`]。
+    /// Experimental version of `trunc` in `core`. See [`f64::trunc`] for details.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// #![feature(core_float_math)]
@@ -1761,8 +1761,8 @@ pub mod math {
     /// assert_eq!(f64::math::trunc(h), -3.0);
     /// ```
     ///
-    /// _这个独立函数仅用于测试。
-    /// 它将作为固有方法稳定下来。_
+    /// _This standalone function is for testing only.
+    /// It will be stabilized as an inherent method._
     ///
     /// [`f64::trunc`]: ../../../std/primitive.f64.html#method.trunc
     #[inline]
@@ -1773,9 +1773,9 @@ pub mod math {
         intrinsics::truncf64(x)
     }
 
-    /// `core` 中 `fract` 的实验版本。详细行为见 [`f64::fract`]。
+    /// Experimental version of `fract` in `core`. See [`f64::fract`] for details.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// #![feature(core_float_math)]
@@ -1791,8 +1791,8 @@ pub mod math {
     /// assert!(abs_difference_y < 1e-10);
     /// ```
     ///
-    /// _这个独立函数仅用于测试。
-    /// 它将作为固有方法稳定下来。_
+    /// _This standalone function is for testing only.
+    /// It will be stabilized as an inherent method._
     ///
     /// [`f64::fract`]: ../../../std/primitive.f64.html#method.fract
     #[inline]
@@ -1802,14 +1802,14 @@ pub mod math {
         x - trunc(x)
     }
 
-    /// `core` 中 `mul_add` 的实验版本。详细行为见 [`f64::mul_add`]。
+    /// Experimental version of `mul_add` in `core`. See [`f64::mul_add`] for details.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// #![feature(core_float_math)]
     ///
-    /// # // FIXME(#140515): mingw 的 fma 实现有误
+    /// # // FIXME(#140515): mingw has an incorrect fma
     /// # // https://sourceforge.net/p/mingw-w64/bugs/848/
     /// # #[cfg(all(target_os = "windows", target_env = "gnu", not(target_abi = "llvm")))] {
     /// use core::f64;
@@ -1825,18 +1825,18 @@ pub mod math {
     /// let one_minus_eps = 1.0_f64 - f64::EPSILON;
     /// let minus_one = -1.0_f64;
     ///
-    /// // 精确结果 (1 + eps) * (1 - eps) = 1 - eps * eps。
+    /// // The exact result (1 + eps) * (1 - eps) = 1 - eps * eps.
     /// assert_eq!(
     ///     f64::math::mul_add(one_plus_eps, one_minus_eps, minus_one),
     ///     -f64::EPSILON * f64::EPSILON
     /// );
-    /// // 非融合乘加运算会产生不同的舍入结果。
+    /// // Different rounding with the non-fused multiply and add.
     /// assert_eq!(one_plus_eps * one_minus_eps + minus_one, 0.0);
     /// # }
     /// ```
     ///
-    /// _这个独立函数仅用于测试。
-    /// 它将作为固有方法稳定下来。_
+    /// _This standalone function is for testing only.
+    /// It will be stabilized as an inherent method._
     ///
     /// [`f64::mul_add`]: ../../../std/primitive.f64.html#method.mul_add
     #[inline]
@@ -1847,9 +1847,9 @@ pub mod math {
         intrinsics::fmaf64(x, a, b)
     }
 
-    /// `core` 中 `div_euclid` 的实验版本。详细行为见 [`f64::div_euclid`]。
+    /// Experimental version of `div_euclid` in `core`. See [`f64::div_euclid`] for details.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// #![feature(core_float_math)]
@@ -1864,8 +1864,8 @@ pub mod math {
     /// assert_eq!(f64::math::div_euclid(-a, -b), 2.0); // -7.0 >= -4.0 * 2.0
     /// ```
     ///
-    /// _这个独立函数仅用于测试。
-    /// 它将作为固有方法稳定下来。_
+    /// _This standalone function is for testing only.
+    /// It will be stabilized as an inherent method._
     ///
     /// [`f64::div_euclid`]: ../../../std/primitive.f64.html#method.div_euclid
     #[inline]
@@ -1879,9 +1879,9 @@ pub mod math {
         q
     }
 
-    /// `core` 中 `rem_euclid` 的实验版本。详细行为见 [`f64::rem_euclid`]。
+    /// Experimental version of `rem_euclid` in `core`. See [`f64::rem_euclid`] for details.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// #![feature(core_float_math)]
@@ -1894,12 +1894,12 @@ pub mod math {
     /// assert_eq!(f64::math::rem_euclid(-a, b), 1.0);
     /// assert_eq!(f64::math::rem_euclid(a, -b), 3.0);
     /// assert_eq!(f64::math::rem_euclid(-a, -b), 1.0);
-    /// // 受舍入误差所限
+    /// // limitation due to round-off error
     /// assert!(f64::math::rem_euclid(-f64::EPSILON, 3.0) != 0.0);
     /// ```
     ///
-    /// _这个独立函数仅用于测试。
-    /// 它将作为固有方法稳定下来。_
+    /// _This standalone function is for testing only.
+    /// It will be stabilized as an inherent method._
     ///
     /// [`f64::rem_euclid`]: ../../../std/primitive.f64.html#method.rem_euclid
     #[inline]
@@ -1911,9 +1911,9 @@ pub mod math {
         if r < 0.0 { r + rhs.abs() } else { r }
     }
 
-    /// `core` 中 `powi` 的实验版本。详细行为见 [`f64::powi`]。
+    /// Experimental version of `powi` in `core`. See [`f64::powi`] for details.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// #![feature(core_float_math)]
@@ -1927,8 +1927,8 @@ pub mod math {
     /// assert_eq!(f64::math::powi(f64::NAN, 0), 1.0);
     /// ```
     ///
-    /// _这个独立函数仅用于测试。
-    /// 它将作为固有方法稳定下来。_
+    /// _This standalone function is for testing only.
+    /// It will be stabilized as an inherent method._
     ///
     /// [`f64::powi`]: ../../../std/primitive.f64.html#method.powi
     #[inline]
@@ -1938,9 +1938,9 @@ pub mod math {
         intrinsics::powif64(x, n)
     }
 
-    /// `core` 中 `sqrt` 的实验版本。详细行为见 [`f64::sqrt`]。
+    /// Experimental version of `sqrt` in `core`. See [`f64::sqrt`] for details.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// #![feature(core_float_math)]
@@ -1956,8 +1956,8 @@ pub mod math {
     /// assert_eq!(f64::math::sqrt(negative_zero), negative_zero);
     /// ```
     ///
-    /// _这个独立函数仅用于测试。
-    /// 它将作为固有方法稳定下来。_
+    /// _This standalone function is for testing only.
+    /// It will be stabilized as an inherent method._
     ///
     /// [`f64::sqrt`]: ../../../std/primitive.f64.html#method.sqrt
     #[inline]
@@ -1968,9 +1968,9 @@ pub mod math {
         intrinsics::sqrtf64(x)
     }
 
-    /// `core` 中 `abs_sub` 的实验版本。详细行为见 [`f64::abs_sub`]。
+    /// Experimental version of `abs_sub` in `core`. See [`f64::abs_sub`] for details.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// #![feature(core_float_math)]
@@ -1987,8 +1987,8 @@ pub mod math {
     /// assert!(abs_difference_y < 1e-10);
     /// ```
     ///
-    /// _这个独立函数仅用于测试。
-    /// 它将作为固有方法稳定下来。_
+    /// _This standalone function is for testing only.
+    /// It will be stabilized as an inherent method._
     ///
     /// [`f64::abs_sub`]: ../../../std/primitive.f64.html#method.abs_sub
     #[inline]
@@ -2008,9 +2008,9 @@ pub mod math {
         libm::fdim(x, other)
     }
 
-    /// `core` 中 `cbrt` 的实验版本。详细行为见 [`f64::cbrt`]。
+    /// Experimental version of `cbrt` in `core`. See [`f64::cbrt`] for details.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// #![feature(core_float_math)]
@@ -2025,8 +2025,8 @@ pub mod math {
     /// assert!(abs_difference < 1e-10);
     /// ```
     ///
-    /// _这个独立函数仅用于测试。
-    /// 它将作为固有方法稳定下来。_
+    /// _This standalone function is for testing only.
+    /// It will be stabilized as an inherent method._
     ///
     /// [`f64::cbrt`]: ../../../std/primitive.f64.html#method.cbrt
     #[inline]

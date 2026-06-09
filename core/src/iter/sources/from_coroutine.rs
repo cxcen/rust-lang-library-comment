@@ -2,13 +2,13 @@ use crate::fmt;
 use crate::ops::{Coroutine, CoroutineState};
 use crate::pin::Pin;
 
-/// 创建一个新的迭代器，每次迭代都会调用给定 coroutine。
+/// Creates a new iterator where each iteration calls the provided coroutine.
 ///
-/// 类似 [`iter::from_fn`]。
+/// Similar to [`iter::from_fn`].
 ///
 /// [`iter::from_fn`]: crate::iter::from_fn
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// #![feature(coroutines)]
@@ -28,9 +28,10 @@ pub fn from_coroutine<G: Coroutine<Return = ()> + Unpin>(coroutine: G) -> FromCo
     FromCoroutine(coroutine)
 }
 
-/// 遍历底层 coroutine 所 yield 值的迭代器。
+/// An iterator over the values yielded by an underlying coroutine.
 ///
-/// 该 `struct` 由 [`iter::from_coroutine()`] 函数创建。更多信息见该函数文档。
+/// This `struct` is created by the [`iter::from_coroutine()`] function. See its documentation for
+/// more.
 ///
 /// [`iter::from_coroutine()`]: from_coroutine
 #[unstable(feature = "iter_from_coroutine", issue = "43122", reason = "coroutines are unstable")]

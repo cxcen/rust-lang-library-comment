@@ -1,5 +1,6 @@
-//! "Printing Floating-Point Numbers Quickly and Accurately with Integers"[^1] 中 Grisu3
-//! algorithm 的 Rust 改写版。它使用约 1KB 的预计算表，换取大多数输入上的高速路径。
+//! Rust adaptation of the Grisu3 algorithm described in "Printing Floating-Point Numbers Quickly
+//! and Accurately with Integers"[^1]. It uses about 1KB of precomputed table, and in turn, it's
+//! very quick for most inputs.
 //!
 //! [^1]: Florian Loitsch. 2010. Printing floating-point numbers quickly and
 //!   accurately with integers. SIGPLAN Not. 45, 6 (June 2010), 233-243.
@@ -8,14 +9,14 @@ use crate::mem::MaybeUninit;
 use crate::num::diy_float::Fp;
 use crate::num::flt2dec::{Decoded, MAX_SIG_DIGITS, round_up};
 
-// 取值理由见 `format_shortest_opt` 中的注释。
+// see the comments in `format_shortest_opt` for the rationale.
 #[doc(hidden)]
 pub const ALPHA: i16 = -60;
 #[doc(hidden)]
 pub const GAMMA: i16 = -32;
 
 /*
-# 下列 Python 代码生成这张表：
+# the following Python code generates this table:
 for i in xrange(-308, 333, 8):
     if i >= 0: f = 10**i; e = 0
     else: f = 2**(80-4*i) // 10**-i; e = 4 * i - 80
@@ -126,7 +127,7 @@ pub fn cached_power(alpha: i16, gamma: i16) -> (i16, Fp) {
     (k, Fp { f, e })
 }
 
-/// 给定 `x > 0`，返回 `(k, 10^k)`，满足 `10^k <= x < 10^(k + 1)`。
+/// Given `x > 0`, returns `(k, 10^k)` such that `10^k <= x < 10^(k+1)`.
 #[doc(hidden)]
 pub fn max_pow10_no_more_than(x: u32) -> (u8, u32) {
     debug_assert!(x > 0);
@@ -158,9 +159,9 @@ pub fn max_pow10_no_more_than(x: u32) -> (u8, u32) {
     }
 }
 
-/// Grisu 的 shortest mode 实现。
+/// The shortest mode implementation for Grisu.
 ///
-/// 如果无法保证返回精确表示，则返回 `None`，由调用方回退到 Dragon。
+/// It returns `None` when it would return an inexact representation otherwise.
 pub fn format_shortest_opt<'a>(
     d: &Decoded,
     buf: &'a mut [MaybeUninit<u8>],
@@ -171,29 +172,30 @@ pub fn format_shortest_opt<'a>(
     assert!(d.mant.checked_add(d.plus).is_some());
     assert!(d.mant.checked_sub(d.minus).is_some());
     assert!(buf.len() >= MAX_SIG_DIGITS);
-    assert!(d.mant + d.plus < (1 << 61)); // 至少需要额外 3 位精度。
+    assert!(d.mant + d.plus < (1 << 61)); // we need at least three bits of additional precision
 
-    // 从具有共享 exponent 的规格化值开始。
+    // start with the normalized values with the shared exponent
     let plus = Fp { f: d.mant + d.plus, e: d.exp }.normalize();
     let minus = Fp { f: d.mant - d.minus, e: d.exp }.normalize_to(plus.e);
     let v = Fp { f: d.mant, e: d.exp }.normalize_to(plus.e);
 
-    // 找到某个 `cached = 10^minusk`，使 `ALPHA <= minusk + plus.e + 64 <= GAMMA`。
-    // 因为 `plus` 已规格化，这意味着
-    // `2^(62 + ALPHA) <= plus * cached < 2^(64 + GAMMA)`；按这里选择的 `ALPHA` 和
-    // `GAMMA`，`plus * cached` 会落入 `[4, 2^32)`。
+    // find any `cached = 10^minusk` such that `ALPHA <= minusk + plus.e + 64 <= GAMMA`.
+    // since `plus` is normalized, this means `2^(62 + ALPHA) <= plus * cached < 2^(64 + GAMMA)`;
+    // given our choices of `ALPHA` and `GAMMA`, this puts `plus * cached` into `[4, 2^32)`.
     //
-    // 显然希望最大化 `GAMMA - ALPHA`，这样不需要太多缓存的 10 的幂；但还要考虑：
+    // it is obviously desirable to maximize `GAMMA - ALPHA`,
+    // so that we don't need many cached powers of 10, but there are some considerations:
     //
-    // 1. 希望 `floor(plus * cached)` 保持在 `u32` 内，因为它需要一次昂贵的除法。
-    //    这基本无法避免，因为精度估算需要余数。
-    // 2. `floor(plus * cached)` 的余数会反复乘以 10，不能溢出。
+    // 1. we want to keep `floor(plus * cached)` within `u32` since it needs a costly division.
+    //    (this is not really avoidable, remainder is required for accuracy estimation.)
+    // 2. the remainder of `floor(plus * cached)` repeatedly gets multiplied by 10,
+    //    and it should not overflow.
     //
-    // 第一个条件给出 `64 + GAMMA <= 32`，第二个条件给出 `10 * 2^-ALPHA <= 2^64`；
-    // 在这些约束下，-60 和 -32 是最大范围，V8 也使用这组值。
+    // the first gives `64 + GAMMA <= 32`, while the second gives `10 * 2^-ALPHA <= 2^64`;
+    // -60 and -32 is the maximal range with this constraint, and V8 also uses them.
     let (minusk, cached) = cached_power(ALPHA - plus.e - 64, GAMMA - plus.e - 64);
 
-    // 缩放 Fp。根据 Theorem 5.1，最大误差为 1 ulp。
+    // scale fps. this gives the maximal error of 1 ulp (proved from Theorem 5.1).
     let plus = plus.mul(cached);
     let minus = minus.mul(cached);
     let v = v.mul(cached);
@@ -211,53 +213,56 @@ pub fn format_shortest_opt<'a>(
     //   |   minus   |                 |     v     |                 |   plus    |
     // minus1     minus0           v - 1 ulp   v + 1 ulp           plus0       plus1
     //
-    // 上图中的 `minus`、`v` 和 `plus` 都是*量化*近似（误差 < 1 ulp）。由于不知道误差为正
-    // 还是为负，因此使用两个等距近似，最大误差为 2 ulps。
+    // above `minus`, `v` and `plus` are *quantized* approximations (error < 1 ulp).
+    // as we don't know the error is positive or negative, we use two approximations spaced equally
+    // and have the maximal error of 2 ulps.
     //
-    // "unsafe region" 是初始生成时采用的宽松区间；"safe region" 是最终只接受的保守区间。
-    // 我们先在 unsafe region 内得到一个正确表示，再尝试找到同时位于 safe region 且最接近
-    // `v` 的表示。如果找不到，就放弃并回退。
+    // the "unsafe region" is a liberal interval which we initially generate.
+    // the "safe region" is a conservative interval which we only accept.
+    // we start with the correct repr within the unsafe region, and try to find the closest repr
+    // to `v` which is also within the safe region. if we can't, we give up.
     let plus1 = plus.f + 1;
-    //  let plus0 = plus.f - 1; // 仅用于解释。
-    //  let minus0 = minus.f + 1; // 仅用于解释。
+    //  let plus0 = plus.f - 1; // only for explanation
+    //  let minus0 = minus.f + 1; // only for explanation
     let minus1 = minus.f - 1;
-    let e = -plus.e as usize; // 共享 exponent。
+    let e = -plus.e as usize; // shared exponent
 
-    // 把 `plus1` 拆成整数部分和小数部分。整数部分保证能放入 u32，因为缓存幂保证
-    // `plus < 2^32`，且受精度要求约束，规格化后的 `plus.f` 始终小于 `2^64 - 2^4`。
+    // divide `plus1` into integral and fractional parts.
+    // integral parts are guaranteed to fit in u32, since cached power guarantees `plus < 2^32`
+    // and normalized `plus.f` is always less than `2^64 - 2^4` due to the precision requirement.
     let plus1int = (plus1 >> e) as u32;
     let plus1frac = plus1 & ((1 << e) - 1);
 
-    // 计算不大于 `plus1` 的最大 `10^max_kappa`（因此 `plus1 < 10^(max_kappa + 1)`）。
-    // 这是下面 `kappa` 的上界。
+    // calculate the largest `10^max_kappa` no more than `plus1` (thus `plus1 < 10^(max_kappa+1)`).
+    // this is an upper bound of `kappa` below.
     let (max_kappa, max_ten_kappa) = max_pow10_no_more_than(plus1int);
 
     let mut i = 0;
     let exp = max_kappa as i16 - minusk + 1;
 
-    // Theorem 6.2：若 `k` 是满足 `0 <= y mod 10^k <= y - x` 的最大整数，则
-    // `V = floor(y / 10^k) * 10^k` 位于 `[x, y]` 内，并且是该范围内的 shortest 表示之一
-    // （有效数字数量最少）。
+    // Theorem 6.2: if `k` is the greatest integer s.t. `0 <= y mod 10^k <= y - x`,
+    //              then `V = floor(y / 10^k) * 10^k` is in `[x, y]` and one of the shortest
+    //              representations (with the minimal number of significant digits) in that range.
     //
-    // 按 Theorem 6.2，在 `(minus1, plus1)` 之间寻找数字长度 `kappa`。通过要求
-    // `y mod 10^k < y - x`，可把定理改造成排除 `x` 的形式。
-    // 例如 `x = 32000`、`y = 32777` 时，`kappa = 2`，因为
-    // `y mod 10^3 = 777 < y - x = 777` 不成立。算法依赖后续验证阶段排除 `y`。
+    // find the digit length `kappa` between `(minus1, plus1)` as per Theorem 6.2.
+    // Theorem 6.2 can be adopted to exclude `x` by requiring `y mod 10^k < y - x` instead.
+    // (e.g., `x` = 32000, `y` = 32777; `kappa` = 2 since `y mod 10^3 = 777 < y - x = 777`.)
+    // the algorithm relies on the later verification phase to exclude `y`.
     let delta1 = plus1 - minus1;
-    //  let delta1int = (delta1 >> e) as usize; // 仅用于解释。
+    //  let delta1int = (delta1 >> e) as usize; // only for explanation
     let delta1frac = delta1 & ((1 << e) - 1);
 
-    // 渲染整数部分，同时在每一步检查精度。
+    // render integral parts, while checking for the accuracy at each step.
     let mut ten_kappa = max_ten_kappa; // 10^kappa
-    let mut remainder = plus1int; // 尚未渲染的数字位
+    let mut remainder = plus1int; // digits yet to be rendered
     loop {
-        // 因为 `plus1 >= 10^kappa`，始终至少有一位可渲染。
-        // 不变量：
+        // we always have at least one digit to render, as `plus1 >= 10^kappa`
+        // invariants:
         // - `delta1int <= remainder < 10^(kappa+1)`
         // - `plus1int = d[0..n-1] * 10^(kappa+1) + remainder`
-        //   (由此可得 `remainder = plus1int % 10^(kappa+1)`)
+        //   (it follows that `remainder = plus1int % 10^(kappa+1)`)
 
-        // 把 `remainder` 除以 `10^kappa`；两者都按 `2^-e` 缩放。
+        // divide `remainder` by `10^kappa`. both are scaled by `2^-e`.
         let q = remainder / ten_kappa;
         let r = remainder % ten_kappa;
         debug_assert!(q < 10);
@@ -266,10 +271,10 @@ pub fn format_shortest_opt<'a>(
 
         let plus1rem = ((r as u64) << e) + plus1frac; // == (plus1 % 10^kappa) * 2^e
         if plus1rem < delta1 {
-            // `plus1 % 10^kappa < delta1 = plus1 - minus1`，已经找到正确的 `kappa`。
-            let ten_kappa = (ten_kappa as u64) << e; // 把 10^kappa 缩放回共享 exponent。
+            // `plus1 % 10^kappa < delta1 = plus1 - minus1`; we've found the correct `kappa`.
+            let ten_kappa = (ten_kappa as u64) << e; // scale 10^kappa back to the shared exponent
             return round_and_weed(
-                // SAFETY: 上面已经初始化了这段内存。
+                // SAFETY: we initialized that memory above.
                 unsafe { buf[..i].assume_init_mut() },
                 exp,
                 plus1rem,
@@ -280,34 +285,35 @@ pub fn format_shortest_opt<'a>(
             );
         }
 
-        // 渲染完所有整数位时跳出。因为 `plus1 < 10^(max_kappa + 1)`，精确位数是
-        // `max_kappa + 1`。
+        // break the loop when we have rendered all integral digits.
+        // the exact number of digits is `max_kappa + 1` as `plus1 < 10^(max_kappa+1)`.
         if i > max_kappa as usize {
             debug_assert_eq!(ten_kappa, 1);
             break;
         }
 
-        // 恢复不变量。
+        // restore invariants
         ten_kappa /= 10;
         remainder = r;
     }
 
-    // 渲染小数部分，同时在每一步检查精度。这次依赖反复乘法，因为除法会损失精度。
+    // render fractional parts, while checking for the accuracy at each step.
+    // this time we rely on repeated multiplications, as division will lose the precision.
     let mut remainder = plus1frac;
     let mut threshold = delta1frac;
     let mut ulp = 1;
     loop {
-        // 前面跳出前已经检查过，下一位应为有效数字。
-        // 不变量，其中 `m = max_kappa + 1`（整数部分位数）：
+        // the next digit should be significant as we've tested that before breaking out
+        // invariants, where `m = max_kappa + 1` (# of digits in the integral part):
         // - `remainder < 2^e`
         // - `plus1frac * 10^(n-m) = d[m..n-1] * 2^e + remainder`
 
-        remainder *= 10; // 不会溢出，`2^e * 10 < 2^64`。
+        remainder *= 10; // won't overflow, `2^e * 10 < 2^64`
         threshold *= 10;
         ulp *= 10;
 
-        // 把 `remainder` 除以 `10^kappa`。两者都按 `2^e / 10^kappa` 缩放，
-        // 因而后者在这里是隐含的。
+        // divide `remainder` by `10^kappa`.
+        // both are scaled by `2^e / 10^kappa`, so the latter is implicit here.
         let q = remainder >> e;
         let r = remainder & ((1 << e) - 1);
         debug_assert!(q < 10);
@@ -315,9 +321,9 @@ pub fn format_shortest_opt<'a>(
         i += 1;
 
         if r < threshold {
-            let ten_kappa = 1 << e; // 隐含除数
+            let ten_kappa = 1 << e; // implicit divisor
             return round_and_weed(
-                // SAFETY: 上面已经初始化了这段内存。
+                // SAFETY: we initialized that memory above.
                 unsafe { buf[..i].assume_init_mut() },
                 exp,
                 r,
@@ -328,19 +334,21 @@ pub fn format_shortest_opt<'a>(
             );
         }
 
-        // 恢复不变量。
+        // restore invariants
         remainder = r;
     }
 
-    // 已经生成了 `plus1` 的所有有效数字，但还不确定它是否最优。例如 `minus1` 为
-    // 3.14153... 而 `plus1` 为 3.14158... 时，从 3.14154 到 3.14158 共有 5 个不同的
-    // shortest 表示，而当前只有最大的那个。必须逐步减小最后一位并检查是否最优。
-    // 候选最多 9 个（..1 到 ..9），所以这一步很快。（"rounding" 阶段）
+    // we've generated all significant digits of `plus1`, but not sure if it's the optimal one.
+    // for example, if `minus1` is 3.14153... and `plus1` is 3.14158..., there are 5 different
+    // shortest representation from 3.14154 to 3.14158 but we only have the greatest one.
+    // we have to successively decrease the last digit and check if this is the optimal repr.
+    // there are at most 9 candidates (..1 to ..9), so this is fairly quick. ("rounding" phase)
     //
-    // 该函数还检查这个“最优”表示是否真的位于 ulp 范围内；另外由于舍入误差，
-    // “次优”表示也可能才是真正最优。两种情况下都返回 `None`。（"weeding" 阶段）
+    // the function checks if this "optimal" repr is actually within the ulp ranges,
+    // and also, it is possible that the "second-to-optimal" repr can actually be optimal
+    // due to the rounding error. in either cases this returns `None`. ("weeding" phase)
     //
-    // 这里所有参数都按共同（但隐含）的值 `k` 缩放，因此：
+    // all arguments here are scaled by the common (but implicit) value `k`, so that:
     // - `remainder = (plus1 % 10^kappa) * k`
     // - `threshold = (plus1 - minus1) * k` (and also, `remainder < threshold`)
     // - `plus1v = (plus1 - v) * k` (and also, `threshold > plus1v` from prior invariants)
@@ -357,70 +365,73 @@ pub fn format_shortest_opt<'a>(
     ) -> Option<(&[u8], i16)> {
         assert!(!buf.is_empty());
 
-        // 生成两个与 `v`（实际是 `plus1 - v`）相差 1.5 ulps 以内的近似。
-        // 最终表示应同时最接近二者。
+        // produce two approximations to `v` (actually `plus1 - v`) within 1.5 ulps.
+        // the resulting representation should be the closest representation to both.
         //
-        // 这里使用 `plus1 - v`，因为为了避免溢出/下溢，计算都以 `plus1` 为参照
-        // （所以名称看起来有些反过来）。
+        // here `plus1 - v` is used since calculations are done with respect to `plus1`
+        // in order to avoid overflow/underflow (hence the seemingly swapped names).
         let plus1v_down = plus1v + ulp; // plus1 - (v - 1 ulp)
         let plus1v_up = plus1v - ulp; // plus1 - (v + 1 ulp)
 
-        // 递减最后一位，并在最接近 `v + 1 ulp` 的表示处停止。
+        // decrease the last digit and stop at the closest representation to `v + 1 ulp`.
         let mut plus1w = remainder; // plus1w(n) = plus1 - w(n)
         {
             let last = buf.last_mut().unwrap();
 
-            // 使用近似数字 `w(n)`：初始时它等于 `plus1 - plus1 % 10^kappa`。循环体执行
-            // `n` 次后，`w(n) = plus1 - plus1 % 10^kappa - n * 10^kappa`。为了简化检查，
-            // 令 `plus1w(n) = plus1 - w(n) = plus1 % 10^kappa + n * 10^kappa`
-            // （因此 `remainder = plus1w(0)`）。注意 `plus1w(n)` 始终递增。
+            // we work with the approximated digits `w(n)`, which is initially equal to `plus1 -
+            // plus1 % 10^kappa`. after running the loop body `n` times, `w(n) = plus1 -
+            // plus1 % 10^kappa - n * 10^kappa`. we set `plus1w(n) = plus1 - w(n) =
+            // plus1 % 10^kappa + n * 10^kappa` (thus `remainder = plus1w(0)`) to simplify checks.
+            // note that `plus1w(n)` is always increasing.
             //
-            // 有三个终止条件。任意条件成立都会让循环无法继续；但此时至少已知有一个有效
-            // 表示最接近 `v + 1 ulp`。为简洁起见，将它们记作 TC1 到 TC3。
+            // we have three conditions to terminate. any of them will make the loop unable to
+            // proceed, but we then have at least one valid representation known to be closest to
+            // `v + 1 ulp` anyway. we will denote them as TC1 through TC3 for brevity.
             //
-            // TC1：`w(n) <= v + 1 ulp`，也就是这是仍可能成为最近值的最后一个表示。
-            // 它等价于 `plus1 - w(n) = plus1w(n) >= plus1 - (v + 1 ulp) = plus1v_up`。
-            // 结合 TC2（检查 `w(n+1)` 是否有效）可以避免计算 `plus1w(n)` 时可能溢出。
+            // TC1: `w(n) <= v + 1 ulp`, i.e., this is the last repr that can be the closest one.
+            // this is equivalent to `plus1 - w(n) = plus1w(n) >= plus1 - (v + 1 ulp) = plus1v_up`.
+            // combined with TC2 (which checks if `w(n+1)` is valid), this prevents the possible
+            // overflow on the calculation of `plus1w(n)`.
             //
-            // TC2：`w(n+1) < minus1`，也就是下一个表示一定不会舍入到 `v`。它等价于
-            // `plus1 - w(n) + 10^kappa = plus1w(n) + 10^kappa >
-            // plus1 - minus1 = threshold`。左侧可能溢出，但已知 `threshold > plus1v`；
-            // 若 TC1 为假，则 `threshold - plus1w(n) >
-            // threshold - (plus1v - 1 ulp) > 1 ulp`，因此可以安全地改测
-            // `threshold - plus1w(n) < 10^kappa`。
+            // TC2: `w(n+1) < minus1`, i.e., the next repr definitely does not round to `v`.
+            // this is equivalent to `plus1 - w(n) + 10^kappa = plus1w(n) + 10^kappa >
+            // plus1 - minus1 = threshold`. the left hand side can overflow, but we know
+            // `threshold > plus1v`, so if TC1 is false, `threshold - plus1w(n) >
+            // threshold - (plus1v - 1 ulp) > 1 ulp` and we can safely test if
+            // `threshold - plus1w(n) < 10^kappa` instead.
             //
-            // TC3：`abs(w(n) - (v + 1 ulp)) <= abs(w(n+1) - (v + 1 ulp))`，即下一个表示
-            // 不比当前表示更接近 `v + 1 ulp`。令 `z(n) = plus1v_up - plus1w(n)`，则该条件
-            // 变为 `abs(z(n)) <= abs(z(n+1))`。同样假设 TC1 为假，就有 `z(n) > 0`。
-            // 需要考虑两种情况：
+            // TC3: `abs(w(n) - (v + 1 ulp)) <= abs(w(n+1) - (v + 1 ulp))`, i.e., the next repr is
+            // no closer to `v + 1 ulp` than the current repr. given `z(n) = plus1v_up - plus1w(n)`,
+            // this becomes `abs(z(n)) <= abs(z(n+1))`. again assuming that TC1 is false, we have
+            // `z(n) > 0`. we have two cases to consider:
             //
-            // - 当 `z(n+1) >= 0`：TC3 变成 `z(n) <= z(n+1)`。由于 `plus1w(n)` 递增，
-            //   `z(n)` 应递减，所以这显然为假。
-            // - 当 `z(n+1) < 0`：
-            //   - TC3a：前置是 `plus1v_up < plus1w(n) + 10^kappa`。假设 TC2 为假，
-            //     则 `threshold >= plus1w(n) + 10^kappa`，所以不会溢出。
-            //   - TC3b：TC3 变成 `z(n) <= -z(n+1)`，即
-            //     `plus1v_up - plus1w(n) >=
-            //     plus1w(n+1) - plus1v_up = plus1w(n) + 10^kappa - plus1v_up`。
-            //     由非 TC1 可得 `plus1v_up > plus1w(n)`，再结合 TC3a，不会溢出或下溢。
+            // - when `z(n+1) >= 0`: TC3 becomes `z(n) <= z(n+1)`. as `plus1w(n)` is increasing,
+            //   `z(n)` should be decreasing and this is clearly false.
+            // - when `z(n+1) < 0`:
+            //   - TC3a: the precondition is `plus1v_up < plus1w(n) + 10^kappa`. assuming TC2 is
+            //     false, `threshold >= plus1w(n) + 10^kappa` so it cannot overflow.
+            //   - TC3b: TC3 becomes `z(n) <= -z(n+1)`, i.e., `plus1v_up - plus1w(n) >=
+            //     plus1w(n+1) - plus1v_up = plus1w(n) + 10^kappa - plus1v_up`. the negated TC1
+            //     gives `plus1v_up > plus1w(n)`, so it cannot overflow or underflow when
+            //     combined with TC3a.
             //
-            // 因此应在 `TC1 || TC2 || (TC3a && TC3b)` 时停止。下面条件等价于其反面：
-            // `!TC1 && !TC2 && (!TC3a || !TC3b)`。
+            // consequently, we should stop when `TC1 || TC2 || (TC3a && TC3b)`. the following is
+            // equal to its inverse, `!TC1 && !TC2 && (!TC3a || !TC3b)`.
             while plus1w < plus1v_up
                 && threshold - plus1w >= ten_kappa
                 && (plus1w + ten_kappa < plus1v_up
                     || plus1v_up - plus1w >= plus1w + ten_kappa - plus1v_up)
             {
                 *last -= 1;
-                debug_assert!(*last > b'0'); // shortest 表示不能以 `0` 结尾。
+                debug_assert!(*last > b'0'); // the shortest repr cannot end with `0`
                 plus1w += ten_kappa;
             }
         }
 
-        // 检查该表示是否也最接近 `v - 1 ulp`。
+        // check if this representation is also the closest representation to `v - 1 ulp`.
         //
-        // 这与 `v + 1 ulp` 的终止条件相同，只是把所有 `plus1v_up` 换成 `plus1v_down`。
-        // 溢出分析同样成立。
+        // this is simply same to the terminating conditions for `v + 1 ulp`, with all `plus1v_up`
+        // replaced by `plus1v_down` instead. overflow analysis equally holds.
         if plus1w < plus1v_down
             && threshold - plus1w >= ten_kappa
             && (plus1w + ten_kappa < plus1v_down
@@ -429,49 +440,49 @@ pub fn format_shortest_opt<'a>(
             return None;
         }
 
-        // 现在已经得到 `plus1` 与 `minus1` 之间最接近 `v` 的表示。不过该范围太宽松，
-        // 因此要拒绝任何不在 `plus0` 和 `minus0` 之间的 `w(n)`，即
-        // `plus1 - plus1w(n) <= minus0` 或 `plus1 - plus1w(n) >= plus0`。这里利用了
-        // `threshold = plus1 - minus1` 以及 `plus1 - plus0 = minus0 - minus1 = 2 ulp`。
+        // now we have the closest representation to `v` between `plus1` and `minus1`.
+        // this is too liberal, though, so we reject any `w(n)` not between `plus0` and `minus0`,
+        // i.e., `plus1 - plus1w(n) <= minus0` or `plus1 - plus1w(n) >= plus0`. we utilize the facts
+        // that `threshold = plus1 - minus1` and `plus1 - plus0 = minus0 - minus1 = 2 ulp`.
         if 2 * ulp <= plus1w && plus1w <= threshold - 4 * ulp { Some((buf, exp)) } else { None }
     }
 }
 
-/// 带 Dragon fallback 的 Grisu shortest mode 实现。
+/// The shortest mode implementation for Grisu with Dragon fallback.
 ///
-/// 大多数场景应使用该函数。
+/// This should be used for most cases.
 pub fn format_shortest<'a>(
     d: &Decoded,
     buf: &'a mut [MaybeUninit<u8>],
 ) -> (/*digits*/ &'a [u8], /*exp*/ i16) {
     use crate::num::flt2dec::strategy::dragon::format_shortest as fallback;
-    // SAFETY: 借用检查器无法证明第二个分支中可以继续使用 `buf`，因此这里清洗生命周期。
-    // 只有在 `format_shortest_opt` 返回 `None` 时才会重用 `buf`，所以不会同时存在两个
-    // 有效可变借用。
+    // SAFETY: The borrow checker is not smart enough to let us use `buf`
+    // in the second branch, so we launder the lifetime here. But we only re-use
+    // `buf` if `format_shortest_opt` returned `None` so this is okay.
     match format_shortest_opt(d, unsafe { &mut *(buf as *mut _) }) {
         Some(ret) => ret,
         None => fallback(d, buf),
     }
 }
 
-/// Grisu 的 exact 和 fixed mode 实现。
+/// The exact and fixed mode implementation for Grisu.
 ///
-/// 如果无法保证返回精确表示，则返回 `None`，由调用方回退到 Dragon。
+/// It returns `None` when it would return an inexact representation otherwise.
 pub fn format_exact_opt<'a>(
     d: &Decoded,
     buf: &'a mut [MaybeUninit<u8>],
     limit: i16,
 ) -> Option<(/*digits*/ &'a [u8], /*exp*/ i16)> {
     assert!(d.mant > 0);
-    assert!(d.mant < (1 << 61)); // 至少需要额外 3 位精度。
+    assert!(d.mant < (1 << 61)); // we need at least three bits of additional precision
     assert!(!buf.is_empty());
 
-    // 规格化并缩放 `v`。
+    // normalize and scale `v`.
     let v = Fp { f: d.mant, e: d.exp }.normalize();
     let (minusk, cached) = cached_power(ALPHA - v.e - 64, GAMMA - v.e - 64);
     let v = v.mul(cached);
 
-    // 把 `v` 拆成整数部分和小数部分。
+    // divide `v` into integral and fractional parts.
     let e = -v.e as usize;
     let vint = (v.f >> e) as u32;
     let vfrac = v.f & ((1 << e) - 1);
@@ -481,44 +492,51 @@ pub fn format_exact_opt<'a>(
     const POW10_UP_TO_9: [u32; 10] =
         [1, 10, 100, 1000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000, 1_000_000_000];
 
-    // 这里偏离原始算法，先做若干早期检查以判断能否满足 `requested_digits`。如果确定不能，
-    // 就提前退出，避免执行后面大部分重计算。
+    // We deviate from the original algorithm here and do some early checks to determine if we can satisfy requested_digits.
+    // If we determine that we can't, we exit early and avoid most of the heavy lifting that the algorithm otherwise does.
     //
-    // 当 `vfrac` 为零时，可以轻松判断 `vint` 是否能满足请求的位数：
-    //      若 `requested_digits >= 11`，`vint` 单独无法耗尽位数，因为
-    //      `10^(11 - 1) > u32::MAX >= vint`。
-    //      若 `vint < 10^(requested_digits - 1)`，`vint` 无法耗尽位数。
-    //      否则 `vint` 可能可以耗尽位数，需要继续执行剩余代码。
+    // When vfrac is zero, we can easily determine if vint can satisfy requested digits:
+    //      If requested_digits >= 11, vint is not able to exhaust the count by itself since 10^(11 -1) > u32 max value >= vint.
+    //      If vint < 10^(requested_digits - 1), vint cannot exhaust the count.
+    //      Otherwise, vint might be able to exhaust the count and we need to execute the rest of the code.
     if (vfrac == 0) && ((requested_digits >= 11) || (vint < POW10_UP_TO_9[requested_digits - 1])) {
         return None;
     }
 
-    // 旧 `v` 和新 `v`（按 `10^-k` 缩放）都有 < 1 ulp 的误差（Theorem 5.1）。由于不知道
-    // 误差为正还是为负，因此使用两个等距近似，最大误差为 2 ulps（与 shortest 情况相同）。
+    // both old `v` and new `v` (scaled by `10^-k`) has an error of < 1 ulp (Theorem 5.1).
+    // as we don't know the error is positive or negative, we use two approximations
+    // spaced equally and have the maximal error of 2 ulps (same to the shortest case).
     //
-    // 目标是找到 `v - 1 ulp` 和 `v + 1 ulp` 共同拥有的、精确舍入后的数字序列，以获得最大
-    // 置信度。如果做不到，就无法知道哪个才是 `v` 的正确输出，因此放弃并回退。
+    // the goal is to find the exactly rounded series of digits that are common to
+    // both `v - 1 ulp` and `v + 1 ulp`, so that we are maximally confident.
+    // if this is not possible, we don't know which one is the correct output for `v`,
+    // so we give up and fall back.
     //
-    // 这里 `err` 定义为 `1 ulp * 2^e`（与 `vfrac` 中的 ulp 相同），并会随 `v` 缩放。
+    // `err` is defined as `1 ulp * 2^e` here (same to the ulp in `vfrac`),
+    // and we will scale it whenever `v` gets scaled.
     let mut err = 1;
 
-    // 计算不大于 `v` 的最大 `10^max_kappa`（因此 `v < 10^(max_kappa + 1)`）。
-    // 这是下面 `kappa` 的上界。
+    // calculate the largest `10^max_kappa` no more than `v` (thus `v < 10^(max_kappa+1)`).
+    // this is an upper bound of `kappa` below.
     let (max_kappa, max_ten_kappa) = max_pow10_no_more_than(vint);
 
     let mut i = 0;
     let exp = max_kappa as i16 - minusk + 1;
 
-    // 如果存在最后一位限制，需要在实际渲染前缩短缓冲区以避免 double rounding。
-    // 注意发生向上舍入时必须再次扩展缓冲区。
+    // if we are working with the last-digit limitation, we need to shorten the buffer
+    // before the actual rendering in order to avoid double rounding.
+    // note that we have to enlarge the buffer again when rounding up happens!
     let len = if exp <= limit {
-        // 连一位数字都无法生成。例如输入类似 9.5 且需要舍入到 10 时会发生这种情况。
+        // oops, we cannot even produce *one* digit.
+        // this is possible when, say, we've got something like 9.5 and it's being rounded to 10.
         //
-        // 原则上可以立即用空缓冲区调用 `possibly_round`，但把 `max_ten_kappa << e` 再乘
-        // 10 可能溢出。因此这里保守处理，把误差范围扩大 10 倍。这会增加假阴性率，
-        // 但幅度非常、非常小；只有当 mantissa 大于 60 位时才可能明显。
+        // in principle we can immediately call `possibly_round` with an empty buffer,
+        // but scaling `max_ten_kappa << e` by 10 can result in overflow.
+        // thus we are being sloppy here and widen the error range by a factor of 10.
+        // this will increase the false negative rate, but only very, *very* slightly;
+        // it can only matter noticeably when the mantissa is bigger than 60 bits.
         //
-        // SAFETY: `len = 0`，因此“前 len 个字节已初始化”的义务是平凡成立的。
+        // SAFETY: `len=0`, so the obligation of having initialized this memory is trivial.
         return unsafe {
             possibly_round(buf, 0, exp, limit, v.f / 10, (max_ten_kappa as u64) << e, err << e)
         };
@@ -529,99 +547,104 @@ pub fn format_exact_opt<'a>(
     };
     debug_assert!(len > 0);
 
-    // 渲染整数部分。误差完全位于小数部分，因此这里无需检查。
+    // render integral parts.
+    // the error is entirely fractional, so we don't need to check it in this part.
     let mut kappa = max_kappa as i16;
     let mut ten_kappa = max_ten_kappa; // 10^kappa
-    let mut remainder = vint; // 尚未渲染的数字位
+    let mut remainder = vint; // digits yet to be rendered
     loop {
-        // 始终至少有一位可渲染。
-        // 不变量：
+        // we always have at least one digit to render
+        // invariants:
         // - `remainder < 10^(kappa+1)`
         // - `vint = d[0..n-1] * 10^(kappa+1) + remainder`
-        //   （由此可得 `remainder = vint % 10^(kappa + 1)`）
+        //   (it follows that `remainder = vint % 10^(kappa+1)`)
 
-        // 把 `remainder` 除以 `10^kappa`；两者都按 `2^-e` 缩放。
+        // divide `remainder` by `10^kappa`. both are scaled by `2^-e`.
         let q = remainder / ten_kappa;
         let r = remainder % ten_kappa;
         debug_assert!(q < 10);
         buf[i] = MaybeUninit::new(b'0' + q as u8);
         i += 1;
 
-        // 缓冲区是否已满？若已满，用余数执行舍入阶段。
+        // is the buffer full? run the rounding pass with the remainder.
         if i == len {
             let vrem = ((r as u64) << e) + vfrac; // == (v % 10^kappa) * 2^e
-            // SAFETY: 已经初始化了 `len` 个字节。
+            // SAFETY: we have initialized `len` many bytes.
             return unsafe {
                 possibly_round(buf, len, exp, limit, vrem, (ten_kappa as u64) << e, err << e)
             };
         }
 
-        // 渲染完所有整数位时跳出。因为 `plus1 < 10^(max_kappa + 1)`，精确位数是
-        // `max_kappa + 1`。
+        // break the loop when we have rendered all integral digits.
+        // the exact number of digits is `max_kappa + 1` as `plus1 < 10^(max_kappa+1)`.
         if i > max_kappa as usize {
             debug_assert_eq!(ten_kappa, 1);
             debug_assert_eq!(kappa, 0);
             break;
         }
 
-        // 恢复不变量。
+        // restore invariants
         kappa -= 1;
         ten_kappa /= 10;
         remainder = r;
     }
 
-    // 渲染小数部分。
+    // render fractional parts.
     //
-    // 原则上可以继续到最后一个可用数字，再检查准确性。但这里使用有限大小整数，因此需要
-    // 某种准则检测溢出。V8 使用 `remainder > err`，当 `v - 1 ulp` 与 `v` 的前 `i`
-    // 个有效数字不同时该条件会变假；不过它会拒绝太多本来有效的输入。
+    // in principle we can continue to the last available digit and check for the accuracy.
+    // unfortunately we are working with the finite-sized integers, so we need some criterion
+    // to detect the overflow. V8 uses `remainder > err`, which becomes false when
+    // the first `i` significant digits of `v - 1 ulp` and `v` differ. however this rejects
+    // too many otherwise valid input.
     //
-    // 由于后续阶段有正确的溢出检测，这里改用更紧的准则：持续生成直到 `err` 超过
-    // `10^kappa / 2`，此时 `v - 1 ulp` 与 `v + 1 ulp` 之间必定包含两个或更多舍入表示。
-    // 这对应 `possibly_round` 中前两个比较条件。
+    // since the later phase has a correct overflow detection, we instead use tighter criterion:
+    // we continue til `err` exceeds `10^kappa / 2`, so that the range between `v - 1 ulp` and
+    // `v + 1 ulp` definitely contains two or more rounded representations. this is same to
+    // the first two comparisons from `possibly_round`, for the reference.
     let mut remainder = vfrac;
     let maxerr = 1 << (e - 1);
     while err < maxerr {
-        // 不变量，其中 `m = max_kappa + 1`（整数部分位数）：
+        // invariants, where `m = max_kappa + 1` (# of digits in the integral part):
         // - `remainder < 2^e`
         // - `vfrac * 10^(n-m) = d[m..n-1] * 2^e + remainder`
         // - `err = 10^(n-m)`
 
-        remainder *= 10; // 不会溢出，`2^e * 10 < 2^64`。
-        err *= 10; // 不会溢出，`err * 10 < 2^e * 5 < 2^64`。
+        remainder *= 10; // won't overflow, `2^e * 10 < 2^64`
+        err *= 10; // won't overflow, `err * 10 < 2^e * 5 < 2^64`
 
-        // 把 `remainder` 除以 `10^kappa`。两者都按 `2^e / 10^kappa` 缩放，
-        // 因而后者在这里是隐含的。
+        // divide `remainder` by `10^kappa`.
+        // both are scaled by `2^e / 10^kappa`, so the latter is implicit here.
         let q = remainder >> e;
         let r = remainder & ((1 << e) - 1);
         debug_assert!(q < 10);
         buf[i] = MaybeUninit::new(b'0' + q as u8);
         i += 1;
 
-        // 缓冲区是否已满？若已满，用余数执行舍入阶段。
+        // is the buffer full? run the rounding pass with the remainder.
         if i == len {
-            // SAFETY: 已经初始化了 `len` 个字节。
+            // SAFETY: we have initialized `len` many bytes.
             return unsafe { possibly_round(buf, len, exp, limit, r, 1 << e, err) };
         }
 
-        // 恢复不变量。
+        // restore invariants
         remainder = r;
     }
 
-    // 继续计算已经无用（`possibly_round` 一定失败），因此放弃。
+    // further calculation is useless (`possibly_round` definitely fails), so we give up.
     return None;
 
-    // 已生成 `v` 的所有请求数字，它们也应与 `v - 1 ulp` 的对应数字相同。现在检查是否存在
-    // 一个同时被 `v - 1 ulp` 与 `v + 1 ulp` 共享的唯一表示；它可以与已生成数字相同，
-    // 也可以是这些数字向上舍入后的版本。如果该范围包含多个相同长度的表示，则无法确定，
-    // 应返回 `None`。
+    // we've generated all requested digits of `v`, which should be also same to corresponding
+    // digits of `v - 1 ulp`. now we check if there is a unique representation shared by
+    // both `v - 1 ulp` and `v + 1 ulp`; this can be either same to generated digits, or
+    // to the rounded-up version of those digits. if the range contains multiple representations
+    // of the same length, we cannot be sure and should return `None` instead.
     //
-    // 这里所有参数都按共同（但隐含）的值 `k` 缩放，因此：
+    // all arguments here are scaled by the common (but implicit) value `k`, so that:
     // - `remainder = (v % 10^kappa) * k`
     // - `ten_kappa = 10^kappa * k`
     // - `ulp = 2^-e * k`
     //
-    // SAFETY: `buf` 的前 `len` 个字节必须已经初始化。
+    // SAFETY: the first `len` bytes of `buf` must be initialized.
     unsafe fn possibly_round(
         buf: &mut [MaybeUninit<u8>],
         mut len: usize,
@@ -642,10 +665,11 @@ pub fn format_exact_opt<'a>(
         //     |     v     |
         // v - 1 ulp   v + 1 ulp
         //
-        // （供参考：虚线表示给定位数下可能表示的精确值。）
+        // (for the reference, the dotted line indicates the exact value for
+        // possible representations in given number of digits.)
         //
-        // 误差太大，导致 `v - 1 ulp` 与 `v + 1 ulp` 之间至少有三个可能表示。
-        // 因而无法确定哪一个正确。
+        // error is too large that there are at least three possible representations
+        // between `v - 1 ulp` and `v + 1 ulp`. we cannot determine which one is correct.
         if ulp >= ten_kappa {
             return None;
         }
@@ -659,8 +683,9 @@ pub fn format_exact_opt<'a>(
         //     |     v     |
         // v - 1 ulp   v + 1 ulp
         //
-        // 实际上，1/2 ulp 已足以引入两个可能表示。（注意我们需要一个对 `v - 1 ulp` 和
-        // `v + 1 ulp` 都唯一的表示。）这不会溢出，因为第一个检查已保证 `ulp < ten_kappa`。
+        // in fact, 1/2 ulp is enough to introduce two possible representations.
+        // (remember that we need a unique representation for both `v - 1 ulp` and `v + 1 ulp`.)
+        // this won't overflow, as `ulp < ten_kappa` from the first check.
         if ten_kappa - ulp <= ulp {
             return None;
         }
@@ -676,15 +701,18 @@ pub fn format_exact_opt<'a>(
         //     |     v     |
         // v - 1 ulp   v + 1 ulp
         //
-        // 如果 `v + 1 ulp` 更接近向下舍入表示（也就是当前 `buf` 中的表示），就可以安全返回。
-        // 注意 `v - 1 ulp` **可能**小于当前表示，但由于 `1 ulp < 10^kappa / 2`，
-        // 该条件已经足够：`v - 1 ulp` 与当前表示之间的距离不会超过 `10^kappa / 2`。
+        // if `v + 1 ulp` is closer to the rounded-down representation (which is already in `buf`),
+        // then we can safely return. note that `v - 1 ulp` *can* be less than the current
+        // representation, but as `1 ulp < 10^kappa / 2`, this condition is enough:
+        // the distance between `v - 1 ulp` and the current representation
+        // cannot exceed `10^kappa / 2`.
         //
-        // 该条件等价于 `remainder + ulp < 10^kappa / 2`。由于这很容易溢出，先检查
-        // `remainder < 10^kappa / 2`。我们已经验证 `ulp < 10^kappa / 2`，因此只要
-        // `10^kappa` 最终没有溢出，第二个检查就是安全的。
+        // the condition equals to `remainder + ulp < 10^kappa / 2`.
+        // since this can easily overflow, first check if `remainder < 10^kappa / 2`.
+        // we've already verified that `ulp < 10^kappa / 2`, so as long as
+        // `10^kappa` did not overflow after all, the second check is fine.
         if ten_kappa - remainder > remainder && ten_kappa - 2 * remainder >= 2 * ulp {
-            // SAFETY: 调用方已经初始化了这段内存。
+            // SAFETY: our caller initialized that memory.
             return Some((unsafe { buf[..len].assume_init_ref() }, exp));
         }
 
@@ -698,47 +726,49 @@ pub fn format_exact_opt<'a>(
         //                        |     v     |
         //                    v - 1 ulp   v + 1 ulp
         //
-        // 另一方面，如果 `v - 1 ulp` 更接近向上舍入表示，就应向上舍入并返回。
-        // 出于同样原因，不需要再检查 `v + 1 ulp`。
+        // on the other hands, if `v - 1 ulp` is closer to the rounded-up representation,
+        // we should round up and return. for the same reason we don't need to check `v + 1 ulp`.
         //
-        // 该条件等价于 `remainder - ulp >= 10^kappa / 2`。同样先检查 `remainder > ulp`
-        // （注意不是 `remainder >= ulp`，因为 `10^kappa` 永不为零）。另请注意
-        // `remainder - ulp <= 10^kappa`，所以第二个检查不会溢出。
+        // the condition equals to `remainder - ulp >= 10^kappa / 2`.
+        // again we first check if `remainder > ulp` (note that this is not `remainder >= ulp`,
+        // as `10^kappa` is never zero). also note that `remainder - ulp <= 10^kappa`,
+        // so the second check does not overflow.
         if remainder > ulp && ten_kappa - (remainder - ulp) <= remainder - ulp {
             if let Some(c) =
-                // SAFETY: 调用方必须已经初始化这段内存。
+                // SAFETY: our caller must have initialized that memory.
                 round_up(unsafe { buf[..len].assume_init_mut() })
             {
-                // 只有请求 fixed precision 时才追加额外数字。还需要检查：如果原始缓冲区为空，
-                // 只有 `exp == limit` 这个边界情况才允许追加额外数字。
+                // only add an additional digit when we've been requested the fixed precision.
+                // we also need to check that, if the original buffer was empty,
+                // the additional digit can only be added when `exp == limit` (edge case).
                 exp += 1;
                 if exp > limit && len < buf.len() {
                     buf[len] = MaybeUninit::new(c);
                     len += 1;
                 }
             }
-            // SAFETY: 我们和调用方共同初始化了这段内存。
+            // SAFETY: we and our caller initialized that memory.
             return Some((unsafe { buf[..len].assume_init_ref() }, exp));
         }
 
-        // 否则说明无法判定（`v - 1 ulp` 与 `v + 1 ulp` 之间有些值会向下舍入，另一些会
-        // 向上舍入），只能放弃。
+        // otherwise we are doomed (i.e., some values between `v - 1 ulp` and `v + 1 ulp` are
+        // rounding down and others are rounding up) and give up.
         None
     }
 }
 
-/// 带 Dragon fallback 的 Grisu exact 和 fixed mode 实现。
+/// The exact and fixed mode implementation for Grisu with Dragon fallback.
 ///
-/// 大多数场景应使用该函数。
+/// This should be used for most cases.
 pub fn format_exact<'a>(
     d: &Decoded,
     buf: &'a mut [MaybeUninit<u8>],
     limit: i16,
 ) -> (/*digits*/ &'a [u8], /*exp*/ i16) {
     use crate::num::flt2dec::strategy::dragon::format_exact as fallback;
-    // SAFETY: 借用检查器无法证明第二个分支中可以继续使用 `buf`，因此这里清洗生命周期。
-    // 只有在 `format_exact_opt` 返回 `None` 时才会重用 `buf`，所以不会同时存在两个
-    // 有效可变借用。
+    // SAFETY: The borrow checker is not smart enough to let us use `buf`
+    // in the second branch, so we launder the lifetime here. But we only re-use
+    // `buf` if `format_exact_opt` returned `None` so this is okay.
     match format_exact_opt(d, unsafe { &mut *(buf as *mut _) }, limit) {
         Some(ret) => ret,
         None => fallback(d, buf, limit),

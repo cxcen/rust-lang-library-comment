@@ -1,42 +1,37 @@
-//! 用于类型之间转换的 trait。
+//! Traits for conversions between types.
 //!
-//! 本模块中的 trait 提供了一种从一种类型转换为另一种类型的方式。每个 trait
-//! 各有用途:
+//! The traits in this module provide a way to convert from one type to another type.
+//! Each trait serves a different purpose:
 //!
-//! - 实现 [`AsRef`] trait,用于廉价的“引用到引用”转换
-//! - 实现 [`AsMut`] trait,用于廉价的“可变引用到可变引用”转换
-//! - 实现 [`From`] trait,用于会消耗原值的“值到值”转换
-//! - 实现 [`Into`] trait,用于会消耗原值、目标类型在当前 crate 之外的
-//!   “值到值”转换
-//! - [`TryFrom`] 和 [`TryInto`] 这两个 trait 的行为与 [`From`] 和 [`Into`]
-//!   类似,但应当在转换可能失败时实现。
+//! - Implement the [`AsRef`] trait for cheap reference-to-reference conversions
+//! - Implement the [`AsMut`] trait for cheap mutable-to-mutable conversions
+//! - Implement the [`From`] trait for consuming value-to-value conversions
+//! - Implement the [`Into`] trait for consuming value-to-value conversions to types
+//!   outside the current crate
+//! - The [`TryFrom`] and [`TryInto`] traits behave like [`From`] and [`Into`],
+//!   but should be implemented when the conversion can fail.
 //!
-//! 本模块中的 trait 常被用作泛型函数的 trait 约束,以便支持多种类型的参数。
-//! 用法示例见各个 trait 的文档。
+//! The traits in this module are often used as trait bounds for generic functions such that to
+//! arguments of multiple types are supported. See the documentation of each trait for examples.
 //!
-//! 作为库作者,你应当始终优先实现 [`From<T>`][`From`] 或
-//! [`TryFrom<T>`][`TryFrom`],而非 [`Into<U>`][`Into`] 或
-//! [`TryInto<U>`][`TryInto`]——因为得益于标准库中的一条覆盖性(blanket)实现,
-//! [`From`] 和 [`TryFrom`] 提供了更大的灵活性,并且免费提供了等价的
-//! [`Into`] 或 [`TryInto`] 实现。这正是孤儿规则下优先实现 `From` 的缘由:
-//! 你实现一次 `From`,就同时白得了 `Into`。当目标是 Rust 1.41 之前的版本时,
-//! 在转换到当前 crate 之外的类型时,可能仍有必要直接实现 [`Into`] 或
-//! [`TryInto`]。
+//! As a library author, you should always prefer implementing [`From<T>`][`From`] or
+//! [`TryFrom<T>`][`TryFrom`] rather than [`Into<U>`][`Into`] or [`TryInto<U>`][`TryInto`],
+//! as [`From`] and [`TryFrom`] provide greater flexibility and offer
+//! equivalent [`Into`] or [`TryInto`] implementations for free, thanks to a
+//! blanket implementation in the standard library. When targeting a version prior to Rust 1.41, it
+//! may be necessary to implement [`Into`] or [`TryInto`] directly when converting to a type
+//! outside the current crate.
 //!
-//! 关于这些转换的语义约定:[`From`] 不应失败、也不应丢失信息(它是一个
-//! 全转换);而 [`TryFrom`] 用于可能失败的转换,失败时返回 `Result` 的
-//! `Err`。
+//! # Generic Implementations
 //!
-//! # 泛型实现
+//! - [`AsRef`] and [`AsMut`] auto-dereference if the inner type is a reference
+//!   (but not generally for all [dereferenceable types][core::ops::Deref])
+//! - [`From`]`<U> for T` implies [`Into`]`<T> for U`
+//! - [`TryFrom`]`<U> for T` implies [`TryInto`]`<T> for U`
+//! - [`From`] and [`Into`] are reflexive, which means that all types can
+//!   `into` themselves and `from` themselves
 //!
-//! - [`AsRef`] 和 [`AsMut`] 在内部类型是引用时会自动解引用(但通常并不对
-//!   所有[可解引用类型][core::ops::Deref]都如此)
-//! - [`From`]`<U> for T` 蕴含 [`Into`]`<T> for U`
-//! - [`TryFrom`]`<U> for T` 蕴含 [`TryInto`]`<T> for U`
-//! - [`From`] 和 [`Into`] 是自反的,这意味着所有类型都能 `into` 自身、
-//!   也能 `from` 自身
-//!
-//! 用法示例见各个 trait。
+//! See each trait for usage examples.
 
 #![stable(feature = "rust1", since = "1.0.0")]
 
@@ -50,33 +45,35 @@ mod num;
 #[unstable(feature = "convert_float_to_int", issue = "67057")]
 pub use num::FloatToInt;
 
-/// 恒等函数(identity function)。
+/// The identity function.
 ///
-/// 关于本函数有两点很重要:
+/// Two things are important to note about this function:
 ///
-/// - 它并不总是等价于像 `|x| x` 这样的闭包,因为闭包可能会把 `x` 强转成
-///   另一种类型。
+/// - It is not always equivalent to a closure like `|x| x`, since the
+///   closure may coerce `x` into a different type.
 ///
-/// - 它会 move 传给函数的输入 `x`。
+/// - It moves the input `x` passed to the function.
 ///
-/// 一个只是把输入原样返回的函数听上去也许有些奇怪,但它确有一些有趣的用途。
+/// While it might seem strange to have a function that just returns back the
+/// input, there are some interesting uses.
 ///
-/// # 示例
+/// # Examples
 ///
-/// 用 `identity` 在一串其他有趣的函数之中充当“什么都不做”的一员:
+/// Using `identity` to do nothing in a sequence of other, interesting,
+/// functions:
 ///
 /// ```rust
 /// use std::convert::identity;
 ///
 /// fn manipulation(x: u32) -> u32 {
-///     // 我们假装“加一”是个有趣的函数。
+///     // Let's pretend that adding one is an interesting function.
 ///     x + 1
 /// }
 ///
 /// let _arr = &[identity, manipulation];
 /// ```
 ///
-/// 在条件分支中用 `identity` 作为“什么都不做”的基准情形:
+/// Using `identity` as a "do nothing" base case in a conditional:
 ///
 /// ```rust
 /// use std::convert::identity;
@@ -87,12 +84,12 @@ pub use num::FloatToInt;
 /// #
 /// let do_stuff = if condition { manipulation } else { identity };
 ///
-/// // 做更多有趣的事……
+/// // Do more interesting stuff...
 ///
 /// let _results = do_stuff(42);
 /// ```
 ///
-/// 用 `identity` 来保留一个 `Option<T>` 迭代器中的 `Some` 变体:
+/// Using `identity` to keep the `Some` variants of an iterator of `Option<T>`:
 ///
 /// ```rust
 /// use std::convert::identity;
@@ -109,48 +106,50 @@ pub const fn identity<T>(x: T) -> T {
     x
 }
 
-/// 用于进行廉价的“引用到引用”转换。
+/// Used to do a cheap reference-to-reference conversion.
 ///
-/// 本 trait 类似于 [`AsMut`],后者用于在可变引用之间转换。如果你需要做一次
-/// 开销不菲的转换,最好改为以类型 `&T` 实现 [`From`],或者写一个自定义函数。
+/// This trait is similar to [`AsMut`] which is used for converting between mutable references.
+/// If you need to do a costly conversion it is better to implement [`From`] with type
+/// `&T` or write a custom function.
 ///
-/// # 与 `Borrow` 的关系
+/// # Relation to `Borrow`
 ///
-/// `AsRef` 与 [`Borrow`] 具有相同的签名,但 [`Borrow`] 在几个方面有所不同:
+/// `AsRef` has the same signature as [`Borrow`], but [`Borrow`] is different in a few aspects:
 ///
-/// - 与 `AsRef` 不同,[`Borrow`] 对任意 `T` 都有一条覆盖性实现,并且既可以
-///   用来接收引用,也可以用来接收值。(另见下文关于 `AsRef` 自反性的说明。)
-/// - [`Borrow`] 还要求:对一个借用值的 [`Hash`]、[`Eq`] 和 [`Ord`] 与对其
-///   拥有值的实现是等价的。正因如此,如果你只想借用一个结构体的某个字段,
-///   你可以实现 `AsRef`,却不能实现 [`Borrow`]。
+/// - Unlike `AsRef`, [`Borrow`] has a blanket impl for any `T`, and can be used to accept either
+///   a reference or a value. (See also note on `AsRef`'s reflexibility below.)
+/// - [`Borrow`] also requires that [`Hash`], [`Eq`] and [`Ord`] for a borrowed value are
+///   equivalent to those of the owned value. For this reason, if you want to
+///   borrow only a single field of a struct you can implement `AsRef`, but not [`Borrow`].
 ///
-/// **注意:本 trait 一定不能失败**。如果转换可能失败,请使用一个返回
-/// [`Option<T>`] 或 [`Result<T, E>`] 的专门方法。
+/// **Note: This trait must not fail**. If the conversion can fail, use a
+/// dedicated method which returns an [`Option<T>`] or a [`Result<T, E>`].
 ///
-/// # 泛型实现
+/// # Generic Implementations
 ///
-/// 如果内部类型是引用或可变引用,`AsRef` 会自动解引用(例如:无论 `foo` 的
-/// 类型是 `&mut Foo` 还是 `&&mut Foo`,`foo.as_ref()` 的效果都一样)。
+/// `AsRef` auto-dereferences if the inner type is a reference or a mutable reference
+/// (e.g.: `foo.as_ref()` will work the same if `foo` has type `&mut Foo` or `&&mut Foo`).
 ///
-/// 注意,出于历史原因,上述行为目前并不普遍适用于所有[可解引用类型],例如
-/// `foo.as_ref()` 与 `Box::new(foo).as_ref()` 的效果 *并不* 相同。相反,
-/// 许多智能指针提供的 `as_ref` 实现只是返回指向[被指向值]的引用(而不会为
-/// 那个值执行廉价的“引用到引用”转换)。然而,[`AsRef::as_ref`] 不应仅仅为了
-/// 解引用而被使用;为此可以改用[“`Deref` 强转”]:
+/// Note that due to historic reasons, the above currently does not hold generally for all
+/// [dereferenceable types], e.g. `foo.as_ref()` will *not* work the same as
+/// `Box::new(foo).as_ref()`. Instead, many smart pointers provide an `as_ref` implementation which
+/// simply returns a reference to the [pointed-to value] (but do not perform a cheap
+/// reference-to-reference conversion for that value). However, [`AsRef::as_ref`] should not be
+/// used for the sole purpose of dereferencing; instead ['`Deref` coercion'] can be used:
 ///
-/// [可解引用类型]: core::ops::Deref
-/// [被指向值]: core::ops::Deref::Target
-/// [“`Deref` 强转”]: core::ops::Deref#deref-coercion
+/// [dereferenceable types]: core::ops::Deref
+/// [pointed-to value]: core::ops::Deref::Target
+/// ['`Deref` coercion']: core::ops::Deref#deref-coercion
 ///
 /// ```
 /// let x = Box::new(5i32);
-/// // 避免这样:
+/// // Avoid this:
 /// // let y: &i32 = x.as_ref();
-/// // 最好就写:
+/// // Better just write:
 /// let y: &i32 = &x;
 /// ```
 ///
-/// 实现了 [`Deref`] 的类型,应当考虑如下实现 `AsRef<T>`:
+/// Types which implement [`Deref`] should consider implementing `AsRef<T>` as follows:
 ///
 /// [`Deref`]: core::ops::Deref
 ///
@@ -174,28 +173,29 @@ pub const fn identity<T>(x: T) -> T {
 /// }
 /// ```
 ///
-/// # 自反性
+/// # Reflexivity
 ///
-/// 理想情况下,`AsRef` 应当是自反的,即应当存在一条 `impl<T: ?Sized> AsRef<T> for T`,
-/// 其 [`as_ref`] 只是原样返回它的参数。由于 Rust 类型系统的技术限制,目前
-/// *并未* 提供这样一条覆盖性实现(它会与另一条已存在的、针对
-/// `&T where T: AsRef<U>` 的覆盖性实现重叠——正是后者让 `AsRef` 能自动
-/// 解引用,见上面的“泛型实现”)。
+/// Ideally, `AsRef` would be reflexive, i.e. there would be an `impl<T: ?Sized> AsRef<T> for T`
+/// with [`as_ref`] simply returning its argument unchanged.
+/// Such a blanket implementation is currently *not* provided due to technical restrictions of
+/// Rust's type system (it would be overlapping with another existing blanket implementation for
+/// `&T where T: AsRef<U>` which allows `AsRef` to auto-dereference, see "Generic Implementations"
+/// above).
 ///
 /// [`as_ref`]: AsRef::as_ref
 ///
-/// 对于特定类型 `T`,在需要或希望时,必须显式地添加 `AsRef<T> for T` 的平凡
-/// 实现。不过要注意,并非所有来自 `std` 的类型都含有这样一条实现,而且由于
-/// 孤儿规则,外部代码也无法为它们添加。
+/// A trivial implementation of `AsRef<T> for T` must be added explicitly for a particular type `T`
+/// where needed or desired. Note, however, that not all types from `std` contain such an
+/// implementation, and those cannot be added by external code due to orphan rules.
 ///
-/// # 示例
+/// # Examples
 ///
-/// 通过使用 trait 约束,只要参数能被转换为指定类型 `T`,我们就可以接收不同
-/// 类型的参数。
+/// By using trait bounds we can accept arguments of different types as long as they can be
+/// converted to the specified type `T`.
 ///
-/// 例如:通过创建一个接收 `AsRef<str>` 的泛型函数,我们表达了希望接收所有
-/// 能被转换为 [`&str`] 的引用作为参数。由于 [`String`] 和 [`&str`] 都实现了
-/// `AsRef<str>`,我们可以把两者都作为输入参数接收。
+/// For example: By creating a generic function that takes an `AsRef<str>` we express that we
+/// want to accept all references that can be converted to [`&str`] as an argument.
+/// Since both [`String`] and [`&str`] implement `AsRef<str>` we can accept both as input argument.
 ///
 /// [`&str`]: primitive@str
 /// [`Borrow`]: crate::borrow::Borrow
@@ -218,44 +218,46 @@ pub const fn identity<T>(x: T) -> T {
 #[rustc_diagnostic_item = "AsRef"]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
 pub const trait AsRef<T: PointeeSized>: PointeeSized {
-    /// 把该类型转换为(通常被推断出来的)输入类型的共享引用。
+    /// Converts this type into a shared reference of the (usually inferred) input type.
     #[stable(feature = "rust1", since = "1.0.0")]
     fn as_ref(&self) -> &T;
 }
 
-/// 用于进行廉价的“可变引用到可变引用”转换。
+/// Used to do a cheap mutable-to-mutable reference conversion.
 ///
-/// 本 trait 类似于 [`AsRef`],但用于在可变引用之间转换。如果你需要做一次
-/// 开销不菲的转换,最好改为以类型 `&mut T` 实现 [`From`],或者写一个自定义
-/// 函数。
+/// This trait is similar to [`AsRef`] but used for converting between mutable
+/// references. If you need to do a costly conversion it is better to
+/// implement [`From`] with type `&mut T` or write a custom function.
 ///
-/// **注意:本 trait 一定不能失败**。如果转换可能失败,请使用一个返回
-/// [`Option<T>`] 或 [`Result<T, E>`] 的专门方法。
+/// **Note: This trait must not fail**. If the conversion can fail, use a
+/// dedicated method which returns an [`Option<T>`] or a [`Result<T, E>`].
 ///
-/// # 泛型实现
+/// # Generic Implementations
 ///
-/// 如果内部类型是可变引用,`AsMut` 会自动解引用(例如:无论 `foo` 的类型是
-/// `&mut Foo` 还是 `&mut &mut Foo`,`foo.as_mut()` 的效果都一样)。
+/// `AsMut` auto-dereferences if the inner type is a mutable reference
+/// (e.g.: `foo.as_mut()` will work the same if `foo` has type `&mut Foo` or `&mut &mut Foo`).
 ///
-/// 注意,出于历史原因,上述行为目前并不普遍适用于所有[可变解引用类型],
-/// 例如 `foo.as_mut()` 与 `Box::new(foo).as_mut()` 的效果 *并不* 相同。相反,
-/// 许多智能指针提供的 `as_mut` 实现只是返回指向[被指向值]的引用(而不会为
-/// 那个值执行廉价的“引用到引用”转换)。然而,[`AsMut::as_mut`] 不应仅仅为了
-/// 可变解引用而被使用;为此可以改用[“`Deref` 强转”]:
+/// Note that due to historic reasons, the above currently does not hold generally for all
+/// [mutably dereferenceable types], e.g. `foo.as_mut()` will *not* work the same as
+/// `Box::new(foo).as_mut()`. Instead, many smart pointers provide an `as_mut` implementation which
+/// simply returns a reference to the [pointed-to value] (but do not perform a cheap
+/// reference-to-reference conversion for that value). However, [`AsMut::as_mut`] should not be
+/// used for the sole purpose of mutable dereferencing; instead ['`Deref` coercion'] can be used:
 ///
-/// [可变解引用类型]: core::ops::DerefMut
-/// [被指向值]: core::ops::Deref::Target
-/// [“`Deref` 强转”]: core::ops::DerefMut#mutable-deref-coercion
+/// [mutably dereferenceable types]: core::ops::DerefMut
+/// [pointed-to value]: core::ops::Deref::Target
+/// ['`Deref` coercion']: core::ops::DerefMut#mutable-deref-coercion
 ///
 /// ```
 /// let mut x = Box::new(5i32);
-/// // 避免这样:
+/// // Avoid this:
 /// // let y: &mut i32 = x.as_mut();
-/// // 最好就写:
+/// // Better just write:
 /// let y: &mut i32 = &mut x;
 /// ```
 ///
-/// 实现了 [`DerefMut`] 的类型,应当考虑如下添加一个 `AsMut<T>` 实现:
+/// Types which implement [`DerefMut`] should consider to add an implementation of `AsMut<T>` as
+/// follows:
 ///
 /// [`DerefMut`]: core::ops::DerefMut
 ///
@@ -283,33 +285,34 @@ pub const trait AsRef<T: PointeeSized>: PointeeSized {
 /// }
 /// ```
 ///
-/// # 自反性
+/// # Reflexivity
 ///
-/// 理想情况下,`AsMut` 应当是自反的,即应当存在一条 `impl<T: ?Sized> AsMut<T> for T`,
-/// 其 [`as_mut`] 只是原样返回它的参数。由于 Rust 类型系统的技术限制,目前
-/// *并未* 提供这样一条覆盖性实现(它会与另一条已存在的、针对
-/// `&mut T where T: AsMut<U>` 的覆盖性实现重叠——正是后者让 `AsMut` 能自动
-/// 解引用,见上面的“泛型实现”)。
+/// Ideally, `AsMut` would be reflexive, i.e. there would be an `impl<T: ?Sized> AsMut<T> for T`
+/// with [`as_mut`] simply returning its argument unchanged.
+/// Such a blanket implementation is currently *not* provided due to technical restrictions of
+/// Rust's type system (it would be overlapping with another existing blanket implementation for
+/// `&mut T where T: AsMut<U>` which allows `AsMut` to auto-dereference, see "Generic
+/// Implementations" above).
 ///
 /// [`as_mut`]: AsMut::as_mut
 ///
-/// 对于特定类型 `T`,在需要或希望时,必须显式地添加 `AsMut<T> for T` 的平凡
-/// 实现。不过要注意,并非所有来自 `std` 的类型都含有这样一条实现,而且由于
-/// 孤儿规则,外部代码也无法为它们添加。
+/// A trivial implementation of `AsMut<T> for T` must be added explicitly for a particular type `T`
+/// where needed or desired. Note, however, that not all types from `std` contain such an
+/// implementation, and those cannot be added by external code due to orphan rules.
 ///
-/// # 示例
+/// # Examples
 ///
-/// 把 `AsMut` 用作泛型函数的 trait 约束,我们就可以接收所有能被转换为类型
-/// `&mut T` 的可变引用。与[解引用]不同(它只有单一的[目标类型]),一个类型
-/// 可以有多个 `AsMut` 实现。特别地,`Vec<T>` 同时实现了 `AsMut<Vec<T>>` 和
-/// `AsMut<[T]>`。
+/// Using `AsMut` as trait bound for a generic function, we can accept all mutable references that
+/// can be converted to type `&mut T`. Unlike [dereference], which has a single [target type],
+/// there can be multiple implementations of `AsMut` for a type. In particular, `Vec<T>` implements
+/// both `AsMut<Vec<T>>` and `AsMut<[T]>`.
 ///
-/// 在下面的例子中,示例函数 `caesar` 和 `null_terminate` 提供了一套泛型接口,
-/// 它们能分别与任何“可以通过廉价的可变到可变转换转成字节切片(`[u8]`)或字节
-/// 向量(`Vec<u8>`)”的类型协作。
+/// In the following, the example functions `caesar` and `null_terminate` provide a generic
+/// interface which works with any type that can be converted by cheap mutable-to-mutable conversion
+/// into a byte slice (`[u8]`) or a byte vector (`Vec<u8>`), respectively.
 ///
-/// [解引用]: core::ops::DerefMut
-/// [目标类型]: core::ops::Deref::Target
+/// [dereference]: core::ops::DerefMut
+/// [target type]: core::ops::Deref::Target
 ///
 /// ```
 /// struct Document {
@@ -333,8 +336,8 @@ pub const trait AsRef<T: PointeeSized>: PointeeSized {
 /// }
 ///
 /// fn null_terminate<T: AsMut<Vec<u8>>>(data: &mut T) {
-///     // 使用一个非泛型的内部函数(它包含了大部分功能),有助于把单态化
-///     // (monomorphization)的开销降到最低。
+///     // Using a non-generic inner function, which contains most of the
+///     // functionality, helps to minimize monomorphization overhead.
 ///     fn doit(data: &mut Vec<u8>) {
 ///         let len = data.len();
 ///         if len == 0 || data[len-1] != 0 {
@@ -361,37 +364,39 @@ pub const trait AsRef<T: PointeeSized>: PointeeSized {
 /// }
 /// ```
 ///
-/// 不过要注意,API 并不需要是泛型的。在许多情况下,例如直接接收一个
-/// `&mut [u8]` 或 `&mut Vec<u8>` 反而是更好的选择(那样调用者就需要传入
-/// 正确的类型)。
+/// Note, however, that APIs don't need to be generic. In many cases taking a `&mut [u8]` or
+/// `&mut Vec<u8>`, for example, is the better choice (callers need to pass the correct type then).
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_diagnostic_item = "AsMut"]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
 pub const trait AsMut<T: PointeeSized>: PointeeSized {
-    /// 把该类型转换为(通常被推断出来的)输入类型的可变引用。
+    /// Converts this type into a mutable reference of the (usually inferred) input type.
     #[stable(feature = "rust1", since = "1.0.0")]
     fn as_mut(&mut self) -> &mut T;
 }
 
-/// 会消耗输入值的“值到值”转换。它是 [`From`] 的反向操作。
+/// A value-to-value conversion that consumes the input value. The
+/// opposite of [`From`].
 ///
-/// 应当避免实现 [`Into`],而改为实现 [`From`]。得益于标准库中的覆盖性实现,
-/// 实现 [`From`] 会自动为你提供一个 [`Into`] 的实现。
+/// One should avoid implementing [`Into`] and implement [`From`] instead.
+/// Implementing [`From`] automatically provides one with an implementation of [`Into`]
+/// thanks to the blanket implementation in the standard library.
 ///
-/// 在为泛型函数指定 trait 约束时,优先使用 [`Into`] 而非 [`From`],以确保
-/// 那些只实现了 [`Into`] 的类型也可以被使用。
+/// Prefer using [`Into`] over [`From`] when specifying trait bounds on a generic function
+/// to ensure that types that only implement [`Into`] can be used as well.
 ///
-/// **注意:本 trait 一定不能失败**。如果转换可能失败,请使用 [`TryInto`]。
+/// **Note: This trait must not fail**. If the conversion can fail, use [`TryInto`].
 ///
-/// # 泛型实现
+/// # Generic Implementations
 ///
-/// - [`From`]`<T> for U` 蕴含 `Into<U> for T`
-/// - [`Into`] 是自反的,这意味着 `Into<T> for T` 已被实现
+/// - [`From`]`<T> for U` implies `Into<U> for T`
+/// - [`Into`] is reflexive, which means that `Into<T> for T` is implemented
 ///
-/// # 在旧版本 Rust 中为“转换到外部类型”实现 [`Into`]
+/// # Implementing [`Into`] for conversions to external types in old versions of Rust
 ///
-/// 在 Rust 1.41 之前,如果目标类型不属于当前 crate,你就不能直接实现
-/// [`From`]。例如,看下面这段代码:
+/// Prior to Rust 1.41, if the destination type was not part of the current crate
+/// then you couldn't implement [`From`] directly.
+/// For example, take this code:
 ///
 /// ```
 /// # #![allow(non_local_definitions)]
@@ -402,8 +407,8 @@ pub const trait AsMut<T: PointeeSized>: PointeeSized {
 ///     }
 /// }
 /// ```
-/// 在该语言的旧版本中,这会编译失败,因为 Rust 的孤儿规则过去要稍微严格
-/// 一些。要绕过这一点,你可以直接实现 [`Into`]:
+/// This will fail to compile in older versions of the language because Rust's orphaning rules
+/// used to be a little bit more strict. To bypass this, you could implement [`Into`] directly:
 ///
 /// ```
 /// struct Wrapper<T>(Vec<T>);
@@ -414,17 +419,18 @@ pub const trait AsMut<T: PointeeSized>: PointeeSized {
 /// }
 /// ```
 ///
-/// 重要的是要理解:[`Into`] 并不提供 [`From`] 实现(而 [`From`] 会提供
-/// [`Into`])。因此,你应当始终尝试先实现 [`From`],只有在 [`From`] 无法
-/// 实现时才退而求其次实现 [`Into`]。
+/// It is important to understand that [`Into`] does not provide a [`From`] implementation
+/// (as [`From`] does with [`Into`]). Therefore, you should always try to implement [`From`]
+/// and then fall back to [`Into`] if [`From`] can't be implemented.
 ///
-/// # 示例
+/// # Examples
 ///
-/// [`String`] 实现了 [`Into`]`<`[`Vec`]`<`[`u8`]`>>`:
+/// [`String`] implements [`Into`]`<`[`Vec`]`<`[`u8`]`>>`:
 ///
-/// 为了表达我们希望某个泛型函数接收所有能被转换为指定类型 `T` 的参数,我们
-/// 可以使用 [`Into`]`<T>` 的 trait 约束。例如:函数 `is_hello` 接收所有能被
-/// 转换为 [`Vec`]`<`[`u8`]`>` 的参数。
+/// In order to express that we want a generic function to take all arguments that can be
+/// converted to a specified type `T`, we can use a trait bound of [`Into`]`<T>`.
+/// For example: The function `is_hello` takes all arguments that can be converted into a
+/// [`Vec`]`<`[`u8`]`>`.
 ///
 /// ```
 /// fn is_hello<T: Into<Vec<u8>>>(s: T) {
@@ -443,76 +449,87 @@ pub const trait AsMut<T: PointeeSized>: PointeeSized {
 #[doc(search_unbox)]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
 pub const trait Into<T>: Sized {
-    /// 把该类型转换为(通常被推断出来的)输入类型。
+    /// Converts this type into the (usually inferred) input type.
     #[must_use]
     #[stable(feature = "rust1", since = "1.0.0")]
     fn into(self) -> T;
 }
 
-/// 会消耗输入值的“值到值”转换。它是 [`Into`] 的对偶(reciprocal)。
+/// Used to do value-to-value conversions while consuming the input value. It is the reciprocal of
+/// [`Into`].
 ///
-/// 应当始终优先实现 `From` 而非 [`Into`],因为得益于标准库中的覆盖性实现,
-/// 实现 `From` 会自动为你提供一个 [`Into`] 的实现。
+/// One should always prefer implementing `From` over [`Into`]
+/// because implementing `From` automatically provides one with an implementation of [`Into`]
+/// thanks to the blanket implementation in the standard library.
 ///
-/// 只有在目标是 Rust 1.41 之前的版本、且转换到当前 crate 之外的类型时,
-/// 才应当实现 [`Into`]。由于 Rust 的孤儿规则,`From` 在早先版本中无法做这类
-/// 转换。更多细节参见 [`Into`]。
+/// Only implement [`Into`] when targeting a version prior to Rust 1.41 and converting to a type
+/// outside the current crate.
+/// `From` was not able to do these types of conversions in earlier versions because of Rust's
+/// orphaning rules.
+/// See [`Into`] for more details.
 ///
-/// 在为泛型函数指定 trait 约束时,优先使用 [`Into`] 而非 [`From`],以确保
-/// 那些只实现了 [`Into`] 的类型也可以被使用。
+/// Prefer using [`Into`] over [`From`] when specifying trait bounds on a generic function
+/// to ensure that types that only implement [`Into`] can be used as well.
 ///
-/// `From` trait 在做错误处理时也非常有用。当构造一个可能失败的函数时,其返回
-/// 类型一般会是 `Result<T, E>` 的形式。`From` 通过让函数返回一个能封装多种
-/// 错误类型的单一错误类型,简化了错误处理。更多细节参见“示例”一节以及
-/// [the book][book]。
+/// The `From` trait is also very useful when performing error handling. When constructing a function
+/// that is capable of failing, the return type will generally be of the form `Result<T, E>`.
+/// `From` simplifies error handling by allowing a function to return a single error type
+/// that encapsulates multiple error types. See the "Examples" section and [the book][book] for more
+/// details.
 ///
-/// **注意:本 trait 一定不能失败**。`From` trait 用于完美(perfect)的转换。
-/// 如果转换可能失败或并不完美,请使用 [`TryFrom`]。
+/// **Note: This trait must not fail**. The `From` trait is intended for perfect conversions.
+/// If the conversion can fail or is not perfect, use [`TryFrom`].
 ///
-/// # 泛型实现
+/// # Generic Implementations
 ///
-/// - `From<T> for U` 蕴含 [`Into`]`<U> for T`
-/// - `From` 是自反的,这意味着 `From<T> for T` 已被实现
+/// - `From<T> for U` implies [`Into`]`<U> for T`
+/// - `From` is reflexive, which means that `From<T> for T` is implemented
 ///
-/// # 何时该实现 `From`
+/// # When to implement `From`
 ///
-/// 虽然在技术上对“用 `From` 实现可以做哪些转换”并无限制,但一般的期望是:
-/// 这些转换通常应当被限制如下:
+/// While there's no technical restrictions on which conversions can be done using
+/// a `From` implementation, the general expectation is that the conversions
+/// should typically be restricted as follows:
 ///
-/// * 该转换是 *不会失败的*(infallible):如果转换可能失败,请改用
-///   [`TryFrom`];不要提供一个会 panic 的 `From` 实现。
+/// * The conversion is *infallible*: if the conversion can fail, use [`TryFrom`]
+///   instead; don't provide a `From` impl that panics.
 ///
-/// * 该转换是 *无损的*(lossless):从语义上讲,它不应丢失或丢弃信息。例如,
-///   `i32: From<u16>` 存在,原值可以用 `u16: TryFrom<i32>` 恢复出来;
-///   `String: From<&str>` 也存在,你可以通过 `Deref` 得到与原值等价的东西。
-///   但 `From` 不能用来从 `u32` 转换到 `u16`,因为那无法以无损的方式成功。
-///   (对于那些被认为在语义上不相关的信息,这里有一些回旋余地。例如,
-///   `Box<[T]>: From<Vec<T>>` 存在,尽管它可能不保留容量——正如两个向量
-///   尽管容量不同却可以相等。)
+/// * The conversion is *lossless*: semantically, it should not lose or discard
+///   information. For example, `i32: From<u16>` exists, where the original
+///   value can be recovered using `u16: TryFrom<i32>`.  And `String: From<&str>`
+///   exists, where you can get something equivalent to the original value via
+///   `Deref`.  But `From` cannot be used to convert from `u32` to `u16`, since
+///   that cannot succeed in a lossless way.  (There's some wiggle room here for
+///   information not considered semantically relevant.  For example,
+///   `Box<[T]>: From<Vec<T>>` exists even though it might not preserve capacity,
+///   like how two vectors can be equal despite differing capacities.)
 ///
-/// * 该转换是 *保值的*(value-preserving):所得值在概念上的种类与含义保持
-///   不变,即便 Rust 类型和技术上的表示可能不同。例如 `-1_i8 as u8` 是
-///   *无损的*,因为用 `as` 转换回来可以恢复原值,但这个转换 *无法* 通过
-///   `From` 提供,因为 `-1` 和 `255` 是不同的概念值(尽管在技术上它们的比特
-///   模式相同)。但 `f32: From<i16>` *是* 提供的,因为 `1_i16` 和 `1.0_f32`
-///   在概念上是同一个实数(尽管它们的比特模式差异很大)。`String: From<char>`
-///   是提供的,因为它们都是 *文本*,但 `String: From<u32>` *不* 提供,因为
-///   `1`(一个数字)和 `"1"`(文本)差异太大。(把值转换成文本这件事改由
-///   [`Display`](crate::fmt::Display) trait 负责。)
+/// * The conversion is *value-preserving*: the conceptual kind and meaning of
+///   the resulting value is the same, even though the Rust type and technical
+///   representation might be different.  For example `-1_i8 as u8` is *lossless*,
+///   since `as` casting back can recover the original value, but that conversion
+///   is *not* available via `From` because `-1` and `255` are different conceptual
+///   values (despite being identical bit patterns technically).  But
+///   `f32: From<i16>` *is* available because `1_i16` and `1.0_f32` are conceptually
+///   the same real number (despite having very different bit patterns technically).
+///   `String: From<char>` is available because they're both *text*, but
+///   `String: From<u32>` is *not* available, since `1` (a number) and `"1"`
+///   (text) are too different.  (Converting values to text is instead covered
+///   by the [`Display`](crate::fmt::Display) trait.)
 ///
-/// * 该转换是 *显而易见的*(obvious):它是两个类型之间唯一合理的转换。否则,
-///   最好把它做成一个有名字的方法或构造器——就像 [`str::as_bytes`] 是一个
-///   方法、整数有 [`u32::from_ne_bytes`]、[`u32::from_le_bytes`] 和
-///   [`u32::from_be_bytes`] 这样的方法一样,这些都不是 `From` 实现。而把一个
-///   [`Ipv6Addr`](crate::net::Ipv6Addr) 包装进
-///   [`IpAddr`](crate::net::IpAddr) 只有一种合理的方式,因此
-///   `IpAddr: From<Ipv6Addr>` 存在。
+/// * The conversion is *obvious*: it's the only reasonable conversion between
+///   the two types.  Otherwise it's better to have it be a named method or
+///   constructor, like how [`str::as_bytes`] is a method and how integers have
+///   methods like [`u32::from_ne_bytes`], [`u32::from_le_bytes`], and
+///   [`u32::from_be_bytes`], none of which are `From` implementations.  Whereas
+///   there's only one reasonable way to wrap an [`Ipv6Addr`](crate::net::Ipv6Addr)
+///   into an [`IpAddr`](crate::net::IpAddr), thus `IpAddr: From<Ipv6Addr>` exists.
 ///
-/// # 示例
+/// # Examples
 ///
-/// [`String`] 实现了 `From<&str>`:
+/// [`String`] implements `From<&str>`:
 ///
-/// 从 `&str` 到 String 的显式转换如下进行:
+/// An explicit conversion from a `&str` to a String is done as follows:
 ///
 /// ```
 /// let string = "hello".to_string();
@@ -521,10 +538,11 @@ pub const trait Into<T>: Sized {
 /// assert_eq!(string, other_string);
 /// ```
 ///
-/// 在做错误处理时,为你自己的错误类型实现 `From` 往往很有用。通过把底层错误
-/// 类型转换为我们自己那个封装了底层错误类型的自定义错误类型,我们就可以在
-/// 不丢失底层原因信息的前提下,返回单一的错误类型。`?` 运算符会用 `From::from`
-/// 自动把底层错误类型转换为我们的自定义错误类型。
+/// While performing error handling it is often useful to implement `From` for your own error type.
+/// By converting underlying error types to our own custom error type that encapsulates the
+/// underlying error type, we can return a single error type without losing information on the
+/// underlying cause. The '?' operator automatically converts the underlying error type to our
+/// custom error type with `From::from`.
 ///
 /// ```
 /// use std::fs;
@@ -567,59 +585,70 @@ pub const trait Into<T>: Sized {
 #[doc(search_unbox)]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
 pub const trait From<T>: Sized {
-    /// 从输入类型转换到本类型。
+    /// Converts to this type from the input type.
     #[rustc_diagnostic_item = "from_fn"]
     #[must_use]
     #[stable(feature = "rust1", since = "1.0.0")]
     fn from(value: T) -> Self;
 }
 
-/// 一次会消耗 `self` 的“尝试性”转换,其开销可能大也可能不大。
+/// An attempted conversion that consumes `self`, which may or may not be
+/// expensive.
 ///
-/// 库作者通常不应直接实现本 trait,而应优先实现 [`TryFrom`] trait——后者提供
-/// 更大的灵活性,并且得益于标准库中的覆盖性实现,会免费提供一个等价的
-/// `TryInto` 实现。关于这一点的更多信息,参见 [`Into`] 的文档。
+/// Library authors should usually not directly implement this trait,
+/// but should prefer implementing the [`TryFrom`] trait, which offers
+/// greater flexibility and provides an equivalent `TryInto`
+/// implementation for free, thanks to a blanket implementation in the
+/// standard library. For more information on this, see the
+/// documentation for [`Into`].
 ///
-/// 在为泛型函数指定 trait 约束时,优先使用 [`TryInto`] 而非 [`TryFrom`],
-/// 以确保那些只实现了 [`TryInto`] 的类型也可以被使用。
+/// Prefer using [`TryInto`] over [`TryFrom`] when specifying trait bounds on a generic function
+/// to ensure that types that only implement [`TryInto`] can be used as well.
 ///
-/// # 实现 `TryInto`
+/// # Implementing `TryInto`
 ///
-/// 它受到与实现 [`Into`] 相同的限制,理由也相同,详见那里。
+/// This suffers the same restrictions and reasoning as implementing
+/// [`Into`], see there for details.
 #[rustc_diagnostic_item = "TryInto"]
 #[stable(feature = "try_from", since = "1.34.0")]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
 pub const trait TryInto<T>: Sized {
-    /// 转换出错时返回的类型。
+    /// The type returned in the event of a conversion error.
     #[stable(feature = "try_from", since = "1.34.0")]
     type Error;
 
-    /// 执行转换。
+    /// Performs the conversion.
     #[stable(feature = "try_from", since = "1.34.0")]
     fn try_into(self) -> Result<T, Self::Error>;
 }
 
-/// 简单且安全的类型转换,在某些情况下可能会以一种受控的方式失败。它是
-/// [`TryInto`] 的对偶(reciprocal)。
+/// Simple and safe type conversions that may fail in a controlled
+/// way under some circumstances. It is the reciprocal of [`TryInto`].
 ///
-/// 当你在做一种可能轻易就成功、但也可能需要特殊处理的类型转换时,它很有用。
-/// 例如,没有办法用 [`From`] trait 把 [`i64`] 转换成 [`i32`],因为 [`i64`]
-/// 可能含有 [`i32`] 无法表示的值,那样转换就会丢失数据。这种情况可以通过把
-/// [`i64`] 截断为 [`i32`]、或者干脆返回 [`i32::MAX`]、或者用其他方法来处理。
-/// [`From`] trait 用于完美的转换,因此 `TryFrom` trait 会在某次类型转换可能
-/// 出问题时告知程序员,并让他们自行决定如何处理。
+/// This is useful when you are doing a type conversion that may
+/// trivially succeed but may also need special handling.
+/// For example, there is no way to convert an [`i64`] into an [`i32`]
+/// using the [`From`] trait, because an [`i64`] may contain a value
+/// that an [`i32`] cannot represent and so the conversion would lose data.
+/// This might be handled by truncating the [`i64`] to an [`i32`] or by
+/// simply returning [`i32::MAX`], or by some other method.  The [`From`]
+/// trait is intended for perfect conversions, so the `TryFrom` trait
+/// informs the programmer when a type conversion could go bad and lets
+/// them decide how to handle it.
 ///
-/// # 泛型实现
+/// # Generic Implementations
 ///
-/// - `TryFrom<T> for U` 蕴含 [`TryInto`]`<U> for T`
-/// - [`try_from`] 是自反的,这意味着 `TryFrom<T> for T` 已被实现且不会失败
-///   ——对一个 `T` 类型的值调用 `T::try_from()` 时,其关联的 `Error` 类型是
-///   [`Infallible`]。当 [`!`] 类型被稳定化后,[`Infallible`] 与 [`!`] 将等价。
+/// - `TryFrom<T> for U` implies [`TryInto`]`<U> for T`
+/// - [`try_from`] is reflexive, which means that `TryFrom<T> for T`
+/// is implemented and cannot fail -- the associated `Error` type for
+/// calling `T::try_from()` on a value of type `T` is [`Infallible`].
+/// When the [`!`] type is stabilized [`Infallible`] and [`!`] will be
+/// equivalent.
 ///
-/// 在为泛型函数指定 trait 约束时,优先使用 [`TryInto`] 而非 [`TryFrom`],
-/// 以确保那些只实现了 [`TryInto`] 的类型也可以被使用。
+/// Prefer using [`TryInto`] over [`TryFrom`] when specifying trait bounds on a generic function
+/// to ensure that types that only implement [`TryInto`] can be used as well.
 ///
-/// `TryFrom<T>` 可以如下实现:
+/// `TryFrom<T>` can be implemented as follows:
 ///
 /// ```
 /// struct GreaterThanZero(i32);
@@ -637,21 +666,23 @@ pub const trait TryInto<T>: Sized {
 /// }
 /// ```
 ///
-/// # 示例
+/// # Examples
 ///
-/// 如前所述,[`i32`] 实现了 `TryFrom<`[`i64`]`>`:
+/// As described, [`i32`] implements `TryFrom<`[`i64`]`>`:
 ///
 /// ```
 /// let big_number = 1_000_000_000_000i64;
-/// // 静默地截断 `big_number`,需要事后检测并处理这次截断。
+/// // Silently truncates `big_number`, requires detecting
+/// // and handling the truncation after the fact.
 /// let smaller_number = big_number as i32;
 /// assert_eq!(smaller_number, -727379968);
 ///
-/// // 返回一个错误,因为 `big_number` 太大,放不进 `i32`。
+/// // Returns an error because `big_number` is too big to
+/// // fit in an `i32`.
 /// let try_smaller_number = i32::try_from(big_number);
 /// assert!(try_smaller_number.is_err());
 ///
-/// // 返回 `Ok(3)`。
+/// // Returns `Ok(3)`.
 /// let try_successful_smaller_number = i32::try_from(3);
 /// assert!(try_successful_smaller_number.is_ok());
 /// ```
@@ -661,21 +692,21 @@ pub const trait TryInto<T>: Sized {
 #[stable(feature = "try_from", since = "1.34.0")]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
 pub const trait TryFrom<T>: Sized {
-    /// 转换出错时返回的类型。
+    /// The type returned in the event of a conversion error.
     #[stable(feature = "try_from", since = "1.34.0")]
     type Error;
 
-    /// 执行转换。
+    /// Performs the conversion.
     #[stable(feature = "try_from", since = "1.34.0")]
     #[rustc_diagnostic_item = "try_from_fn"]
     fn try_from(value: T) -> Result<Self, Self::Error>;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// 泛型实现
+// GENERIC IMPLS
 ////////////////////////////////////////////////////////////////////////////////
 
-// AsRef 在 & 之上提升
+// As lifts over &
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
 impl<T: PointeeSized, U: PointeeSized> const AsRef<U> for &T
@@ -688,7 +719,7 @@ where
     }
 }
 
-// AsRef 在 &mut 之上提升
+// As lifts over &mut
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
 impl<T: PointeeSized, U: PointeeSized> const AsRef<U> for &mut T
@@ -701,15 +732,15 @@ where
     }
 }
 
-// FIXME (#45742):用下面这条更通用的实现替换上面针对 &/&mut 的那些实现:
-// // AsRef 在 Deref 之上提升
+// FIXME (#45742): replace the above impls for &/&mut with the following more general one:
+// // As lifts over Deref
 // impl<D: ?Sized + Deref<Target: AsRef<U>>, U: ?Sized> AsRef<U> for D {
 //     fn as_ref(&self) -> &U {
 //         self.deref().as_ref()
 //     }
 // }
 
-// AsMut 在 &mut 之上提升
+// AsMut lifts over &mut
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
 impl<T: PointeeSized, U: PointeeSized> const AsMut<U> for &mut T
@@ -722,25 +753,25 @@ where
     }
 }
 
-// FIXME (#45742):用下面这条更通用的实现替换上面针对 &mut 的那条实现:
-// // AsMut 在 DerefMut 之上提升
+// FIXME (#45742): replace the above impl for &mut with the following more general one:
+// // AsMut lifts over DerefMut
 // impl<D: ?Sized + Deref<Target: AsMut<U>>, U: ?Sized> AsMut<U> for D {
 //     fn as_mut(&mut self) -> &mut U {
 //         self.deref_mut().as_mut()
 //     }
 // }
 
-// From 蕴含 Into
+// From implies Into
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
 impl<T, U> const Into<U> for T
 where
     U: [const] From<T>,
 {
-    /// 调用 `U::from(self)`。
+    /// Calls `U::from(self)`.
     ///
-    /// 也就是说,这次转换具体做什么,完全取决于
-    /// <code>[From]&lt;T&gt; for U</code> 的实现。
+    /// That is, this conversion is whatever the implementation of
+    /// <code>[From]&lt;T&gt; for U</code> chooses to do.
     #[inline]
     #[track_caller]
     fn into(self) -> U {
@@ -748,19 +779,20 @@ where
     }
 }
 
-// From(因而 Into)是自反的
+// From (and thus Into) is reflexive
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
 impl<T> const From<T> for T {
-    /// 原样返回参数。
+    /// Returns the argument unchanged.
     #[inline(always)]
     fn from(t: T) -> T {
         t
     }
 }
 
-/// **稳定性说明:** 这条 impl 目前尚不存在,但我们正在为将来添加它
-/// “预留位置”。详见 [rust-lang/rust#64715][#64715]。
+/// **Stability note:** This impl does not yet exist, but we are
+/// "reserving space" to add it in the future. See
+/// [rust-lang/rust#64715][#64715] for details.
 ///
 /// [#64715]: https://github.com/rust-lang/rust/issues/64715
 #[stable(feature = "convert_infallible", since = "1.34.0")]
@@ -773,7 +805,7 @@ impl<T> const From<!> for T {
     }
 }
 
-// TryFrom 蕴含 TryInto
+// TryFrom implies TryInto
 #[stable(feature = "try_from", since = "1.34.0")]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
 impl<T, U> const TryInto<U> for T
@@ -788,8 +820,8 @@ where
     }
 }
 
-// 不会失败(infallible)的转换,在语义上等价于错误类型为无人居住类型
-// (uninhabited)的可失败转换。
+// Infallible conversions are semantically equivalent to fallible conversions
+// with an uninhabited error type.
 #[stable(feature = "try_from", since = "1.34.0")]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
 impl<T, U> const TryFrom<U> for T
@@ -805,7 +837,7 @@ where
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// 具体类型的实现
+// CONCRETE IMPLS
 ////////////////////////////////////////////////////////////////////////////////
 
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -845,42 +877,43 @@ impl const AsMut<str> for str {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// “无错误”的错误类型
+// THE NO-ERROR ERROR TYPE
 ////////////////////////////////////////////////////////////////////////////////
 
-/// 面向永远不会发生的错误的错误类型。
+/// The error type for errors that can never happen.
 ///
-/// 由于本枚举没有任何变体,所以这个类型的值实际上永远不可能存在。这对于那些
-/// 使用 [`Result`] 并把错误类型参数化的泛型 API 很有用,可以用来表明其结果
-/// 永远是 [`Ok`]。
+/// Since this enum has no variant, a value of this type can never actually exist.
+/// This can be useful for generic APIs that use [`Result`] and parameterize the error type,
+/// to indicate that the result is always [`Ok`].
 ///
-/// 例如,[`TryFrom`] trait(一种返回 [`Result`] 的转换)对所有“存在反向
-/// [`Into`] 实现”的类型都有一条覆盖性实现。
+/// For example, the [`TryFrom`] trait (conversion that returns a [`Result`])
+/// has a blanket implementation for all types where a reverse [`Into`] implementation exists.
 ///
 /// ```ignore (illustrates std code, duplicating the impl in a doctest would be an error)
 /// impl<T, U> TryFrom<U> for T where U: Into<T> {
 ///     type Error = Infallible;
 ///
 ///     fn try_from(value: U) -> Result<Self, Infallible> {
-///         Ok(U::into(value))  // 永远不会返回 `Err`
+///         Ok(U::into(value))  // Never returns `Err`
 ///     }
 /// }
 /// ```
 ///
-/// # 未来兼容性
+/// # Future compatibility
 ///
-/// 本枚举所扮演的角色与[`!`“never”类型][never]相同,而后者在本版本的 Rust
-/// 中尚不稳定。当 `!` 被稳定化后,我们计划把 `Infallible` 做成它的一个类型
-/// 别名:
+/// This enum has the same role as [the `!` “never” type][never],
+/// which is unstable in this version of Rust.
+/// When `!` is stabilized, we plan to make `Infallible` a type alias to it:
 ///
 /// ```ignore (illustrates future std change)
 /// pub type Infallible = !;
 /// ```
 ///
-/// ……并最终弃用 `Infallible`。
+/// … and eventually deprecate `Infallible`.
 ///
-/// 不过,有一种情形可以在 `!` 作为完备类型被稳定化之前就使用 `!` 语法:
-/// 在函数返回类型的位置。具体来说,可以为两种不同的函数指针类型分别提供实现:
+/// However there is one case where `!` syntax can be used
+/// before `!` is stabilized as a full-fledged type: in the position of a function’s return type.
+/// Specifically, it is possible to have implementations for two different function pointer types:
 ///
 /// ```
 /// trait MyTrait {}
@@ -888,9 +921,10 @@ impl const AsMut<str> for str {
 /// impl MyTrait for fn() -> std::convert::Infallible {}
 /// ```
 ///
-/// 由于 `Infallible` 是一个枚举,这段代码是有效的。然而,一旦 `Infallible`
-/// 变成 never 类型的别名,这两条 `impl` 就会开始重叠,从而被该语言的 trait
-/// 一致性(coherence)规则所禁止。
+/// With `Infallible` being an enum, this code is valid.
+/// However when `Infallible` becomes an alias for the never type,
+/// the two `impl`s will start to overlap
+/// and therefore will be disallowed by the language’s trait coherence rules.
 #[stable(feature = "convert_infallible", since = "1.34.0")]
 #[derive(Copy)]
 pub enum Infallible {}

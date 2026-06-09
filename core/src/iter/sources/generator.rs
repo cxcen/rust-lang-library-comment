@@ -1,11 +1,11 @@
-/// 创建一个新闭包，它返回一个迭代器；该迭代器每次迭代都会把给定 generator 推进到
-/// 下一个 `yield` 语句。
+/// Creates a new closure that returns an iterator where each iteration steps the given
+/// generator to the next `yield` statement.
 ///
-/// 类似 [`iter::from_fn`]，但允许任意控制流。
+/// Similar to [`iter::from_fn`], but allows arbitrary control flow.
 ///
 /// [`iter::from_fn`]: crate::iter::from_fn
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// #![feature(iter_macro, coroutines)]

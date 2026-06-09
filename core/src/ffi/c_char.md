@@ -1,8 +1,8 @@
-等价于 C 的 `char` 类型。
+Equivalent to C's `char` type.
 
-[C 的 `char` 类型] 与 [Rust 的 `char` 类型] 完全不同:Rust 的 `char` 表示 Unicode 标量值,而 C 的 `char` 只是普通整数。在使用 8-bit 字节、按字节寻址的现代架构上,本类型始终是 [`i8`] 或 [`u8`]。
+[C's `char` type] is completely unlike [Rust's `char` type]; while Rust's type represents a unicode scalar value, C's `char` type is just an ordinary integer. On modern architectures this type will always be either [`i8`] or [`u8`], as they use byte-addressed memory with 8-bit bytes.
 
-C char 最常见的用途是组成 C 字符串。Rust 字符串会携带长度;C 字符串则用字符 `'\0'` 标记结尾。更多信息见 `CStr`。
+C chars are most commonly used to make C strings. Unlike Rust, where the length of a string is included alongside the string, C strings mark the end of a string with the character `'\0'`. See `CStr` for more information.
 
-[C 的 `char` 类型]: https://en.wikipedia.org/wiki/C_data_types#Basic_types
-[Rust 的 `char` 类型]: char
+[C's `char` type]: https://en.wikipedia.org/wiki/C_data_types#Basic_types
+[Rust's `char` type]: char

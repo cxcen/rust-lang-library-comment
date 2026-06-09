@@ -1,5 +1,5 @@
-等价于 C 的 `signed long`(`long`)类型。
+Equivalent to C's `signed long` (`long`) type.
 
-本类型始终是 [`i32`] 或 [`i64`]。最典型的是,许多 Linux 系统假定它是 `i64`,而 Windows 假定它是 `i32`。C 标准技术上只要求它是至少 32 位、且大小至少等于 [`int`] 的有符号整数;实践中几乎不存在既不是 `i32` 也不是 `i64` 的 `long`。
+This type will always be [`i32`] or [`i64`]. Most notably, many Linux-based systems assume an `i64`, but Windows assumes `i32`. The C standard technically only requires that this type be a signed integer that is at least 32 bits and at least the size of an [`int`], although in practice, no system would have a `long` that is neither an `i32` nor `i64`.
 
 [`int`]: c_int

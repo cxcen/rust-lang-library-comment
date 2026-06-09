@@ -1,4 +1,4 @@
-//! 定义数组的拥有型迭代器 `IntoIter` 的内部实现。
+//! Defines the `IntoIter` owned iterator for arrays.
 
 use crate::mem::MaybeUninit;
 use crate::num::NonZero;
@@ -7,53 +7,54 @@ use crate::{fmt, iter};
 
 #[allow(private_bounds)]
 trait PartialDrop {
-    /// # 安全性(Safety）
-    ///
-    /// 调用前 `self[alive]` 中的元素必须全部已初始化;调用后这些元素在重新初始化前
-    /// 不得再被使用。
+    /// # Safety
+    /// `self[alive]` are all initialized before the call,
+    /// then are never used (without reinitializing them) after it.
     unsafe fn partial_drop(&mut self, alive: IndexRange);
 }
 impl<T> PartialDrop for [MaybeUninit<T>] {
     unsafe fn partial_drop(&mut self, alive: IndexRange) {
-        // SAFETY: 调用方保证 `alive` 范围内的所有元素都已正确初始化。
+        // SAFETY: We know that all elements within `alive` are properly initialized.
         unsafe { self.get_unchecked_mut(alive).assume_init_drop() }
     }
 }
 impl<T, const N: usize> PartialDrop for [MaybeUninit<T>; N] {
     unsafe fn partial_drop(&mut self, alive: IndexRange) {
         let slice: &mut [MaybeUninit<T>] = self;
-        // SAFETY: 数组中已初始化的元素在切片视图中同样已初始化。
+        // SAFETY: Initialized elements in the array are also initialized in the slice.
         unsafe { slice.partial_drop(alive) }
     }
 }
 
-/// 按值数组迭代器的内部状态。
+/// The internals of a by-value array iterator.
 ///
-/// 真正的 `array::IntoIter<T, N>` 存储的是 `PolymorphicIter<[MaybeUninit<T>, N]>`,
-/// 迭代时再将其 unsize 为 `PolymorphicIter<[MaybeUninit<T>]>`。
+/// The real `array::IntoIter<T, N>` stores a `PolymorphicIter<[MaybeUninit<T>, N]>`
+/// which it unsizes to `PolymorphicIter<[MaybeUninit<T>]>` to iterate.
 #[allow(private_bounds)]
 pub(super) struct PolymorphicIter<DATA: ?Sized>
 where
     DATA: PartialDrop,
 {
-    /// `data` 中尚未产出的元素范围。
+    /// The elements in `data` that have not been yielded yet.
     ///
-    /// 不变量:
+    /// Invariants:
     /// - `alive.end <= N`
     ///
-    /// (并且 `IndexRange` 类型本身要求 `alive.start <= alive.end`。)
+    /// (And the `IndexRange` type requires `alive.start <= alive.end`.)
     alive: IndexRange,
 
-    /// 正在被迭代的数组。
+    /// This is the array we are iterating over.
     ///
-    /// 满足 `alive.start <= i < alive.end` 的元素尚未产出,因此仍是有效数组项。
-    /// 索引 `i < alive.start` 或 `i >= alive.end` 的元素已经产出,不得再访问!
-    /// 这些“死亡”元素甚至可能处于完全未初始化状态。
+    /// Elements with index `i` where `alive.start <= i < alive.end` have not
+    /// been yielded yet and are valid array entries. Elements with indices `i
+    /// < alive.start` or `i >= alive.end` have been yielded already and must
+    /// not be accessed anymore! Those dead elements might even be in a
+    /// completely uninitialized state!
     ///
-    /// 因而不变量是:
-    /// - `data[alive]` 是活跃区(即包含有效元素)
-    /// - `data[..alive.start]` 和 `data[alive.end..]` 是死亡区(元素已经被读取,
-    ///   不得再触碰!)
+    /// So the invariants are:
+    /// - `data[alive]` is alive (i.e. contains valid elements)
+    /// - `data[..alive.start]` and `data[alive.end..]` are dead (i.e. the
+    ///   elements were already read and must not be touched anymore!)
     data: DATA,
 }
 
@@ -75,8 +76,8 @@ where
 {
     #[inline]
     fn drop(&mut self) {
-        // SAFETY: 根据类型不变量,`self.alive` 精确覆盖仍初始化的元素;这里处于 Drop,
-        // 之后不会再有代码使用这些元素。
+        // SAFETY: by our type invariant `self.alive` is exactly the initialized
+        // items, and this is drop so nothing can use the items afterwards.
         unsafe { self.data.partial_drop(self.alive.clone()) }
     }
 }
@@ -87,9 +88,8 @@ impl<T, const N: usize> PolymorphicIter<[MaybeUninit<T>; N]> {
         Self { alive: IndexRange::zero_to(0), data: [const { MaybeUninit::uninit() }; N] }
     }
 
-    /// # 安全性(Safety）
-    ///
-    /// `data[alive]` 中的元素必须全部已初始化。
+    /// # Safety
+    /// `data[alive]` are all initialized.
     #[inline]
     pub(super) const unsafe fn new_unchecked(alive: IndexRange, data: [MaybeUninit<T>; N]) -> Self {
         Self { alive, data }
@@ -99,20 +99,21 @@ impl<T, const N: usize> PolymorphicIter<[MaybeUninit<T>; N]> {
 impl<T: Clone, const N: usize> Clone for PolymorphicIter<[MaybeUninit<T>; N]> {
     #[inline]
     fn clone(&self) -> Self {
-        // 注意,克隆结果不需要保持完全相同的 alive 范围;无论 `self` 当前位于何处,
-        // 都可以从偏移 0 开始克隆。
+        // Note, we don't really need to match the exact same alive range, so
+        // we can just clone into offset 0 regardless of where `self` is.
         let mut new = Self::empty();
 
         fn clone_into_new<U: Clone>(
             source: &PolymorphicIter<[MaybeUninit<U>]>,
             target: &mut PolymorphicIter<[MaybeUninit<U>]>,
         ) {
-            // 克隆所有活跃元素。
+            // Clone all alive elements.
             for (src, dst) in iter::zip(source.as_slice(), &mut target.data) {
-                // 将克隆值写入新数组,随后更新其 alive 范围。
-                // 若克隆过程 panic,此前写入的元素会被正确 drop。
+                // Write a clone into the new array, then update its alive range.
+                // If cloning panics, we'll correctly drop the previous items.
                 dst.write(src.clone());
-                // 这里的加法不会溢出,因为我们正在迭代切片,而切片长度一定能放入 usize。
+                // This addition cannot overflow as we're iterating a slice,
+                // the length of which always fits in usize.
                 target.alive = IndexRange::zero_to(target.alive.end() + 1);
             }
         }
@@ -125,7 +126,7 @@ impl<T: Clone, const N: usize> Clone for PolymorphicIter<[MaybeUninit<T>; N]> {
 impl<T> PolymorphicIter<[MaybeUninit<T>]> {
     #[inline]
     pub(super) fn as_slice(&self) -> &[T] {
-        // SAFETY: 根据类型不变量,`alive` 范围内的所有元素都已正确初始化。
+        // SAFETY: We know that all elements within `alive` are properly initialized.
         unsafe {
             let slice = self.data.get_unchecked(self.alive.clone());
             slice.assume_init_ref()
@@ -134,7 +135,7 @@ impl<T> PolymorphicIter<[MaybeUninit<T>]> {
 
     #[inline]
     pub(super) fn as_mut_slice(&mut self) -> &mut [T] {
-        // SAFETY: 根据类型不变量,`alive` 范围内的所有元素都已正确初始化。
+        // SAFETY: We know that all elements within `alive` are properly initialized.
         unsafe {
             let slice = self.data.get_unchecked_mut(self.alive.clone());
             slice.assume_init_mut()
@@ -145,27 +146,31 @@ impl<T> PolymorphicIter<[MaybeUninit<T>]> {
 impl<T: fmt::Debug> fmt::Debug for PolymorphicIter<[MaybeUninit<T>]> {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // 只打印尚未产出的元素:已经产出的元素不得再访问。
+        // Only print the elements that were not yielded yet: we cannot
+        // access the yielded elements anymore.
         f.debug_tuple("IntoIter").field(&self.as_slice()).finish()
     }
 }
 
-/// 等价于迭代器 trait 的方法。
+/// Iterator-equivalent methods.
 ///
-/// 这里没有直接实现真正的迭代器 trait,因为我们想实现 `try_fold` 这类要求
-/// `Self: Sized` 的方法,而当前类型并不满足该要求。
+/// We don't implement the actual iterator traits because we want to implement
+/// things like `try_fold` that require `Self: Sized` (which we're not).
 impl<T> PolymorphicIter<[MaybeUninit<T>]> {
     #[inline]
     pub(super) fn next(&mut self) -> Option<T> {
-        // 从前端取得下一个索引。
+        // Get the next index from the front.
         //
-        // 将 `alive.start` 加 1 会维持关于 `alive` 的不变量。但由于这次修改,
-        // 在短暂期间,活跃区不再是 `data[alive]`,而是 `data[idx..alive.end]`。
+        // Increasing `alive.start` by 1 maintains the invariant regarding
+        // `alive`. However, due to this change, for a short time, the alive
+        // zone is not `data[alive]` anymore, but `data[idx..alive.end]`.
         self.alive.next().map(|idx| {
-            // 从数组中读出该元素。
-            // SAFETY: `idx` 是数组原“活跃”区域内的索引。读取该元素意味着
-            // `data[idx]` 现在被视为死亡(不得触碰)。由于 `idx` 原本就是活跃区起点,
-            // 此后活跃区重新变为 `data[alive]`,所有不变量恢复成立。
+            // Read the element from the array.
+            // SAFETY: `idx` is an index into the former "alive" region of the
+            // array. Reading this element means that `data[idx]` is regarded as
+            // dead now (i.e. do not touch). As `idx` was the start of the
+            // alive-zone, the alive zone is now `data[alive]` again, restoring
+            // all invariants.
             unsafe { self.data.get_unchecked(idx).assume_init_read() }
         })
     }
@@ -178,12 +183,12 @@ impl<T> PolymorphicIter<[MaybeUninit<T>]> {
 
     #[inline]
     pub(super) fn advance_by(&mut self, n: usize) -> Result<(), NonZero<usize>> {
-        // 这也会移动起点,在概念上把这些元素标记为“已 drop”。因此即使后续出错,
-        // Drop 实现也不会二次释放它们。
+        // This also moves the start, which marks them as conceptually "dropped",
+        // so if anything goes bad then our drop impl won't double-free them.
         let range_to_drop = self.alive.take_prefix(n);
         let remaining = n - range_to_drop.len();
 
-        // SAFETY: 这些元素当前已初始化,因此可以 drop。
+        // SAFETY: These elements are currently initialized, so it's fine to drop them.
         unsafe {
             let slice = self.data.get_unchecked_mut(range_to_drop);
             slice.assume_init_drop();
@@ -203,12 +208,14 @@ impl<T> PolymorphicIter<[MaybeUninit<T>]> {
         F: FnMut(B, T) -> R,
         R: Try<Output = B>,
     {
-        // `alive` 是 `IndexRange`,不是任意迭代器;因此可以信任它的 `try_fold`
-        // 不会做出对同一索引多次调用 fold 闭包之类的异常行为。
+        // `alive` is an `IndexRange`, not an arbitrary iterator, so we can
+        // trust that its `try_fold` isn't going to do something weird like
+        // call the fold-er multiple times for the same index.
         let data = &mut self.data;
         self.alive.try_fold(init, move |accum, idx| {
-            // SAFETY: `idx` 已从 alive 范围中移除,所以即使 `f` panic,我们也不会再 drop 它;
-            // 因而可以把该元素的所有权交给 `f` 处理。
+            // SAFETY: `idx` has been removed from the alive range, so we're not
+            // going to drop it (even if `f` panics) and thus its ok to give
+            // out ownership of that item to `f` to handle.
             let elem = unsafe { data.get_unchecked(idx).assume_init_read() };
             f(accum, elem)
         })
@@ -216,27 +223,30 @@ impl<T> PolymorphicIter<[MaybeUninit<T>]> {
 
     #[inline]
     pub(super) fn next_back(&mut self) -> Option<T> {
-        // 从后端取得下一个索引。
+        // Get the next index from the back.
         //
-        // 将 `alive.end` 减 1 会维持关于 `alive` 的不变量。但由于这次修改,
-        // 在短暂期间,活跃区不再是 `data[alive]`,而是 `data[alive.start..=idx]`。
+        // Decreasing `alive.end` by 1 maintains the invariant regarding
+        // `alive`. However, due to this change, for a short time, the alive
+        // zone is not `data[alive]` anymore, but `data[alive.start..=idx]`.
         self.alive.next_back().map(|idx| {
-            // 从数组中读出该元素。
-            // SAFETY: `idx` 是数组原“活跃”区域内的索引。读取该元素意味着
-            // `data[idx]` 现在被视为死亡(不得触碰)。由于 `idx` 原本就是活跃区终点,
-            // 此后活跃区重新变为 `data[alive]`,所有不变量恢复成立。
+            // Read the element from the array.
+            // SAFETY: `idx` is an index into the former "alive" region of the
+            // array. Reading this element means that `data[idx]` is regarded as
+            // dead now (i.e. do not touch). As `idx` was the end of the
+            // alive-zone, the alive zone is now `data[alive]` again, restoring
+            // all invariants.
             unsafe { self.data.get_unchecked(idx).assume_init_read() }
         })
     }
 
     #[inline]
     pub(super) fn advance_back_by(&mut self, n: usize) -> Result<(), NonZero<usize>> {
-        // 这也会移动终点,在概念上把这些元素标记为“已 drop”。因此即使后续出错,
-        // Drop 实现也不会二次释放它们。
+        // This also moves the end, which marks them as conceptually "dropped",
+        // so if anything goes bad then our drop impl won't double-free them.
         let range_to_drop = self.alive.take_suffix(n);
         let remaining = n - range_to_drop.len();
 
-        // SAFETY: 这些元素当前已初始化,因此可以 drop。
+        // SAFETY: These elements are currently initialized, so it's fine to drop them.
         unsafe {
             let slice = self.data.get_unchecked_mut(range_to_drop);
             slice.assume_init_drop();
@@ -256,12 +266,14 @@ impl<T> PolymorphicIter<[MaybeUninit<T>]> {
         F: FnMut(B, T) -> R,
         R: Try<Output = B>,
     {
-        // `alive` 是 `IndexRange`,不是任意迭代器;因此可以信任它的 `try_rfold`
-        // 不会做出对同一索引多次调用 fold 闭包之类的异常行为。
+        // `alive` is an `IndexRange`, not an arbitrary iterator, so we can
+        // trust that its `try_rfold` isn't going to do something weird like
+        // call the fold-er multiple times for the same index.
         let data = &mut self.data;
         self.alive.try_rfold(init, move |accum, idx| {
-            // SAFETY: `idx` 已从 alive 范围中移除,所以即使 `f` panic,我们也不会再 drop 它;
-            // 因而可以把该元素的所有权交给 `f` 处理。
+            // SAFETY: `idx` has been removed from the alive range, so we're not
+            // going to drop it (even if `f` panics) and thus its ok to give
+            // out ownership of that item to `f` to handle.
             let elem = unsafe { data.get_unchecked(idx).assume_init_read() };
             f(accum, elem)
         })

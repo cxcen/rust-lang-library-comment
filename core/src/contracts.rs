@@ -1,17 +1,19 @@
-//! 包含不稳定 contracts lang item 和属性宏的不稳定模块。
+//! Unstable module containing the unstable contracts lang items and attribute macros.
 
 pub use crate::macros::builtin::{contracts_ensures as ensures, contracts_requires as requires};
 
-/// 这是一个恒等函数，用作 `#[ensures]` 属性脱糖的一部分。
+/// This is an identity function used as part of the desugaring of the `#[ensures]` attribute.
 ///
-/// 这是现有的权宜做法，允许用户在 `ensures` 属性中省略返回值类型。
+/// This is an existing hack to allow users to omit the type of the return value in their ensures
+/// attribute.
 ///
-/// 理想情况下，rustc 应当能生成类型标注。
-/// 现有 lowering 逻辑让添加显式类型标注相当困难，而函数调用相对直接。
+/// Ideally, rustc should be able to generate the type annotation.
+/// The existing lowering logic makes it rather hard to add the explicit type annotation,
+/// while the function call is fairly straight forward.
 #[unstable(feature = "contracts_internals", issue = "128044" /* compiler-team#759 */)]
-// 与 `contract_check_requires` 类似，这里需要使用面向用户的 `contracts` feature，
-// 而不是永久不稳定的 `contracts_internals`。const 检查不会遵守 contract 展开
-// 所使用的 allow_internal_unstable 逻辑。
+// Similar to `contract_check_requires`, we need to use the user-facing
+// `contracts` feature rather than the perma-unstable `contracts_internals`.
+// Const-checking doesn't honor allow_internal_unstable logic used by contract expansion.
 #[rustc_const_unstable(feature = "contracts", issue = "128044")]
 #[lang = "contract_build_check_ensures"]
 pub const fn build_check_ensures<Ret, C>(cond: C) -> C

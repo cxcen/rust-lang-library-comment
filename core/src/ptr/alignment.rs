@@ -4,17 +4,17 @@ use crate::num::NonZero;
 use crate::ub_checks::assert_unsafe_precondition;
 use crate::{cmp, fmt, hash, mem, num};
 
-/// 一个存储 `usize` 的类型,该 `usize` 是 2 的幂(power of two),因而表示 Rust
-/// 抽象机(abstract machine)中一个可能的对齐(alignment)值。
+/// A type storing a `usize` which is a power of two, and thus
+/// represents a possible alignment in the Rust abstract machine.
 ///
-/// 注意:特别大的对齐值虽然可以由此类型表示,但很可能不被实际的分配器(allocator)
-/// 和链接器(linker)所支持。
+/// Note that particularly large alignments, while representable in this type,
+/// are likely not to be supported by actual allocators and linkers.
 #[unstable(feature = "ptr_alignment_type", issue = "102070")]
 #[derive(Copy, Clone, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct Alignment(AlignmentEnum);
 
-// Alignment 是 `repr(usize)`,只不过是通过额外的间接手段实现的。
+// Alignment is `repr(usize)`, but via extra steps.
 const _: () = assert!(size_of::<Alignment>() == size_of::<usize>());
 const _: () = assert!(align_of::<Alignment>() == align_of::<usize>());
 
@@ -23,11 +23,11 @@ fn _alignment_can_be_structurally_matched(a: Alignment) -> bool {
 }
 
 impl Alignment {
-    /// 可能的最小对齐值,即 1。
+    /// The smallest possible alignment, 1.
     ///
-    /// 所有地址至少都对齐到这个程度(任何地址都是 1 字节对齐的)。
+    /// All addresses are always aligned at least this much.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// #![feature(ptr_alignment_type)]
@@ -38,39 +38,41 @@ impl Alignment {
     #[unstable(feature = "ptr_alignment_type", issue = "102070")]
     pub const MIN: Self = Self(AlignmentEnum::_Align1Shl0);
 
-    /// 返回某个类型的对齐值。
+    /// Returns the alignment for a type.
     ///
-    /// 它给出的数值与 [`align_of`] 相同,只不过包装在 `Alignment` 中而非 `usize`。
+    /// This provides the same numerical value as [`align_of`],
+    /// but in an `Alignment` instead of a `usize`.
     #[unstable(feature = "ptr_alignment_type", issue = "102070")]
     #[inline]
     #[must_use]
     pub const fn of<T>() -> Self {
-        // 这里实际上不可能 panic,因为类型对齐值永远是 2 的幂。
+        // This can't actually panic since type alignment is always a power of two.
         const { Alignment::new(align_of::<T>()).unwrap() }
     }
 
-    /// 从一个 `usize` 创建 `Alignment`;若它不是 2 的幂,则返回 `None`。
+    /// Creates an `Alignment` from a `usize`, or returns `None` if it's
+    /// not a power of two.
     ///
-    /// 注意:`0` 既不是 2 的幂,也不是一个有效的对齐值。
+    /// Note that `0` is not a power of two, nor a valid alignment.
     #[unstable(feature = "ptr_alignment_type", issue = "102070")]
     #[inline]
     pub const fn new(align: usize) -> Option<Self> {
         if align.is_power_of_two() {
-            // SAFETY: 刚刚检查过它只设置了一个比特位(即是 2 的幂)。
+            // SAFETY: Just checked it only has one bit set
             Some(unsafe { Self::new_unchecked(align) })
         } else {
             None
         }
     }
 
-    /// 从一个 2 的幂的 `usize` 创建 `Alignment`。
+    /// Creates an `Alignment` from a power-of-two `usize`.
     ///
-    /// # 安全性(Safety）
+    /// # Safety
     ///
-    /// 调用方必须保证:`align` 是 2 的幂。
+    /// `align` must be a power of two.
     ///
-    /// 等价地说,它必须是某个 `exp`(取值范围 `0..usize::BITS`)对应的 `1 << exp`。
-    /// 它**绝不能**为零。
+    /// Equivalently, it must be `1 << exp` for some `exp` in `0..usize::BITS`.
+    /// It must *not* be zero.
     #[unstable(feature = "ptr_alignment_type", issue = "102070")]
     #[inline]
     #[track_caller]
@@ -81,35 +83,36 @@ impl Alignment {
             (align: usize = align) => align.is_power_of_two()
         );
 
-        // SAFETY: 根据前置条件,它必定是 2 的幂,而我们的枚举变体涵盖了所有可能的
-        // 2 的幂取值。
+        // SAFETY: By precondition, this must be a power of two, and
+        // our variants encompass all possible powers of two.
         unsafe { mem::transmute::<usize, Alignment>(align) }
     }
 
-    /// 以 [`usize`] 形式返回该对齐值。
+    /// Returns the alignment as a [`usize`].
     #[unstable(feature = "ptr_alignment_type", issue = "102070")]
     #[inline]
     pub const fn as_usize(self) -> usize {
         self.0 as usize
     }
 
-    /// 以 <code>[NonZero]<[usize]></code> 形式返回该对齐值。
+    /// Returns the alignment as a <code>[NonZero]<[usize]></code>.
     #[unstable(feature = "ptr_alignment_type", issue = "102070")]
     #[inline]
     pub const fn as_nonzero(self) -> NonZero<usize> {
-        // 这里直接 transmute,以避开 `NonZero::new_unchecked` 中的 UbCheck 检查:
-        // 反正用户也没有办法触发该检查——除非该类型的有效性不变量在更早的地方就已被
-        // 破坏——而在这样一个本应简单的方法里发出该检查,对编译时间不利。
+        // This transmutes directly to avoid the UbCheck in `NonZero::new_unchecked`
+        // since there's no way for the user to trip that check anyway -- the
+        // validity invariant of the type would have to have been broken earlier --
+        // and emitting it in an otherwise simple method is bad for compile time.
 
-        // SAFETY: 所有判别值(discriminant)都非零。
+        // SAFETY: All the discriminants are non-zero.
         unsafe { mem::transmute::<Alignment, NonZero<usize>>(self) }
     }
 
-    /// 返回该对齐值以 2 为底的对数(base-2 logarithm)。
+    /// Returns the base-2 logarithm of the alignment.
     ///
-    /// 由于 `self` 表示的是 2 的幂,该结果永远是精确的。
+    /// This is always exact, as `self` represents a power of two.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// #![feature(ptr_alignment_type)]
@@ -124,11 +127,11 @@ impl Alignment {
         self.as_nonzero().trailing_zeros()
     }
 
-    /// 返回一个可用于匹配此对齐值的位掩码(bit mask)。
+    /// Returns a bit mask that can be used to match this alignment.
     ///
-    /// 它等价于 `!(self.as_usize() - 1)`。
+    /// This is equivalent to `!(self.as_usize() - 1)`.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// #![feature(ptr_alignment_type)]
@@ -150,11 +153,11 @@ impl Alignment {
     #[unstable(feature = "ptr_alignment_type", issue = "102070")]
     #[inline]
     pub const fn mask(self) -> usize {
-        // SAFETY: 对齐值永远非零,因此减一不会发生下溢(overflow)。
+        // SAFETY: The alignment is always nonzero, and therefore decrementing won't overflow.
         !(unsafe { self.as_usize().unchecked_sub(1) })
     }
 
-    // FIXME(const-hack) 一旦 `Ord::max` 可在 const 上下文中使用,就移除此函数
+    // FIXME(const-hack) Remove me once `Ord::max` is usable in const
     pub(crate) const fn max(a: Self, b: Self) -> Self {
         if a.as_usize() > b.as_usize() { a } else { b }
     }
@@ -231,7 +234,7 @@ impl hash::Hash for Alignment {
     }
 }
 
-/// 返回 [`Alignment::MIN`],它对任意类型都有效。
+/// Returns [`Alignment::MIN`], which is valid for any type.
 #[unstable(feature = "ptr_alignment_type", issue = "102070")]
 #[rustc_const_unstable(feature = "const_default", issue = "143894")]
 impl const Default for Alignment {

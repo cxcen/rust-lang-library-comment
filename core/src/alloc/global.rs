@@ -1,17 +1,23 @@
 use crate::alloc::Layout;
 use crate::{cmp, ptr};
 
-/// 可通过 `#[global_allocator]` 属性注册为标准库默认分配器的内存分配器。
+/// A memory allocator that can be registered as the standard library’s default
+/// through the `#[global_allocator]` attribute.
 ///
-/// 某些方法要求内存块是由某个分配器*当前已分配*的。这意味着：
+/// Some of the methods require that a memory block be *currently
+/// allocated* via an allocator. This means that:
 ///
-/// * 该内存块的起始地址先前由 `alloc` 等分配方法返回，并且
+/// * the starting address for that memory block was previously
+///   returned by a previous call to an allocation method
+///   such as `alloc`, and
 ///
-/// * 该内存块之后尚未被释放。内存块传给 `dealloc` 等释放方法，
-///   或传给返回非空指针的重新分配方法，都会被视为已经释放。
+/// * the memory block has not been subsequently deallocated, where
+///   blocks are deallocated either by being passed to a deallocation
+///   method such as `dealloc` or by being
+///   passed to a reallocation method that returns a non-null pointer.
 ///
 ///
-/// # 示例
+/// # Example
 ///
 /// ```
 /// use std::alloc::{GlobalAlloc, Layout};
@@ -24,7 +30,7 @@ use crate::{cmp, ptr};
 /// #[repr(C, align(4096))] // 4096 == MAX_SUPPORTED_ALIGN
 /// struct SimpleAllocator {
 ///     arena: UnsafeCell<[u8; ARENA_SIZE]>,
-///     remaining: AtomicUsize, // 从顶部开始分配，向下递减计数
+///     remaining: AtomicUsize, // we allocate from the top, counting down
 /// }
 ///
 /// #[global_allocator]
@@ -40,8 +46,8 @@ use crate::{cmp, ptr};
 ///         let size = layout.size();
 ///         let align = layout.align();
 ///
-///         // `Layout` 的约定禁止构造 align=0 或 align 不是 2 的幂的 `Layout`。
-///         // 因此我们可以安全地用掩码来保证对齐,而不必担心 UB。
+///         // `Layout` contract forbids making a `Layout` with align=0, or align not power of 2.
+///         // So we can safely use a mask to ensure alignment without worrying about UB.
 ///         let align_mask_to_round_down = !(align - 1);
 ///
 ///         if align > MAX_SUPPORTED_ALIGN {
@@ -76,46 +82,55 @@ use crate::{cmp, ptr};
 /// }
 /// ```
 ///
-/// # 安全性(Safety）
+/// # Safety
 ///
-/// `GlobalAlloc` 是 `unsafe` trait，有多方面原因；实现者必须确保遵守以下契约：
+/// The `GlobalAlloc` trait is an `unsafe` trait for a number of reasons, and
+/// implementors must ensure that they adhere to these contracts:
 ///
-/// * 全局分配器发生 unwind 是未定义行为。这个限制将来可能会放宽，
-///   但目前这些函数中的任何一次 panic 都可能导致内存不安全。
+/// * It's undefined behavior if global allocators unwind. This restriction may
+///   be lifted in the future, but currently a panic from any of these
+///   functions may lead to memory unsafety.
 ///
-/// * 对 `Layout` 的查询和计算一般都必须正确。调用者可以依赖每个方法定义的契约，
-///   因而实现者必须保证这些契约持续成立，包括 `Layout` 的大小、对齐以及
-///   “大小按对齐向上取整后不超过 `isize::MAX`”等不变量。
+/// * `Layout` queries and calculations in general must be correct. Callers of
+///   this trait are allowed to rely on the contracts defined on each method,
+///   and implementors must ensure such contracts remain true.
 ///
-/// * 即使源码中有显式堆分配，也不能依赖分配确实发生。优化器可能发现未使用的分配，
-///   并将其完全消除，或移到栈上，从而根本不调用分配器。优化器还可能假设分配不会失败；
-///   因此，原本会因分配失败而失败的代码，可能会因为优化器绕开了分配需求而突然成功。
-///   更具体地说，无论你的自定义分配器是否能统计已经发生的分配次数，下面的代码示例都是
-///   不健全的。
+/// * You must not rely on allocations actually happening, even if there are explicit
+///   heap allocations in the source. The optimizer may detect unused allocations that it can either
+///   eliminate entirely or move to the stack and thus never invoke the allocator. The
+///   optimizer may further assume that allocation is infallible, so code that used to fail due
+///   to allocator failures may now suddenly work because the optimizer worked around the
+///   need for an allocation. More concretely, the following code example is unsound, irrespective
+///   of whether your custom allocator allows counting how many allocations have happened.
 ///
 ///   ```rust,ignore (unsound and has placeholders)
 ///   drop(Box::new(42));
-///   let number_of_heap_allocs = /* 调用私有的分配器 API */;
+///   let number_of_heap_allocs = /* call private allocator API */;
 ///   unsafe { std::hint::assert_unchecked(number_of_heap_allocs > 0); }
 ///   ```
 ///
-///   注意，上面提到的并不是唯一可能应用的优化。一般来说，如果某次堆分配可以在不改变
-///   程序行为的前提下被移除，就不能依赖它确实发生。分配是否发生并不是程序行为的一部分，
-///   即使分配器可以通过打印或其他副作用来跟踪分配并观察到这一点也是如此。
+///   Note that the optimizations mentioned above are not the only
+///   optimization that can be applied. You may generally not rely on heap allocations
+///   happening if they can be removed without changing program behavior.
+///   Whether allocations happen or not is not part of the program behavior, even if it
+///   could be detected via an allocator that tracks allocations by printing or otherwise
+///   having side effects.
 ///
 /// # Re-entrance
 ///
-/// 实现全局分配器时必须小心，避免意外写出无限递归的实现，因为 Rust 标准库中的许多构造
-/// 在自身实现中可能会分配内存。例如，在某些平台上 [`std::sync::Mutex`] 可能会分配内存，
-/// 因此在全局分配器中使用它会非常成问题。
+/// When implementing a global allocator one has to be careful not to create an infinitely recursive
+/// implementation by accident, as many constructs in the Rust standard library may allocate in
+/// their implementation. For example, on some platforms [`std::sync::Mutex`] may allocate, so using
+/// it is highly problematic in a global allocator.
 ///
-/// 因此，一般来说应坚持只使用 [`core`] 提供的库功能，并避免在全局分配器中使用 [`std`]。
-/// [`std`] 中有少数功能保证不会使用 `#[global_allocator]` 进行分配：
+/// Generally speaking for this reason one should stick to library features available through
+/// [`core`], and avoid using [`std`] in a global allocator. A few features from [`std`] are
+/// guaranteed to not use `#[global_allocator]` to allocate:
 ///
 ///  - [`std::thread_local`],
 ///  - [`std::thread::current`],
-///  - [`std::thread::park`] 以及 [`std::thread::Thread`] 的 [`unpark`] 方法和
-/// [`Clone`] 实现。
+///  - [`std::thread::park`] and [`std::thread::Thread`]'s [`unpark`] method and
+/// [`Clone`] implementation.
 ///
 /// [`std`]: ../../std/index.html
 /// [`std::sync::Mutex`]: ../../std/sync/struct.Mutex.html
@@ -127,131 +142,156 @@ use crate::{cmp, ptr};
 
 #[stable(feature = "global_alloc", since = "1.28.0")]
 pub unsafe trait GlobalAlloc {
-    /// 按给定的 `layout` 描述分配内存。
+    /// Allocates memory as described by the given `layout`.
     ///
-    /// 返回指向新分配内存的指针，或返回 null 表示分配失败。返回非空指针时，
-    /// 新内存块的所有权转移给调用者。
+    /// Returns a pointer to newly-allocated memory,
+    /// or null to indicate allocation failure.
     ///
-    /// # 安全性(Safety）
+    /// # Safety
     ///
-    /// `layout` 的大小必须非零。尝试为零大小的 `layout` 分配内存会导致未定义行为。
+    /// `layout` must have non-zero size. Attempting to allocate for a zero-sized `layout` will
+    /// result in undefined behavior.
     ///
-    /// （扩展子 trait 可能会对行为提供更具体的界限，例如保证对零大小分配请求返回
-    /// 哨兵地址或 null 指针。）
+    /// (Extension subtraits might provide more specific bounds on
+    /// behavior, e.g., guarantee a sentinel address or a null pointer
+    /// in response to a zero-size allocation request.)
     ///
-    /// 分配得到的内存块可能已经初始化，也可能尚未初始化。
+    /// The allocated block of memory may or may not be initialized.
     ///
     /// # Errors
     ///
-    /// 返回 null 指针表示内存已经耗尽，或 `layout` 不满足此分配器的大小或对齐约束。
+    /// Returning a null pointer indicates that either memory is exhausted
+    /// or `layout` does not meet this allocator's size or alignment constraints.
     ///
-    /// 鼓励实现在内存耗尽时返回 null，而不是中止进程，但这不是严格要求。
-    /// （具体来说：在一个会于内存耗尽时中止的底层原生分配库之上实现此 trait 是*合法*的。）
+    /// Implementations are encouraged to return null on memory
+    /// exhaustion rather than aborting, but this is not
+    /// a strict requirement. (Specifically: it is *legal* to
+    /// implement this trait atop an underlying native allocation
+    /// library that aborts on memory exhaustion.)
     ///
-    /// 希望在分配错误发生时中止计算的客户端，建议调用 [`handle_alloc_error`] 函数，
-    /// 而不是直接调用 `panic!` 或类似机制。
+    /// Clients wishing to abort computation in response to an
+    /// allocation error are encouraged to call the [`handle_alloc_error`] function,
+    /// rather than directly invoking `panic!` or similar.
     ///
     /// [`handle_alloc_error`]: ../../alloc/alloc/fn.handle_alloc_error.html
     #[stable(feature = "global_alloc", since = "1.28.0")]
     unsafe fn alloc(&self, layout: Layout) -> *mut u8;
 
-    /// 使用给定的 `layout` 释放给定 `ptr` 指针处的内存块。
+    /// Deallocates the block of memory at the given `ptr` pointer with the given `layout`.
     ///
-    /// # 安全性(Safety）
+    /// # Safety
     ///
-    /// 调用者必须确保：
+    /// The caller must ensure:
     ///
-    /// * `ptr` 是由此分配器当前已分配的内存块，并且
+    /// * `ptr` is a block of memory currently allocated via this allocator and,
     ///
-    /// * `layout` 与分配该内存块时使用的布局相同。
+    /// * `layout` is the same layout that was used to allocate that block of
+    ///   memory.
     ///
-    /// 调用成功后，该内存块的所有权交还给此分配器；调用者不得再访问 `ptr`，
-    /// 也不得再次释放同一内存块。否则行为是未定义的。
+    /// Otherwise the behavior is undefined.
     #[stable(feature = "global_alloc", since = "1.28.0")]
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout);
 
-    /// 行为类似于 `alloc`，但还会确保返回前将内容置零。
+    /// Behaves like `alloc`, but also ensures that the contents
+    /// are set to zero before being returned.
     ///
-    /// # 安全性(Safety）
+    /// # Safety
     ///
-    /// 调用者必须确保 `layout` 的大小非零。与 `alloc` 一样，零大小的 `layout`
-    /// 会导致未定义行为。不过，分配得到的内存块保证已经初始化。
+    /// The caller has to ensure that `layout` has non-zero size. Like `alloc`
+    /// zero sized `layout` will result in undefined behavior.
+    /// However the allocated block of memory is guaranteed to be initialized.
     ///
     /// # Errors
     ///
-    /// 与 `alloc` 一样，返回非空指针时，新内存块的所有权转移给调用者；返回 null
-    /// 指针表示内存已经耗尽，或 `layout` 不满足分配器的大小或对齐约束。
+    /// Returning a null pointer indicates that either memory is exhausted
+    /// or `layout` does not meet allocator's size or alignment constraints,
+    /// just as in `alloc`.
     ///
-    /// 希望在分配错误发生时中止计算的客户端，建议调用 [`handle_alloc_error`] 函数，
-    /// 而不是直接调用 `panic!` 或类似机制。
+    /// Clients wishing to abort computation in response to an
+    /// allocation error are encouraged to call the [`handle_alloc_error`] function,
+    /// rather than directly invoking `panic!` or similar.
     ///
     /// [`handle_alloc_error`]: ../../alloc/alloc/fn.handle_alloc_error.html
     #[stable(feature = "global_alloc", since = "1.28.0")]
     unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
         let size = layout.size();
-        // SAFETY: 调用者必须满足 `alloc` 的安全契约，尤其是 `layout` 的大小非零。
+        // SAFETY: the safety contract for `alloc` must be upheld by the caller.
         let ptr = unsafe { self.alloc(layout) };
         if !ptr.is_null() {
-            // SAFETY: 分配已经成功，因此从 `ptr` 开始、长度为 `size` 的区域保证可写。
+            // SAFETY: as allocation succeeded, the region from `ptr`
+            // of size `size` is guaranteed to be valid for writes.
             unsafe { ptr::write_bytes(ptr, 0, size) };
         }
         ptr
     }
 
-    /// 将一个内存块收缩或增长到给定的 `new_size` 字节。
-    /// 该内存块由给定的 `ptr` 指针和 `layout` 描述。
+    /// Shrinks or grows a block of memory to the given `new_size` in bytes.
+    /// The block is described by the given `ptr` pointer and `layout`.
     ///
-    /// 如果此方法返回非空指针，则 `ptr` 所引用内存块的所有权已经转移给此分配器。
-    /// 任何对旧 `ptr` 的访问都是未定义行为，即使分配仍然保留在原地也是如此。
-    /// 新返回的指针现在是访问这块内存的唯一有效指针，并且新内存块的所有权转移给调用者。
+    /// If this returns a non-null pointer, then ownership of the memory block
+    /// referenced by `ptr` has been transferred to this allocator.
+    /// Any access to the old `ptr` is Undefined Behavior, even if the
+    /// allocation remained in-place. The newly returned pointer is the only valid pointer
+    /// for accessing this memory now.
     ///
-    /// 新内存块使用 `layout` 分配，但其 `size` 更新为 `new_size` 字节。
-    /// 使用 `dealloc` 释放新内存块时，必须使用这个新布局。新内存块的
-    /// `0..min(layout.size(), new_size)` 范围保证与原内存块具有相同的值。
+    /// The new memory block is allocated with `layout`,
+    /// but with the `size` updated to `new_size` in bytes.
+    /// This new layout must be used when deallocating the new memory block with `dealloc`.
+    /// The range `0..min(layout.size(), new_size)` of the new memory block is
+    /// guaranteed to have the same values as the original block.
     ///
-    /// 如果此方法返回 null，则该内存块的所有权没有转移给此分配器，
-    /// 并且该内存块的内容保持不变。
+    /// If this method returns null, then ownership of the memory
+    /// block has not been transferred to this allocator, and the
+    /// contents of the memory block are unaltered.
     ///
-    /// # 安全性(Safety）
+    /// # Safety
     ///
-    /// 调用者必须确保：
+    /// The caller must ensure that:
     ///
-    /// * `ptr` 由此分配器分配，
+    /// * `ptr` is allocated via this allocator,
     ///
-    /// * `layout` 与分配该内存块时使用的布局相同，
+    /// * `layout` is the same layout that was used
+    ///   to allocate that block of memory,
     ///
-    /// * `new_size` 大于零。
+    /// * `new_size` is greater than zero.
     ///
-    /// * `new_size` 向上取整到最接近的 `layout.align()` 倍数时不会溢出 `isize`
-    ///   （也就是说，取整后的值必须小于或等于 `isize::MAX`）。
+    /// * `new_size`, when rounded up to the nearest multiple of `layout.align()`,
+    ///   does not overflow `isize` (i.e., the rounded value must be less than or
+    ///   equal to `isize::MAX`).
     ///
-    /// 如果不满足这些条件，行为是未定义的。
+    /// If these are not followed, the behavior is undefined.
     ///
-    /// （扩展子 trait 可能会对行为提供更具体的界限，例如保证对零大小分配请求返回
-    /// 哨兵地址或 null 指针。）
+    /// (Extension subtraits might provide more specific bounds on
+    /// behavior, e.g., guarantee a sentinel address or a null pointer
+    /// in response to a zero-size allocation request.)
     ///
     /// # Errors
     ///
-    /// 如果新布局不满足分配器的大小和对齐约束，或重新分配因其他原因失败，则返回 null。
+    /// Returns null if the new layout does not meet the size
+    /// and alignment constraints of the allocator, or if reallocation
+    /// otherwise fails.
     ///
-    /// 鼓励实现在内存耗尽时返回 null，而不是 panic 或中止进程，但这不是严格要求。
-    /// （具体来说：在一个会于内存耗尽时中止的底层原生分配库之上实现此 trait 是*合法*的。）
+    /// Implementations are encouraged to return null on memory
+    /// exhaustion rather than panicking or aborting, but this is not
+    /// a strict requirement. (Specifically: it is *legal* to
+    /// implement this trait atop an underlying native allocation
+    /// library that aborts on memory exhaustion.)
     ///
-    /// 希望在重新分配错误发生时中止计算的客户端，建议调用 [`handle_alloc_error`] 函数，
-    /// 而不是直接调用 `panic!` 或类似机制。
+    /// Clients wishing to abort computation in response to a
+    /// reallocation error are encouraged to call the [`handle_alloc_error`] function,
+    /// rather than directly invoking `panic!` or similar.
     ///
     /// [`handle_alloc_error`]: ../../alloc/alloc/fn.handle_alloc_error.html
     #[stable(feature = "global_alloc", since = "1.28.0")]
     unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
-        // SAFETY: 调用者必须保证 `new_size` 按 `layout.align()` 向上取整后不溢出；
-        // `layout.align()` 来自一个 `Layout`，因此保证是有效对齐。
+        // SAFETY: the caller must ensure that the `new_size` does not overflow.
+        // `layout.align()` comes from a `Layout` and is thus guaranteed to be valid.
         let new_layout = unsafe { Layout::from_size_align_unchecked(new_size, layout.align()) };
-        // SAFETY: 调用者必须保证 `new_size` 大于零，因此 `new_layout` 满足 `alloc` 的非零要求。
+        // SAFETY: the caller must ensure that `new_layout` is greater than zero.
         let new_ptr = unsafe { self.alloc(new_layout) };
         if !new_ptr.is_null() {
-            // SAFETY: 调用者保证 `ptr` 和 `layout` 描述一个由此分配器当前分配的块；
-            // 新分配的块不会与该旧块重叠，且复制长度不超过两个块的大小。
-            // 随后按原 `layout` 释放旧块，把旧块所有权交还给分配器。
+            // SAFETY: the previously allocated block cannot overlap the newly allocated block.
+            // The safety contract for `dealloc` must be upheld by the caller.
             unsafe {
                 ptr::copy_nonoverlapping(ptr, new_ptr, cmp::min(layout.size(), new_size));
                 self.dealloc(ptr, layout);

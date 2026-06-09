@@ -1,8 +1,9 @@
-/// 一元逻辑取反运算符 `!`。
+/// The unary logical negation operator `!`.
 ///
-/// # 示例
+/// # Examples
 ///
-/// 为 `Answer` 实现 `Not`,从而允许用 `!` 翻转它的值。
+/// An implementation of `Not` for `Answer`, which enables the use of `!` to
+/// invert its value.
 ///
 /// ```
 /// use std::ops::Not;
@@ -32,13 +33,13 @@
 #[rustc_const_unstable(feature = "const_ops", issue = "143802")]
 #[doc(alias = "!")]
 pub const trait Not {
-    /// 应用 `!` 运算符之后得到的结果类型。
+    /// The resulting type after applying the `!` operator.
     #[stable(feature = "rust1", since = "1.0.0")]
     type Output;
 
-    /// 执行一元 `!` 操作。
+    /// Performs the unary `!` operation.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// assert_eq!(!true, false);
@@ -81,13 +82,13 @@ impl const Not for ! {
     }
 }
 
-/// 按位与运算符 `&`。
+/// The bitwise AND operator `&`.
 ///
-/// 注意 `Rhs` 默认是 `Self`,但这并非强制。
+/// Note that `Rhs` is `Self` by default, but this is not mandatory.
 ///
-/// # 示例
+/// # Examples
 ///
-/// 为一个 `bool` 的包装类型实现 `BitAnd`。
+/// An implementation of `BitAnd` for a wrapper around `bool`.
 ///
 /// ```
 /// use std::ops::BitAnd;
@@ -98,7 +99,7 @@ impl const Not for ! {
 /// impl BitAnd for Scalar {
 ///     type Output = Self;
 ///
-///     // rhs 是表达式 `a & b` 的“右操作数”(right-hand side)
+///     // rhs is the "right-hand side" of the expression `a & b`
 ///     fn bitand(self, rhs: Self) -> Self::Output {
 ///         Self(self.0 & rhs.0)
 ///     }
@@ -110,7 +111,7 @@ impl const Not for ! {
 /// assert_eq!(Scalar(false) & Scalar(false), Scalar(false));
 /// ```
 ///
-/// 为一个 `Vec<bool>` 的包装类型实现 `BitAnd`。
+/// An implementation of `BitAnd` for a wrapper around `Vec<bool>`.
 ///
 /// ```
 /// use std::ops::BitAnd;
@@ -147,13 +148,13 @@ impl const Not for ! {
     label = "no implementation for `{Self} & {Rhs}`"
 )]
 pub const trait BitAnd<Rhs = Self> {
-    /// 应用 `&` 运算符之后得到的结果类型。
+    /// The resulting type after applying the `&` operator.
     #[stable(feature = "rust1", since = "1.0.0")]
     type Output;
 
-    /// 执行 `&` 操作。
+    /// Performs the `&` operation.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// assert_eq!(true & false, false);
@@ -185,13 +186,13 @@ macro_rules! bitand_impl {
 
 bitand_impl! { bool usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 }
 
-/// 按位或运算符 `|`。
+/// The bitwise OR operator `|`.
 ///
-/// 注意 `Rhs` 默认是 `Self`,但这并非强制。
+/// Note that `Rhs` is `Self` by default, but this is not mandatory.
 ///
-/// # 示例
+/// # Examples
 ///
-/// 为一个 `bool` 的包装类型实现 `BitOr`。
+/// An implementation of `BitOr` for a wrapper around `bool`.
 ///
 /// ```
 /// use std::ops::BitOr;
@@ -202,7 +203,7 @@ bitand_impl! { bool usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 }
 /// impl BitOr for Scalar {
 ///     type Output = Self;
 ///
-///     // rhs 是表达式 `a | b` 的“右操作数”(right-hand side)
+///     // rhs is the "right-hand side" of the expression `a | b`
 ///     fn bitor(self, rhs: Self) -> Self::Output {
 ///         Self(self.0 | rhs.0)
 ///     }
@@ -214,7 +215,7 @@ bitand_impl! { bool usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 }
 /// assert_eq!(Scalar(false) | Scalar(false), Scalar(false));
 /// ```
 ///
-/// 为一个 `Vec<bool>` 的包装类型实现 `BitOr`。
+/// An implementation of `BitOr` for a wrapper around `Vec<bool>`.
 ///
 /// ```
 /// use std::ops::BitOr;
@@ -251,13 +252,13 @@ bitand_impl! { bool usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 }
     label = "no implementation for `{Self} | {Rhs}`"
 )]
 pub const trait BitOr<Rhs = Self> {
-    /// 应用 `|` 运算符之后得到的结果类型。
+    /// The resulting type after applying the `|` operator.
     #[stable(feature = "rust1", since = "1.0.0")]
     type Output;
 
-    /// 执行 `|` 操作。
+    /// Performs the `|` operation.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// assert_eq!(true | false, true);
@@ -289,13 +290,13 @@ macro_rules! bitor_impl {
 
 bitor_impl! { bool usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 }
 
-/// 按位异或运算符 `^`。
+/// The bitwise XOR operator `^`.
 ///
-/// 注意 `Rhs` 默认是 `Self`,但这并非强制。
+/// Note that `Rhs` is `Self` by default, but this is not mandatory.
 ///
-/// # 示例
+/// # Examples
 ///
-/// 一个把 `^` 提升到 `bool` 包装类型上的 `BitXor` 实现。
+/// An implementation of `BitXor` that lifts `^` to a wrapper around `bool`.
 ///
 /// ```
 /// use std::ops::BitXor;
@@ -306,7 +307,7 @@ bitor_impl! { bool usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 }
 /// impl BitXor for Scalar {
 ///     type Output = Self;
 ///
-///     // rhs 是表达式 `a ^ b` 的“右操作数”(right-hand side)
+///     // rhs is the "right-hand side" of the expression `a ^ b`
 ///     fn bitxor(self, rhs: Self) -> Self::Output {
 ///         Self(self.0 ^ rhs.0)
 ///     }
@@ -318,7 +319,7 @@ bitor_impl! { bool usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 }
 /// assert_eq!(Scalar(false) ^ Scalar(false), Scalar(false));
 /// ```
 ///
-/// 为一个 `Vec<bool>` 的包装类型实现 `BitXor` trait。
+/// An implementation of `BitXor` trait for a wrapper around `Vec<bool>`.
 ///
 /// ```
 /// use std::ops::BitXor;
@@ -355,13 +356,13 @@ bitor_impl! { bool usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 }
     label = "no implementation for `{Self} ^ {Rhs}`"
 )]
 pub const trait BitXor<Rhs = Self> {
-    /// 应用 `^` 运算符之后得到的结果类型。
+    /// The resulting type after applying the `^` operator.
     #[stable(feature = "rust1", since = "1.0.0")]
     type Output;
 
-    /// 执行 `^` 操作。
+    /// Performs the `^` operation.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// assert_eq!(true ^ false, true);
@@ -393,14 +394,17 @@ macro_rules! bitxor_impl {
 
 bitxor_impl! { bool usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 }
 
-/// 左移运算符 `<<`。注意,由于这个 trait 是为所有整数类型、且配以多种右操作数
-/// 类型实现的,Rust 的类型检查器对 `_ << _` 做了特殊处理:它把整数运算的结果
-/// 类型设为左操作数的类型。这意味着,尽管 `a << b` 和 `a.shl(b)` 从求值的角度
-/// 看完全相同,但就类型推断而言它们是不同的。
+/// The left shift operator `<<`. Note that because this trait is implemented
+/// for all integer types with multiple right-hand-side types, Rust's type
+/// checker has special handling for `_ << _`, setting the result type for
+/// integer operations to the type of the left-hand-side operand. This means
+/// that though `a << b` and `a.shl(b)` are one and the same from an evaluation
+/// standpoint, they are different when it comes to type inference.
 ///
-/// # 示例
+/// # Examples
 ///
-/// 一个把整数上的 `<<` 运算提升到 `usize` 包装类型上的 `Shl` 实现。
+/// An implementation of `Shl` that lifts the `<<` operation on integers to a
+/// wrapper around `usize`.
 ///
 /// ```
 /// use std::ops::Shl;
@@ -420,7 +424,7 @@ bitxor_impl! { bool usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 }
 /// assert_eq!(Scalar(4) << Scalar(2), Scalar(16));
 /// ```
 ///
-/// 一个把向量向左旋转给定位数的 `Shl` 实现。
+/// An implementation of `Shl` that spins a vector leftward by a given amount.
 ///
 /// ```
 /// use std::ops::Shl;
@@ -434,7 +438,7 @@ bitxor_impl! { bool usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 }
 ///     type Output = Self;
 ///
 ///     fn shl(self, rhs: usize) -> Self::Output {
-///         // 把向量旋转 `rhs` 个位置。
+///         // Rotate the vector by `rhs` places.
 ///         let (a, b) = self.vec.split_at(rhs);
 ///         let mut spun_vector = vec![];
 ///         spun_vector.extend_from_slice(b);
@@ -455,13 +459,13 @@ bitxor_impl! { bool usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 }
     label = "no implementation for `{Self} << {Rhs}`"
 )]
 pub const trait Shl<Rhs = Self> {
-    /// 应用 `<<` 运算符之后得到的结果类型。
+    /// The resulting type after applying the `<<` operator.
     #[stable(feature = "rust1", since = "1.0.0")]
     type Output;
 
-    /// 执行 `<<` 操作。
+    /// Performs the `<<` operation.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// assert_eq!(5u8 << 1, 10);
@@ -512,14 +516,17 @@ macro_rules! shl_impl_all {
 
 shl_impl_all! { u8 u16 u32 u64 u128 usize i8 i16 i32 i64 i128 isize }
 
-/// 右移运算符 `>>`。注意,由于这个 trait 是为所有整数类型、且配以多种右操作数
-/// 类型实现的,Rust 的类型检查器对 `_ >> _` 做了特殊处理:它把整数运算的结果
-/// 类型设为左操作数的类型。这意味着,尽管 `a >> b` 和 `a.shr(b)` 从求值的角度
-/// 看完全相同,但就类型推断而言它们是不同的。
+/// The right shift operator `>>`. Note that because this trait is implemented
+/// for all integer types with multiple right-hand-side types, Rust's type
+/// checker has special handling for `_ >> _`, setting the result type for
+/// integer operations to the type of the left-hand-side operand. This means
+/// that though `a >> b` and `a.shr(b)` are one and the same from an evaluation
+/// standpoint, they are different when it comes to type inference.
 ///
-/// # 示例
+/// # Examples
 ///
-/// 一个把整数上的 `>>` 运算提升到 `usize` 包装类型上的 `Shr` 实现。
+/// An implementation of `Shr` that lifts the `>>` operation on integers to a
+/// wrapper around `usize`.
 ///
 /// ```
 /// use std::ops::Shr;
@@ -539,7 +546,7 @@ shl_impl_all! { u8 u16 u32 u64 u128 usize i8 i16 i32 i64 i128 isize }
 /// assert_eq!(Scalar(16) >> Scalar(2), Scalar(4));
 /// ```
 ///
-/// 一个把向量向右旋转给定位数的 `Shr` 实现。
+/// An implementation of `Shr` that spins a vector rightward by a given amount.
 ///
 /// ```
 /// use std::ops::Shr;
@@ -553,7 +560,7 @@ shl_impl_all! { u8 u16 u32 u64 u128 usize i8 i16 i32 i64 i128 isize }
 ///     type Output = Self;
 ///
 ///     fn shr(self, rhs: usize) -> Self::Output {
-///         // 把向量旋转 `rhs` 个位置。
+///         // Rotate the vector by `rhs` places.
 ///         let (a, b) = self.vec.split_at(self.vec.len() - rhs);
 ///         let mut spun_vector = vec![];
 ///         spun_vector.extend_from_slice(b);
@@ -574,13 +581,13 @@ shl_impl_all! { u8 u16 u32 u64 u128 usize i8 i16 i32 i64 i128 isize }
     label = "no implementation for `{Self} >> {Rhs}`"
 )]
 pub const trait Shr<Rhs = Self> {
-    /// 应用 `>>` 运算符之后得到的结果类型。
+    /// The resulting type after applying the `>>` operator.
     #[stable(feature = "rust1", since = "1.0.0")]
     type Output;
 
-    /// 执行 `>>` 操作。
+    /// Performs the `>>` operation.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// assert_eq!(5u8 >> 1, 2);
@@ -631,11 +638,12 @@ macro_rules! shr_impl_all {
 
 shr_impl_all! { u8 u16 u32 u64 u128 usize i8 i16 i32 i64 i128 isize }
 
-/// 按位与赋值运算符 `&=`。
+/// The bitwise AND assignment operator `&=`.
 ///
-/// # 示例
+/// # Examples
 ///
-/// 一个把 `&=` 运算符提升到 `bool` 包装类型上的 `BitAndAssign` 实现。
+/// An implementation of `BitAndAssign` that lifts the `&=` operator to a
+/// wrapper around `bool`.
 ///
 /// ```
 /// use std::ops::BitAndAssign;
@@ -644,7 +652,7 @@ shr_impl_all! { u8 u16 u32 u64 u128 usize i8 i16 i32 i64 i128 isize }
 /// struct Scalar(bool);
 ///
 /// impl BitAndAssign for Scalar {
-///     // rhs 是表达式 `a &= b` 的“右操作数”(right-hand side)
+///     // rhs is the "right-hand side" of the expression `a &= b`
 ///     fn bitand_assign(&mut self, rhs: Self) {
 ///         *self = Self(self.0 & rhs.0)
 ///     }
@@ -667,7 +675,8 @@ shr_impl_all! { u8 u16 u32 u64 u128 usize i8 i16 i32 i64 i128 isize }
 /// assert_eq!(scalar, Scalar(false));
 /// ```
 ///
-/// 这里为一个 `Vec<bool>` 的包装类型实现了 `BitAndAssign` trait。
+/// Here, the `BitAndAssign` trait is implemented for a wrapper around
+/// `Vec<bool>`.
 ///
 /// ```
 /// use std::ops::BitAndAssign;
@@ -676,7 +685,7 @@ shr_impl_all! { u8 u16 u32 u64 u128 usize i8 i16 i32 i64 i128 isize }
 /// struct BooleanVector(Vec<bool>);
 ///
 /// impl BitAndAssign for BooleanVector {
-///     // `rhs` 是表达式 `a &= b` 的“右操作数”(right-hand side)。
+///     // `rhs` is the "right-hand side" of the expression `a &= b`.
 ///     fn bitand_assign(&mut self, rhs: Self) {
 ///         assert_eq!(self.0.len(), rhs.0.len());
 ///         *self = Self(
@@ -703,9 +712,9 @@ shr_impl_all! { u8 u16 u32 u64 u128 usize i8 i16 i32 i64 i128 isize }
     label = "no implementation for `{Self} &= {Rhs}`"
 )]
 pub const trait BitAndAssign<Rhs = Self> {
-    /// 执行 `&=` 操作。
+    /// Performs the `&=` operation.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let mut x = true;
@@ -745,9 +754,9 @@ macro_rules! bitand_assign_impl {
 
 bitand_assign_impl! { bool usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 }
 
-/// 按位或赋值运算符 `|=`。
+/// The bitwise OR assignment operator `|=`.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// use std::ops::BitOrAssign;
@@ -778,9 +787,9 @@ bitand_assign_impl! { bool usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 }
     label = "no implementation for `{Self} |= {Rhs}`"
 )]
 pub const trait BitOrAssign<Rhs = Self> {
-    /// 执行 `|=` 操作。
+    /// Performs the `|=` operation.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let mut x = true;
@@ -820,9 +829,9 @@ macro_rules! bitor_assign_impl {
 
 bitor_assign_impl! { bool usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 }
 
-/// 按位异或赋值运算符 `^=`。
+/// The bitwise XOR assignment operator `^=`.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// use std::ops::BitXorAssign;
@@ -853,9 +862,9 @@ bitor_assign_impl! { bool usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 }
     label = "no implementation for `{Self} ^= {Rhs}`"
 )]
 pub const trait BitXorAssign<Rhs = Self> {
-    /// 执行 `^=` 操作。
+    /// Performs the `^=` operation.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let mut x = true;
@@ -895,11 +904,11 @@ macro_rules! bitxor_assign_impl {
 
 bitxor_assign_impl! { bool usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 }
 
-/// 左移赋值运算符 `<<=`。
+/// The left shift assignment operator `<<=`.
 ///
-/// # 示例
+/// # Examples
 ///
-/// 为一个 `usize` 的包装类型实现 `ShlAssign`。
+/// An implementation of `ShlAssign` for a wrapper around `usize`.
 ///
 /// ```
 /// use std::ops::ShlAssign;
@@ -926,9 +935,9 @@ bitxor_assign_impl! { bool usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 }
     label = "no implementation for `{Self} <<= {Rhs}`"
 )]
 pub const trait ShlAssign<Rhs = Self> {
-    /// 执行 `<<=` 操作。
+    /// Performs the `<<=` operation.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let mut x: u8 = 5;
@@ -981,11 +990,11 @@ macro_rules! shl_assign_impl_all {
 
 shl_assign_impl_all! { u8 u16 u32 u64 u128 usize i8 i16 i32 i64 i128 isize }
 
-/// 右移赋值运算符 `>>=`。
+/// The right shift assignment operator `>>=`.
 ///
-/// # 示例
+/// # Examples
 ///
-/// 为一个 `usize` 的包装类型实现 `ShrAssign`。
+/// An implementation of `ShrAssign` for a wrapper around `usize`.
 ///
 /// ```
 /// use std::ops::ShrAssign;
@@ -1012,9 +1021,9 @@ shl_assign_impl_all! { u8 u16 u32 u64 u128 usize i8 i16 i32 i64 i128 isize }
     label = "no implementation for `{Self} >>= {Rhs}`"
 )]
 pub const trait ShrAssign<Rhs = Self> {
-    /// 执行 `>>=` 操作。
+    /// Performs the `>>=` operation.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let mut x: u8 = 5;

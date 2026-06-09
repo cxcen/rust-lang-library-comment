@@ -1,20 +1,21 @@
-//! `char` primitive type 的工具。
+//! Utilities for the `char` primitive type.
 //!
-//! *[另见 `char` primitive type](primitive@char)。*
+//! *[See also the `char` primitive type](primitive@char).*
 //!
-//! `char` 表示一个 Unicode 标量值（[Unicode scalar value]），而不是用户感知的“字符”。
-//! Unicode 中“字符”本身不是严格技术概念；一个用户看到的字形可能由多个 code point 组成。
-//! `char` 的取值范围是所有 Unicode code point 中排除 UTF-16 代理项 U+D800..=U+DFFF
-//! 的部分，因此它不会包含代理对的任一半，也不能表示非 Unicode 标量值。
+//! The `char` type represents a single character. More specifically, since
+//! 'character' isn't a well-defined concept in Unicode, `char` is a '[Unicode
+//! scalar value]', which is similar to, but not the same as, a '[Unicode code
+//! point]'.
 //!
 //! [Unicode scalar value]: https://www.unicode.org/glossary/#unicode_scalar_value
 //! [Unicode code point]: https://www.unicode.org/glossary/#code_point
 //!
-//! 本模块主要出于组织和技术原因存在；`char` 的主体文档直接位于
-//! [`char` primitive type][char] 页面。
+//! This module exists for technical reasons, the primary documentation for
+//! `char` is directly on [the `char` primitive type][char] itself.
 //!
-//! 这里保存 `char` 上若干迭代器类型的实现，以及与 `char` 互相转换时需要的常量和函数。
-//! 这些转换必须维护 `char` 的核心不变量：数值不超过 U+10FFFF，且不能落入代理项范围。
+//! This module is the home of the iterator implementations for the iterators
+//! implemented on `char`, as well as some useful constants and conversion
+//! functions that convert various types to `char`.
 
 #![allow(non_snake_case)]
 #![stable(feature = "rust1", since = "1.0.0")]
@@ -23,7 +24,7 @@ mod convert;
 mod decode;
 mod methods;
 
-// 稳定的重新导出。
+// stable re-exports
 #[rustfmt::skip]
 #[stable(feature = "try_from", since = "1.34.0")]
 pub use self::convert::CharTryFromError;
@@ -32,7 +33,7 @@ pub use self::convert::ParseCharError;
 #[stable(feature = "decode_utf16", since = "1.9.0")]
 pub use self::decode::{DecodeUtf16, DecodeUtf16Error};
 
-// 永久不稳定的重新导出。
+// perma-unstable re-exports
 #[rustfmt::skip]
 #[unstable(feature = "char_internals", reason = "exposed only for libstd", issue = "none")]
 pub use self::methods::encode_utf16_raw; // perma-unstable
@@ -48,7 +49,7 @@ use crate::fmt::{self, Write};
 use crate::iter::{FusedIterator, TrustedLen, TrustedRandomAccess, TrustedRandomAccessNoCoerce};
 use crate::num::NonZero;
 
-// 用于把 `char` 编码为 UTF-8 的范围界限和前缀标签。
+// UTF-8 ranges and tags for encoding characters
 const TAG_CONT: u8 = 0b1000_0000;
 const TAG_TWO_B: u8 = 0b1100_0000;
 const TAG_THREE_B: u8 = 0b1110_0000;
@@ -58,69 +59,71 @@ const MAX_TWO_B: u32 = 0x800;
 const MAX_THREE_B: u32 = 0x10000;
 
 /*
-    Lu  Uppercase_Letter        大写字母
-    Ll  Lowercase_Letter        小写字母
-    Lt  Titlecase_Letter        首部分为大写的双字母 titlecase 字符
-    Lm  Modifier_Letter         修饰字母
-    Lo  Other_Letter            其他字母，包括音节文字和表意文字
-    Mn  Nonspacing_Mark         非间距组合标记（零前进宽度）
-    Mc  Spacing_Mark            间距组合标记（正前进宽度）
-    Me  Enclosing_Mark          包围式组合标记
-    Nd  Decimal_Number          十进制数字
-    Nl  Letter_Number           类字母数字字符
-    No  Other_Number            其他类型的数字字符
-    Pc  Connector_Punctuation   连接标点，例如连结线
-    Pd  Dash_Punctuation        破折号或连字符类标点
-    Ps  Open_Punctuation        成对标点中的开标点
-    Pe  Close_Punctuation       成对标点中的闭标点
-    Pi  Initial_Punctuation     起始引号
-    Pf  Final_Punctuation       结束引号
-    Po  Other_Punctuation       其他类型的标点
-    Sm  Math_Symbol             主要用于数学的符号
-    Sc  Currency_Symbol         货币符号
-    Sk  Modifier_Symbol         非字母型修饰符号
-    So  Other_Symbol            其他类型的符号
-    Zs  Space_Separator         各种非零宽度的空格字符
-    Zl  Line_Separator          仅 U+2028 LINE SEPARATOR
-    Zp  Paragraph_Separator     仅 U+2029 PARAGRAPH SEPARATOR
-    Cc  Control                 C0 或 C1 控制码
-    Cf  Format                  格式控制字符
-    Cs  Surrogate               代理项 code point；它不是 `char` 可表示的 Unicode 标量值
-    Co  Private_Use             私用字符
-    Cn  Unassigned              保留的未分配 code point 或 noncharacter
+    Lu  Uppercase_Letter        an uppercase letter
+    Ll  Lowercase_Letter        a lowercase letter
+    Lt  Titlecase_Letter        a digraphic character, with first part uppercase
+    Lm  Modifier_Letter         a modifier letter
+    Lo  Other_Letter            other letters, including syllables and ideographs
+    Mn  Nonspacing_Mark         a nonspacing combining mark (zero advance width)
+    Mc  Spacing_Mark            a spacing combining mark (positive advance width)
+    Me  Enclosing_Mark          an enclosing combining mark
+    Nd  Decimal_Number          a decimal digit
+    Nl  Letter_Number           a letterlike numeric character
+    No  Other_Number            a numeric character of other type
+    Pc  Connector_Punctuation   a connecting punctuation mark, like a tie
+    Pd  Dash_Punctuation        a dash or hyphen punctuation mark
+    Ps  Open_Punctuation        an opening punctuation mark (of a pair)
+    Pe  Close_Punctuation       a closing punctuation mark (of a pair)
+    Pi  Initial_Punctuation     an initial quotation mark
+    Pf  Final_Punctuation       a final quotation mark
+    Po  Other_Punctuation       a punctuation mark of other type
+    Sm  Math_Symbol             a symbol of primarily mathematical use
+    Sc  Currency_Symbol         a currency sign
+    Sk  Modifier_Symbol         a non-letterlike modifier symbol
+    So  Other_Symbol            a symbol of other type
+    Zs  Space_Separator         a space character (of various non-zero widths)
+    Zl  Line_Separator          U+2028 LINE SEPARATOR only
+    Zp  Paragraph_Separator     U+2029 PARAGRAPH SEPARATOR only
+    Cc  Control                 a C0 or C1 control code
+    Cf  Format                  a format control character
+    Cs  Surrogate               a surrogate code point
+    Co  Private_Use             a private-use character
+    Cn  Unassigned              a reserved unassigned code point or a noncharacter
 */
 
-/// `char` 可具有的最高有效 code point，`'\u{10FFFF}'`。请改用 [`char::MAX`]。
+/// The highest valid code point a `char` can have, `'\u{10FFFF}'`. Use [`char::MAX`] instead.
 #[stable(feature = "rust1", since = "1.0.0")]
 pub const MAX: char = char::MAX;
 
-/// 将 `char` [编码](char::encode_utf8)为 UTF-8 时最多需要的字节数。
+/// The maximum number of bytes required to [encode](char::encode_utf8) a `char` to
+/// UTF-8 encoding.
 #[unstable(feature = "char_max_len", issue = "121714")]
 pub const MAX_LEN_UTF8: usize = char::MAX_LEN_UTF8;
 
-/// 将 `char` [编码](char::encode_utf16)为 UTF-16 时最多需要的 2 字节 code unit 数。
+/// The maximum number of two-byte units required to [encode](char::encode_utf16) a `char`
+/// to UTF-16 encoding.
 #[unstable(feature = "char_max_len", issue = "121714")]
 pub const MAX_LEN_UTF16: usize = char::MAX_LEN_UTF16;
 
-/// `U+FFFD REPLACEMENT CHARACTER`（�）在 Unicode 中用于表示解码错误。
-/// 请改用 [`char::REPLACEMENT_CHARACTER`]。
+/// `U+FFFD REPLACEMENT CHARACTER` (�) is used in Unicode to represent a
+/// decoding error. Use [`char::REPLACEMENT_CHARACTER`] instead.
 #[stable(feature = "decode_utf16", since = "1.9.0")]
 pub const REPLACEMENT_CHARACTER: char = char::REPLACEMENT_CHARACTER;
 
-/// `char` 和 `str` 的 Unicode 相关方法所依据的
-/// [Unicode](https://www.unicode.org/) 版本。请改用 [`char::UNICODE_VERSION`]。
+/// The version of [Unicode](https://www.unicode.org/) that the Unicode parts of
+/// `char` and `str` methods are based on. Use [`char::UNICODE_VERSION`] instead.
 #[stable(feature = "unicode_version", since = "1.45.0")]
 pub const UNICODE_VERSION: (u8, u8, u8) = char::UNICODE_VERSION;
 
-/// 为 `iter` 中的 UTF-16 code unit 创建解码迭代器，遇到未配对代理项时返回 `Err`。
-/// 请改用 [`char::decode_utf16`]。
+/// Creates an iterator over the UTF-16 encoded code points in `iter`, returning
+/// unpaired surrogates as `Err`s. Use [`char::decode_utf16`] instead.
 #[stable(feature = "decode_utf16", since = "1.9.0")]
 #[inline]
 pub fn decode_utf16<I: IntoIterator<Item = u16>>(iter: I) -> DecodeUtf16<I::IntoIter> {
     self::decode::decode_utf16(iter)
 }
 
-/// 将 `u32` 转换为 `char`。请改用 [`char::from_u32`]。
+/// Converts a `u32` to a `char`. Use [`char::from_u32`] instead.
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_const_stable(feature = "const_char_convert", since = "1.67.0")]
 #[must_use]
@@ -129,18 +132,18 @@ pub const fn from_u32(i: u32) -> Option<char> {
     self::convert::from_u32(i)
 }
 
-/// 忽略有效性检查，将 `u32` 转换为 `char`。请改用 [`char::from_u32_unchecked`]。
+/// Converts a `u32` to a `char`, ignoring validity. Use [`char::from_u32_unchecked`]
+/// instead.
 #[stable(feature = "char_from_unchecked", since = "1.5.0")]
 #[rustc_const_stable(feature = "const_char_from_u32_unchecked", since = "1.81.0")]
 #[must_use]
 #[inline]
 pub const unsafe fn from_u32_unchecked(i: u32) -> char {
-    // SAFETY: 调用方必须维护 `char::from_u32_unchecked` 的契约：
-    // `i` 必须是不超过 U+10FFFF 且不位于代理项范围内的 Unicode 标量值。
+    // SAFETY: the safety contract must be upheld by the caller.
     unsafe { self::convert::from_u32_unchecked(i) }
 }
 
-/// 将给定基数中的数字转换为 `char`。请改用 [`char::from_digit`]。
+/// Converts a digit in the given radix to a `char`. Use [`char::from_digit`] instead.
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_const_stable(feature = "const_char_convert", since = "1.67.0")]
 #[must_use]
@@ -149,9 +152,11 @@ pub const fn from_digit(num: u32, radix: u32) -> Option<char> {
     self::convert::from_digit(num, radix)
 }
 
-/// 返回一个迭代器，以 `char` 形式产生字符的十六进制 Unicode 转义序列。
+/// Returns an iterator that yields the hexadecimal Unicode escape of a
+/// character, as `char`s.
 ///
-/// 该 `struct` 由 [`char`] 上的 [`escape_unicode`] 方法创建；更多行为说明见该方法文档。
+/// This `struct` is created by the [`escape_unicode`] method on [`char`]. See
+/// its documentation for more.
 ///
 /// [`escape_unicode`]: char::escape_unicode
 #[derive(Clone, Debug)]
@@ -214,9 +219,10 @@ impl fmt::Display for EscapeUnicode {
     }
 }
 
-/// 产生 `char` 字面量转义序列的迭代器。
+/// An iterator that yields the literal escape code of a `char`.
 ///
-/// 该 `struct` 由 [`char`] 上的 [`escape_default`] 方法创建；更多行为说明见该方法文档。
+/// This `struct` is created by the [`escape_default`] method on [`char`]. See
+/// its documentation for more.
 ///
 /// [`escape_default`]: char::escape_default
 #[derive(Clone, Debug)]
@@ -290,9 +296,10 @@ impl fmt::Display for EscapeDefault {
     }
 }
 
-/// 产生适用于调试输出的 `char` 字面量转义序列的迭代器。
+/// An iterator that yields the literal escape code of a `char`.
 ///
-/// 该 `struct` 由 [`char`] 上的 [`escape_debug`] 方法创建；更多行为说明见该方法文档。
+/// This `struct` is created by the [`escape_debug`] method on [`char`]. See its
+/// documentation for more.
 ///
 /// [`escape_debug`]: char::escape_debug
 #[stable(feature = "char_escape_debug", since = "1.20.0")]
@@ -393,7 +400,7 @@ macro_rules! casemappingiter_impls {
             }
 
             unsafe fn __iterator_get_unchecked(&mut self, idx: usize) -> Self::Item {
-                // SAFETY: 该包装迭代器不改变索引语义，直接把 unchecked 访问的前置条件转交给调用方。
+                // SAFETY: just forwarding requirements to caller
                 unsafe { self.0.__iterator_get_unchecked(idx) }
             }
         }
@@ -430,18 +437,18 @@ macro_rules! casemappingiter_impls {
             }
         }
 
-        // SAFETY: 长度上下界完全由内部 `array::IntoIter` 决定，包装层不额外丢弃或生成元素。
+        // SAFETY: forwards to inner `array::IntoIter`
         #[unstable(feature = "trusted_len", issue = "37572")]
         unsafe impl TrustedLen for $ITER_NAME {}
 
-        // SAFETY: 随机访问能力来自内部 `array::IntoIter`，包装层只转发访问。
+        // SAFETY: forwards to inner `array::IntoIter`
         #[doc(hidden)]
         #[unstable(feature = "std_internals", issue = "none")]
         unsafe impl TrustedRandomAccessNoCoerce for $ITER_NAME {
             const MAY_HAVE_SIDE_EFFECT: bool = false;
         }
 
-        // SAFETY: 该迭代器的 `Item` 固定为 `char`，没有可导致协变替换问题的子类型/父类型关系。
+        // SAFETY: this iter has no subtypes/supertypes
         #[doc(hidden)]
         #[unstable(feature = "std_internals", issue = "none")]
         unsafe impl TrustedRandomAccess for $ITER_NAME {}
@@ -457,18 +464,20 @@ macro_rules! casemappingiter_impls {
 }
 
 casemappingiter_impls! {
-    /// 返回产生 `char` 小写等价形式的迭代器。
+    /// Returns an iterator that yields the lowercase equivalent of a `char`.
     ///
-    /// 该 `struct` 由 [`char`] 上的 [`to_lowercase`] 方法创建；更多行为说明见该方法文档。
+    /// This `struct` is created by the [`to_lowercase`] method on [`char`]. See
+    /// its documentation for more.
     ///
     /// [`to_lowercase`]: char::to_lowercase
     ToLowercase
 }
 
 casemappingiter_impls! {
-    /// 返回产生 `char` 大写等价形式的迭代器。
+    /// Returns an iterator that yields the uppercase equivalent of a `char`.
     ///
-    /// 该 `struct` 由 [`char`] 上的 [`to_uppercase`] 方法创建；更多行为说明见该方法文档。
+    /// This `struct` is created by the [`to_uppercase`] method on [`char`]. See
+    /// its documentation for more.
     ///
     /// [`to_uppercase`]: char::to_uppercase
     ToUppercase
@@ -486,7 +495,8 @@ impl CaseMappingIter {
             if chars[1] == '\0' {
                 iter.next_back();
 
-                // 有意不检查 `chars[0]`：`'\0'` 的小写映射仍是它自身，不能用它判断是否存在元素。
+                // Deliberately don't check `chars[0]`,
+                // as '\0' lowercases to itself
             }
         }
         CaseMappingIter(iter)
@@ -524,7 +534,7 @@ impl Iterator for CaseMappingIter {
     }
 
     unsafe fn __iterator_get_unchecked(&mut self, idx: usize) -> Self::Item {
-        // SAFETY: 该包装迭代器不改变索引语义，unchecked 访问的前置条件仍由调用方承担。
+        // SAFETY: just forwarding requirements to caller
         unsafe { self.0.__iterator_get_unchecked(idx) }
     }
 }
@@ -558,15 +568,15 @@ impl ExactSizeIterator for CaseMappingIter {
 
 impl FusedIterator for CaseMappingIter {}
 
-// SAFETY: 长度上下界完全由内部 `array::IntoIter` 决定。
+// SAFETY: forwards to inner `array::IntoIter`
 unsafe impl TrustedLen for CaseMappingIter {}
 
-// SAFETY: 随机访问能力来自内部 `array::IntoIter`，包装层只转发访问。
+// SAFETY: forwards to inner `array::IntoIter`
 unsafe impl TrustedRandomAccessNoCoerce for CaseMappingIter {
     const MAY_HAVE_SIDE_EFFECT: bool = false;
 }
 
-// SAFETY: `CaseMappingIter` 的 `Item` 固定为 `char`，没有子类型/父类型替换问题。
+// SAFETY: `CaseMappingIter` has no subtypes/supertypes
 unsafe impl TrustedRandomAccess for CaseMappingIter {}
 
 impl fmt::Display for CaseMappingIter {
@@ -579,7 +589,7 @@ impl fmt::Display for CaseMappingIter {
     }
 }
 
-/// 检查式 `char` 转换失败时返回的错误类型。
+/// The error type returned when a checked char conversion fails.
 #[stable(feature = "u8_from_char", since = "1.59.0")]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct TryFromCharError(pub(crate) ());

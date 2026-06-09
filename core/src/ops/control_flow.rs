@@ -1,18 +1,20 @@
 use crate::marker::Destruct;
 use crate::{convert, ops};
 
-/// 用于告诉某个操作:它应当提前退出,还是照常继续。
+/// Used to tell an operation whether it should exit early or go on as usual.
 ///
-/// 在暴露诸如图遍历或访问者(visitor)之类、希望让用户能够选择是否提前退出的
-/// 东西时,会用到它。用这个枚举会让意图更清晰——再也不用纳闷“等等,`false` 到底
-/// 是什么意思来着?”——而且它还能携带一个值。
+/// This is used when exposing things (like graph traversals or visitors) where
+/// you want the user to be able to choose whether to exit early.
+/// Having the enum makes it clearer -- no more wondering "wait, what did `false`
+/// mean again?" -- and allows including a value.
 ///
-/// 与 [`Option`] 和 [`Result`] 类似,这个枚举可以配合 `?` 运算符使用:当出现
-/// [`Break`] 变体时立即返回,否则就带着 [`Continue`] 变体内部的值照常继续。
+/// Similar to [`Option`] and [`Result`], this enum can be used with the `?` operator
+/// to return immediately if the [`Break`] variant is present or otherwise continue normally
+/// with the value inside the [`Continue`] variant.
 ///
-/// # 示例
+/// # Examples
 ///
-/// 从 [`Iterator::try_for_each`] 中提前退出:
+/// Early-exiting from [`Iterator::try_for_each`]:
 /// ```
 /// use std::ops::ControlFlow;
 ///
@@ -26,7 +28,7 @@ use crate::{convert, ops};
 /// assert_eq!(r, ControlFlow::Break(13));
 /// ```
 ///
-/// 一个基本的树遍历:
+/// A basic tree traversal:
 /// ```
 /// use std::ops::ControlFlow;
 ///
@@ -80,22 +82,22 @@ use crate::{convert, ops};
 #[stable(feature = "control_flow_enum_type", since = "1.55.0")]
 #[rustc_diagnostic_item = "ControlFlow"]
 #[must_use]
-// 按照 RFC 3058,ControlFlow 不应实现 PartialOrd 或 Ord:
+// ControlFlow should not implement PartialOrd or Ord, per RFC 3058:
 // https://rust-lang.github.io/rfcs/3058-try-trait-v2.html#traits-for-controlflow
 #[derive(Copy, Debug, Hash)]
 #[derive_const(Clone, PartialEq, Eq)]
 pub enum ControlFlow<B, C = ()> {
-    /// 照常推进到操作的下一阶段。
+    /// Move on to the next phase of the operation as normal.
     #[stable(feature = "control_flow_enum_type", since = "1.55.0")]
     #[lang = "Continue"]
     Continue(C),
-    /// 退出该操作,不再运行后续阶段。
+    /// Exit the operation without running subsequent phases.
     #[stable(feature = "control_flow_enum_type", since = "1.55.0")]
     #[lang = "Break"]
     Break(B),
-    // 是的,变体的顺序与类型参数的顺序并不一致。
-    // 它们之所以采用这个顺序,是为了让 `Try` 实现中的
-    // `ControlFlow<A, B>` <-> `Result<B, A>` 转换成为一个空操作(no-op)。
+    // Yes, the order of the variants doesn't match the type parameters.
+    // They're in this order so that `ControlFlow<A, B>` <-> `Result<B, A>`
+    // is a no-op conversion in the `Try` implementation.
 }
 
 #[unstable(feature = "try_trait_v2", issue = "84277", old_name = "try_trait")]
@@ -120,7 +122,7 @@ impl<B, C> const ops::Try for ControlFlow<B, C> {
 
 #[unstable(feature = "try_trait_v2", issue = "84277", old_name = "try_trait")]
 #[rustc_const_unstable(feature = "const_try", issue = "74935")]
-// 注意:这里手动指定 residual 类型而非使用默认值,是为了绕过
+// Note: manually specifying the residual type instead of using the default to work around
 // https://github.com/rust-lang/rust/issues/99940
 impl<B, C> const ops::FromResidual<ControlFlow<B, convert::Infallible>> for ControlFlow<B, C> {
     #[inline]
@@ -137,9 +139,9 @@ impl<B, C> ops::Residual<C> for ControlFlow<B, convert::Infallible> {
 }
 
 impl<B, C> ControlFlow<B, C> {
-    /// 如果这是一个 `Break` 变体,返回 `true`。
+    /// Returns `true` if this is a `Break` variant.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::ops::ControlFlow;
@@ -154,9 +156,9 @@ impl<B, C> ControlFlow<B, C> {
         matches!(*self, ControlFlow::Break(_))
     }
 
-    /// 如果这是一个 `Continue` 变体,返回 `true`。
+    /// Returns `true` if this is a `Continue` variant.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::ops::ControlFlow;
@@ -171,10 +173,10 @@ impl<B, C> ControlFlow<B, C> {
         matches!(*self, ControlFlow::Continue(_))
     }
 
-    /// 把 `ControlFlow` 转换为一个 `Option`:若该 `ControlFlow` 为 `Break` 则
-    /// 为 `Some`,否则为 `None`。
+    /// Converts the `ControlFlow` into an `Option` which is `Some` if the
+    /// `ControlFlow` was `Break` and `None` otherwise.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::ops::ControlFlow;
@@ -195,10 +197,10 @@ impl<B, C> ControlFlow<B, C> {
         }
     }
 
-    /// 把 `ControlFlow` 转换为一个 `Result`:若该 `ControlFlow` 为 `Break` 则
-    /// 为 `Ok`,否则为 `Err`。
+    /// Converts the `ControlFlow` into an `Result` which is `Ok` if the
+    /// `ControlFlow` was `Break` and `Err` if otherwise.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// #![feature(control_flow_ok)]
@@ -270,8 +272,8 @@ impl<B, C> ControlFlow<B, C> {
         }
     }
 
-    /// 通过对 break 值(如果存在)应用一个函数,把 `ControlFlow<B, C>` 映射为
-    /// `ControlFlow<T, C>`。
+    /// Maps `ControlFlow<B, C>` to `ControlFlow<T, C>` by applying a function
+    /// to the break value in case it exists.
     #[inline]
     #[stable(feature = "control_flow_enum", since = "1.83.0")]
     #[rustc_const_unstable(feature = "const_control_flow", issue = "148739")]
@@ -285,10 +287,10 @@ impl<B, C> ControlFlow<B, C> {
         }
     }
 
-    /// 把 `ControlFlow` 转换为一个 `Option`:若该 `ControlFlow` 为 `Continue`
-    /// 则为 `Some`,否则为 `None`。
+    /// Converts the `ControlFlow` into an `Option` which is `Some` if the
+    /// `ControlFlow` was `Continue` and `None` otherwise.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::ops::ControlFlow;
@@ -309,10 +311,10 @@ impl<B, C> ControlFlow<B, C> {
         }
     }
 
-    /// 把 `ControlFlow` 转换为一个 `Result`:若该 `ControlFlow` 为 `Continue`
-    /// 则为 `Ok`,否则为 `Err`。
+    /// Converts the `ControlFlow` into an `Result` which is `Ok` if the
+    /// `ControlFlow` was `Continue` and `Err` if otherwise.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// #![feature(control_flow_ok)]
@@ -383,8 +385,8 @@ impl<B, C> ControlFlow<B, C> {
         }
     }
 
-    /// 通过对 continue 值(如果存在)应用一个函数,把 `ControlFlow<B, C>` 映射
-    /// 为 `ControlFlow<B, T>`。
+    /// Maps `ControlFlow<B, C>` to `ControlFlow<B, T>` by applying a function
+    /// to the continue value in case it exists.
     #[inline]
     #[stable(feature = "control_flow_enum", since = "1.83.0")]
     #[rustc_const_unstable(feature = "const_control_flow", issue = "148739")]
@@ -400,9 +402,9 @@ impl<B, C> ControlFlow<B, C> {
 }
 
 impl<T> ControlFlow<T, T> {
-    /// 取出被 `ControlFlow<T, T>` 包裹的值 `T`。
+    /// Extracts the value `T` that is wrapped by `ControlFlow<T, T>`.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// #![feature(control_flow_into_value)]
@@ -420,10 +422,11 @@ impl<T> ControlFlow<T, T> {
     }
 }
 
-/// 以下这些方法仅作为实现迭代器适配器(iterator adapter)的一部分而使用。
-/// 它们的名字平平无奇、语义也不够直观,因此目前并不在迈向潜在稳定化的路线上。
+/// These are used only as part of implementing the iterator adapters.
+/// They have mediocre names and non-obvious semantics, so aren't
+/// currently on a path to potential stabilization.
 impl<R: ops::Try> ControlFlow<R, R::Output> {
-    /// 从任意实现了 `Try` 的类型创建一个 `ControlFlow`。
+    /// Creates a `ControlFlow` from any type implementing `Try`.
     #[inline]
     pub(crate) fn from_try(r: R) -> Self {
         match R::branch(r) {
@@ -432,7 +435,7 @@ impl<R: ops::Try> ControlFlow<R, R::Output> {
         }
     }
 
-    /// 把一个 `ControlFlow` 转换为任意实现了 `Try` 的类型。
+    /// Converts a `ControlFlow` into any type implementing `Try`.
     #[inline]
     pub(crate) fn into_try(self) -> R {
         match self {

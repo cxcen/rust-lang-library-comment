@@ -1,13 +1,13 @@
-//! core prelude 的第一个版本。
+//! The first version of the core prelude.
 //!
-//! 更多内容见[模块级文档](super)。
+//! See the [module-level documentation](super) for more.
 
 #![stable(feature = "core_prelude", since = "1.4.0")]
 
-// 不要格式化：本文件只有重新导出，且值得保留它们的顺序。
+// No formatting: this file is nothing but re-exports, and their order is worth preserving.
 #![cfg_attr(rustfmt, rustfmt::skip)]
 
-// 重新导出的 core 运算符
+// Re-exported core operators
 #[stable(feature = "core_prelude", since = "1.4.0")]
 #[doc(no_inline)]
 pub use crate::marker::{Copy, Send, Sized, Sync, Unpin};
@@ -18,7 +18,7 @@ pub use crate::ops::{Drop, Fn, FnMut, FnOnce};
 #[doc(no_inline)]
 pub use crate::ops::{AsyncFn, AsyncFnMut, AsyncFnOnce};
 
-// 重新导出的函数
+// Re-exported functions
 #[stable(feature = "core_prelude", since = "1.4.0")]
 #[doc(no_inline)]
 pub use crate::mem::drop;
@@ -26,7 +26,7 @@ pub use crate::mem::drop;
 #[doc(no_inline)]
 pub use crate::mem::{align_of, align_of_val, size_of, size_of_val};
 
-// 重新导出的类型和 trait
+// Re-exported types and traits
 #[stable(feature = "core_prelude", since = "1.4.0")]
 #[doc(no_inline)]
 pub use crate::clone::Clone;
@@ -49,7 +49,7 @@ pub use crate::option::Option::{self, None, Some};
 #[doc(no_inline)]
 pub use crate::result::Result::{self, Err, Ok};
 
-// 重新导出的内置宏
+// Re-exported built-in macros
 #[stable(feature = "builtin_macro_prelude", since = "1.38.0")]
 #[doc(no_inline)]
 pub use crate::fmt::macros::Debug;
@@ -66,8 +66,9 @@ pub use crate::{
     module_path, option_env, stringify, todo, r#try, unimplemented, unreachable, write, writeln,
 };
 
-// 这些宏需要特殊处理，以避免同时导出它们和同名模块。
-// 我们只希望宏进入 prelude，因此用同名私有模块遮蔽原模块。
+// These macros need special handling, so that we don't export them *and* the modules of the same
+// name. We only want the macros in the prelude so we shadow the original modules with private
+// modules with the same names.
 mod ambiguous_macros_only {
     mod env {}
     #[expect(hidden_glob_reexports)]
@@ -115,8 +116,8 @@ pub use crate::pattern_type;
 #[doc(no_inline)]
 pub use crate::trace_macros;
 
-// 不要使用 `doc(no_inline)`，这样它们会成为独立的文档项
-// （没有可供重新导出它们的公开模块）。
+// Do not `doc(no_inline)` so that they become doc items on their own
+// (no public module for them to be re-exported from).
 #[stable(feature = "builtin_macro_prelude", since = "1.38.0")]
 pub use crate::macros::builtin::{
     alloc_error_handler, bench, derive, global_allocator, test, test_case,

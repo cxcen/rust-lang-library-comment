@@ -1,16 +1,16 @@
 use crate::iter::{FusedIterator, TrustedLen};
 use crate::{fmt, marker};
 
-/// 创建一个不产出任何元素的迭代器。
+/// Creates an iterator that yields nothing.
 ///
-/// # 示例
+/// # Examples
 ///
-/// 基本用法:
+/// Basic usage:
 ///
 /// ```
 /// use std::iter;
 ///
-/// // 它本可以是一个 i32 迭代器，但实际上什么都不产出。
+/// // this could have been an iterator over i32, but alas, it's just not.
 /// let mut nope = iter::empty::<i32>();
 ///
 /// assert_eq!(None, nope.next());
@@ -21,9 +21,9 @@ pub const fn empty<T>() -> Empty<T> {
     Empty(marker::PhantomData)
 }
 
-/// 不产出任何元素的迭代器。
+/// An iterator that yields nothing.
 ///
-/// 该 `struct` 由 [`empty()`] 函数创建。更多信息见该函数文档。
+/// This `struct` is created by the [`empty()`] function. See its documentation for more.
 #[must_use = "iterators are lazy and do nothing unless consumed"]
 #[stable(feature = "iter_empty", since = "1.2.0")]
 #[rustc_diagnostic_item = "IterEmpty"]
@@ -69,7 +69,8 @@ unsafe impl<T> TrustedLen for Empty<T> {}
 #[stable(feature = "fused", since = "1.26.0")]
 impl<T> FusedIterator for Empty<T> {}
 
-// 不使用 #[derive]，因为那会给 T 增加不必要的 Clone bound。
+// not #[derive] because that adds a Clone bound on T,
+// which isn't necessary.
 #[stable(feature = "iter_empty", since = "1.2.0")]
 impl<T> Clone for Empty<T> {
     fn clone(&self) -> Empty<T> {
@@ -77,7 +78,8 @@ impl<T> Clone for Empty<T> {
     }
 }
 
-// 不使用 #[derive]，因为那会给 T 增加不必要的 Default bound。
+// not #[derive] because that adds a Default bound on T,
+// which isn't necessary.
 #[stable(feature = "iter_empty", since = "1.2.0")]
 #[rustc_const_unstable(feature = "const_default", issue = "143894")]
 impl<T> const Default for Empty<T> {

@@ -2,9 +2,10 @@ use crate::iter::{FusedIterator, TrustedLen};
 use crate::num::NonZero;
 use crate::ops::Try;
 
-/// 方向被反转的双端迭代器。
+/// A double-ended iterator with the direction inverted.
 ///
-/// 该 `struct` 由 [`Iterator`] 上的 [`rev`] 方法创建。更多信息见该方法文档。
+/// This `struct` is created by the [`rev`] method on [`Iterator`]. See its
+/// documentation for more.
 ///
 /// [`rev`]: Iterator::rev
 /// [`Iterator`]: trait.Iterator.html
@@ -20,9 +21,9 @@ impl<T> Rev<T> {
         Rev { iter }
     }
 
-    /// 消耗 `Rev`，返回内部迭代器。
+    /// Consumes the `Rev`, returning the inner iterator.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```rust
     /// #![feature(rev_into_inner)]
@@ -157,7 +158,7 @@ unsafe impl<I> TrustedLen for Rev<I> where I: TrustedLen + DoubleEndedIterator {
 
 #[stable(feature = "default_iters", since = "1.70.0")]
 impl<I: Default> Default for Rev<I> {
-    /// 从 `I` 的默认值创建一个 `Rev` 迭代器。
+    /// Creates a `Rev` iterator from the default value of `I`
     /// ```
     /// # use core::slice;
     /// # use core::iter::Rev;

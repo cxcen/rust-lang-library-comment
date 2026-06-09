@@ -4,9 +4,11 @@ use crate::iter::{FusedIterator, InPlaceIterable, TrustedFused};
 use crate::num::NonZero;
 use crate::ops::Try;
 
-/// 在产出每个元素之前，先用该元素的引用调用函数的迭代器。
+/// An iterator that calls a function with a reference to each element before
+/// yielding it.
 ///
-/// 该 `struct` 由 [`Iterator`] 上的 [`inspect`] 方法创建。更多信息见该方法文档。
+/// This `struct` is created by the [`inspect`] method on [`Iterator`]. See its
+/// documentation for more.
 ///
 /// [`inspect`]: Iterator::inspect
 /// [`Iterator`]: trait.Iterator.html
@@ -160,7 +162,7 @@ where
 
     #[inline]
     unsafe fn as_inner(&mut self) -> &mut I::Source {
-        // SAFETY: 转发到具有相同要求的 unsafe 函数。
+        // SAFETY: unsafe function forwarding to unsafe function with the same requirements
         unsafe { SourceIter::as_inner(&mut self.iter) }
     }
 }

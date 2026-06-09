@@ -2,11 +2,12 @@ use crate::iter::{FusedIterator, TrustedLen};
 use crate::num::NonZero;
 use crate::ops::Try;
 
-/// 把两个迭代器按顺序链接起来的迭代器。
+/// An iterator that links two iterators together, in a chain.
 ///
-/// 该 `struct` 由 [`chain`] 或 [`Iterator::chain`] 创建。更多信息见它们的文档。
+/// This `struct` is created by [`chain`] or [`Iterator::chain`]. See their
+/// documentation for more.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// use std::iter::Chain;
@@ -20,13 +21,14 @@ use crate::ops::Try;
 #[must_use = "iterators are lazy and do nothing unless consumed"]
 #[stable(feature = "rust1", since = "1.0.0")]
 pub struct Chain<A, B> {
-    // 这里用 `Option` 达成“fused”效果，因此不需要额外状态来跟踪哪一部分已经耗尽；
-    // 也可能利用 `None` 获得 niche 布局。这里不使用真正的 `Fuse` 适配器，因为它对
-    // `FusedIterator` 的 specialization 会无条件深入迭代器；对嵌套 chain 之类结构，
-    // 反复访问会比较昂贵。给 `Chain` 增加更多迭代器层也会损害编译器性能。
+    // These are "fused" with `Option` so we don't need separate state to track which part is
+    // already exhausted, and we may also get niche layout for `None`. We don't use the real `Fuse`
+    // adapter because its specialization for `FusedIterator` unconditionally descends into the
+    // iterator, and that could be expensive to keep revisiting stuff like nested chains. It also
+    // hurts compiler performance to add more iterator layers to `Chain`.
     //
-    // 根据正向或反向迭代，只有“第一个”被耗尽的迭代器会实际设为 `None`。
-    // 如果混合两个方向，则两边都可能是 `None`。
+    // Only the "first" iterator is actually set `None` when exhausted, depending on whether you
+    // iterate forward or backward. If you mix directions, then both sides may be `None`.
     a: Option<A>,
     b: Option<B>,
 }
@@ -36,11 +38,11 @@ impl<A, B> Chain<A, B> {
     }
 }
 
-/// 把参数转换为迭代器，并按顺序链接起来。
+/// Converts the arguments to iterators and links them together, in a chain.
 ///
-/// 更多信息见 [`Iterator::chain`] 文档。
+/// See the documentation of [`Iterator::chain`] for more.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// use std::iter::chain;
@@ -106,7 +108,7 @@ where
         }
         if let Some(ref mut b) = self.b {
             acc = b.try_fold(acc, f)?;
-            // 不 fuse 第二个迭代器。
+            // we don't fuse the second iterator
         }
         try { acc }
     }
@@ -136,7 +138,7 @@ where
 
         if let Some(ref mut b) = self.b {
             return b.advance_by(n);
-            // 不 fuse 第二个迭代器。
+            // we don't fuse the second iterator
         }
 
         NonZero::new(n).map_or(Ok(()), Err)
@@ -170,7 +172,7 @@ where
 
     #[inline]
     fn last(self) -> Option<A::Item> {
-        // 必须先耗尽 a，再耗尽 b。
+        // Must exhaust a before b.
         let a_last = self.a.and_then(Iterator::last);
         let b_last = self.b.and_then(Iterator::last);
         b_last.or(a_last)
@@ -222,7 +224,7 @@ where
 
         if let Some(ref mut a) = self.a {
             return a.advance_back_by(n);
-            // 不 fuse 第二个迭代器。
+            // we don't fuse the second iterator
         }
 
         NonZero::new(n).map_or(Ok(()), Err)
@@ -266,7 +268,7 @@ where
         }
         if let Some(ref mut a) = self.a {
             acc = a.try_rfold(acc, f)?;
-            // 不 fuse 第二个迭代器。
+            // we don't fuse the second iterator
         }
         try { acc }
     }
@@ -285,7 +287,7 @@ where
     }
 }
 
-// 注意: 要正确处理双端迭代器，*两者*都必须 fused。
+// Note: *both* must be fused to handle double-ended iterators.
 #[stable(feature = "fused", since = "1.26.0")]
 impl<A, B> FusedIterator for Chain<A, B>
 where
@@ -304,7 +306,7 @@ where
 
 #[stable(feature = "default_iters", since = "1.70.0")]
 impl<A: Default, B: Default> Default for Chain<A, B> {
-    /// 从 `A` 和 `B` 的默认值创建一个 `Chain`。
+    /// Creates a `Chain` from the default values for `A` and `B`.
     ///
     /// ```
     /// # use core::iter::Chain;
@@ -317,7 +319,7 @@ impl<A: Default, B: Default> Default for Chain<A, B> {
     /// let slice: &[u8] = &[];
     /// let mut foo = Foo(slice.iter().chain(set.iter()));
     ///
-    /// // take 需要 `Default`。
+    /// // take requires `Default`
     /// let _: Chain<_, _> = mem::take(&mut foo.0);
     /// ```
     fn default() -> Self {

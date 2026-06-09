@@ -4,9 +4,10 @@ use crate::iter::adapters::SourceIter;
 use crate::num::NonZero;
 use crate::ops::{ControlFlow, Try};
 
-/// 在遍历另一个迭代器时维护状态的迭代器。
+/// An iterator to maintain state while iterating another iterator.
 ///
-/// 该 `struct` 由 [`Iterator`] 上的 [`scan`] 方法创建。更多信息见该方法文档。
+/// This `struct` is created by the [`scan`] method on [`Iterator`]. See its
+/// documentation for more.
 ///
 /// [`scan`]: Iterator::scan
 /// [`Iterator`]: trait.Iterator.html
@@ -49,7 +50,7 @@ where
     #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         let (_, upper) = self.iter.size_hint();
-        (0, upper) // 由于 scan 函数的存在，无法知道下界。
+        (0, upper) // can't know a lower bound, due to the scan function
     }
 
     #[inline]
@@ -87,7 +88,7 @@ where
 
     #[inline]
     unsafe fn as_inner(&mut self) -> &mut I::Source {
-        // SAFETY: 转发到具有相同要求的 unsafe 函数。
+        // SAFETY: unsafe function forwarding to unsafe function with the same requirements
         unsafe { SourceIter::as_inner(&mut self.iter) }
     }
 }

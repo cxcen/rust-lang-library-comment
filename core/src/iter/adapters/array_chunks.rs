@@ -6,12 +6,13 @@ use crate::iter::{
 use crate::num::NonZero;
 use crate::ops::{ControlFlow, NeverShortCircuit, Try};
 
-/// 每次遍历底层迭代器 `N` 个元素的迭代器。
+/// An iterator over `N` elements of the iterator at a time.
 ///
-/// chunk 之间不重叠。如果 `N` 不能整除迭代器长度，则最后最多 `N - 1` 个元素会被省略。
+/// The chunks do not overlap. If `N` does not divide the length of the
+/// iterator, then the last up to `N-1` elements will be omitted.
 ///
-/// 该 `struct` 由 [`Iterator`] 上的 [`array_chunks`][Iterator::array_chunks] 方法创建。
-/// 更多信息见该方法文档。
+/// This `struct` is created by the [`array_chunks`][Iterator::array_chunks]
+/// method on [`Iterator`]. See its documentation for more.
 #[derive(Debug, Clone)]
 #[must_use = "iterators are lazy and do nothing unless consumed"]
 #[unstable(feature = "iter_array_chunks", issue = "100450")]
@@ -30,10 +31,11 @@ where
         Self { iter, remainder: None }
     }
 
-    /// 返回一个迭代器，遍历原始迭代器中不会被本迭代器返回的剩余元素。
-    /// 返回的迭代器最多产出 `N - 1` 个元素。
+    /// Returns an iterator over the remaining elements of the original iterator
+    /// that are not going to be returned by this iterator. The returned
+    /// iterator will yield at most `N-1` elements.
     ///
-    /// # 示例
+    /// # Example
     /// ```
     /// # // Also serves as a regression test for https://github.com/rust-lang/rust/issues/123333
     /// # #![feature(iter_array_chunks)]
@@ -87,8 +89,8 @@ where
             match self.iter.next_chunk() {
                 Ok(chunk) => acc = f(acc, chunk)?,
                 Err(remainder) => {
-            // 确保 `ArrayChunks` 耗尽后再次调用 `next` 时，不会用空数组覆盖
-            // `self.remainder`。
+                    // Make sure to not overwrite `self.remainder` with an empty array
+                    // when `next` is called after `ArrayChunks` exhaustion.
                     self.remainder.get_or_insert(remainder);
 
                     break try { acc };
@@ -122,17 +124,18 @@ where
         F: FnMut(B, Self::Item) -> R,
         R: Try<Output = B>,
     {
-        // 从后端迭代时，需要先处理余数部分。
+        // We are iterating from the back we need to first handle the remainder.
         self.next_back_remainder();
 
         let mut acc = init;
         let mut iter = ByRefSized(&mut self.iter).rev();
 
-        // 注意: remainder 已由 `next_back_remainder` 处理，因此 `next_chunk` 不会返回
-        // 带非空 remainder 的 `Err`(假设 `I as ExactSizeIterator` 实现正确)。
+        // NB remainder is handled by `next_back_remainder`, so
+        // `next_chunk` can't return `Err` with non-empty remainder
+        // (assuming correct `I as ExactSizeIterator` impl).
         while let Ok(mut chunk) = iter.next_chunk() {
-            // FIXME: 不要做双重 reverse
-            //        (例如可以改为添加 `next_chunk_back`)。
+            // FIXME: do not do double reverse
+            //        (we could instead add `next_chunk_back` for example)
             chunk.reverse();
             acc = f(acc, chunk)?
         }
@@ -147,23 +150,24 @@ impl<I, const N: usize> ArrayChunks<I, N>
 where
     I: DoubleEndedIterator + ExactSizeIterator,
 {
-    /// 更新 `self.remainder`，使 `self.iter.len` 能被 `N` 整除。
+    /// Updates `self.remainder` such that `self.iter.len` is divisible by `N`.
     fn next_back_remainder(&mut self) {
-        // 确保 `ArrayChunks` 耗尽后再次调用 `next_back` 时，不会用空数组覆盖
-        // `self.remainder`。
+        // Make sure to not override `self.remainder` with an empty array
+        // when `next_back` is called after `ArrayChunks` exhaustion.
         if self.remainder.is_some() {
             return;
         }
 
-        // 使用底层迭代器的 `ExactSizeIterator` 实现来得知剩余元素数量。
+        // We use the `ExactSizeIterator` implementation of the underlying
+        // iterator to know how many remaining elements there are.
         let rem = self.iter.len() % N;
 
-        // 从 `self.iter` 中取出最后 `rem` 个元素。
+        // Take the last `rem` elements out of `self.iter`.
         let mut remainder =
-            // SAFETY: 对所有 x 都有 x % N < N，因此 `unwrap_err` 总是成功。
+            // SAFETY: `unwrap_err` always succeeds because x % N < N for all x.
             unsafe { self.iter.by_ref().rev().take(rem).next_chunk().unwrap_err_unchecked() };
 
-        // 上面使用了 `.rev()`，因此需要把 remainder 再反转回来。
+        // We used `.rev()` above, so we need to re-reverse the reminder
         remainder.as_mut_slice().reverse();
         self.remainder = Some(remainder);
     }
@@ -225,11 +229,11 @@ where
         let mut accum = init;
         let inner_len = self.iter.size();
         let mut i = 0;
-        // 使用 while 循环，因为 (0..len).step_by(N) 优化效果不好。
+        // Use a while loop because (0..len).step_by(N) doesn't optimize well.
         while inner_len - i >= N {
             let chunk = crate::array::from_fn(|local| {
-                // SAFETY: 该方法会消耗迭代器，且循环条件保证所有访问都在边界内并且
-                // 只发生一次。
+                // SAFETY: The method consumes the iterator and the loop condition ensures that
+                // all accesses are in bounds and only happen once.
                 unsafe {
                     let idx = i + local;
                     self.iter.__iterator_get_unchecked(idx)
@@ -239,7 +243,8 @@ where
             i += N;
         }
 
-        // 不同于 try_fold，该方法不需要处理 remainder，因为 `self` 会被 drop。
+        // unlike try_fold this method does not need to take care of the remainder
+        // since `self` will be dropped
 
         accum
     }
@@ -254,7 +259,7 @@ where
 
     #[inline]
     unsafe fn as_inner(&mut self) -> &mut I::Source {
-        // SAFETY: 转发到具有相同要求的 unsafe 函数。
+        // SAFETY: unsafe function forwarding to unsafe function with the same requirements
         unsafe { SourceIter::as_inner(&mut self.iter) }
     }
 }

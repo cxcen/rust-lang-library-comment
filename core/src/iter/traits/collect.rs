@@ -1,20 +1,22 @@
 use super::TrustedLen;
 
-/// 从 [`Iterator`] 执行转换。
+/// Conversion from an [`Iterator`].
 ///
-/// 为某个类型实现 `FromIterator`，就是定义该类型如何从一个 iterator 中创建出来。
-/// 这在各种集合类型上很常见，因为集合本质上通常就是一组按迭代顺序产生的元素。
+/// By implementing `FromIterator` for a type, you define how it will be
+/// created from an iterator. This is common for types which describe a
+/// collection of some kind.
 ///
-/// 如果想从 iterator 的内容创建集合，通常优先使用 [`Iterator::collect()`]。不过，
-/// 当需要显式写出目标容器类型时，[`FromIterator::from_iter()`] 往往比 turbofish
-/// 写法（例如 `::<Vec<_>>()`）更容易读。更多用法示例见
-/// [`Iterator::collect()`] 的文档。
+/// If you want to create a collection from the contents of an iterator, the
+/// [`Iterator::collect()`] method is preferred. However, when you need to
+/// specify the container type, [`FromIterator::from_iter()`] can be more
+/// readable than using a turbofish (e.g. `::<Vec<_>>()`). See the
+/// [`Iterator::collect()`] documentation for more examples of its use.
 ///
-/// 另见: [`IntoIterator`]。
+/// See also: [`IntoIterator`].
 ///
-/// # 示例
+/// # Examples
 ///
-/// 基本用法:
+/// Basic usage:
 ///
 /// ```
 /// let five_fives = std::iter::repeat(5).take(5);
@@ -24,7 +26,7 @@ use super::TrustedLen;
 /// assert_eq!(v, vec![5, 5, 5, 5, 5]);
 /// ```
 ///
-/// 使用 [`Iterator::collect()`] 隐式调用 `FromIterator`:
+/// Using [`Iterator::collect()`] to implicitly use `FromIterator`:
 ///
 /// ```
 /// let five_fives = std::iter::repeat(5).take(5);
@@ -34,8 +36,8 @@ use super::TrustedLen;
 /// assert_eq!(v, vec![5, 5, 5, 5, 5]);
 /// ```
 ///
-/// 使用 [`FromIterator::from_iter()`]，让目标类型比
-/// [`Iterator::collect()`] 的 turbofish 写法更清晰:
+/// Using [`FromIterator::from_iter()`] as a more readable alternative to
+/// [`Iterator::collect()`]:
 ///
 /// ```
 /// use std::collections::VecDeque;
@@ -45,14 +47,15 @@ use super::TrustedLen;
 /// assert_eq!(first, second);
 /// ```
 ///
-/// 为自己的类型实现 `FromIterator`:
+/// Implementing `FromIterator` for your type:
 ///
 /// ```
-/// // 一个示例集合，只是 Vec<T> 的简单包装
+/// // A sample collection, that's just a wrapper over Vec<T>
 /// #[derive(Debug)]
 /// struct MyCollection(Vec<i32>);
 ///
-/// // 给它一些方法，便于创建集合并向其中加入元素。
+/// // Let's give it some methods so we can create one and add things
+/// // to it.
 /// impl MyCollection {
 ///     fn new() -> MyCollection {
 ///         MyCollection(Vec::new())
@@ -63,7 +66,7 @@ use super::TrustedLen;
 ///     }
 /// }
 ///
-/// // 接着实现 FromIterator
+/// // and we'll implement FromIterator
 /// impl FromIterator<i32> for MyCollection {
 ///     fn from_iter<I: IntoIterator<Item=i32>>(iter: I) -> Self {
 ///         let mut c = MyCollection::new();
@@ -76,15 +79,15 @@ use super::TrustedLen;
 ///     }
 /// }
 ///
-/// // 现在可以创建一个新的 iterator...
+/// // Now we can make a new iterator...
 /// let iter = (0..5).into_iter();
 ///
-/// // ... 并从中构造 MyCollection
+/// // ... and make a MyCollection out of it
 /// let c = MyCollection::from_iter(iter);
 ///
 /// assert_eq!(c.0, vec![0, 1, 2, 3, 4]);
 ///
-/// // collect 也同样可用！
+/// // collect works too!
 ///
 /// let iter = (0..5).into_iter();
 /// let c: MyCollection = iter.collect();
@@ -129,13 +132,13 @@ use super::TrustedLen;
 )]
 #[rustc_diagnostic_item = "FromIterator"]
 pub trait FromIterator<A>: Sized {
-    /// 从 iterator 创建一个值。
+    /// Creates a value from an iterator.
     ///
-    /// 更多说明见[模块级文档]。
+    /// See the [module-level documentation] for more.
     ///
-    /// [模块级文档]: crate::iter
+    /// [module-level documentation]: crate::iter
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let five_fives = std::iter::repeat(5).take(5);
@@ -149,19 +152,20 @@ pub trait FromIterator<A>: Sized {
     fn from_iter<T: IntoIterator<Item = A>>(iter: T) -> Self;
 }
 
-/// 转换为 [`Iterator`]。
+/// Conversion into an [`Iterator`].
 ///
-/// 为某个类型实现 `IntoIterator`，就是定义该类型如何被转换成 iterator。对于各种
-/// 集合类型来说，这很常见，因为集合通常需要支持按元素迭代。
+/// By implementing `IntoIterator` for a type, you define how it will be
+/// converted to an iterator. This is common for types which describe a
+/// collection of some kind.
 ///
-/// 实现 `IntoIterator` 的一个好处是，你的类型将能[配合 Rust 的 `for` 循环语法
-/// 使用](crate::iter#for-loops-and-intoiterator)。
+/// One benefit of implementing `IntoIterator` is that your type will [work
+/// with Rust's `for` loop syntax](crate::iter#for-loops-and-intoiterator).
 ///
-/// 另见: [`FromIterator`]。
+/// See also: [`FromIterator`].
 ///
-/// # 示例
+/// # Examples
 ///
-/// 基本用法:
+/// Basic usage:
 ///
 /// ```
 /// let v = [1, 2, 3];
@@ -172,14 +176,15 @@ pub trait FromIterator<A>: Sized {
 /// assert_eq!(Some(3), iter.next());
 /// assert_eq!(None, iter.next());
 /// ```
-/// 为自己的类型实现 `IntoIterator`:
+/// Implementing `IntoIterator` for your type:
 ///
 /// ```
-/// // 一个示例集合，只是 Vec<T> 的简单包装
+/// // A sample collection, that's just a wrapper over Vec<T>
 /// #[derive(Debug)]
 /// struct MyCollection(Vec<i32>);
 ///
-/// // 给它一些方法，便于创建集合并向其中加入元素。
+/// // Let's give it some methods so we can create one and add things
+/// // to it.
 /// impl MyCollection {
 ///     fn new() -> MyCollection {
 ///         MyCollection(Vec::new())
@@ -190,7 +195,7 @@ pub trait FromIterator<A>: Sized {
 ///     }
 /// }
 ///
-/// // 接着实现 IntoIterator
+/// // and we'll implement IntoIterator
 /// impl IntoIterator for MyCollection {
 ///     type Item = i32;
 ///     type IntoIter = std::vec::IntoIter<Self::Item>;
@@ -200,22 +205,24 @@ pub trait FromIterator<A>: Sized {
 ///     }
 /// }
 ///
-/// // 现在可以创建一个新的集合...
+/// // Now we can make a new collection...
 /// let mut c = MyCollection::new();
 ///
-/// // ... 向其中加入一些内容 ...
+/// // ... add some stuff to it ...
 /// c.add(0);
 /// c.add(1);
 /// c.add(2);
 ///
-/// // ... 然后把它转换为 Iterator:
+/// // ... and then turn it into an Iterator:
 /// for (i, n) in c.into_iter().enumerate() {
 ///     assert_eq!(i as i32, n);
 /// }
 /// ```
 ///
-/// `IntoIterator` 常被用作 trait bound。这样输入集合的具体类型可以变化，只要它
-/// 仍然能转换成 iterator 即可。也可以通过限制 `Item` 来补充更具体的约束:
+/// It is common to use `IntoIterator` as a trait bound. This allows
+/// the input collection type to change, so long as it is still an
+/// iterator. Additional bounds can be specified by restricting on
+/// `Item`:
 ///
 /// ```rust
 /// fn collect_as_strings<T>(collection: T) -> Vec<String>
@@ -273,21 +280,21 @@ pub trait FromIterator<A>: Sized {
 #[rustc_skip_during_method_dispatch(array, boxed_slice)]
 #[stable(feature = "rust1", since = "1.0.0")]
 pub trait IntoIterator {
-    /// 被迭代的元素类型。
+    /// The type of the elements being iterated over.
     #[stable(feature = "rust1", since = "1.0.0")]
     type Item;
 
-    /// 该值会被转换成哪一种 iterator。
+    /// Which kind of iterator are we turning this into?
     #[stable(feature = "rust1", since = "1.0.0")]
     type IntoIter: Iterator<Item = Self::Item>;
 
-    /// 从一个值创建 iterator。
+    /// Creates an iterator from a value.
     ///
-    /// 更多说明见[模块级文档]。
+    /// See the [module-level documentation] for more.
     ///
-    /// [模块级文档]: crate::iter
+    /// [module-level documentation]: crate::iter
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let v = [1, 2, 3];
@@ -314,19 +321,21 @@ impl<I: Iterator> IntoIterator for I {
     }
 }
 
-/// 使用 iterator 的内容扩展集合。
+/// Extend a collection with the contents of an iterator.
 ///
-/// Iterator 会产生一串值，而集合也可以看作一串值的容器。`Extend` trait 连接了
-/// 这两者: 它允许把某个 iterator 产出的内容追加或合并进已有集合。对于带键的集合，
-/// 如果扩展时遇到已存在的键，则对应条目会被更新；如果集合允许多个相等键对应的
-/// 条目，则会插入新的条目。
+/// Iterators produce a series of values, and collections can also be thought
+/// of as a series of values. The `Extend` trait bridges this gap, allowing you
+/// to extend a collection by including the contents of that iterator. When
+/// extending a collection with an already existing key, that entry is updated
+/// or, in the case of collections that permit multiple entries with equal
+/// keys, that entry is inserted.
 ///
-/// # 示例
+/// # Examples
 ///
-/// 基本用法:
+/// Basic usage:
 ///
 /// ```
-/// // 可以用一些 char 扩展 String:
+/// // You can extend a String with some chars:
 /// let mut message = String::from("The first three letters are: ");
 ///
 /// message.extend(&['a', 'b', 'c']);
@@ -334,14 +343,15 @@ impl<I: Iterator> IntoIterator for I {
 /// assert_eq!("abc", &message[29..32]);
 /// ```
 ///
-/// 实现 `Extend`:
+/// Implementing `Extend`:
 ///
 /// ```
-/// // 一个示例集合，只是 Vec<T> 的简单包装
+/// // A sample collection, that's just a wrapper over Vec<T>
 /// #[derive(Debug)]
 /// struct MyCollection(Vec<i32>);
 ///
-/// // 给它一些方法，便于创建集合并向其中加入元素。
+/// // Let's give it some methods so we can create one and add things
+/// // to it.
 /// impl MyCollection {
 ///     fn new() -> MyCollection {
 ///         MyCollection(Vec::new())
@@ -352,14 +362,16 @@ impl<I: Iterator> IntoIterator for I {
 ///     }
 /// }
 ///
-/// // 由于 MyCollection 保存的是 i32 列表，因此为 i32 实现 Extend
+/// // since MyCollection has a list of i32s, we implement Extend for i32
 /// impl Extend<i32> for MyCollection {
 ///
-///     // 使用具体类型签名时更容易理解: 任何能转换成产出 i32 的 Iterator 的值，
-///     // 都可以传给 extend，因为 MyCollection 需要放入 i32。
+///     // This is a bit simpler with the concrete type signature: we can call
+///     // extend on anything which can be turned into an Iterator which gives
+///     // us i32s. Because we need i32s to put into MyCollection.
 ///     fn extend<T: IntoIterator<Item=i32>>(&mut self, iter: T) {
 ///
-///         // 实现很直接: 遍历 iterator，把每个元素 add() 到自身。
+///         // The implementation is very straightforward: loop through the
+///         // iterator, and add() each element to ourselves.
 ///         for elem in iter {
 ///             self.add(elem);
 ///         }
@@ -372,24 +384,25 @@ impl<I: Iterator> IntoIterator for I {
 /// c.add(6);
 /// c.add(7);
 ///
-/// // 用另外三个数字扩展集合
+/// // let's extend our collection with three more numbers
 /// c.extend(vec![1, 2, 3]);
 ///
-/// // 这些元素已经被追加到末尾
+/// // we've added these elements onto the end
 /// assert_eq!("MyCollection([5, 6, 7, 1, 2, 3])", format!("{c:?}"));
 /// ```
 #[stable(feature = "rust1", since = "1.0.0")]
 pub trait Extend<A> {
-    /// 使用 iterator 的内容扩展集合。
+    /// Extends a collection with the contents of an iterator.
     ///
-    /// 这是该 trait 唯一必需实现的方法，因此更多细节见 [trait 级文档][trait-level]。
+    /// As this is the only required method for this trait, the [trait-level] docs
+    /// contain more details.
     ///
     /// [trait-level]: Extend
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
-    /// // 可以用一些 char 扩展 String:
+    /// // You can extend a String with some chars:
     /// let mut message = String::from("abc");
     ///
     /// message.extend(['d', 'e', 'f'].iter());
@@ -399,31 +412,31 @@ pub trait Extend<A> {
     #[stable(feature = "rust1", since = "1.0.0")]
     fn extend<T: IntoIterator<Item = A>>(&mut self, iter: T);
 
-    /// 用恰好一个元素扩展集合。
+    /// Extends a collection with exactly one element.
     #[unstable(feature = "extend_one", issue = "72631")]
     fn extend_one(&mut self, item: A) {
         self.extend(Some(item));
     }
 
-    /// 在集合中为给定数量的额外元素预留容量。
+    /// Reserves capacity in a collection for the given number of additional elements.
     ///
-    /// 默认实现不执行任何操作。
+    /// The default implementation does nothing.
     #[unstable(feature = "extend_one", issue = "72631")]
     fn extend_reserve(&mut self, additional: usize) {
         let _ = additional;
     }
 
-    /// 用一个元素扩展集合，但不检查集合是否有足够容量容纳它。
+    /// Extends a collection with one element, without checking there is enough capacity for it.
     ///
-    /// # 安全性(Safety）
+    /// # Safety
     ///
-    /// **对调用者:** 只有在已知集合拥有足够容量可容纳新元素时才能调用，例如之前已经
-    /// 调用了 `extend_reserve`。
+    /// **For callers:** This must only be called when we know the collection has enough capacity
+    /// to contain the new item, for example because we previously called `extend_reserve`.
     ///
-    /// **对实现者:** 如果集合要在 unsafe 代码中依赖此方法的安全前置条件（也就是说，
-    /// 条件被违反时可能触发 UB），就必须正确实现 `extend_reserve`。换句话说，调用者
-    /// 可以假设: 如果已经通过 `extend_reserve` 预留了足够空间，就可以调用此方法。
-    // 此方法仅供内部使用。它出现在 trait 上只是因为特化的限制。
+    /// **For implementors:** For a collection to unsafely rely on this method's safety precondition (that is,
+    /// invoke UB if they are violated), it must implement `extend_reserve` correctly. In other words,
+    /// callers may assume that if they `extend_reserve`ed enough space they can call this method.
+    // This method is for internal usage only. It is only on the trait because of specialization's limitations.
     #[unstable(feature = "extend_one_unchecked", issue = "none")]
     #[doc(hidden)]
     unsafe fn extend_one_unchecked(&mut self, item: A)
@@ -442,27 +455,27 @@ impl Extend<()> for () {
     fn extend_one(&mut self, _item: ()) {}
 }
 
-/// 该 trait 为长度最多十二项的元组实现。1 元组以及 3 到 12 元组的 `impl` 在
-/// 2 元组之后稳定，于 1.85.0 稳定。
-#[doc(fake_variadic)] // 其他实现在下方。
+/// This trait is implemented for tuples up to twelve items long. The `impl`s for
+/// 1- and 3- through 12-ary tuples were stabilized after 2-tuples, in 1.85.0.
+#[doc(fake_variadic)] // the other implementations are below.
 #[stable(feature = "extend_for_tuple", since = "1.56.0")]
 impl<T, ExtendT> Extend<(T,)> for (ExtendT,)
 where
     ExtendT: Extend<T>,
 {
-    /// 允许对一个由集合组成、且各集合也实现 `Extend` 的元组执行 `extend`。
+    /// Allows to `extend` a tuple of collections that also implement `Extend`.
     ///
-    /// 另见: [`Iterator::unzip`]
+    /// See also: [`Iterator::unzip`]
     ///
-    /// # 示例
+    /// # Examples
     /// ```
-    /// // 这里给出 2 元组示例，但 1 到 12 元组都受支持
+    /// // Example given for a 2-tuple, but 1- through 12-tuples are supported
     /// let mut tuple = (vec![0], vec![1]);
     /// tuple.extend([(2, 3), (4, 5), (6, 7)]);
     /// assert_eq!(tuple.0, [0, 2, 4, 6]);
     /// assert_eq!(tuple.1, [1, 3, 5, 7]);
     ///
-    /// // 也允许元素中包含任意嵌套的元组
+    /// // also allows for arbitrarily nested tuples as elements
     /// let mut nested_tuple = (vec![1], (vec![2], vec![3]));
     /// nested_tuple.extend([(4, (5, 6)), (7, (8, 9))]);
     ///
@@ -484,21 +497,22 @@ where
     }
 
     unsafe fn extend_one_unchecked(&mut self, item: (T,)) {
-        // SAFETY: 调用者保证了所有前置条件。
+        // SAFETY: the caller guarantees all preconditions.
         unsafe { self.0.extend_one_unchecked(item.0) }
     }
 }
 
-/// 该实现会把由元组组成的 iterator 转换成一个元组，结果元组中的各类型都实现
-/// [`Default`] 和 [`Extend`]。
+/// This implementation turns an iterator of tuples into a tuple of types which implement
+/// [`Default`] and [`Extend`].
 ///
-/// 这类似 [`Iterator::unzip`]，但也能与其他 [`FromIterator`] 实现组合使用:
+/// This is similar to [`Iterator::unzip`], but is also composable with other [`FromIterator`]
+/// implementations:
 ///
 /// ```rust
 /// # fn main() -> Result<(), core::num::ParseIntError> {
 /// let string = "1,2,123,4";
 ///
-/// // 这里给出 2 元组示例，但 1 到 12 元组都受支持
+/// // Example given for a 2-tuple, but 1- through 12-tuples are supported
 /// let (numbers, lengths): (Vec<_>, Vec<_>) = string
 ///     .split(',')
 ///     .map(|s| s.parse().map(|n: u32| (n, s.len())))
@@ -508,7 +522,7 @@ where
 /// assert_eq!(lengths, [1, 1, 3, 1]);
 /// # Ok(()) }
 /// ```
-#[doc(fake_variadic)] // 其他实现在下方。
+#[doc(fake_variadic)] // the other implementations are below.
 #[stable(feature = "from_iterator_for_tuple", since = "1.79.0")]
 impl<T, ExtendT> FromIterator<(T,)> for (ExtendT,)
 where
@@ -521,19 +535,21 @@ where
     }
 }
 
-/// [`extend`](Extend::extend) 的一个实现，对 iterator 的每个元素调用 `extend_one`
-/// 或 `extend_one_unchecked`。
+/// An implementation of [`extend`](Extend::extend) that calls `extend_one` or
+/// `extend_one_unchecked` for each element of the iterator.
 fn default_extend<ExtendT, I, T>(collection: &mut ExtendT, iter: I)
 where
     ExtendT: Extend<T>,
     I: IntoIterator<Item = T>,
 {
-    // 针对 `TrustedLen` 特化，并在适用时调用 `extend_one_unchecked`。
+    // Specialize on `TrustedLen` and call `extend_one_unchecked` where
+    // applicable.
     trait SpecExtend<I> {
         fn extend(&mut self, iter: I);
     }
 
-    // 抽到独立函数中，避免为每种 iterator 类型都单态化这些闭包。
+    // Extracting these to separate functions avoid monomorphising the closures
+    // for every iterator type.
     fn extender<ExtendT, T>(collection: &mut ExtendT) -> impl FnMut(T) + use<'_, ExtendT, T>
     where
         ExtendT: Extend<T>,
@@ -547,7 +563,8 @@ where
     where
         ExtendT: Extend<T>,
     {
-        // SAFETY: 该函数的调用点会确保有足够空间。
+        // SAFETY: we make sure that there is enough space at the callsite of
+        // this function.
         move |item| unsafe { collection.extend_one_unchecked(item) }
     }
 
@@ -578,11 +595,11 @@ where
             }
 
             if upper_bound.is_none() {
-                // 无法预留超过 `usize::MAX` 个元素，而且这种情况大概率本来也会耗尽内存。
+                // We cannot reserve more than `usize::MAX` items, and this is likely to go out of memory anyway.
                 iter.for_each(extender(self))
             } else {
-                // SAFETY: 我们按照 `size_hint` 预留了足够空间，且 iterator 是
-                // `TrustedLen`，因此它的 `size_hint` 是精确的。
+                // SAFETY: We reserve enough space for the `size_hint`, and the iterator is
+                // `TrustedLen` so its `size_hint` is exact.
                 iter.for_each(unsafe { unchecked_extender(self) })
             }
         }
@@ -591,7 +608,7 @@ where
     SpecExtend::extend(collection, iter.into_iter());
 }
 
-// 为长度大于一的元组实现 `Extend` 和 `FromIterator`。
+// Implements `Extend` and `FromIterator` for tuples with length larger than one.
 macro_rules! impl_extend_tuple {
     ($(($ty:tt, $extend_ty:tt, $index:tt)),+) => {
         #[doc(hidden)]
@@ -613,7 +630,7 @@ macro_rules! impl_extend_tuple {
             }
 
             unsafe fn extend_one_unchecked(&mut self, item: ($($ty,)+)) {
-                // SAFETY: 这些正是我们的安全前置条件，并且我们正确转发了 `extend_reserve`。
+                // SAFETY: Those are our safety preconditions, and we correctly forward `extend_reserve`.
                 unsafe {
                     $(self.$index.extend_one_unchecked(item.$index);)+
                 }

@@ -2,34 +2,37 @@ use crate::fmt;
 use crate::iter::{FusedIterator, TrustedLen};
 use crate::ops::Try;
 
-/// 创建一个新的无限迭代器，通过反复调用给定闭包 `F: FnMut() -> A` 来产出 `A` 类型元素。
+/// Creates a new iterator that repeats elements of type `A` endlessly by
+/// applying the provided closure, the repeater, `F: FnMut() -> A`.
 ///
-/// `repeat_with()` 会一遍又一遍调用这个 repeater。
+/// The `repeat_with()` function calls the repeater over and over again.
 ///
-/// 像 `repeat_with()` 这样的无限迭代器通常会配合 [`Iterator::take()`] 等适配器使用，
-/// 从而把它们限制为有限迭代器。
+/// Infinite iterators like `repeat_with()` are often used with adapters like
+/// [`Iterator::take()`], in order to make them finite.
 ///
-/// 如果所需迭代器的元素类型实现了 [`Clone`]，并且把源元素保存在内存中是可接受的，
-/// 应改用 [`repeat()`] 函数。
+/// If the element type of the iterator you need implements [`Clone`], and
+/// it is OK to keep the source element in memory, you should instead use
+/// the [`repeat()`] function.
 ///
-/// `repeat_with()` 产生的迭代器不是 [`DoubleEndedIterator`]。如果需要它返回
-/// [`DoubleEndedIterator`]，请提交 GitHub issue 说明你的用例。
+/// An iterator produced by `repeat_with()` is not a [`DoubleEndedIterator`].
+/// If you need `repeat_with()` to return a [`DoubleEndedIterator`],
+/// please open a GitHub issue explaining your use case.
 ///
 /// [`repeat()`]: crate::iter::repeat
 ///
-/// # 示例
+/// # Examples
 ///
-/// 基本用法:
+/// Basic usage:
 ///
 /// ```
 /// use std::iter;
 ///
-/// // 假设有一个值，它的类型不是 `Clone`，
-/// // 或者构造成本较高，暂时不想把它保存在内存中:
+/// // let's assume we have some value of a type that is not `Clone`
+/// // or which we don't want to have in memory just yet because it is expensive:
 /// #[derive(PartialEq, Debug)]
 /// struct Expensive;
 ///
-/// // 永远产出某个特定值:
+/// // a particular value forever:
 /// let mut things = iter::repeat_with(|| Expensive);
 ///
 /// assert_eq!(Some(Expensive), things.next());
@@ -39,12 +42,12 @@ use crate::ops::Try;
 /// assert_eq!(Some(Expensive), things.next());
 /// ```
 ///
-/// 使用可变状态并限制为有限迭代:
+/// Using mutation and going finite:
 ///
 /// ```rust
 /// use std::iter;
 ///
-/// // 从 2 的零次方到三次方:
+/// // From the zeroth to the third power of two:
 /// let mut curr = 1;
 /// let mut pow2 = iter::repeat_with(|| { let tmp = curr; curr *= 2; tmp })
 ///                     .take(4);
@@ -54,7 +57,7 @@ use crate::ops::Try;
 /// assert_eq!(Some(4), pow2.next());
 /// assert_eq!(Some(8), pow2.next());
 ///
-/// // ...现在结束。
+/// // ... and now we're done
 /// assert_eq!(None, pow2.next());
 /// ```
 #[inline]
@@ -63,9 +66,11 @@ pub fn repeat_with<A, F: FnMut() -> A>(repeater: F) -> RepeatWith<F> {
     RepeatWith { repeater }
 }
 
-/// 通过调用给定闭包 `F: FnMut() -> A` 无限重复产出 `A` 类型元素的迭代器。
+/// An iterator that repeats elements of type `A` endlessly by
+/// applying the provided closure `F: FnMut() -> A`.
 ///
-/// 该 `struct` 由 [`repeat_with()`] 函数创建。更多信息见该函数文档。
+/// This `struct` is created by the [`repeat_with()`] function.
+/// See its documentation for more.
 #[derive(Copy, Clone)]
 #[stable(feature = "iterator_repeat_with", since = "1.28.0")]
 pub struct RepeatWith<F> {
@@ -99,8 +104,9 @@ impl<A, F: FnMut() -> A> Iterator for RepeatWith<F> {
         Fold: FnMut(Acc, Self::Item) -> R,
         R: Try<Output = Acc>,
     {
-        // 这个覆盖并非严格必要，但它避免了依赖优化器消除“next 总是返回 Some”的分支，
-        // 也强调 `?` 是退出循环的唯一方式。
+        // This override isn't strictly needed, but avoids the need to optimize
+        // away the `next`-always-returns-`Some` and emphasizes that the `?`
+        // is the only way to exit the loop.
 
         loop {
             let item = (self.repeater)();

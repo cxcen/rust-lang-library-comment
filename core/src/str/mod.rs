@@ -1,6 +1,6 @@
-//! 字符串处理。
+//! String manipulation.
 //!
-//! 更多细节见 [`std::str`] 模块。
+//! For more details, see the [`std::str`] module.
 //!
 //! [`std::str`]: ../../std/str/index.html
 
@@ -86,13 +86,13 @@ fn slice_error_fail_rt(s: &str, begin: usize, end: usize) -> ! {
     let s_trunc = &s[..trunc_len];
     let ellipsis = if trunc_len < s.len() { "[...]" } else { "" };
 
-    // 1. 越界。
+    // 1. out of bounds
     if begin > s.len() || end > s.len() {
         let oob_index = if begin > s.len() { begin } else { end };
         panic!("byte index {oob_index} is out of bounds of `{s_trunc}`{ellipsis}");
     }
 
-    // 2. begin <= end。
+    // 2. begin <= end
     assert!(
         begin <= end,
         "begin <= end ({} <= {}) when slicing `{}`{}",
@@ -102,11 +102,11 @@ fn slice_error_fail_rt(s: &str, begin: usize, end: usize) -> ! {
         ellipsis
     );
 
-    // 3. 字符边界。
+    // 3. character boundary
     let index = if !s.is_char_boundary(begin) { begin } else { end };
-    // 找到对应的字符。
+    // find the character
     let char_start = s.floor_char_boundary(index);
-    // `char_start` 必须小于长度，且必须是字符边界。
+    // `char_start` must be less than len and a char boundary
     let ch = s[char_start..].chars().next().unwrap();
     let char_range = char_start..char_start + ch.len_utf8();
     panic!(
@@ -116,20 +116,20 @@ fn slice_error_fail_rt(s: &str, begin: usize, end: usize) -> ! {
 }
 
 impl str {
-    /// 返回 `self` 的长度。
+    /// Returns the length of `self`.
     ///
-    /// 这个长度以字节为单位，而不是以 [`char`] 或字素簇为单位。换句话说，
-    /// 它不一定等同于人类直观理解的“字符串长度”。
+    /// This length is in bytes, not [`char`]s or graphemes. In other words,
+    /// it might not be what a human considers the length of the string.
     ///
     /// [`char`]: prim@char
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let len = "foo".len();
     /// assert_eq!(3, len);
     ///
-    /// assert_eq!("ƒoo".len(), 4); // 花体 f！
+    /// assert_eq!("ƒoo".len(), 4); // fancy f!
     /// assert_eq!("ƒoo".chars().count(), 3);
     /// ```
     #[stable(feature = "rust1", since = "1.0.0")]
@@ -142,9 +142,9 @@ impl str {
         self.as_bytes().len()
     }
 
-    /// 如果 `self` 的字节长度为零，返回 `true`。
+    /// Returns `true` if `self` has a length of zero bytes.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let s = "";
@@ -162,67 +162,73 @@ impl str {
         self.len() == 0
     }
 
-    /// 将字节切片转换为字符串切片。
+    /// Converts a slice of bytes to a string slice.
     ///
-    /// 字符串切片（[`&str`]）由字节（[`u8`]）组成，字节切片（[`&[u8]`][byteslice]）
-    /// 同样由字节组成，因此本函数在二者之间转换。但并非所有字节切片都是有效字符串切片：
-    /// [`&str`] 要求内容必须是有效 UTF-8。`from_utf8()` 会先检查字节满足 UTF-8
-    /// 有效性不变量，再执行转换。
+    /// A string slice ([`&str`]) is made of bytes ([`u8`]), and a byte slice
+    /// ([`&[u8]`][byteslice]) is made of bytes, so this function converts between
+    /// the two. Not all byte slices are valid string slices, however: [`&str`] requires
+    /// that it is valid UTF-8. `from_utf8()` checks to ensure that the bytes are valid
+    /// UTF-8, and then does the conversion.
     ///
     /// [`&str`]: str
     /// [byteslice]: prim@slice
     ///
-    /// 如果你确信字节切片是有效 UTF-8，并且不想承担有效性检查开销，可以使用本函数的
-    /// unsafe 版本 [`from_utf8_unchecked`]。它行为相同，但会跳过检查；调用方必须自行保证
-    /// `from_utf8_unchecked` 的前置条件。
+    /// If you are sure that the byte slice is valid UTF-8, and you don't want to
+    /// incur the overhead of the validity check, there is an unsafe version of
+    /// this function, [`from_utf8_unchecked`], which has the same
+    /// behavior but skips the check.
     ///
-    /// 如果你需要的是 `String` 而不是 `&str`，可以考虑 [`String::from_utf8`][string]。
+    /// If you need a `String` instead of a `&str`, consider
+    /// [`String::from_utf8`][string].
     ///
     /// [string]: ../std/string/struct.String.html#method.from_utf8
     ///
-    /// 因为 `[u8; N]` 可以分配在栈上，并且可以从中取得 [`&[u8]`][byteslice]，
-    /// 所以本函数也是构造栈上字符串的一种方式。下方示例展示了这一用法。
+    /// Because you can stack-allocate a `[u8; N]`, and you can take a
+    /// [`&[u8]`][byteslice] of it, this function is one way to have a
+    /// stack-allocated string. There is an example of this in the
+    /// examples section below.
     ///
     /// [byteslice]: slice
     ///
-    /// # 错误
+    /// # Errors
     ///
-    /// 如果切片不是有效 UTF-8，则返回 `Err`，并附带说明为什么给定切片不满足
-    /// UTF-8 要求的信息。
+    /// Returns `Err` if the slice is not UTF-8 with a description as to why the
+    /// provided slice is not UTF-8.
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 基本用法：
+    /// Basic usage:
     ///
     /// ```
-    /// // vector 中的一些字节
+    /// // some bytes, in a vector
     /// let sparkle_heart = vec![240, 159, 146, 150];
     ///
-    /// // 可以使用 ?（try）运算符检查这些字节是否有效
+    /// // We can use the ? (try) operator to check if the bytes are valid
     /// let sparkle_heart = str::from_utf8(&sparkle_heart)?;
     ///
     /// assert_eq!("💖", sparkle_heart);
     /// # Ok::<_, std::str::Utf8Error>(())
     /// ```
     ///
-    /// 错误字节：
+    /// Incorrect bytes:
     ///
     /// ```
-    /// // vector 中的一些无效字节
+    /// // some invalid bytes, in a vector
     /// let sparkle_heart = vec![0, 159, 146, 150];
     ///
     /// assert!(str::from_utf8(&sparkle_heart).is_err());
     /// ```
     ///
-    /// 关于可能返回的错误种类，更多细节见 [`Utf8Error`] 的文档。
+    /// See the docs for [`Utf8Error`] for more details on the kinds of
+    /// errors that can be returned.
     ///
-    /// “栈上分配的字符串”：
+    /// A "stack allocated string":
     ///
     /// ```
-    /// // 栈上分配数组中的一些字节
+    /// // some bytes, in a stack-allocated array
     /// let sparkle_heart = [240, 159, 146, 150];
     ///
-    /// // 已知这些字节有效，因此直接使用 `unwrap()`。
+    /// // We know these bytes are valid, so just use `unwrap()`.
     /// let sparkle_heart: &str = str::from_utf8(&sparkle_heart).unwrap();
     ///
     /// assert_eq!("💖", sparkle_heart);
@@ -234,31 +240,32 @@ impl str {
         converts::from_utf8(v)
     }
 
-    /// 将可变字节切片转换为可变字符串切片。
+    /// Converts a mutable slice of bytes to a mutable string slice.
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 基本用法：
+    /// Basic usage:
     ///
     /// ```
-    /// // 用可变 vector 表示 "Hello, Rust!"
+    /// // "Hello, Rust!" as a mutable vector
     /// let mut hellorust = vec![72, 101, 108, 108, 111, 44, 32, 82, 117, 115, 116, 33];
     ///
-    /// // 已知这些字节有效，因此可以使用 `unwrap()`
+    /// // As we know these bytes are valid, we can use `unwrap()`
     /// let outstr = str::from_utf8_mut(&mut hellorust).unwrap();
     ///
     /// assert_eq!("Hello, Rust!", outstr);
     /// ```
     ///
-    /// 错误字节：
+    /// Incorrect bytes:
     ///
     /// ```
-    /// // 可变 vector 中的一些无效字节
+    /// // Some invalid bytes in a mutable vector
     /// let mut invalid = vec![128, 223];
     ///
     /// assert!(str::from_utf8_mut(&mut invalid).is_err());
     /// ```
-    /// 关于可能返回的错误种类，更多细节见 [`Utf8Error`] 的文档。
+    /// See the docs for [`Utf8Error`] for more details on the kinds of
+    /// errors that can be returned.
     #[stable(feature = "inherent_str_constructors", since = "1.87.0")]
     #[rustc_const_stable(feature = "const_str_from_utf8", since = "1.87.0")]
     #[rustc_diagnostic_item = "str_inherent_from_utf8_mut"]
@@ -266,21 +273,21 @@ impl str {
         converts::from_utf8_mut(v)
     }
 
-    /// 将字节切片转换为字符串切片，但不检查其中是否包含有效 UTF-8。
+    /// Converts a slice of bytes to a string slice without checking
+    /// that the string contains valid UTF-8.
     ///
-    /// 更多信息见安全版本 [`from_utf8`]。
+    /// See the safe version, [`from_utf8`], for more information.
     ///
-    /// # 安全性(Safety）
+    /// # Safety
     ///
-    /// 传入的字节必须是有效 UTF-8。调用方必须在调用 `from_utf8_unchecked`
-    /// 前确认每个字节序列都满足 UTF-8 编码规则；否则构造出的 `&str` 会破坏核心不变量。
+    /// The bytes passed in must be valid UTF-8.
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 基本用法：
+    /// Basic usage:
     ///
     /// ```
-    /// // vector 中的一些字节
+    /// // some bytes, in a vector
     /// let sparkle_heart = vec![240, 159, 146, 150];
     ///
     /// let sparkle_heart = unsafe {
@@ -295,17 +302,18 @@ impl str {
     #[rustc_const_stable(feature = "inherent_str_constructors", since = "1.87.0")]
     #[rustc_diagnostic_item = "str_inherent_from_utf8_unchecked"]
     pub const unsafe fn from_utf8_unchecked(v: &[u8]) -> &str {
-        // SAFETY: converts::from_utf8_unchecked 与本函数具有相同安全要求。
+        // SAFETY: converts::from_utf8_unchecked has the same safety requirements as this function.
         unsafe { converts::from_utf8_unchecked(v) }
     }
 
-    /// 将字节切片转换为字符串切片，但不检查其中是否包含有效 UTF-8；这是可变版本。
+    /// Converts a slice of bytes to a string slice without checking
+    /// that the string contains valid UTF-8; mutable version.
     ///
-    /// 文档和安全要求见不可变版本 [`from_utf8_unchecked()`]。
+    /// See the immutable version, [`from_utf8_unchecked()`] for documentation and safety requirements.
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 基本用法：
+    /// Basic usage:
     ///
     /// ```
     /// let mut heart = vec![240, 159, 146, 150];
@@ -319,30 +327,31 @@ impl str {
     #[rustc_const_stable(feature = "inherent_str_constructors", since = "1.87.0")]
     #[rustc_diagnostic_item = "str_inherent_from_utf8_unchecked_mut"]
     pub const unsafe fn from_utf8_unchecked_mut(v: &mut [u8]) -> &mut str {
-        // SAFETY: converts::from_utf8_unchecked_mut 与本函数具有相同安全要求。
+        // SAFETY: converts::from_utf8_unchecked_mut has the same safety requirements as this function.
         unsafe { converts::from_utf8_unchecked_mut(v) }
     }
 
-    /// 检查第 `index` 个字节是否是某个 UTF-8 code point 序列的首字节，
-    /// 或者是否正好位于字符串末尾。
+    /// Checks that `index`-th byte is the first byte in a UTF-8 code point
+    /// sequence or the end of the string.
     ///
-    /// 字符串开头和字符串结尾（当 `index == self.len()` 时）都视为边界。
+    /// The start and end of the string (when `index == self.len()`) are
+    /// considered to be boundaries.
     ///
-    /// 如果 `index` 大于 `self.len()`，返回 `false`。
+    /// Returns `false` if `index` is greater than `self.len()`.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let s = "Löwe 老虎 Léopard";
     /// assert!(s.is_char_boundary(0));
-    /// // `老` 的起始位置
+    /// // start of `老`
     /// assert!(s.is_char_boundary(6));
     /// assert!(s.is_char_boundary(s.len()));
     ///
-    /// // `ö` 的第二个字节
+    /// // second byte of `ö`
     /// assert!(!s.is_char_boundary(2));
     ///
-    /// // `老` 的第三个字节
+    /// // third byte of `老`
     /// assert!(!s.is_char_boundary(8));
     /// ```
     #[must_use]
@@ -350,38 +359,41 @@ impl str {
     #[rustc_const_stable(feature = "const_is_char_boundary", since = "1.86.0")]
     #[inline]
     pub const fn is_char_boundary(&self, index: usize) -> bool {
-        // 0 永远是有效边界。
-        // 显式检测 0 可让编译器轻松优化掉该分支的检查，并跳过读取字符串数据。
-        // 注意，`self.get(..index)` 的优化依赖这一点。
+        // 0 is always ok.
+        // Test for 0 explicitly so that it can optimize out the check
+        // easily and skip reading string data for that case.
+        // Note that optimizing `self.get(..index)` relies on this.
         if index == 0 {
             return true;
         }
 
         if index >= self.len() {
-            // 返回 `true` 的情况有两种：
+            // For `true` we have two options:
             //
             // - index == self.len()
-            //   空字符串是有效边界，因此返回 true。
+            //   Empty strings are valid, so return true
             // - index > self.len()
-            //   此时返回 false。
+            //   In this case return false
             //
-            // 该检查刻意放在这里，因为它能改善高优化级别下生成的代码。
-            // 更多细节见 PR #84751。
+            // The check is placed exactly here, because it improves generated
+            // code on higher opt-levels. See PR #84751 for more details.
             index == self.len()
         } else {
             self.as_bytes()[index].is_utf8_char_boundary()
         }
     }
 
-    /// 查找不超过 `index` 且满足 [`is_char_boundary(x)`] 为 `true` 的最近 `x`。
+    /// Finds the closest `x` not exceeding `index` where [`is_char_boundary(x)`] is `true`.
     ///
-    /// 本方法可帮助你按给定字节数截断字符串，同时仍保持有效 UTF-8。注意，这只在字符层面
-    /// 操作，因此即使底层字符没有被拆开，视觉上的字素簇仍可能被切开。例如，emoji 🧑‍🔬
-    ///（科学家）可能被截成只包含 🧑（人）。
+    /// This method can help you truncate a string so that it's still valid UTF-8, but doesn't
+    /// exceed a given number of bytes. Note that this is done purely at the character level
+    /// and can still visually split graphemes, even though the underlying characters aren't
+    /// split. For example, the emoji 🧑‍🔬 (scientist) could be split so that the string only
+    /// includes 🧑 (person) instead.
     ///
     /// [`is_char_boundary(x)`]: Self::is_char_boundary
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let s = "❤️🧡💛💚💙💜";
@@ -407,23 +419,24 @@ impl str {
                 i -= 1;
             }
 
-            // 字符边界一定位于 index 附近四个字节以内。
+            //  The character boundary will be within four bytes of the index
             debug_assert!(i >= index.saturating_sub(3));
 
             i
         }
     }
 
-    /// 查找不小于 `index` 且满足 [`is_char_boundary(x)`] 为 `true` 的最近 `x`。
+    /// Finds the closest `x` not below `index` where [`is_char_boundary(x)`] is `true`.
     ///
-    /// 如果 `index` 大于字符串长度，则返回字符串长度。
+    /// If `index` is greater than the length of the string, this returns the length of the string.
     ///
-    /// 这是 [`floor_char_boundary`] 的自然互补方法。更多细节见该方法。
+    /// This method is the natural complement to [`floor_char_boundary`]. See that method
+    /// for more details.
     ///
     /// [`floor_char_boundary`]: str::floor_char_boundary
     /// [`is_char_boundary(x)`]: Self::is_char_boundary
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let s = "❤️🧡💛💚💙💜";
@@ -449,17 +462,17 @@ impl str {
                 i += 1;
             }
 
-            // 字符边界一定位于 index 附近四个字节以内。
+            //  The character boundary will be within four bytes of the index
             debug_assert!(i <= index + 3);
 
             i
         }
     }
 
-    /// 将字符串切片转换为字节切片。要把字节切片再转换回字符串切片，请使用
-    /// [`from_utf8`] 函数。
+    /// Converts a string slice to a byte slice. To convert the byte slice back
+    /// into a string slice, use the [`from_utf8`] function.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let bytes = "bors".as_bytes();
@@ -471,21 +484,22 @@ impl str {
     #[inline(always)]
     #[allow(unused_attributes)]
     pub const fn as_bytes(&self) -> &[u8] {
-        // SAFETY: const 中这是可靠的，因为这里转换的是两个布局相同的类型。
+        // SAFETY: const sound because we transmute two types with the same layout
         unsafe { mem::transmute(self) }
     }
 
-    /// 将可变字符串切片转换为可变字节切片。
+    /// Converts a mutable string slice to a mutable byte slice.
     ///
-    /// # 安全性(Safety）
+    /// # Safety
     ///
-    /// 调用方必须确保在借用结束且底层 `str` 再次被使用前，切片内容仍然是有效 UTF-8。
+    /// The caller must ensure that the content of the slice is valid UTF-8
+    /// before the borrow ends and the underlying `str` is used.
     ///
-    /// 使用内容不是有效 UTF-8 的 `str` 会导致未定义行为。
+    /// Use of a `str` whose contents are not valid UTF-8 is undefined behavior.
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 基本用法：
+    /// Basic usage:
     ///
     /// ```
     /// let mut s = String::from("Hello");
@@ -494,7 +508,7 @@ impl str {
     /// assert_eq!(b"Hello", bytes);
     /// ```
     ///
-    /// 可变性：
+    /// Mutability:
     ///
     /// ```
     /// let mut s = String::from("🗻∈🌏");
@@ -515,23 +529,25 @@ impl str {
     #[must_use]
     #[inline(always)]
     pub const unsafe fn as_bytes_mut(&mut self) -> &mut [u8] {
-        // SAFETY: 从 `&str` 转换到 `&[u8]` 是安全的，因为 `str` 与 `&[u8]`
-        // 具有相同布局（只有 std 可以作出这个保证）。
-        // 指针解引用是安全的，因为它来自保证可写的可变引用。
+        // SAFETY: the cast from `&str` to `&[u8]` is safe since `str`
+        // has the same layout as `&[u8]` (only std can make this guarantee).
+        // The pointer dereference is safe since it comes from a mutable reference which
+        // is guaranteed to be valid for writes.
         unsafe { &mut *(self as *mut str as *mut [u8]) }
     }
 
-    /// 将字符串切片转换为裸指针。
+    /// Converts a string slice to a raw pointer.
     ///
-    /// 由于字符串切片本质上是字节切片，裸指针指向 [`u8`]。该指针会指向字符串切片的
-    /// 第一个字节。
+    /// As string slices are a slice of bytes, the raw pointer points to a
+    /// [`u8`]. This pointer will be pointing to the first byte of the string
+    /// slice.
     ///
-    /// 调用方必须确保永远不通过返回的指针写入。如果需要修改字符串切片内容，请使用
-    /// [`as_mut_ptr`]。
+    /// The caller must ensure that the returned pointer is never written to.
+    /// If you need to mutate the contents of the string slice, use [`as_mut_ptr`].
     ///
     /// [`as_mut_ptr`]: str::as_mut_ptr
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let s = "Hello";
@@ -547,12 +563,14 @@ impl str {
         self as *const str as *const u8
     }
 
-    /// 将可变字符串切片转换为裸指针。
+    /// Converts a mutable string slice to a raw pointer.
     ///
-    /// 由于字符串切片本质上是字节切片，裸指针指向 [`u8`]。该指针会指向字符串切片的
-    /// 第一个字节。
+    /// As string slices are a slice of bytes, the raw pointer points to a
+    /// [`u8`]. This pointer will be pointing to the first byte of the string
+    /// slice.
     ///
-    /// 你必须确保对字符串切片的修改方式始终保持其内容为有效 UTF-8。
+    /// It is your responsibility to make sure that the string slice only gets
+    /// modified in a way that it remains valid UTF-8.
     #[stable(feature = "str_as_mut_ptr", since = "1.36.0")]
     #[rustc_const_stable(feature = "const_str_as_mut", since = "1.83.0")]
     #[rustc_never_returns_null_ptr]
@@ -563,23 +581,23 @@ impl str {
         self as *mut str as *mut u8
     }
 
-    /// 返回 `str` 的子切片。
+    /// Returns a subslice of `str`.
     ///
-    /// 这是索引 `str` 的非 panic 替代方案。只要等价的索引操作会 panic，
-    /// 本方法就返回 [`None`]。
+    /// This is the non-panicking alternative to indexing the `str`. Returns
+    /// [`None`] whenever equivalent indexing operation would panic.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let v = String::from("🗻∈🌏");
     ///
     /// assert_eq!(Some("🗻"), v.get(0..4));
     ///
-    /// // 不在 UTF-8 序列边界上的索引
+    /// // indices not on UTF-8 sequence boundaries
     /// assert!(v.get(1..).is_none());
     /// assert!(v.get(..8).is_none());
     ///
-    /// // 越界
+    /// // out of bounds
     /// assert!(v.get(..42).is_none());
     /// ```
     #[stable(feature = "str_checked_slicing", since = "1.20.0")]
@@ -589,18 +607,18 @@ impl str {
         i.get(self)
     }
 
-    /// 返回 `str` 的可变子切片。
+    /// Returns a mutable subslice of `str`.
     ///
-    /// 这是索引 `str` 的非 panic 替代方案。只要等价的索引操作会 panic，
-    /// 本方法就返回 [`None`]。
+    /// This is the non-panicking alternative to indexing the `str`. Returns
+    /// [`None`] whenever equivalent indexing operation would panic.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let mut v = String::from("hello");
-    /// // 正确长度
+    /// // correct length
     /// assert!(v.get_mut(0..5).is_some());
-    /// // 越界
+    /// // out of bounds
     /// assert!(v.get_mut(..42).is_none());
     /// assert_eq!(Some("he"), v.get_mut(0..2).map(|v| &*v));
     ///
@@ -622,22 +640,23 @@ impl str {
         i.get_mut(self)
     }
 
-    /// 返回 `str` 的未检查子切片。
+    /// Returns an unchecked subslice of `str`.
     ///
-    /// 这是索引 `str` 的未检查替代方案。
+    /// This is the unchecked alternative to indexing the `str`.
     ///
-    /// # 安全性(Safety）
+    /// # Safety
     ///
-    /// 本函数调用方负责确保满足以下前置条件：
+    /// Callers of this function are responsible that these preconditions are
+    /// satisfied:
     ///
-    /// * 起始索引不得超过结束索引；
-    /// * 索引必须位于原始切片边界内；
-    /// * 索引必须位于 UTF-8 序列边界上。
+    /// * The starting index must not exceed the ending index;
+    /// * Indexes must be within bounds of the original slice;
+    /// * Indexes must lie on UTF-8 sequence boundaries.
     ///
-    /// 如果这些条件不成立，返回的字符串切片可能引用无效内存，或违反 `str`
-    /// 类型承诺的 UTF-8 有效性不变量。
+    /// Failing that, the returned string slice may reference invalid memory or
+    /// violate the invariants communicated by the `str` type.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let v = "🗻∈🌏";
@@ -650,28 +669,29 @@ impl str {
     #[stable(feature = "str_checked_slicing", since = "1.20.0")]
     #[inline]
     pub unsafe fn get_unchecked<I: SliceIndex<str>>(&self, i: I) -> &I::Output {
-        // SAFETY: 调用方必须遵守 `get_unchecked` 的安全契约；
-        // 由于 `self` 是安全引用，该切片可解引用。
-        // 返回的指针是安全的，因为 `SliceIndex` 的实现必须保证这一点。
+        // SAFETY: the caller must uphold the safety contract for `get_unchecked`;
+        // the slice is dereferenceable because `self` is a safe reference.
+        // The returned pointer is safe because impls of `SliceIndex` have to guarantee that it is.
         unsafe { &*i.get_unchecked(self) }
     }
 
-    /// 返回 `str` 的可变、未检查子切片。
+    /// Returns a mutable, unchecked subslice of `str`.
     ///
-    /// 这是索引 `str` 的未检查替代方案。
+    /// This is the unchecked alternative to indexing the `str`.
     ///
-    /// # 安全性(Safety）
+    /// # Safety
     ///
-    /// 本函数调用方负责确保满足以下前置条件：
+    /// Callers of this function are responsible that these preconditions are
+    /// satisfied:
     ///
-    /// * 起始索引不得超过结束索引；
-    /// * 索引必须位于原始切片边界内；
-    /// * 索引必须位于 UTF-8 序列边界上。
+    /// * The starting index must not exceed the ending index;
+    /// * Indexes must be within bounds of the original slice;
+    /// * Indexes must lie on UTF-8 sequence boundaries.
     ///
-    /// 如果这些条件不成立，返回的字符串切片可能引用无效内存，或违反 `str`
-    /// 类型承诺的 UTF-8 有效性不变量。
+    /// Failing that, the returned string slice may reference invalid memory or
+    /// violate the invariants communicated by the `str` type.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let mut v = String::from("🗻∈🌏");
@@ -684,33 +704,38 @@ impl str {
     #[stable(feature = "str_checked_slicing", since = "1.20.0")]
     #[inline]
     pub unsafe fn get_unchecked_mut<I: SliceIndex<str>>(&mut self, i: I) -> &mut I::Output {
-        // SAFETY: 调用方必须遵守 `get_unchecked_mut` 的安全契约；
-        // 由于 `self` 是安全引用，该切片可解引用。
-        // 返回的指针是安全的，因为 `SliceIndex` 的实现必须保证这一点。
+        // SAFETY: the caller must uphold the safety contract for `get_unchecked_mut`;
+        // the slice is dereferenceable because `self` is a safe reference.
+        // The returned pointer is safe because impls of `SliceIndex` have to guarantee that it is.
         unsafe { &mut *i.get_unchecked_mut(self) }
     }
 
-    /// 从另一个字符串切片创建字符串切片，绕过安全检查。
+    /// Creates a string slice from another string slice, bypassing safety
+    /// checks.
     ///
-    /// 通常不建议这样做，请谨慎使用。安全替代方案见 [`str`] 和 [`Index`]。
+    /// This is generally not recommended, use with caution! For a safe
+    /// alternative see [`str`] and [`Index`].
     ///
     /// [`Index`]: crate::ops::Index
     ///
-    /// 新切片从 `begin` 到 `end`，包含 `begin`，但不包含 `end`。
+    /// This new slice goes from `begin` to `end`, including `begin` but
+    /// excluding `end`.
     ///
-    /// 如果要取得可变字符串切片，见 [`slice_mut_unchecked`] 方法。
+    /// To get a mutable string slice instead, see the
+    /// [`slice_mut_unchecked`] method.
     ///
     /// [`slice_mut_unchecked`]: str::slice_mut_unchecked
     ///
-    /// # 安全性(Safety）
+    /// # Safety
     ///
-    /// 本函数调用方负责确保满足三个前置条件：
+    /// Callers of this function are responsible that three preconditions are
+    /// satisfied:
     ///
-    /// * `begin` 不得超过 `end`。
-    /// * `begin` 和 `end` 必须是字符串切片内的字节位置。
-    /// * `begin` 和 `end` 必须位于 UTF-8 序列边界上。
+    /// * `begin` must not exceed `end`.
+    /// * `begin` and `end` must be byte positions within the string slice.
+    /// * `begin` and `end` must lie on UTF-8 sequence boundaries.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let s = "Löwe 老虎 Léopard";
@@ -730,58 +755,66 @@ impl str {
     #[must_use]
     #[inline]
     pub unsafe fn slice_unchecked(&self, begin: usize, end: usize) -> &str {
-        // SAFETY: 调用方必须遵守 `get_unchecked` 的安全契约；
-        // 由于 `self` 是安全引用，该切片可解引用。
-        // 返回的指针是安全的，因为 `SliceIndex` 的实现必须保证这一点。
+        // SAFETY: the caller must uphold the safety contract for `get_unchecked`;
+        // the slice is dereferenceable because `self` is a safe reference.
+        // The returned pointer is safe because impls of `SliceIndex` have to guarantee that it is.
         unsafe { &*(begin..end).get_unchecked(self) }
     }
 
-    /// 从另一个字符串切片创建字符串切片，绕过安全检查。
+    /// Creates a string slice from another string slice, bypassing safety
+    /// checks.
     ///
-    /// 通常不建议这样做，请谨慎使用。安全替代方案见 [`str`] 和 [`IndexMut`]。
+    /// This is generally not recommended, use with caution! For a safe
+    /// alternative see [`str`] and [`IndexMut`].
     ///
     /// [`IndexMut`]: crate::ops::IndexMut
     ///
-    /// 新切片从 `begin` 到 `end`，包含 `begin`，但不包含 `end`。
+    /// This new slice goes from `begin` to `end`, including `begin` but
+    /// excluding `end`.
     ///
-    /// 如果要取得不可变字符串切片，见 [`slice_unchecked`] 方法。
+    /// To get an immutable string slice instead, see the
+    /// [`slice_unchecked`] method.
     ///
     /// [`slice_unchecked`]: str::slice_unchecked
     ///
-    /// # 安全性(Safety）
+    /// # Safety
     ///
-    /// 本函数调用方负责确保满足三个前置条件：
+    /// Callers of this function are responsible that three preconditions are
+    /// satisfied:
     ///
-    /// * `begin` 不得超过 `end`。
-    /// * `begin` 和 `end` 必须是字符串切片内的字节位置。
-    /// * `begin` 和 `end` 必须位于 UTF-8 序列边界上。
+    /// * `begin` must not exceed `end`.
+    /// * `begin` and `end` must be byte positions within the string slice.
+    /// * `begin` and `end` must lie on UTF-8 sequence boundaries.
     #[stable(feature = "str_slice_mut", since = "1.5.0")]
     #[deprecated(since = "1.29.0", note = "use `get_unchecked_mut(begin..end)` instead")]
     #[inline]
     pub unsafe fn slice_mut_unchecked(&mut self, begin: usize, end: usize) -> &mut str {
-        // SAFETY: 调用方必须遵守 `get_unchecked_mut` 的安全契约；
-        // 由于 `self` 是安全引用，该切片可解引用。
-        // 返回的指针是安全的，因为 `SliceIndex` 的实现必须保证这一点。
+        // SAFETY: the caller must uphold the safety contract for `get_unchecked_mut`;
+        // the slice is dereferenceable because `self` is a safe reference.
+        // The returned pointer is safe because impls of `SliceIndex` have to guarantee that it is.
         unsafe { &mut *(begin..end).get_unchecked_mut(self) }
     }
 
-    /// 在给定索引处将一个字符串切片拆成两个。
+    /// Divides one string slice into two at an index.
     ///
-    /// 参数 `mid` 应当是从字符串开头算起的字节偏移，并且必须位于 UTF-8 code point
-    /// 的边界上。
+    /// The argument, `mid`, should be a byte offset from the start of the
+    /// string. It must also be on the boundary of a UTF-8 code point.
     ///
-    /// 返回的两个切片分别覆盖从字符串切片开头到 `mid`，以及从 `mid` 到字符串切片结尾。
+    /// The two slices returned go from the start of the string slice to `mid`,
+    /// and from `mid` to the end of the string slice.
     ///
-    /// 如果要取得可变字符串切片，见 [`split_at_mut`] 方法。
+    /// To get mutable string slices instead, see the [`split_at_mut`]
+    /// method.
     ///
     /// [`split_at_mut`]: str::split_at_mut
     ///
     /// # Panics
     ///
-    /// Panic 条件：`mid` 不在 UTF-8 code point 边界上，或者超过了字符串切片最后一个
-    /// code point 的末尾。非 panic 替代方案见 [`split_at_checked`](str::split_at_checked)。
+    /// Panics if `mid` is not on a UTF-8 code point boundary, or if it is past
+    /// the end of the last code point of the string slice.  For a non-panicking
+    /// alternative see [`split_at_checked`](str::split_at_checked).
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let s = "Per Martin-Löf";
@@ -802,24 +835,25 @@ impl str {
         }
     }
 
-    /// 在给定索引处将一个可变字符串切片拆成两个。
+    /// Divides one mutable string slice into two at an index.
     ///
-    /// 参数 `mid` 应当是从字符串开头算起的字节偏移，并且必须位于 UTF-8 code point
-    /// 的边界上。
+    /// The argument, `mid`, should be a byte offset from the start of the
+    /// string. It must also be on the boundary of a UTF-8 code point.
     ///
-    /// 返回的两个切片分别覆盖从字符串切片开头到 `mid`，以及从 `mid` 到字符串切片结尾。
+    /// The two slices returned go from the start of the string slice to `mid`,
+    /// and from `mid` to the end of the string slice.
     ///
-    /// 如果要取得不可变字符串切片，见 [`split_at`] 方法。
+    /// To get immutable string slices instead, see the [`split_at`] method.
     ///
     /// [`split_at`]: str::split_at
     ///
     /// # Panics
     ///
-    /// Panic 条件：`mid` 不在 UTF-8 code point 边界上，或者超过了字符串切片最后一个
-    /// code point 的末尾。非 panic 替代方案见
-    /// [`split_at_mut_checked`](str::split_at_mut_checked)。
+    /// Panics if `mid` is not on a UTF-8 code point boundary, or if it is past
+    /// the end of the last code point of the string slice.  For a non-panicking
+    /// alternative see [`split_at_mut_checked`](str::split_at_mut_checked).
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let mut s = "Per Martin-Löf".to_string();
@@ -836,27 +870,30 @@ impl str {
     #[stable(feature = "str_split_at", since = "1.4.0")]
     #[rustc_const_stable(feature = "const_str_split_at", since = "1.86.0")]
     pub const fn split_at_mut(&mut self, mid: usize) -> (&mut str, &mut str) {
-        // is_char_boundary 会检查索引位于 [0, .len()] 范围内。
+        // is_char_boundary checks that the index is in [0, .len()]
         if self.is_char_boundary(mid) {
-            // SAFETY: 刚刚已经检查 `mid` 位于 char 边界上。
+            // SAFETY: just checked that `mid` is on a char boundary.
             unsafe { self.split_at_mut_unchecked(mid) }
         } else {
             slice_error_fail(self, 0, mid)
         }
     }
 
-    /// 在给定索引处将一个字符串切片拆成两个。
+    /// Divides one string slice into two at an index.
     ///
-    /// 参数 `mid` 应当是从字符串开头算起的有效字节偏移，并且必须位于 UTF-8 code point
-    /// 的边界上。如果不是这样，本方法返回 `None`。
+    /// The argument, `mid`, should be a valid byte offset from the start of the
+    /// string. It must also be on the boundary of a UTF-8 code point. The
+    /// method returns `None` if that’s not the case.
     ///
-    /// 返回的两个切片分别覆盖从字符串切片开头到 `mid`，以及从 `mid` 到字符串切片结尾。
+    /// The two slices returned go from the start of the string slice to `mid`,
+    /// and from `mid` to the end of the string slice.
     ///
-    /// 如果要取得可变字符串切片，见 [`split_at_mut_checked`] 方法。
+    /// To get mutable string slices instead, see the [`split_at_mut_checked`]
+    /// method.
     ///
     /// [`split_at_mut_checked`]: str::split_at_mut_checked
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let s = "Per Martin-Löf";
@@ -865,35 +902,37 @@ impl str {
     /// assert_eq!("Per", first);
     /// assert_eq!(" Martin-Löf", last);
     ///
-    /// assert_eq!(None, s.split_at_checked(13));  // 位于 “ö” 内部
-    /// assert_eq!(None, s.split_at_checked(16));  // 超过字符串长度
+    /// assert_eq!(None, s.split_at_checked(13));  // Inside “ö”
+    /// assert_eq!(None, s.split_at_checked(16));  // Beyond the string length
     /// ```
     #[inline]
     #[must_use]
     #[stable(feature = "split_at_checked", since = "1.80.0")]
     #[rustc_const_stable(feature = "const_str_split_at", since = "1.86.0")]
     pub const fn split_at_checked(&self, mid: usize) -> Option<(&str, &str)> {
-        // is_char_boundary 会检查索引位于 [0, .len()] 范围内。
+        // is_char_boundary checks that the index is in [0, .len()]
         if self.is_char_boundary(mid) {
-            // SAFETY: 刚刚已经检查 `mid` 位于 char 边界上。
+            // SAFETY: just checked that `mid` is on a char boundary.
             Some(unsafe { self.split_at_unchecked(mid) })
         } else {
             None
         }
     }
 
-    /// 在给定索引处将一个可变字符串切片拆成两个。
+    /// Divides one mutable string slice into two at an index.
     ///
-    /// 参数 `mid` 应当是从字符串开头算起的有效字节偏移，并且必须位于 UTF-8 code point
-    /// 的边界上。如果不是这样，本方法返回 `None`。
+    /// The argument, `mid`, should be a valid byte offset from the start of the
+    /// string. It must also be on the boundary of a UTF-8 code point. The
+    /// method returns `None` if that’s not the case.
     ///
-    /// 返回的两个切片分别覆盖从字符串切片开头到 `mid`，以及从 `mid` 到字符串切片结尾。
+    /// The two slices returned go from the start of the string slice to `mid`,
+    /// and from `mid` to the end of the string slice.
     ///
-    /// 如果要取得不可变字符串切片，见 [`split_at_checked`] 方法。
+    /// To get immutable string slices instead, see the [`split_at_checked`] method.
     ///
     /// [`split_at_checked`]: str::split_at_checked
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let mut s = "Per Martin-Löf".to_string();
@@ -904,34 +943,34 @@ impl str {
     /// }
     /// assert_eq!("PER Martin-Löf", s);
     ///
-    /// assert_eq!(None, s.split_at_mut_checked(13));  // 位于 “ö” 内部
-    /// assert_eq!(None, s.split_at_mut_checked(16));  // 超过字符串长度
+    /// assert_eq!(None, s.split_at_mut_checked(13));  // Inside “ö”
+    /// assert_eq!(None, s.split_at_mut_checked(16));  // Beyond the string length
     /// ```
     #[inline]
     #[must_use]
     #[stable(feature = "split_at_checked", since = "1.80.0")]
     #[rustc_const_stable(feature = "const_str_split_at", since = "1.86.0")]
     pub const fn split_at_mut_checked(&mut self, mid: usize) -> Option<(&mut str, &mut str)> {
-        // is_char_boundary 会检查索引位于 [0, .len()] 范围内。
+        // is_char_boundary checks that the index is in [0, .len()]
         if self.is_char_boundary(mid) {
-            // SAFETY: 刚刚已经检查 `mid` 位于 char 边界上。
+            // SAFETY: just checked that `mid` is on a char boundary.
             Some(unsafe { self.split_at_mut_unchecked(mid) })
         } else {
             None
         }
     }
 
-    /// 在给定索引处将一个字符串切片拆成两个。
+    /// Divides one string slice into two at an index.
     ///
-    /// # 安全性(Safety）
+    /// # Safety
     ///
-    /// 调用方必须确保 `mid` 是从字符串开头算起的有效字节偏移，并且位于 UTF-8
-    /// code point 边界上。
+    /// The caller must ensure that `mid` is a valid byte offset from the start
+    /// of the string and falls on the boundary of a UTF-8 code point.
     #[inline]
     const unsafe fn split_at_unchecked(&self, mid: usize) -> (&str, &str) {
         let len = self.len();
         let ptr = self.as_ptr();
-        // SAFETY: 调用方保证 `mid` 位于 char 边界上。
+        // SAFETY: caller guarantees `mid` is on a char boundary.
         unsafe {
             (
                 from_utf8_unchecked(slice::from_raw_parts(ptr, mid)),
@@ -940,16 +979,16 @@ impl str {
         }
     }
 
-    /// 在给定索引处将一个字符串切片拆成两个。
+    /// Divides one string slice into two at an index.
     ///
-    /// # 安全性(Safety）
+    /// # Safety
     ///
-    /// 调用方必须确保 `mid` 是从字符串开头算起的有效字节偏移，并且位于 UTF-8
-    /// code point 边界上。
+    /// The caller must ensure that `mid` is a valid byte offset from the start
+    /// of the string and falls on the boundary of a UTF-8 code point.
     const unsafe fn split_at_mut_unchecked(&mut self, mid: usize) -> (&mut str, &mut str) {
         let len = self.len();
         let ptr = self.as_mut_ptr();
-        // SAFETY: 调用方保证 `mid` 位于 char 边界上。
+        // SAFETY: caller guarantees `mid` is on a char boundary.
         unsafe {
             (
                 from_utf8_unchecked_mut(slice::from_raw_parts_mut(ptr, mid)),
@@ -958,17 +997,19 @@ impl str {
         }
     }
 
-    /// 返回遍历字符串切片中各个 [`char`] 的迭代器。
+    /// Returns an iterator over the [`char`]s of a string slice.
     ///
-    /// 字符串切片由有效 UTF-8 组成，因此可以按 [`char`] 遍历。本方法返回这样的迭代器。
+    /// As a string slice consists of valid UTF-8, we can iterate through a
+    /// string slice by [`char`]. This method returns such an iterator.
     ///
-    /// 需要记住，[`char`] 表示 Unicode 标量值，可能并不等同于你直觉中的“字符”。
-    /// 你真正需要的可能是按字素簇遍历。Rust 标准库不提供此功能，可在 crates.io
-    /// 上寻找相关 crate。
+    /// It's important to remember that [`char`] represents a Unicode Scalar
+    /// Value, and might not match your idea of what a 'character' is. Iteration
+    /// over grapheme clusters may be what you actually want. This functionality
+    /// is not provided by Rust's standard library, check crates.io instead.
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 基本用法：
+    /// Basic usage:
     ///
     /// ```
     /// let word = "goodbye";
@@ -989,7 +1030,7 @@ impl str {
     /// assert_eq!(None, chars.next());
     /// ```
     ///
-    /// 请记住，[`char`] 可能并不符合你对“字符”的直觉：
+    /// Remember, [`char`]s might not match your intuition about characters:
     ///
     /// [`char`]: prim@char
     ///
@@ -998,7 +1039,7 @@ impl str {
     ///
     /// let mut chars = y.chars();
     ///
-    /// assert_eq!(Some('y'), chars.next()); // 不是 'y̆'
+    /// assert_eq!(Some('y'), chars.next()); // not 'y̆'
     /// assert_eq!(Some('\u{0306}'), chars.next());
     ///
     /// assert_eq!(None, chars.next());
@@ -1010,16 +1051,19 @@ impl str {
         Chars { iter: self.as_bytes().iter() }
     }
 
-    /// 返回遍历字符串切片中各个 [`char`] 及其位置的迭代器。
+    /// Returns an iterator over the [`char`]s of a string slice, and their
+    /// positions.
     ///
-    /// 字符串切片由有效 UTF-8 组成，因此可以按 [`char`] 遍历。本方法返回的迭代器
-    /// 同时产出这些 [`char`] 及其字节位置。
+    /// As a string slice consists of valid UTF-8, we can iterate through a
+    /// string slice by [`char`]. This method returns an iterator of both
+    /// these [`char`]s, as well as their byte positions.
     ///
-    /// 迭代器产生元组：第一个元素是位置，第二个元素是 [`char`]。
+    /// The iterator yields tuples. The position is first, the [`char`] is
+    /// second.
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 基本用法：
+    /// Basic usage:
     ///
     /// ```
     /// let word = "goodbye";
@@ -1040,7 +1084,7 @@ impl str {
     /// assert_eq!(None, char_indices.next());
     /// ```
     ///
-    /// 请记住，[`char`] 可能并不符合你对“字符”的直觉：
+    /// Remember, [`char`]s might not match your intuition about characters:
     ///
     /// [`char`]: prim@char
     ///
@@ -1049,10 +1093,10 @@ impl str {
     ///
     /// let mut char_indices = yes.char_indices();
     ///
-    /// assert_eq!(Some((0, 'y')), char_indices.next()); // 不是 (0, 'y̆')
+    /// assert_eq!(Some((0, 'y')), char_indices.next()); // not (0, 'y̆')
     /// assert_eq!(Some((1, '\u{0306}')), char_indices.next());
     ///
-    /// // 注意这里是 3，因为前一个字符占用了两个字节
+    /// // note the 3 here - the previous character took up two bytes
     /// assert_eq!(Some((3, 'e')), char_indices.next());
     /// assert_eq!(Some((4, 's')), char_indices.next());
     ///
@@ -1064,11 +1108,12 @@ impl str {
         CharIndices { front_offset: 0, iter: self.chars() }
     }
 
-    /// 返回遍历字符串切片字节的迭代器。
+    /// Returns an iterator over the bytes of a string slice.
     ///
-    /// 字符串切片由字节序列组成，因此可以按字节遍历。本方法返回这样的迭代器。
+    /// As a string slice consists of a sequence of bytes, we can iterate
+    /// through a string slice by byte. This method returns such an iterator.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let mut bytes = "bors".bytes();
@@ -1086,18 +1131,20 @@ impl str {
         Bytes(self.as_bytes().iter().copied())
     }
 
-    /// 按空白字符拆分字符串切片。
+    /// Splits a string slice by whitespace.
     ///
-    /// 返回的迭代器会产出原字符串切片的子切片，子切片之间由任意数量的空白字符分隔。
+    /// The iterator returned will return string slices that are sub-slices of
+    /// the original string slice, separated by any amount of whitespace.
     ///
-    /// “Whitespace” 根据 Unicode Derived Core Property `White_Space` 定义。
-    /// 如果只想按 ASCII 空白拆分，请改用 [`split_ascii_whitespace`]。
+    /// 'Whitespace' is defined according to the terms of the Unicode Derived
+    /// Core Property `White_Space`. If you only want to split on ASCII whitespace
+    /// instead, use [`split_ascii_whitespace`].
     ///
     /// [`split_ascii_whitespace`]: str::split_ascii_whitespace
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 基本用法：
+    /// Basic usage:
     ///
     /// ```
     /// let mut iter = "A few words".split_whitespace();
@@ -1109,7 +1156,7 @@ impl str {
     /// assert_eq!(None, iter.next());
     /// ```
     ///
-    /// 会考虑各种空白字符：
+    /// All kinds of whitespace are considered:
     ///
     /// ```
     /// let mut iter = " Mary   had\ta\u{2009}little  \n\t lamb".split_whitespace();
@@ -1122,7 +1169,7 @@ impl str {
     /// assert_eq!(None, iter.next());
     /// ```
     ///
-    /// 如果字符串为空或全部为空白字符，迭代器不会产出任何字符串切片：
+    /// If the string is empty or all whitespace, the iterator yields no string slices:
     /// ```
     /// assert_eq!("".split_whitespace().next(), None);
     /// assert_eq!("   ".split_whitespace().next(), None);
@@ -1136,18 +1183,19 @@ impl str {
         SplitWhitespace { inner: self.split(IsWhitespace).filter(IsNotEmpty) }
     }
 
-    /// 按 ASCII 空白字符拆分字符串切片。
+    /// Splits a string slice by ASCII whitespace.
     ///
-    /// 返回的迭代器会产出原字符串切片的子切片，子切片之间由任意数量的 ASCII 空白字符分隔。
+    /// The iterator returned will return string slices that are sub-slices of
+    /// the original string slice, separated by any amount of ASCII whitespace.
     ///
-    /// 它使用与 [`char::is_ascii_whitespace`] 相同的定义。
-    /// 如果要按 Unicode `Whitespace` 拆分，请改用 [`split_whitespace`]。
+    /// This uses the same definition as [`char::is_ascii_whitespace`].
+    /// To split by Unicode `Whitespace` instead, use [`split_whitespace`].
     ///
     /// [`split_whitespace`]: str::split_whitespace
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 基本用法：
+    /// Basic usage:
     ///
     /// ```
     /// let mut iter = "A few words".split_ascii_whitespace();
@@ -1159,7 +1207,8 @@ impl str {
     /// assert_eq!(None, iter.next());
     /// ```
     ///
-    /// 会考虑多种 ASCII 空白字符（见 [`char::is_ascii_whitespace`]）：
+    /// Various kinds of ASCII whitespace are considered
+    /// (see [`char::is_ascii_whitespace`]):
     ///
     /// ```
     /// let mut iter = " Mary   had\ta little  \n\t lamb".split_ascii_whitespace();
@@ -1172,7 +1221,7 @@ impl str {
     /// assert_eq!(None, iter.next());
     /// ```
     ///
-    /// 如果字符串为空或全部为 ASCII 空白字符，迭代器不会产出任何字符串切片：
+    /// If the string is empty or all ASCII whitespace, the iterator yields no string slices:
     /// ```
     /// assert_eq!("".split_ascii_whitespace().next(), None);
     /// assert_eq!("   ".split_ascii_whitespace().next(), None);
@@ -1187,23 +1236,26 @@ impl str {
         SplitAsciiWhitespace { inner }
     }
 
-    /// 返回按行遍历字符串的迭代器，产出字符串切片。
+    /// Returns an iterator over the lines of a string, as string slices.
     ///
-    /// 行会在换行符（`\n`）或回车后紧跟换行（`\r\n`）的序列处分隔。
+    /// Lines are split at line endings that are either newlines (`\n`) or
+    /// sequences of a carriage return followed by a line feed (`\r\n`).
     ///
-    /// 迭代器返回的行中不包含行终止符。
+    /// Line terminators are not included in the lines returned by the iterator.
     ///
-    /// 注意，任何没有紧跟换行符（`\n`）的回车符（`\r`）都不会分隔行。
-    /// 因此这些回车符会包含在产出的行中。
+    /// Note that any carriage return (`\r`) not immediately followed by a
+    /// line feed (`\n`) does not split a line. These carriage returns are
+    /// thereby included in the produced lines.
     ///
-    /// 最后一行的行终止符是可选的。以最终行终止符结尾的字符串，会返回与去掉该最终行
-    /// 终止符后相同的行。
+    /// The final line ending is optional. A string that ends with a final line
+    /// ending will return the same lines as an otherwise identical string
+    /// without a final line ending.
     ///
-    /// 空字符串返回空迭代器。
+    /// An empty string returns an empty iterator.
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 基本用法：
+    /// Basic usage:
     ///
     /// ```
     /// let text = "foo\r\nbar\n\nbaz\r";
@@ -1212,13 +1264,13 @@ impl str {
     /// assert_eq!(Some("foo"), lines.next());
     /// assert_eq!(Some("bar"), lines.next());
     /// assert_eq!(Some(""), lines.next());
-    /// // 末尾回车会包含在最后一行中
+    /// // Trailing carriage return is included in the last line
     /// assert_eq!(Some("baz\r"), lines.next());
     ///
     /// assert_eq!(None, lines.next());
     /// ```
     ///
-    /// 最后一行不需要任何行终止符：
+    /// The final line does not require any ending:
     ///
     /// ```
     /// let text = "foo\nbar\n\r\nbaz";
@@ -1232,7 +1284,7 @@ impl str {
     /// assert_eq!(None, lines.next());
     /// ```
     ///
-    /// 空字符串返回空迭代器：
+    /// An empty string returns an empty iterator:
     ///
     /// ```
     /// let text = "";
@@ -1246,7 +1298,7 @@ impl str {
         Lines(self.split_inclusive('\n').map(LinesMap))
     }
 
-    /// 返回按行遍历字符串的迭代器。
+    /// Returns an iterator over the lines of a string.
     #[stable(feature = "rust1", since = "1.0.0")]
     #[deprecated(since = "1.4.0", note = "use lines() instead now", suggestion = "lines")]
     #[inline]
@@ -1255,10 +1307,10 @@ impl str {
         LinesAny(self.lines())
     }
 
-    /// 返回遍历字符串的 `u16` 迭代器，内容按本机字节序编码为 UTF-16
-    ///（不带字节序标记）。
+    /// Returns an iterator of `u16` over the string encoded
+    /// as native endian UTF-16 (without byte-order mark).
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let text = "Zażółć gęślą jaźń";
@@ -1275,17 +1327,18 @@ impl str {
         EncodeUtf16 { chars: self.chars(), extra: 0 }
     }
 
-    /// 如果给定模式匹配该字符串切片的某个子切片，则返回 `true`。
+    /// Returns `true` if the given pattern matches a sub-slice of
+    /// this string slice.
     ///
-    /// 如果不匹配，则返回 `false`。
+    /// Returns `false` if it does not.
     ///
-    /// [pattern] 可以是 `&str`、[`char`]、[`char`] 切片，或者用于判断字符是否匹配的
-    /// 函数或闭包。
+    /// The [pattern] can be a `&str`, [`char`], a slice of [`char`]s, or a
+    /// function or closure that determines if a character matches.
     ///
     /// [`char`]: prim@char
     /// [pattern]: self::pattern
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let bananas = "bananas";
@@ -1299,21 +1352,23 @@ impl str {
         pat.is_contained_in(self)
     }
 
-    /// 如果给定模式匹配该字符串切片的前缀，则返回 `true`。
+    /// Returns `true` if the given pattern matches a prefix of this
+    /// string slice.
     ///
-    /// 如果不匹配，则返回 `false`。
+    /// Returns `false` if it does not.
     ///
-    /// [pattern] 可以是 `&str`；此时如果该 `&str` 是当前字符串切片的前缀，
-    /// 本函数返回 true。
+    /// The [pattern] can be a `&str`, in which case this function will return true if
+    /// the `&str` is a prefix of this string slice.
     ///
-    /// [pattern] 也可以是 [`char`]、[`char`] 切片，或者用于判断字符是否匹配的函数或闭包。
-    /// 这些模式只会与该字符串切片的第一个字符比较。关于 [`char`] 切片的行为，
-    /// 见下面第二个示例。
+    /// The [pattern] can also be a [`char`], a slice of [`char`]s, or a
+    /// function or closure that determines if a character matches.
+    /// These will only be checked against the first character of this string slice.
+    /// Look at the second example below regarding behavior for slices of [`char`]s.
     ///
     /// [`char`]: prim@char
     /// [pattern]: self::pattern
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let bananas = "bananas";
@@ -1325,7 +1380,7 @@ impl str {
     /// ```
     /// let bananas = "bananas";
     ///
-    /// // 注意，这两个断言都会成功。
+    /// // Note that both of these assert successfully.
     /// assert!(bananas.starts_with(&['b', 'a', 'n', 'a']));
     /// assert!(bananas.starts_with(&['a', 'b', 'c', 'd']));
     /// ```
@@ -1335,17 +1390,18 @@ impl str {
         pat.is_prefix_of(self)
     }
 
-    /// 如果给定模式匹配该字符串切片的后缀，则返回 `true`。
+    /// Returns `true` if the given pattern matches a suffix of this
+    /// string slice.
     ///
-    /// 如果不匹配，则返回 `false`。
+    /// Returns `false` if it does not.
     ///
-    /// [pattern] 可以是 `&str`、[`char`]、[`char`] 切片，或者用于判断字符是否匹配的
-    /// 函数或闭包。
+    /// The [pattern] can be a `&str`, [`char`], a slice of [`char`]s, or a
+    /// function or closure that determines if a character matches.
     ///
     /// [`char`]: prim@char
     /// [pattern]: self::pattern
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let bananas = "bananas";
@@ -1362,19 +1418,20 @@ impl str {
         pat.is_suffix_of(self)
     }
 
-    /// 返回该字符串切片中第一个匹配模式的字符的字节索引。
+    /// Returns the byte index of the first character of this string slice that
+    /// matches the pattern.
     ///
-    /// 如果模式不匹配，返回 [`None`]。
+    /// Returns [`None`] if the pattern doesn't match.
     ///
-    /// [pattern] 可以是 `&str`、[`char`]、[`char`] 切片，或者用于判断字符是否匹配的
-    /// 函数或闭包。
+    /// The [pattern] can be a `&str`, [`char`], a slice of [`char`]s, or a
+    /// function or closure that determines if a character matches.
     ///
     /// [`char`]: prim@char
     /// [pattern]: self::pattern
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 简单模式：
+    /// Simple patterns:
     ///
     /// ```
     /// let s = "Löwe 老虎 Léopard Gepardi";
@@ -1384,7 +1441,7 @@ impl str {
     /// assert_eq!(s.find("pard"), Some(17));
     /// ```
     ///
-    /// 使用 point-free 风格和闭包的更复杂模式：
+    /// More complex patterns using point-free style and closures:
     ///
     /// ```
     /// let s = "Löwe 老虎 Léopard";
@@ -1395,7 +1452,7 @@ impl str {
     /// assert_eq!(s.find(|c: char| (c < 'o') && (c > 'a')), Some(4));
     /// ```
     ///
-    /// 找不到模式：
+    /// Not finding the pattern:
     ///
     /// ```
     /// let s = "Löwe 老虎 Léopard";
@@ -1409,19 +1466,20 @@ impl str {
         pat.into_searcher(self).next_match().map(|(i, _)| i)
     }
 
-    /// 返回该字符串切片中最后一个模式匹配的首字符字节索引。
+    /// Returns the byte index for the first character of the last match of the pattern in
+    /// this string slice.
     ///
-    /// 如果模式不匹配，返回 [`None`]。
+    /// Returns [`None`] if the pattern doesn't match.
     ///
-    /// [pattern] 可以是 `&str`、[`char`]、[`char`] 切片，或者用于判断字符是否匹配的
-    /// 函数或闭包。
+    /// The [pattern] can be a `&str`, [`char`], a slice of [`char`]s, or a
+    /// function or closure that determines if a character matches.
     ///
     /// [`char`]: prim@char
     /// [pattern]: self::pattern
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 简单模式：
+    /// Simple patterns:
     ///
     /// ```
     /// let s = "Löwe 老虎 Léopard Gepardi";
@@ -1431,7 +1489,7 @@ impl str {
     /// assert_eq!(s.rfind("pard"), Some(24));
     /// ```
     ///
-    /// 使用闭包的更复杂模式：
+    /// More complex patterns with closures:
     ///
     /// ```
     /// let s = "Löwe 老虎 Léopard";
@@ -1440,7 +1498,7 @@ impl str {
     /// assert_eq!(s.rfind(char::is_lowercase), Some(20));
     /// ```
     ///
-    /// 找不到模式：
+    /// Not finding the pattern:
     ///
     /// ```
     /// let s = "Löwe 老虎 Léopard";
@@ -1457,28 +1515,32 @@ impl str {
         pat.into_searcher(self).next_match_back().map(|(i, _)| i)
     }
 
-    /// 返回遍历该字符串切片子串的迭代器，子串由匹配模式的字符分隔。
+    /// Returns an iterator over substrings of this string slice, separated by
+    /// characters matched by a pattern.
     ///
-    /// [pattern] 可以是 `&str`、[`char`]、[`char`] 切片，或者用于判断字符是否匹配的
-    /// 函数或闭包。
+    /// The [pattern] can be a `&str`, [`char`], a slice of [`char`]s, or a
+    /// function or closure that determines if a character matches.
     ///
-    /// 如果没有任何匹配，整个字符串切片会作为迭代器唯一的项返回。
+    /// If there are no matches the full string slice is returned as the only
+    /// item in the iterator.
     ///
     /// [`char`]: prim@char
     /// [pattern]: self::pattern
     ///
-    /// # 迭代器行为
+    /// # Iterator behavior
     ///
-    /// 如果模式允许反向搜索，并且正向/反向搜索会产生相同元素，则返回的迭代器实现
-    /// [`DoubleEndedIterator`]。例如 [`char`] 满足这一点，但 `&str` 不满足。
+    /// The returned iterator will be a [`DoubleEndedIterator`] if the pattern
+    /// allows a reverse search and forward/reverse search yields the same
+    /// elements. This is true for, e.g., [`char`], but not for `&str`.
     ///
-    /// 如果模式允许反向搜索，但结果可能与正向搜索不同，可以使用 [`rsplit`] 方法。
+    /// If the pattern allows a reverse search but its results might differ
+    /// from a forward search, the [`rsplit`] method can be used.
     ///
     /// [`rsplit`]: str::rsplit
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 简单模式：
+    /// Simple patterns:
     ///
     /// ```
     /// let v: Vec<&str> = "Mary had a little lamb".split(' ').collect();
@@ -1503,21 +1565,22 @@ impl str {
     /// assert_eq!(v, ["lion", "tiger", "leopard"]);
     /// ```
     ///
-    /// 如果模式是 char 切片，则在其中任一字符出现处拆分：
+    /// If the pattern is a slice of chars, split on each occurrence of any of the characters:
     ///
     /// ```
     /// let v: Vec<&str> = "2020-11-03 23:59".split(&['-', ' ', ':', '@'][..]).collect();
     /// assert_eq!(v, ["2020", "11", "03", "23", "59"]);
     /// ```
     ///
-    /// 使用闭包的更复杂模式：
+    /// A more complex pattern, using a closure:
     ///
     /// ```
     /// let v: Vec<&str> = "abc1defXghi".split(|c| c == '1' || c == 'X').collect();
     /// assert_eq!(v, ["abc", "def", "ghi"]);
     /// ```
     ///
-    /// 如果字符串包含多个连续分隔符，输出中会出现空字符串：
+    /// If a string contains multiple contiguous separators, you will end up
+    /// with empty strings in the output:
     ///
     /// ```
     /// let x = "||||a||b|c".to_string();
@@ -1526,7 +1589,7 @@ impl str {
     /// assert_eq!(d, &["", "", "", "", "a", "", "b", "c"]);
     /// ```
     ///
-    /// 连续分隔符之间由空字符串隔开。
+    /// Contiguous separators are separated by the empty string.
     ///
     /// ```
     /// let x = "(///)".to_string();
@@ -1535,21 +1598,25 @@ impl str {
     /// assert_eq!(d, &["(", "", "", ")"]);
     /// ```
     ///
-    /// 字符串开头或结尾处的分隔符旁边会产生空字符串。
+    /// Separators at the start or end of a string are neighbored
+    /// by empty strings.
     ///
     /// ```
     /// let d: Vec<_> = "010".split("0").collect();
     /// assert_eq!(d, &["", "1", ""]);
     /// ```
     ///
-    /// 当空字符串用作分隔符时，它会分隔字符串中的每个字符，同时也分隔字符串的开头和结尾。
+    /// When the empty string is used as a separator, it separates
+    /// every character in the string, along with the beginning
+    /// and end of the string.
     ///
     /// ```
     /// let f: Vec<_> = "rust".split("").collect();
     /// assert_eq!(f, &["", "r", "u", "s", "t", ""]);
     /// ```
     ///
-    /// 当空格用作分隔符时，连续分隔符可能导致看起来意外的行为。下面代码是正确的：
+    /// Contiguous separators can lead to possibly surprising behavior
+    /// when whitespace is used as the separator. This code is correct:
     ///
     /// ```
     /// let x = "    a  b c".to_string();
@@ -1558,13 +1625,13 @@ impl str {
     /// assert_eq!(d, &["", "", "", "", "a", "", "b", "c"]);
     /// ```
     ///
-    /// 它并不会得到：
+    /// It does _not_ give you:
     ///
     /// ```,ignore
     /// assert_eq!(d, &["a", "b", "c"]);
     /// ```
     ///
-    /// 如果需要这种行为，请使用 [`split_whitespace`]。
+    /// Use [`split_whitespace`] for this behavior.
     ///
     /// [`split_whitespace`]: str::split_whitespace
     #[stable(feature = "rust1", since = "1.0.0")]
@@ -1579,17 +1646,19 @@ impl str {
         })
     }
 
-    /// 返回遍历该字符串切片子串的迭代器，子串由匹配模式的字符分隔。
+    /// Returns an iterator over substrings of this string slice, separated by
+    /// characters matched by a pattern.
     ///
-    /// 与 `split` 产生的迭代器不同，`split_inclusive` 会把匹配部分保留为子串的终止符。
+    /// Differs from the iterator produced by `split` in that `split_inclusive`
+    /// leaves the matched part as the terminator of the substring.
     ///
-    /// [pattern] 可以是 `&str`、[`char`]、[`char`] 切片，或者用于判断字符是否匹配的
-    /// 函数或闭包。
+    /// The [pattern] can be a `&str`, [`char`], a slice of [`char`]s, or a
+    /// function or closure that determines if a character matches.
     ///
     /// [`char`]: prim@char
     /// [pattern]: self::pattern
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let v: Vec<&str> = "Mary had a little lamb\nlittle lamb\nlittle lamb."
@@ -1597,8 +1666,9 @@ impl str {
     /// assert_eq!(v, ["Mary had a little lamb\n", "little lamb\n", "little lamb."]);
     /// ```
     ///
-    /// 如果字符串的最后一个元素被匹配，该元素会被视为前一个子串的终止符。
-    /// 该子串会成为迭代器返回的最后一项。
+    /// If the last element of the string is matched,
+    /// that element will be considered the terminator of the preceding substring.
+    /// That substring will be the last item returned by the iterator.
     ///
     /// ```
     /// let v: Vec<&str> = "Mary had a little lamb\nlittle lamb\nlittle lamb.\n"
@@ -1617,26 +1687,28 @@ impl str {
         })
     }
 
-    /// 返回遍历给定字符串切片子串的迭代器，子串由匹配模式的字符分隔，并按反向顺序产出。
+    /// Returns an iterator over substrings of the given string slice, separated
+    /// by characters matched by a pattern and yielded in reverse order.
     ///
-    /// [pattern] 可以是 `&str`、[`char`]、[`char`] 切片，或者用于判断字符是否匹配的
-    /// 函数或闭包。
+    /// The [pattern] can be a `&str`, [`char`], a slice of [`char`]s, or a
+    /// function or closure that determines if a character matches.
     ///
     /// [`char`]: prim@char
     /// [pattern]: self::pattern
     ///
-    /// # 迭代器行为
+    /// # Iterator behavior
     ///
-    /// 返回的迭代器要求模式支持反向搜索；如果正向/反向搜索会产生相同元素，
-    /// 它会实现 [`DoubleEndedIterator`]。
+    /// The returned iterator requires that the pattern supports a reverse
+    /// search, and it will be a [`DoubleEndedIterator`] if a forward/reverse
+    /// search yields the same elements.
     ///
-    /// 如果要从前端迭代，可以使用 [`split`] 方法。
+    /// For iterating from the front, the [`split`] method can be used.
     ///
     /// [`split`]: str::split
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 简单模式：
+    /// Simple patterns:
     ///
     /// ```
     /// let v: Vec<&str> = "Mary had a little lamb".rsplit(' ').collect();
@@ -1652,7 +1724,7 @@ impl str {
     /// assert_eq!(v, ["leopard", "tiger", "lion"]);
     /// ```
     ///
-    /// 使用闭包的更复杂模式：
+    /// A more complex pattern, using a closure:
     ///
     /// ```
     /// let v: Vec<&str> = "abc1defXghi".rsplit(|c| c == '1' || c == 'X').collect();
@@ -1667,31 +1739,35 @@ impl str {
         RSplit(self.split(pat).0)
     }
 
-    /// 返回遍历给定字符串切片子串的迭代器，子串由匹配模式的字符分隔。
+    /// Returns an iterator over substrings of the given string slice, separated
+    /// by characters matched by a pattern.
     ///
-    /// [pattern] 可以是 `&str`、[`char`]、[`char`] 切片，或者用于判断字符是否匹配的
-    /// 函数或闭包。
+    /// The [pattern] can be a `&str`, [`char`], a slice of [`char`]s, or a
+    /// function or closure that determines if a character matches.
     ///
     /// [`char`]: prim@char
     /// [pattern]: self::pattern
     ///
-    /// 等价于 [`split`]，但如果尾随子串为空，则跳过它。
+    /// Equivalent to [`split`], except that the trailing substring
+    /// is skipped if empty.
     ///
     /// [`split`]: str::split
     ///
-    /// 本方法可用于由模式_终止_而不是由模式_分隔_的字符串数据。
+    /// This method can be used for string data that is _terminated_,
+    /// rather than _separated_ by a pattern.
     ///
-    /// # 迭代器行为
+    /// # Iterator behavior
     ///
-    /// 如果模式允许反向搜索，并且正向/反向搜索会产生相同元素，则返回的迭代器实现
-    /// [`DoubleEndedIterator`]。例如 [`char`] 满足这一点，但 `&str` 不满足。
+    /// The returned iterator will be a [`DoubleEndedIterator`] if the pattern
+    /// allows a reverse search and forward/reverse search yields the same
+    /// elements. This is true for, e.g., [`char`], but not for `&str`.
     ///
-    /// 如果模式允许反向搜索，但结果可能与正向搜索不同，可以使用
-    /// [`rsplit_terminator`] 方法。
+    /// If the pattern allows a reverse search but its results might differ
+    /// from a forward search, the [`rsplit_terminator`] method can be used.
     ///
     /// [`rsplit_terminator`]: str::rsplit_terminator
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let v: Vec<&str> = "A.B.".split_terminator('.').collect();
@@ -1709,30 +1785,35 @@ impl str {
         SplitTerminator(SplitInternal { allow_trailing_empty: false, ..self.split(pat).0 })
     }
 
-    /// 返回遍历 `self` 子串的迭代器，子串由匹配模式的字符分隔，并按反向顺序产出。
+    /// Returns an iterator over substrings of `self`, separated by characters
+    /// matched by a pattern and yielded in reverse order.
     ///
-    /// [pattern] 可以是 `&str`、[`char`]、[`char`] 切片，或者用于判断字符是否匹配的
-    /// 函数或闭包。
+    /// The [pattern] can be a `&str`, [`char`], a slice of [`char`]s, or a
+    /// function or closure that determines if a character matches.
     ///
     /// [`char`]: prim@char
     /// [pattern]: self::pattern
     ///
-    /// 等价于 [`split`]，但如果尾随子串为空，则跳过它。
+    /// Equivalent to [`split`], except that the trailing substring is
+    /// skipped if empty.
     ///
     /// [`split`]: str::split
     ///
-    /// 本方法可用于由模式_终止_而不是由模式_分隔_的字符串数据。
+    /// This method can be used for string data that is _terminated_,
+    /// rather than _separated_ by a pattern.
     ///
-    /// # 迭代器行为
+    /// # Iterator behavior
     ///
-    /// 返回的迭代器要求模式支持反向搜索；如果正向/反向搜索会产生相同元素，
-    /// 它会是双端迭代器。
+    /// The returned iterator requires that the pattern supports a
+    /// reverse search, and it will be double ended if a forward/reverse
+    /// search yields the same elements.
     ///
-    /// 如果要从前端迭代，可以使用 [`split_terminator`] 方法。
+    /// For iterating from the front, the [`split_terminator`] method can be
+    /// used.
     ///
     /// [`split_terminator`]: str::split_terminator
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let v: Vec<&str> = "A.B.".rsplit_terminator('.').collect();
@@ -1753,27 +1834,31 @@ impl str {
         RSplitTerminator(self.split_terminator(pat).0)
     }
 
-    /// 返回遍历给定字符串切片子串的迭代器，子串由模式分隔，并限制最多返回 `n` 项。
+    /// Returns an iterator over substrings of the given string slice, separated
+    /// by a pattern, restricted to returning at most `n` items.
     ///
-    /// 如果返回了 `n` 个子串，则最后一个子串（第 `n` 个子串）会包含字符串剩余部分。
+    /// If `n` substrings are returned, the last substring (the `n`th substring)
+    /// will contain the remainder of the string.
     ///
-    /// [pattern] 可以是 `&str`、[`char`]、[`char`] 切片，或者用于判断字符是否匹配的
-    /// 函数或闭包。
+    /// The [pattern] can be a `&str`, [`char`], a slice of [`char`]s, or a
+    /// function or closure that determines if a character matches.
     ///
     /// [`char`]: prim@char
     /// [pattern]: self::pattern
     ///
-    /// # 迭代器行为
+    /// # Iterator behavior
     ///
-    /// 返回的迭代器不是双端迭代器，因为支持这一点并不高效。
+    /// The returned iterator will not be double ended, because it is
+    /// not efficient to support.
     ///
-    /// 如果模式允许反向搜索，可以使用 [`rsplitn`] 方法。
+    /// If the pattern allows a reverse search, the [`rsplitn`] method can be
+    /// used.
     ///
     /// [`rsplitn`]: str::rsplitn
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 简单模式：
+    /// Simple patterns:
     ///
     /// ```
     /// let v: Vec<&str> = "Mary had a little lambda".splitn(3, ' ').collect();
@@ -1789,7 +1874,7 @@ impl str {
     /// assert_eq!(v, [""]);
     /// ```
     ///
-    /// 使用闭包的更复杂模式：
+    /// A more complex pattern, using a closure:
     ///
     /// ```
     /// let v: Vec<&str> = "abc1defXghi".splitn(2, |c| c == '1' || c == 'X').collect();
@@ -1801,28 +1886,31 @@ impl str {
         SplitN(SplitNInternal { iter: self.split(pat).0, count: n })
     }
 
-    /// 返回遍历该字符串切片子串的迭代器，子串由模式分隔，从字符串末尾开始，
-    /// 并限制最多返回 `n` 项。
+    /// Returns an iterator over substrings of this string slice, separated by a
+    /// pattern, starting from the end of the string, restricted to returning at
+    /// most `n` items.
     ///
-    /// 如果返回了 `n` 个子串，则最后一个子串（第 `n` 个子串）会包含字符串剩余部分。
+    /// If `n` substrings are returned, the last substring (the `n`th substring)
+    /// will contain the remainder of the string.
     ///
-    /// [pattern] 可以是 `&str`、[`char`]、[`char`] 切片，或者用于判断字符是否匹配的
-    /// 函数或闭包。
+    /// The [pattern] can be a `&str`, [`char`], a slice of [`char`]s, or a
+    /// function or closure that determines if a character matches.
     ///
     /// [`char`]: prim@char
     /// [pattern]: self::pattern
     ///
-    /// # 迭代器行为
+    /// # Iterator behavior
     ///
-    /// 返回的迭代器不是双端迭代器，因为支持这一点并不高效。
+    /// The returned iterator will not be double ended, because it is not
+    /// efficient to support.
     ///
-    /// 如果要从前端拆分，可以使用 [`splitn`] 方法。
+    /// For splitting from the front, the [`splitn`] method can be used.
     ///
     /// [`splitn`]: str::splitn
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 简单模式：
+    /// Simple patterns:
     ///
     /// ```
     /// let v: Vec<&str> = "Mary had a little lamb".rsplitn(3, ' ').collect();
@@ -1835,7 +1923,7 @@ impl str {
     /// assert_eq!(v, ["leopard", "lion::tiger"]);
     /// ```
     ///
-    /// 使用闭包的更复杂模式：
+    /// A more complex pattern, using a closure:
     ///
     /// ```
     /// let v: Vec<&str> = "abc1defXghi".rsplitn(2, |c| c == '1' || c == 'X').collect();
@@ -1850,9 +1938,10 @@ impl str {
         RSplitN(self.splitn(n, pat).0)
     }
 
-    /// 在指定分隔符第一次出现的位置拆分字符串，并返回分隔符之前的前缀和之后的后缀。
+    /// Splits the string on the first occurrence of the specified delimiter and
+    /// returns prefix before delimiter and suffix after delimiter.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// assert_eq!("cfg".split_once('='), None);
@@ -1864,13 +1953,14 @@ impl str {
     #[inline]
     pub fn split_once<P: Pattern>(&self, delimiter: P) -> Option<(&'_ str, &'_ str)> {
         let (start, end) = delimiter.into_searcher(self).next_match()?;
-        // SAFETY: `Searcher` 保证返回有效索引。
+        // SAFETY: `Searcher` is known to return valid indices.
         unsafe { Some((self.get_unchecked(..start), self.get_unchecked(end..))) }
     }
 
-    /// 在指定分隔符最后一次出现的位置拆分字符串，并返回分隔符之前的前缀和之后的后缀。
+    /// Splits the string on the last occurrence of the specified delimiter and
+    /// returns prefix before delimiter and suffix after delimiter.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// assert_eq!("cfg".rsplit_once('='), None);
@@ -1885,28 +1975,31 @@ impl str {
         for<'a> P::Searcher<'a>: ReverseSearcher<'a>,
     {
         let (start, end) = delimiter.into_searcher(self).next_match_back()?;
-        // SAFETY: `Searcher` 保证返回有效索引。
+        // SAFETY: `Searcher` is known to return valid indices.
         unsafe { Some((self.get_unchecked(..start), self.get_unchecked(end..))) }
     }
 
-    /// 返回遍历给定字符串切片中各个不重叠模式匹配的迭代器。
+    /// Returns an iterator over the disjoint matches of a pattern within the
+    /// given string slice.
     ///
-    /// [pattern] 可以是 `&str`、[`char`]、[`char`] 切片，或者用于判断字符是否匹配的
-    /// 函数或闭包。
+    /// The [pattern] can be a `&str`, [`char`], a slice of [`char`]s, or a
+    /// function or closure that determines if a character matches.
     ///
     /// [`char`]: prim@char
     /// [pattern]: self::pattern
     ///
-    /// # 迭代器行为
+    /// # Iterator behavior
     ///
-    /// 如果模式允许反向搜索，并且正向/反向搜索会产生相同元素，则返回的迭代器实现
-    /// [`DoubleEndedIterator`]。例如 [`char`] 满足这一点，但 `&str` 不满足。
+    /// The returned iterator will be a [`DoubleEndedIterator`] if the pattern
+    /// allows a reverse search and forward/reverse search yields the same
+    /// elements. This is true for, e.g., [`char`], but not for `&str`.
     ///
-    /// 如果模式允许反向搜索，但结果可能与正向搜索不同，可以使用 [`rmatches`] 方法。
+    /// If the pattern allows a reverse search but its results might differ
+    /// from a forward search, the [`rmatches`] method can be used.
     ///
     /// [`rmatches`]: str::rmatches
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let v: Vec<&str> = "abcXXXabcYYYabc".matches("abc").collect();
@@ -1921,24 +2014,26 @@ impl str {
         Matches(MatchesInternal(pat.into_searcher(self)))
     }
 
-    /// 返回遍历该字符串切片中各个不重叠模式匹配的迭代器，并按反向顺序产出。
+    /// Returns an iterator over the disjoint matches of a pattern within this
+    /// string slice, yielded in reverse order.
     ///
-    /// [pattern] 可以是 `&str`、[`char`]、[`char`] 切片，或者用于判断字符是否匹配的
-    /// 函数或闭包。
+    /// The [pattern] can be a `&str`, [`char`], a slice of [`char`]s, or a
+    /// function or closure that determines if a character matches.
     ///
     /// [`char`]: prim@char
     /// [pattern]: self::pattern
     ///
-    /// # 迭代器行为
+    /// # Iterator behavior
     ///
-    /// 返回的迭代器要求模式支持反向搜索；如果正向/反向搜索会产生相同元素，
-    /// 它会实现 [`DoubleEndedIterator`]。
+    /// The returned iterator requires that the pattern supports a reverse
+    /// search, and it will be a [`DoubleEndedIterator`] if a forward/reverse
+    /// search yields the same elements.
     ///
-    /// 如果要从前端迭代，可以使用 [`matches`] 方法。
+    /// For iterating from the front, the [`matches`] method can be used.
     ///
     /// [`matches`]: str::matches
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let v: Vec<&str> = "abcXXXabcYYYabc".rmatches("abc").collect();
@@ -1956,27 +2051,30 @@ impl str {
         RMatches(self.matches(pat).0)
     }
 
-    /// 返回遍历该字符串切片中各个不重叠模式匹配的迭代器，同时产出匹配开始处的索引。
+    /// Returns an iterator over the disjoint matches of a pattern within this string
+    /// slice as well as the index that the match starts at.
     ///
-    /// 对于 `self` 中彼此重叠的 `pat` 匹配，只返回第一个匹配对应的索引。
+    /// For matches of `pat` within `self` that overlap, only the indices
+    /// corresponding to the first match are returned.
     ///
-    /// [pattern] 可以是 `&str`、[`char`]、[`char`] 切片，或者用于判断字符是否匹配的
-    /// 函数或闭包。
+    /// The [pattern] can be a `&str`, [`char`], a slice of [`char`]s, or a
+    /// function or closure that determines if a character matches.
     ///
     /// [`char`]: prim@char
     /// [pattern]: self::pattern
     ///
-    /// # 迭代器行为
+    /// # Iterator behavior
     ///
-    /// 如果模式允许反向搜索，并且正向/反向搜索会产生相同元素，则返回的迭代器实现
-    /// [`DoubleEndedIterator`]。例如 [`char`] 满足这一点，但 `&str` 不满足。
+    /// The returned iterator will be a [`DoubleEndedIterator`] if the pattern
+    /// allows a reverse search and forward/reverse search yields the same
+    /// elements. This is true for, e.g., [`char`], but not for `&str`.
     ///
-    /// 如果模式允许反向搜索，但结果可能与正向搜索不同，可以使用
-    /// [`rmatch_indices`] 方法。
+    /// If the pattern allows a reverse search but its results might differ
+    /// from a forward search, the [`rmatch_indices`] method can be used.
     ///
     /// [`rmatch_indices`]: str::rmatch_indices
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let v: Vec<_> = "abcXXXabcYYYabc".match_indices("abc").collect();
@@ -1986,7 +2084,7 @@ impl str {
     /// assert_eq!(v, [(1, "abc"), (4, "abc")]);
     ///
     /// let v: Vec<_> = "ababa".match_indices("aba").collect();
-    /// assert_eq!(v, [(0, "aba")]); // 只有第一个 `aba`
+    /// assert_eq!(v, [(0, "aba")]); // only the first `aba`
     /// ```
     #[stable(feature = "str_match_indices", since = "1.5.0")]
     #[inline]
@@ -1994,26 +2092,29 @@ impl str {
         MatchIndices(MatchIndicesInternal(pat.into_searcher(self)))
     }
 
-    /// 返回遍历 `self` 中各个不重叠模式匹配的迭代器，并按反向顺序连同匹配索引一起产出。
+    /// Returns an iterator over the disjoint matches of a pattern within `self`,
+    /// yielded in reverse order along with the index of the match.
     ///
-    /// 对于 `self` 中彼此重叠的 `pat` 匹配，只返回最后一个匹配对应的索引。
+    /// For matches of `pat` within `self` that overlap, only the indices
+    /// corresponding to the last match are returned.
     ///
-    /// [pattern] 可以是 `&str`、[`char`]、[`char`] 切片，或者用于判断字符是否匹配的
-    /// 函数或闭包。
+    /// The [pattern] can be a `&str`, [`char`], a slice of [`char`]s, or a
+    /// function or closure that determines if a character matches.
     ///
     /// [`char`]: prim@char
     /// [pattern]: self::pattern
     ///
-    /// # 迭代器行为
+    /// # Iterator behavior
     ///
-    /// 返回的迭代器要求模式支持反向搜索；如果正向/反向搜索会产生相同元素，
-    /// 它会实现 [`DoubleEndedIterator`]。
+    /// The returned iterator requires that the pattern supports a reverse
+    /// search, and it will be a [`DoubleEndedIterator`] if a forward/reverse
+    /// search yields the same elements.
     ///
-    /// 如果要从前端迭代，可以使用 [`match_indices`] 方法。
+    /// For iterating from the front, the [`match_indices`] method can be used.
     ///
     /// [`match_indices`]: str::match_indices
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let v: Vec<_> = "abcXXXabcYYYabc".rmatch_indices("abc").collect();
@@ -2023,7 +2124,7 @@ impl str {
     /// assert_eq!(v, [(4, "abc"), (1, "abc")]);
     ///
     /// let v: Vec<_> = "ababa".rmatch_indices("aba").collect();
-    /// assert_eq!(v, [(2, "aba")]); // 只有最后一个 `aba`
+    /// assert_eq!(v, [(2, "aba")]); // only the last `aba`
     /// ```
     #[stable(feature = "str_match_indices", since = "1.5.0")]
     #[inline]
@@ -2034,12 +2135,12 @@ impl str {
         RMatchIndices(self.match_indices(pat).0)
     }
 
-    /// 返回去除了开头和结尾空白字符的字符串切片。
+    /// Returns a string slice with leading and trailing whitespace removed.
     ///
-    /// “Whitespace” 根据 Unicode Derived Core Property `White_Space` 定义，
-    /// 其中包括换行符。
+    /// 'Whitespace' is defined according to the terms of the Unicode Derived
+    /// Core Property `White_Space`, which includes newlines.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let s = "\n Hello\tworld\t\n";
@@ -2055,27 +2156,28 @@ impl str {
         self.trim_matches(char::is_whitespace)
     }
 
-    /// 返回去除了开头空白字符的字符串切片。
+    /// Returns a string slice with leading whitespace removed.
     ///
-    /// “Whitespace” 根据 Unicode Derived Core Property `White_Space` 定义，
-    /// 其中包括换行符。
+    /// 'Whitespace' is defined according to the terms of the Unicode Derived
+    /// Core Property `White_Space`, which includes newlines.
     ///
-    /// # 文本方向性
+    /// # Text directionality
     ///
-    /// 字符串是字节序列。此处的 `start` 表示该字节串的第一个位置；对于 English
-    /// 或 Russian 这类从左到右的语言，它是左侧；对于 Arabic 或 Hebrew 这类从右到左的语言，
-    /// 它是右侧。
+    /// A string is a sequence of bytes. `start` in this context means the first
+    /// position of that byte string; for a left-to-right language like English or
+    /// Russian, this will be left side, and for right-to-left languages like
+    /// Arabic or Hebrew, this will be the right side.
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 基本用法：
+    /// Basic usage:
     ///
     /// ```
     /// let s = "\n Hello\tworld\t\n";
     /// assert_eq!("Hello\tworld\t\n", s.trim_start());
     /// ```
     ///
-    /// 方向性：
+    /// Directionality:
     ///
     /// ```
     /// let s = "  English  ";
@@ -2093,27 +2195,28 @@ impl str {
         self.trim_start_matches(char::is_whitespace)
     }
 
-    /// 返回去除了结尾空白字符的字符串切片。
+    /// Returns a string slice with trailing whitespace removed.
     ///
-    /// “Whitespace” 根据 Unicode Derived Core Property `White_Space` 定义，
-    /// 其中包括换行符。
+    /// 'Whitespace' is defined according to the terms of the Unicode Derived
+    /// Core Property `White_Space`, which includes newlines.
     ///
-    /// # 文本方向性
+    /// # Text directionality
     ///
-    /// 字符串是字节序列。此处的 `end` 表示该字节串的最后一个位置；对于 English
-    /// 或 Russian 这类从左到右的语言，它是右侧；对于 Arabic 或 Hebrew 这类从右到左的语言，
-    /// 它是左侧。
+    /// A string is a sequence of bytes. `end` in this context means the last
+    /// position of that byte string; for a left-to-right language like English or
+    /// Russian, this will be right side, and for right-to-left languages like
+    /// Arabic or Hebrew, this will be the left side.
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 基本用法：
+    /// Basic usage:
     ///
     /// ```
     /// let s = "\n Hello\tworld\t\n";
     /// assert_eq!("\n Hello\tworld", s.trim_end());
     /// ```
     ///
-    /// 方向性：
+    /// Directionality:
     ///
     /// ```
     /// let s = "  English  ";
@@ -2131,18 +2234,21 @@ impl str {
         self.trim_end_matches(char::is_whitespace)
     }
 
-    /// 返回去除了开头空白字符的字符串切片。
+    /// Returns a string slice with leading whitespace removed.
     ///
-    /// “Whitespace” 根据 Unicode Derived Core Property `White_Space` 定义。
+    /// 'Whitespace' is defined according to the terms of the Unicode Derived
+    /// Core Property `White_Space`.
     ///
-    /// # 文本方向性
+    /// # Text directionality
     ///
-    /// 字符串是字节序列。此处的 'Left' 表示该字节串的第一个位置；对于 Arabic 或 Hebrew
-    /// 这类从右到左而不是从左到右的语言，它是_右_侧，而不是左侧。
+    /// A string is a sequence of bytes. 'Left' in this context means the first
+    /// position of that byte string; for a language like Arabic or Hebrew
+    /// which are 'right to left' rather than 'left to right', this will be
+    /// the _right_ side, not the left.
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 基本用法：
+    /// Basic usage:
     ///
     /// ```
     /// let s = " Hello\tworld\t";
@@ -2150,7 +2256,7 @@ impl str {
     /// assert_eq!("Hello\tworld\t", s.trim_left());
     /// ```
     ///
-    /// 方向性：
+    /// Directionality:
     ///
     /// ```
     /// let s = "  English";
@@ -2168,18 +2274,21 @@ impl str {
         self.trim_start()
     }
 
-    /// 返回去除了结尾空白字符的字符串切片。
+    /// Returns a string slice with trailing whitespace removed.
     ///
-    /// “Whitespace” 根据 Unicode Derived Core Property `White_Space` 定义。
+    /// 'Whitespace' is defined according to the terms of the Unicode Derived
+    /// Core Property `White_Space`.
     ///
-    /// # 文本方向性
+    /// # Text directionality
     ///
-    /// 字符串是字节序列。此处的 'Right' 表示该字节串的最后一个位置；对于 Arabic 或 Hebrew
-    /// 这类从右到左而不是从左到右的语言，它是_左_侧，而不是右侧。
+    /// A string is a sequence of bytes. 'Right' in this context means the last
+    /// position of that byte string; for a language like Arabic or Hebrew
+    /// which are 'right to left' rather than 'left to right', this will be
+    /// the _left_ side, not the right.
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 基本用法：
+    /// Basic usage:
     ///
     /// ```
     /// let s = " Hello\tworld\t";
@@ -2187,7 +2296,7 @@ impl str {
     /// assert_eq!(" Hello\tworld", s.trim_right());
     /// ```
     ///
-    /// 方向性：
+    /// Directionality:
     ///
     /// ```
     /// let s = "English  ";
@@ -2205,16 +2314,18 @@ impl str {
         self.trim_end()
     }
 
-    /// 返回反复移除所有匹配模式的前缀和后缀后的字符串切片。
+    /// Returns a string slice with all prefixes and suffixes that match a
+    /// pattern repeatedly removed.
     ///
-    /// [pattern] 可以是 [`char`]、[`char`] 切片，或者用于判断字符是否匹配的函数或闭包。
+    /// The [pattern] can be a [`char`], a slice of [`char`]s, or a function
+    /// or closure that determines if a character matches.
     ///
     /// [`char`]: prim@char
     /// [pattern]: self::pattern
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 简单模式：
+    /// Simple patterns:
     ///
     /// ```
     /// assert_eq!("11foo1bar11".trim_matches('1'), "foo1bar");
@@ -2224,7 +2335,7 @@ impl str {
     /// assert_eq!("12foo1bar12".trim_matches(x), "foo1bar");
     /// ```
     ///
-    /// 使用闭包的更复杂模式：
+    /// A more complex pattern, using a closure:
     ///
     /// ```
     /// assert_eq!("1foo1barXX".trim_matches(|c| c == '1' || c == 'X'), "foo1bar");
@@ -2241,30 +2352,33 @@ impl str {
         let mut matcher = pat.into_searcher(self);
         if let Some((a, b)) = matcher.next_reject() {
             i = a;
-            j = b; // 记住最早已知匹配；如果最后一个匹配不同，会在下面修正。
+            j = b; // Remember earliest known match, correct it below if
+            // last match is different
         }
         if let Some((_, b)) = matcher.next_reject_back() {
             j = b;
         }
-        // SAFETY: `Searcher` 保证返回有效索引。
+        // SAFETY: `Searcher` is known to return valid indices.
         unsafe { self.get_unchecked(i..j) }
     }
 
-    /// 返回反复移除所有匹配模式的前缀后的字符串切片。
+    /// Returns a string slice with all prefixes that match a pattern
+    /// repeatedly removed.
     ///
-    /// [pattern] 可以是 `&str`、[`char`]、[`char`] 切片，或者用于判断字符是否匹配的
-    /// 函数或闭包。
+    /// The [pattern] can be a `&str`, [`char`], a slice of [`char`]s, or a
+    /// function or closure that determines if a character matches.
     ///
     /// [`char`]: prim@char
     /// [pattern]: self::pattern
     ///
-    /// # 文本方向性
+    /// # Text directionality
     ///
-    /// 字符串是字节序列。此处的 `start` 表示该字节串的第一个位置；对于 English
-    /// 或 Russian 这类从左到右的语言，它是左侧；对于 Arabic 或 Hebrew 这类从右到左的语言，
-    /// 它是右侧。
+    /// A string is a sequence of bytes. `start` in this context means the first
+    /// position of that byte string; for a left-to-right language like English or
+    /// Russian, this will be left side, and for right-to-left languages like
+    /// Arabic or Hebrew, this will be the right side.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// assert_eq!("11foo1bar11".trim_start_matches('1'), "foo1bar11");
@@ -2282,25 +2396,25 @@ impl str {
         if let Some((a, _)) = matcher.next_reject() {
             i = a;
         }
-        // SAFETY: `Searcher` 保证返回有效索引。
+        // SAFETY: `Searcher` is known to return valid indices.
         unsafe { self.get_unchecked(i..self.len()) }
     }
 
-    /// 返回移除了前缀后的字符串切片。
+    /// Returns a string slice with the prefix removed.
     ///
-    /// 如果字符串以模式 `prefix` 开头，返回前缀之后的子串，并包裹在 `Some` 中。
-    /// 与 [`trim_start_matches`] 不同，本方法只移除一次前缀。
+    /// If the string starts with the pattern `prefix`, returns the substring after the prefix,
+    /// wrapped in `Some`. Unlike [`trim_start_matches`], this method removes the prefix exactly once.
     ///
-    /// 如果字符串不以 `prefix` 开头，则返回 `None`。
+    /// If the string does not start with `prefix`, returns `None`.
     ///
-    /// [pattern] 可以是 `&str`、[`char`]、[`char`] 切片，或者用于判断字符是否匹配的
-    /// 函数或闭包。
+    /// The [pattern] can be a `&str`, [`char`], a slice of [`char`]s, or a
+    /// function or closure that determines if a character matches.
     ///
     /// [`char`]: prim@char
     /// [pattern]: self::pattern
     /// [`trim_start_matches`]: Self::trim_start_matches
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// assert_eq!("foo:bar".strip_prefix("foo:"), Some("bar"));
@@ -2314,21 +2428,21 @@ impl str {
         prefix.strip_prefix_of(self)
     }
 
-    /// 返回移除了后缀后的字符串切片。
+    /// Returns a string slice with the suffix removed.
     ///
-    /// 如果字符串以模式 `suffix` 结尾，返回后缀之前的子串，并包裹在 `Some` 中。
-    /// 与 [`trim_end_matches`] 不同，本方法只移除一次后缀。
+    /// If the string ends with the pattern `suffix`, returns the substring before the suffix,
+    /// wrapped in `Some`.  Unlike [`trim_end_matches`], this method removes the suffix exactly once.
     ///
-    /// 如果字符串不以 `suffix` 结尾，则返回 `None`。
+    /// If the string does not end with `suffix`, returns `None`.
     ///
-    /// [pattern] 可以是 `&str`、[`char`]、[`char`] 切片，或者用于判断字符是否匹配的
-    /// 函数或闭包。
+    /// The [pattern] can be a `&str`, [`char`], a slice of [`char`]s, or a
+    /// function or closure that determines if a character matches.
     ///
     /// [`char`]: prim@char
     /// [pattern]: self::pattern
     /// [`trim_end_matches`]: Self::trim_end_matches
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// assert_eq!("bar:foo".strip_suffix(":foo"), Some("bar"));
@@ -2345,23 +2459,24 @@ impl str {
         suffix.strip_suffix_of(self)
     }
 
-    /// 返回同时移除了前缀和后缀后的字符串切片。
+    /// Returns a string slice with the prefix and suffix removed.
     ///
-    /// 如果字符串以模式 `prefix` 开头且以模式 `suffix` 结尾，返回前缀之后、后缀之前的子串，
-    /// 并包裹在 `Some` 中。与 [`trim_start_matches`] 和 [`trim_end_matches`] 不同，
-    /// 本方法对前缀和后缀都只移除一次。
+    /// If the string starts with the pattern `prefix` and ends with the pattern `suffix`, returns
+    /// the substring after the prefix and before the suffix, wrapped in `Some`.
+    /// Unlike [`trim_start_matches`] and [`trim_end_matches`], this method removes both the prefix
+    /// and suffix exactly once.
     ///
-    /// 如果字符串不以 `prefix` 开头，或不以 `suffix` 结尾，则返回 `None`。
+    /// If the string does not start with `prefix` or does not end with `suffix`, returns `None`.
     ///
-    /// 每个 [pattern] 都可以是 `&str`、[`char`]、[`char`] 切片，或者用于判断字符是否匹配的
-    /// 函数或闭包。
+    /// Each [pattern] can be a `&str`, [`char`], a slice of [`char`]s, or a
+    /// function or closure that determines if a character matches.
     ///
     /// [`char`]: prim@char
     /// [pattern]: self::pattern
     /// [`trim_start_matches`]: Self::trim_start_matches
     /// [`trim_end_matches`]: Self::trim_end_matches
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// #![feature(strip_circumfix)]
@@ -2380,34 +2495,34 @@ impl str {
         self.strip_prefix(prefix)?.strip_suffix(suffix)
     }
 
-    /// 返回移除了可选前缀后的字符串切片。
+    /// Returns a string slice with the optional prefix removed.
     ///
-    /// 如果字符串以模式 `prefix` 开头，返回前缀之后的子串。
-    /// 与 [`strip_prefix`] 不同，本方法总是返回 `&str`，便于链式调用，
-    /// 而不是返回 [`Option<&str>`]。
+    /// If the string starts with the pattern `prefix`, returns the substring after the prefix.
+    /// Unlike [`strip_prefix`], this method always returns `&str` for easy method chaining,
+    /// instead of returning [`Option<&str>`].
     ///
-    /// 如果字符串不以 `prefix` 开头，则原样返回原字符串。
+    /// If the string does not start with `prefix`, returns the original string unchanged.
     ///
-    /// [pattern] 可以是 `&str`、[`char`]、[`char`] 切片，或者用于判断字符是否匹配的
-    /// 函数或闭包。
+    /// The [pattern] can be a `&str`, [`char`], a slice of [`char`]s, or a
+    /// function or closure that determines if a character matches.
     ///
     /// [`char`]: prim@char
     /// [pattern]: self::pattern
     /// [`strip_prefix`]: Self::strip_prefix
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// #![feature(trim_prefix_suffix)]
     ///
-    /// // 前缀存在，将其移除
+    /// // Prefix present - removes it
     /// assert_eq!("foo:bar".trim_prefix("foo:"), "bar");
     /// assert_eq!("foofoo".trim_prefix("foo"), "foo");
     ///
-    /// // 前缀不存在，返回原字符串
+    /// // Prefix absent - returns original string
     /// assert_eq!("foo:bar".trim_prefix("bar"), "foo:bar");
     ///
-    /// // 方法链示例
+    /// // Method chaining example
     /// assert_eq!("<https://example.com/>".trim_prefix('<').trim_suffix('>'), "https://example.com/");
     /// ```
     #[must_use = "this returns the remaining substring as a new slice, \
@@ -2417,34 +2532,34 @@ impl str {
         prefix.strip_prefix_of(self).unwrap_or(self)
     }
 
-    /// 返回移除了可选后缀后的字符串切片。
+    /// Returns a string slice with the optional suffix removed.
     ///
-    /// 如果字符串以模式 `suffix` 结尾，返回后缀之前的子串。
-    /// 与 [`strip_suffix`] 不同，本方法总是返回 `&str`，便于链式调用，
-    /// 而不是返回 [`Option<&str>`]。
+    /// If the string ends with the pattern `suffix`, returns the substring before the suffix.
+    /// Unlike [`strip_suffix`], this method always returns `&str` for easy method chaining,
+    /// instead of returning [`Option<&str>`].
     ///
-    /// 如果字符串不以 `suffix` 结尾，则原样返回原字符串。
+    /// If the string does not end with `suffix`, returns the original string unchanged.
     ///
-    /// [pattern] 可以是 `&str`、[`char`]、[`char`] 切片，或者用于判断字符是否匹配的
-    /// 函数或闭包。
+    /// The [pattern] can be a `&str`, [`char`], a slice of [`char`]s, or a
+    /// function or closure that determines if a character matches.
     ///
     /// [`char`]: prim@char
     /// [pattern]: self::pattern
     /// [`strip_suffix`]: Self::strip_suffix
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// #![feature(trim_prefix_suffix)]
     ///
-    /// // 后缀存在，将其移除
+    /// // Suffix present - removes it
     /// assert_eq!("bar:foo".trim_suffix(":foo"), "bar");
     /// assert_eq!("foofoo".trim_suffix("foo"), "foo");
     ///
-    /// // 后缀不存在，返回原字符串
+    /// // Suffix absent - returns original string
     /// assert_eq!("bar:foo".trim_suffix("bar"), "bar:foo");
     ///
-    /// // 方法链示例
+    /// // Method chaining example
     /// assert_eq!("<https://example.com/>".trim_prefix('<').trim_suffix('>'), "https://example.com/");
     /// ```
     #[must_use = "this returns the remaining substring as a new slice, \
@@ -2457,23 +2572,25 @@ impl str {
         suffix.strip_suffix_of(self).unwrap_or(self)
     }
 
-    /// 返回反复移除所有匹配模式的后缀后的字符串切片。
+    /// Returns a string slice with all suffixes that match a pattern
+    /// repeatedly removed.
     ///
-    /// [pattern] 可以是 `&str`、[`char`]、[`char`] 切片，或者用于判断字符是否匹配的
-    /// 函数或闭包。
+    /// The [pattern] can be a `&str`, [`char`], a slice of [`char`]s, or a
+    /// function or closure that determines if a character matches.
     ///
     /// [`char`]: prim@char
     /// [pattern]: self::pattern
     ///
-    /// # 文本方向性
+    /// # Text directionality
     ///
-    /// 字符串是字节序列。此处的 `end` 表示该字节串的最后一个位置；对于 English
-    /// 或 Russian 这类从左到右的语言，它是右侧；对于 Arabic 或 Hebrew 这类从右到左的语言，
-    /// 它是左侧。
+    /// A string is a sequence of bytes. `end` in this context means the last
+    /// position of that byte string; for a left-to-right language like English or
+    /// Russian, this will be right side, and for right-to-left languages like
+    /// Arabic or Hebrew, this will be the left side.
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 简单模式：
+    /// Simple patterns:
     ///
     /// ```
     /// assert_eq!("11foo1bar11".trim_end_matches('1'), "11foo1bar");
@@ -2483,7 +2600,7 @@ impl str {
     /// assert_eq!("12foo1bar12".trim_end_matches(x), "12foo1bar");
     /// ```
     ///
-    /// 使用闭包的更复杂模式：
+    /// A more complex pattern, using a closure:
     ///
     /// ```
     /// assert_eq!("1fooX".trim_end_matches(|c| c == '1' || c == 'X'), "1foo");
@@ -2500,24 +2617,27 @@ impl str {
         if let Some((_, b)) = matcher.next_reject_back() {
             j = b;
         }
-        // SAFETY: `Searcher` 保证返回有效索引。
+        // SAFETY: `Searcher` is known to return valid indices.
         unsafe { self.get_unchecked(0..j) }
     }
 
-    /// 返回反复移除所有匹配模式的前缀后的字符串切片。
+    /// Returns a string slice with all prefixes that match a pattern
+    /// repeatedly removed.
     ///
-    /// [pattern] 可以是 `&str`、[`char`]、[`char`] 切片，或者用于判断字符是否匹配的
-    /// 函数或闭包。
+    /// The [pattern] can be a `&str`, [`char`], a slice of [`char`]s, or a
+    /// function or closure that determines if a character matches.
     ///
     /// [`char`]: prim@char
     /// [pattern]: self::pattern
     ///
-    /// # 文本方向性
+    /// # Text directionality
     ///
-    /// 字符串是字节序列。此处的 'Left' 表示该字节串的第一个位置；对于 Arabic 或 Hebrew
-    /// 这类从右到左而不是从左到右的语言，它是_右_侧，而不是左侧。
+    /// A string is a sequence of bytes. 'Left' in this context means the first
+    /// position of that byte string; for a language like Arabic or Hebrew
+    /// which are 'right to left' rather than 'left to right', this will be
+    /// the _right_ side, not the left.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// assert_eq!("11foo1bar11".trim_left_matches('1'), "foo1bar11");
@@ -2536,22 +2656,25 @@ impl str {
         self.trim_start_matches(pat)
     }
 
-    /// 返回反复移除所有匹配模式的后缀后的字符串切片。
+    /// Returns a string slice with all suffixes that match a pattern
+    /// repeatedly removed.
     ///
-    /// [pattern] 可以是 `&str`、[`char`]、[`char`] 切片，或者用于判断字符是否匹配的
-    /// 函数或闭包。
+    /// The [pattern] can be a `&str`, [`char`], a slice of [`char`]s, or a
+    /// function or closure that determines if a character matches.
     ///
     /// [`char`]: prim@char
     /// [pattern]: self::pattern
     ///
-    /// # 文本方向性
+    /// # Text directionality
     ///
-    /// 字符串是字节序列。此处的 'Right' 表示该字节串的最后一个位置；对于 Arabic 或 Hebrew
-    /// 这类从右到左而不是从左到右的语言，它是_左_侧，而不是右侧。
+    /// A string is a sequence of bytes. 'Right' in this context means the last
+    /// position of that byte string; for a language like Arabic or Hebrew
+    /// which are 'right to left' rather than 'left to right', this will be
+    /// the _left_ side, not the right.
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 简单模式：
+    /// Simple patterns:
     ///
     /// ```
     /// assert_eq!("11foo1bar11".trim_right_matches('1'), "11foo1bar");
@@ -2561,7 +2684,7 @@ impl str {
     /// assert_eq!("12foo1bar12".trim_right_matches(x), "12foo1bar");
     /// ```
     ///
-    /// 使用闭包的更复杂模式：
+    /// A more complex pattern, using a closure:
     ///
     /// ```
     /// assert_eq!("1fooX".trim_right_matches(|c| c == '1' || c == 'X'), "1foo");
@@ -2579,23 +2702,26 @@ impl str {
         self.trim_end_matches(pat)
     }
 
-    /// 将该字符串切片解析为另一种类型。
+    /// Parses this string slice into another type.
     ///
-    /// 由于 `parse` 非常通用，它可能给类型推断带来问题。因此，`parse` 是少数你会看到
-    /// 被称为 “turbofish” 的 `::<>` 语法的场景之一。该语法帮助推断算法明确你想解析成的
-    /// 具体类型。
+    /// Because `parse` is so general, it can cause problems with type
+    /// inference. As such, `parse` is one of the few times you'll see
+    /// the syntax affectionately known as the 'turbofish': `::<>`. This
+    /// helps the inference algorithm understand specifically which type
+    /// you're trying to parse into.
     ///
-    /// `parse` 可以解析成任何实现 [`FromStr`] trait 的类型。
+    /// `parse` can parse into any type that implements the [`FromStr`] trait.
     ///
-    /// # 错误
+    /// # Errors
     ///
-    /// 如果无法把该字符串切片解析为目标类型，则返回 [`Err`]。
+    /// Will return [`Err`] if it's not possible to parse this string slice into
+    /// the desired type.
     ///
     /// [`Err`]: FromStr::Err
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 基本用法：
+    /// Basic usage:
     ///
     /// ```
     /// let four: u32 = "4".parse().unwrap();
@@ -2603,7 +2729,7 @@ impl str {
     /// assert_eq!(4, four);
     /// ```
     ///
-    /// 使用 “turbofish” 而不是给 `four` 添加类型标注：
+    /// Using the 'turbofish' instead of annotating `four`:
     ///
     /// ```
     /// let four = "4".parse::<u32>();
@@ -2611,7 +2737,7 @@ impl str {
     /// assert_eq!(Ok(4), four);
     /// ```
     ///
-    /// 解析失败：
+    /// Failing to parse:
     ///
     /// ```
     /// let nope = "j".parse::<u32>();
@@ -2624,11 +2750,11 @@ impl str {
         FromStr::from_str(self)
     }
 
-    /// 检查该字符串中的所有字符是否都在 ASCII 范围内。
+    /// Checks if all characters in this string are within the ASCII range.
     ///
-    /// 空字符串返回 `true`。
+    /// An empty string returns `true`.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let ascii = "hello!\n";
@@ -2642,26 +2768,28 @@ impl str {
     #[must_use]
     #[inline]
     pub const fn is_ascii(&self) -> bool {
-        // 这里可以把每个字节视为字符：所有多字节字符都以非 ASCII 范围内的字节开头，
-        // 因此会在该处停止。
+        // We can treat each byte as character here: all multibyte characters
+        // start with a byte that is not in the ASCII range, so we will stop
+        // there already.
         self.as_bytes().is_ascii()
     }
 
-    /// 如果该字符串切片满足 [`is_ascii`](Self::is_ascii)，则将其作为
-    /// [ASCII 字符](`ascii::Char`)切片返回；否则返回 `None`。
+    /// If this string slice [`is_ascii`](Self::is_ascii), returns it as a slice
+    /// of [ASCII characters](`ascii::Char`), otherwise returns `None`.
     #[unstable(feature = "ascii_char", issue = "110998")]
     #[must_use]
     #[inline]
     pub const fn as_ascii(&self) -> Option<&[ascii::Char]> {
-        // 与 `is_ascii` 一样，这里可以直接处理字节。
+        // Like in `is_ascii`, we can work on the bytes directly.
         self.as_bytes().as_ascii()
     }
 
-    /// 将该字符串切片转换为 [ASCII 字符](ascii::Char)切片，不检查它们是否有效。
+    /// Converts this string slice into a slice of [ASCII characters](ascii::Char),
+    /// without checking whether they are valid.
     ///
-    /// # 安全性(Safety）
+    /// # Safety
     ///
-    /// 该字符串中的每个字符都必须是 ASCII，否则会触发 UB。
+    /// Every character in this string must be ASCII, or else this is UB.
     #[unstable(feature = "ascii_char", issue = "110998")]
     #[must_use]
     #[inline]
@@ -2672,16 +2800,17 @@ impl str {
             (it: &str = self) => it.is_ascii()
         );
 
-        // SAFETY: 调用方承诺该字符串切片中的每个字节都是 ASCII。
+        // SAFETY: the caller promised that every byte of this string slice
+        // is ASCII.
         unsafe { self.as_bytes().as_ascii_unchecked() }
     }
 
-    /// 检查两个字符串在 ASCII 范围内忽略大小写后是否匹配。
+    /// Checks that two strings are an ASCII case-insensitive match.
     ///
-    /// 等价于 `to_ascii_lowercase(a) == to_ascii_lowercase(b)`，
-    /// 但不会分配和复制临时值。
+    /// Same as `to_ascii_lowercase(a) == to_ascii_lowercase(b)`,
+    /// but without allocating and copying temporaries.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// assert!("Ferris".eq_ignore_ascii_case("FERRIS"));
@@ -2696,15 +2825,17 @@ impl str {
         self.as_bytes().eq_ignore_ascii_case(other.as_bytes())
     }
 
-    /// 原地将该字符串转换为对应的 ASCII 大写形式。
+    /// Converts this string to its ASCII upper case equivalent in-place.
     ///
-    /// ASCII 字母 'a' 到 'z' 会映射为 'A' 到 'Z'，但非 ASCII 字母保持不变。
+    /// ASCII letters 'a' to 'z' are mapped to 'A' to 'Z',
+    /// but non-ASCII letters are unchanged.
     ///
-    /// 如果想返回新的大写值而不修改现有值，请使用 [`to_ascii_uppercase()`]。
+    /// To return a new uppercased value without modifying the existing one, use
+    /// [`to_ascii_uppercase()`].
     ///
     /// [`to_ascii_uppercase()`]: #method.to_ascii_uppercase
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let mut s = String::from("Grüße, Jürgen ❤");
@@ -2717,20 +2848,22 @@ impl str {
     #[rustc_const_stable(feature = "const_make_ascii", since = "1.84.0")]
     #[inline]
     pub const fn make_ascii_uppercase(&mut self) {
-        // SAFETY: 只修改 ASCII 字母不会破坏 UTF-8 有效性。
+        // SAFETY: changing ASCII letters only does not invalidate UTF-8.
         let me = unsafe { self.as_bytes_mut() };
         me.make_ascii_uppercase()
     }
 
-    /// 原地将该字符串转换为对应的 ASCII 小写形式。
+    /// Converts this string to its ASCII lower case equivalent in-place.
     ///
-    /// ASCII 字母 'A' 到 'Z' 会映射为 'a' 到 'z'，但非 ASCII 字母保持不变。
+    /// ASCII letters 'A' to 'Z' are mapped to 'a' to 'z',
+    /// but non-ASCII letters are unchanged.
     ///
-    /// 如果想返回新的小写值而不修改现有值，请使用 [`to_ascii_lowercase()`]。
+    /// To return a new lowercased value without modifying the existing one, use
+    /// [`to_ascii_lowercase()`].
     ///
     /// [`to_ascii_lowercase()`]: #method.to_ascii_lowercase
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let mut s = String::from("GRÜßE, JÜRGEN ❤");
@@ -2743,18 +2876,19 @@ impl str {
     #[rustc_const_stable(feature = "const_make_ascii", since = "1.84.0")]
     #[inline]
     pub const fn make_ascii_lowercase(&mut self) {
-        // SAFETY: 只修改 ASCII 字母不会破坏 UTF-8 有效性。
+        // SAFETY: changing ASCII letters only does not invalidate UTF-8.
         let me = unsafe { self.as_bytes_mut() };
         me.make_ascii_lowercase()
     }
 
-    /// 返回去除了开头 ASCII 空白字符的字符串切片。
+    /// Returns a string slice with leading ASCII whitespace removed.
     ///
-    /// “Whitespace” 指 [`u8::is_ascii_whitespace`] 使用的定义。
+    /// 'Whitespace' refers to the definition used by
+    /// [`u8::is_ascii_whitespace`].
     ///
     /// [`u8::is_ascii_whitespace`]: u8::is_ascii_whitespace
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// assert_eq!(" \t \u{3000}hello world\n".trim_ascii_start(), "\u{3000}hello world\n");
@@ -2767,17 +2901,19 @@ impl str {
     #[rustc_const_stable(feature = "byte_slice_trim_ascii", since = "1.80.0")]
     #[inline]
     pub const fn trim_ascii_start(&self) -> &str {
-        // SAFETY: 从 `&str` 中移除 ASCII 字符不会破坏 UTF-8 有效性。
+        // SAFETY: Removing ASCII characters from a `&str` does not invalidate
+        // UTF-8.
         unsafe { core::str::from_utf8_unchecked(self.as_bytes().trim_ascii_start()) }
     }
 
-    /// 返回去除了结尾 ASCII 空白字符的字符串切片。
+    /// Returns a string slice with trailing ASCII whitespace removed.
     ///
-    /// “Whitespace” 指 [`u8::is_ascii_whitespace`] 使用的定义。
+    /// 'Whitespace' refers to the definition used by
+    /// [`u8::is_ascii_whitespace`].
     ///
     /// [`u8::is_ascii_whitespace`]: u8::is_ascii_whitespace
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// assert_eq!("\r hello world\u{3000}\n ".trim_ascii_end(), "\r hello world\u{3000}");
@@ -2790,17 +2926,20 @@ impl str {
     #[rustc_const_stable(feature = "byte_slice_trim_ascii", since = "1.80.0")]
     #[inline]
     pub const fn trim_ascii_end(&self) -> &str {
-        // SAFETY: 从 `&str` 中移除 ASCII 字符不会破坏 UTF-8 有效性。
+        // SAFETY: Removing ASCII characters from a `&str` does not invalidate
+        // UTF-8.
         unsafe { core::str::from_utf8_unchecked(self.as_bytes().trim_ascii_end()) }
     }
 
-    /// 返回去除了开头和结尾 ASCII 空白字符的字符串切片。
+    /// Returns a string slice with leading and trailing ASCII whitespace
+    /// removed.
     ///
-    /// “Whitespace” 指 [`u8::is_ascii_whitespace`] 使用的定义。
+    /// 'Whitespace' refers to the definition used by
+    /// [`u8::is_ascii_whitespace`].
     ///
     /// [`u8::is_ascii_whitespace`]: u8::is_ascii_whitespace
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// assert_eq!("\r hello world\n ".trim_ascii(), "hello world");
@@ -2813,17 +2952,19 @@ impl str {
     #[rustc_const_stable(feature = "byte_slice_trim_ascii", since = "1.80.0")]
     #[inline]
     pub const fn trim_ascii(&self) -> &str {
-        // SAFETY: 从 `&str` 中移除 ASCII 字符不会破坏 UTF-8 有效性。
+        // SAFETY: Removing ASCII characters from a `&str` does not invalidate
+        // UTF-8.
         unsafe { core::str::from_utf8_unchecked(self.as_bytes().trim_ascii()) }
     }
 
-    /// 返回一个迭代器，使用 [`char::escape_debug`] 转义 `self` 中的每个 char。
+    /// Returns an iterator that escapes each char in `self` with [`char::escape_debug`].
     ///
-    /// 注意：只有出现在字符串开头的扩展字素 codepoint 会被转义。
+    /// Note: only extended grapheme codepoints that begin the string will be
+    /// escaped.
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 作为迭代器：
+    /// As an iterator:
     ///
     /// ```
     /// for c in "❤\n!".escape_debug() {
@@ -2832,20 +2973,20 @@ impl str {
     /// println!();
     /// ```
     ///
-    /// 直接使用 `println!`：
+    /// Using `println!` directly:
     ///
     /// ```
     /// println!("{}", "❤\n!".escape_debug());
     /// ```
     ///
     ///
-    /// 二者等价于：
+    /// Both are equivalent to:
     ///
     /// ```
     /// println!("❤\\n!");
     /// ```
     ///
-    /// 使用 `to_string`：
+    /// Using `to_string`:
     ///
     /// ```
     /// assert_eq!("❤\n!".escape_debug().to_string(), "❤\\n!");
@@ -2865,11 +3006,11 @@ impl str {
         }
     }
 
-    /// 返回一个迭代器，使用 [`char::escape_default`] 转义 `self` 中的每个 char。
+    /// Returns an iterator that escapes each char in `self` with [`char::escape_default`].
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 作为迭代器：
+    /// As an iterator:
     ///
     /// ```
     /// for c in "❤\n!".escape_default() {
@@ -2878,20 +3019,20 @@ impl str {
     /// println!();
     /// ```
     ///
-    /// 直接使用 `println!`：
+    /// Using `println!` directly:
     ///
     /// ```
     /// println!("{}", "❤\n!".escape_default());
     /// ```
     ///
     ///
-    /// 二者等价于：
+    /// Both are equivalent to:
     ///
     /// ```
     /// println!("\\u{{2764}}\\n!");
     /// ```
     ///
-    /// 使用 `to_string`：
+    /// Using `to_string`:
     ///
     /// ```
     /// assert_eq!("❤\n!".escape_default().to_string(), "\\u{2764}\\n!");
@@ -2903,11 +3044,11 @@ impl str {
         EscapeDefault { inner: self.chars().flat_map(CharEscapeDefault) }
     }
 
-    /// 返回一个迭代器，使用 [`char::escape_unicode`] 转义 `self` 中的每个 char。
+    /// Returns an iterator that escapes each char in `self` with [`char::escape_unicode`].
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 作为迭代器：
+    /// As an iterator:
     ///
     /// ```
     /// for c in "❤\n!".escape_unicode() {
@@ -2916,20 +3057,20 @@ impl str {
     /// println!();
     /// ```
     ///
-    /// 直接使用 `println!`：
+    /// Using `println!` directly:
     ///
     /// ```
     /// println!("{}", "❤\n!".escape_unicode());
     /// ```
     ///
     ///
-    /// 二者等价于：
+    /// Both are equivalent to:
     ///
     /// ```
     /// println!("\\u{{2764}}\\u{{a}}\\u{{21}}");
     /// ```
     ///
-    /// 使用 `to_string`：
+    /// Using `to_string`:
     ///
     /// ```
     /// assert_eq!("❤\n!".escape_unicode().to_string(), "\\u{2764}\\u{a}\\u{21}");
@@ -2941,19 +3082,22 @@ impl str {
         EscapeUnicode { inner: self.chars().flat_map(CharEscapeUnicode) }
     }
 
-    /// 返回某个子字符串指向的范围。
+    /// Returns the range that a substring points to.
     ///
-    /// 如果 `substr` 不指向 `self` 内部，则返回 `None`。
+    /// Returns `None` if `substr` does not point within `self`.
     ///
-    /// 与 [`str::find`] 不同，**本方法不会在字符串中搜索**。它会使用指针运算判断
-    /// `substr` 是从该字符串的哪个位置派生出来的。
+    /// Unlike [`str::find`], **this does not search through the string**.
+    /// Instead, it uses pointer arithmetic to find where in the string
+    /// `substr` is derived from.
     ///
-    /// 这对扩展 [`str::split`] 及类似方法很有用。
+    /// This is useful for extending [`str::split`] and similar methods.
     ///
-    /// 注意，如果 `substr` 是零长度 `str`，并且指向另一个独立 `str` 的开头或结尾，
-    /// 本方法可能返回误报（通常是 `Some(0..0)` 或 `Some(self.len()..self.len())`）。
+    /// Note that this method may return false positives (typically either
+    /// `Some(0..0)` or `Some(self.len()..self.len())`) if `substr` is a
+    /// zero-length `str` that points at the beginning or end of another,
+    /// independent, `str`.
     ///
-    /// # 示例
+    /// # Examples
     /// ```
     /// #![feature(substr_range)]
     ///
@@ -2971,10 +3115,11 @@ impl str {
         self.as_bytes().subslice_range(substr.as_bytes())
     }
 
-    /// 将同一个字符串作为字符串切片 `&str` 返回。
+    /// Returns the same string as a string slice `&str`.
     ///
-    /// 直接在 `&str` 上使用时，本方法是冗余的；但它有助于把其他类字符串类型解引用为
-    /// 字符串切片，例如对 `Box<str>` 或 `Arc<str>` 的引用。
+    /// This method is redundant when used directly on `&str`, but
+    /// it helps dereferencing other string-like types to string slices,
+    /// for example references to `Box<str>` or `Arc<str>`.
     #[inline]
     #[unstable(feature = "str_as_str", issue = "130366")]
     pub const fn as_str(&self) -> &str {
@@ -2994,7 +3139,7 @@ impl const AsRef<[u8]> for str {
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_const_unstable(feature = "const_default", issue = "143894")]
 impl const Default for &str {
-    /// 创建空 str。
+    /// Creates an empty str
     #[inline]
     fn default() -> Self {
         ""
@@ -3004,16 +3149,16 @@ impl const Default for &str {
 #[stable(feature = "default_mut_str", since = "1.28.0")]
 #[rustc_const_unstable(feature = "const_default", issue = "143894")]
 impl const Default for &mut str {
-    /// 创建空可变 str。
+    /// Creates an empty mutable str
     #[inline]
     fn default() -> Self {
-        // SAFETY: 空字符串是有效 UTF-8。
+        // SAFETY: The empty string is valid UTF-8.
         unsafe { from_utf8_unchecked_mut(&mut []) }
     }
 }
 
 impl_fn_for_zst! {
-    /// 可命名、可克隆的 fn 类型。
+    /// A nameable, cloneable fn type
     #[derive(Clone)]
     struct LinesMap impl<'a> Fn = |line: &'a str| -> &'a str {
         let Some(line) = line.strip_suffix('\n') else { return line };
@@ -3061,12 +3206,11 @@ impl_fn_for_zst! {
 
     #[derive(Clone)]
     struct UnsafeBytesToStr impl<'a> Fn = |bytes: &'a [u8]| -> &'a str {
-        // SAFETY: 调用点已经保证这些字节来自有效 UTF-8 的 `str`。
+        // SAFETY: not safe
         unsafe { from_utf8_unchecked(bytes) }
     };
 }
 
-// 该负实现用于避免 `impl From<&str> for Box<dyn Error>` 与
-// `impl<E> From<E> for Box<dyn Error>` 重叠。
+// This is required to make `impl From<&str> for Box<dyn Error>` and `impl<E> From<E> for Box<dyn Error>` not overlap.
 #[stable(feature = "error_in_core_neg_impl", since = "1.65.0")]
 impl !crate::error::Error for &str {}

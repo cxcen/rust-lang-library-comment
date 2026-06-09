@@ -3,41 +3,43 @@
 use crate::convert;
 use crate::ops::{self, ControlFlow};
 
-/// 表示某个值是否已经就绪,或者当前任务是否已被安排在将来接收一次唤醒。
+/// Indicates whether a value is available or if the current task has been
+/// scheduled to receive a wakeup instead.
 ///
-/// 它由 [`Future::poll`](core::future::Future::poll) 返回,是整个异步协议中传递“就绪 /
-/// 未就绪”状态的核心返回类型——`poll` 不靠 panic 表达“尚未算完”,而是返回 `Pending`。
+/// This is returned by [`Future::poll`](core::future::Future::poll).
 #[must_use = "this `Poll` may be a `Pending` variant, which should be handled"]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[lang = "Poll"]
 #[stable(feature = "futures_api", since = "1.36.0")]
 pub enum Poll<T> {
-    /// 表示值已经立即就绪。
+    /// Represents that a value is immediately ready.
     #[lang = "Ready"]
     #[stable(feature = "futures_api", since = "1.36.0")]
     Ready(#[stable(feature = "futures_api", since = "1.36.0")] T),
 
-    /// 表示值尚未就绪。
+    /// Represents that a value is not ready yet.
     ///
-    /// 当一个函数返回 `Pending` 时,它**必须**同时确保:当能够继续推进时,当前任务已被安排好
-    /// 接收唤醒(即已把 [`Waker`](crate::task::Waker) 注册到合适的地方)。否则任务将永久挂起。
+    /// When a function returns `Pending`, the function *must* also
+    /// ensure that the current task is scheduled to be awoken when
+    /// progress can be made.
     #[lang = "Pending"]
     #[stable(feature = "futures_api", since = "1.36.0")]
     Pending,
 }
 
 impl<T> Poll<T> {
-    /// 通过对 `Poll<T>` 中包含的值施加一个函数,把它映射为 `Poll<U>`。
+    /// Maps a `Poll<T>` to `Poll<U>` by applying a function to a contained value.
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 把一个 <code>Poll<[String]></code> 转换为 <code>Poll<[usize]></code>,并消耗掉原值:
+    /// Converts a <code>Poll<[String]></code> into a <code>Poll<[usize]></code>, consuming
+    /// the original:
     ///
     /// [String]: ../../std/string/struct.String.html "String"
     /// ```
     /// # use core::task::Poll;
     /// let poll_some_string = Poll::Ready(String::from("Hello, World!"));
-    /// // `Poll::map` 按值接收 self,会消耗掉 `poll_some_string`
+    /// // `Poll::map` takes self *by value*, consuming `poll_some_string`
     /// let poll_some_len = poll_some_string.map(|s| s.len());
     ///
     /// assert_eq!(poll_some_len, Poll::Ready(13));
@@ -54,9 +56,9 @@ impl<T> Poll<T> {
         }
     }
 
-    /// 如果该 poll 是一个 [`Poll::Ready`] 值,返回 `true`。
+    /// Returns `true` if the poll is a [`Poll::Ready`] value.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// # use core::task::Poll;
@@ -73,11 +75,11 @@ impl<T> Poll<T> {
         matches!(*self, Poll::Ready(_))
     }
 
-    /// 如果该 poll 是一个 [`Pending`] 值,返回 `true`。
+    /// Returns `true` if the poll is a [`Pending`] value.
     ///
     /// [`Pending`]: Poll::Pending
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// # use core::task::Poll;
@@ -96,12 +98,13 @@ impl<T> Poll<T> {
 }
 
 impl<T, E> Poll<Result<T, E>> {
-    /// 通过对 `Poll::Ready(Ok)` 中包含的值施加一个函数,把 `Poll<Result<T, E>>` 映射为
-    /// `Poll<Result<U, E>>`,其余各变体保持不变。
+    /// Maps a `Poll<Result<T, E>>` to `Poll<Result<U, E>>` by applying a
+    /// function to a contained `Poll::Ready(Ok)` value, leaving all other
+    /// variants untouched.
     ///
-    /// 此函数可用于组合两个函数的结果。
+    /// This function can be used to compose the results of two functions.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// # use core::task::Poll;
@@ -122,12 +125,14 @@ impl<T, E> Poll<Result<T, E>> {
         }
     }
 
-    /// 通过对 `Poll::Ready(Err)` 中包含的值施加一个函数,把 `Poll::Ready<Result<T, E>>`
-    /// 映射为 `Poll::Ready<Result<T, U>>`,其余各变体保持不变。
+    /// Maps a `Poll::Ready<Result<T, E>>` to `Poll::Ready<Result<T, U>>` by
+    /// applying a function to a contained `Poll::Ready(Err)` value, leaving all other
+    /// variants untouched.
     ///
-    /// 此函数可用于在处理错误的同时,让成功的结果原样透传。
+    /// This function can be used to pass through a successful result while handling
+    /// an error.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// # use core::task::Poll;
@@ -150,12 +155,13 @@ impl<T, E> Poll<Result<T, E>> {
 }
 
 impl<T, E> Poll<Option<Result<T, E>>> {
-    /// 通过对 `Poll::Ready(Some(Ok))` 中包含的值施加一个函数,把
-    /// `Poll<Option<Result<T, E>>>` 映射为 `Poll<Option<Result<U, E>>>`,其余各变体保持不变。
+    /// Maps a `Poll<Option<Result<T, E>>>` to `Poll<Option<Result<U, E>>>` by
+    /// applying a function to a contained `Poll::Ready(Some(Ok))` value,
+    /// leaving all other variants untouched.
     ///
-    /// 此函数可用于组合两个函数的结果。
+    /// This function can be used to compose the results of two functions.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// # use core::task::Poll;
@@ -177,13 +183,15 @@ impl<T, E> Poll<Option<Result<T, E>>> {
         }
     }
 
-    /// 通过对 `Poll::Ready(Some(Err))` 中包含的值施加一个函数,把
-    /// `Poll::Ready<Option<Result<T, E>>>` 映射为 `Poll::Ready<Option<Result<T, F>>>`,
-    /// 其余各变体保持不变。
+    /// Maps a `Poll::Ready<Option<Result<T, E>>>` to
+    /// `Poll::Ready<Option<Result<T, F>>>` by applying a function to a
+    /// contained `Poll::Ready(Some(Err))` value, leaving all other variants
+    /// untouched.
     ///
-    /// 此函数可用于在处理错误的同时,让成功的结果原样透传。
+    /// This function can be used to pass through a successful result while handling
+    /// an error.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// # use core::task::Poll;
@@ -209,9 +217,9 @@ impl<T, E> Poll<Option<Result<T, E>>> {
 #[stable(feature = "futures_api", since = "1.36.0")]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
 impl<T> const From<T> for Poll<T> {
-    /// 把值移动进一个 [`Poll::Ready`],从而构造出 `Poll<T>`。
+    /// Moves the value into a [`Poll::Ready`] to make a `Poll<T>`.
     ///
-    /// # 示例
+    /// # Example
     ///
     /// ```
     /// # use core::task::Poll;

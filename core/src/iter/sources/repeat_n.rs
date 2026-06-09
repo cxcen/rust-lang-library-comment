@@ -3,23 +3,23 @@ use crate::iter::{FusedIterator, TrustedLen, UncheckedIterator};
 use crate::num::NonZero;
 use crate::ops::Try;
 
-/// 创建一个新的迭代器，把单个元素重复给定次数。
+/// Creates a new iterator that repeats a single element a given number of times.
 ///
-/// `repeat_n()` 函数会把单个值恰好重复 `n` 次。
+/// The `repeat_n()` function repeats a single value exactly `n` times.
 ///
-/// 这与把 [`repeat()`] 和 [`Iterator::take()`] 组合起来很相似，但 `repeat_n()` 可以
-/// 返回原始值，而不是始终克隆。
+/// This is very similar to using [`repeat()`] with [`Iterator::take()`],
+/// but `repeat_n()` can return the original value, rather than always cloning.
 ///
 /// [`repeat()`]: crate::iter::repeat
 ///
-/// # 示例
+/// # Examples
 ///
-/// 基本用法:
+/// Basic usage:
 ///
 /// ```
 /// use std::iter;
 ///
-/// // 四个数字四:
+/// // four of the number four:
 /// let mut four_fours = iter::repeat_n(4, 4);
 ///
 /// assert_eq!(Some(4), four_fours.next());
@@ -27,11 +27,11 @@ use crate::ops::Try;
 /// assert_eq!(Some(4), four_fours.next());
 /// assert_eq!(Some(4), four_fours.next());
 ///
-/// // 不再有四。
+/// // no more fours
 /// assert_eq!(None, four_fours.next());
 /// ```
 ///
-/// 对非 `Copy` 类型:
+/// For non-`Copy` types,
 ///
 /// ```
 /// use std::iter;
@@ -40,18 +40,18 @@ use crate::ops::Try;
 /// let mut it = iter::repeat_n(v, 5);
 ///
 /// for i in 0..4 {
-///     // 开始时通过克隆产出值。
+///     // It starts by cloning things
 ///     let cloned = it.next().unwrap();
 ///     assert_eq!(cloned.len(), 0);
 ///     assert_eq!(cloned.capacity(), 0);
 /// }
 ///
-/// // ...但最后一项是原始值。
+/// // ... but the last item is the original one
 /// let last = it.next().unwrap();
 /// assert_eq!(last.len(), 0);
 /// assert_eq!(last.capacity(), 123);
 ///
-/// // ...现在结束。
+/// // ... and now we're done
 /// assert_eq!(None, it.next());
 /// ```
 #[inline]
@@ -73,9 +73,10 @@ impl<T> RepeatNInner<T> {
     }
 }
 
-/// 将元素重复精确次数的迭代器。
+/// An iterator that repeats an element an exact number of times.
 ///
-/// 该 `struct` 由 [`repeat_n()`] 函数创建。更多信息见该函数文档。
+/// This `struct` is created by the [`repeat_n()`] function.
+/// See its documentation for more.
 #[stable(feature = "iter_repeat_n", since = "1.82.0")]
 #[derive(Clone)]
 pub struct RepeatN<A> {
@@ -83,7 +84,7 @@ pub struct RepeatN<A> {
 }
 
 impl<A> RepeatN<A> {
-    /// 如果还没有 drop 该元素，则把它包在 option 中返回。
+    /// If we haven't already dropped the element, return it in an option.
     #[inline]
     fn take_element(&mut self) -> Option<A> {
         self.inner.take().map(|inner| inner.element)
@@ -111,7 +112,7 @@ impl<A: Clone> Iterator for RepeatN<A> {
         let count = inner.count.get();
 
         if let Some(decremented) = NonZero::<usize>::new(count - 1) {
-            // 这些操作的顺序对优化很重要。
+            // Order of these is important for optimization
             let tmp = inner.element.clone();
             inner.count = decremented;
             return Some(tmp);

@@ -1,25 +1,26 @@
 use crate::marker::{Destruct, PhantomData};
 use crate::ops::ControlFlow;
 
-/// `?` 运算符与 `try {}` 代码块。
+/// The `?` operator and `try {}` blocks.
 ///
-/// `try_*` 系列方法通常会涉及一个实现了这个 trait 的类型。例如,传给
-/// [`Iterator::try_fold`] 和 [`Iterator::try_for_each`] 的闭包就必须返回这样
-/// 一个类型。
+/// `try_*` methods typically involve a type implementing this trait.  For
+/// example, the closures passed to [`Iterator::try_fold`] and
+/// [`Iterator::try_for_each`] must return such a type.
 ///
-/// `Try` 类型通常是那些含有两类或更多类别取值的类型,其中某个子集的取值实在太
-/// 常通过提前返回(early return)来处理,以至于值得为之提供一套简洁(但仍然显眼)
-/// 的语法来让这件事变得容易。
+/// `Try` types are typically those containing two or more categories of values,
+/// some subset of which are so commonly handled via early returns that it's
+/// worth providing a terse (but still visible) syntax to make that easy.
 ///
-/// 这一点最常见于用 [`Result`] 和 [`Option`] 做错误处理的场合。这个 trait 最
-/// 典型的实现是在 [`ControlFlow`] 上。
+/// This is most often seen for error handling with [`Result`] and [`Option`].
+/// The quintessential implementation of this trait is on [`ControlFlow`].
 ///
-/// # 在泛型代码中使用 `Try`
+/// # Using `Try` in Generic Code
 ///
-/// `Iterator::try_fold` 早在 Rust 1.27 就已稳定化,但这个 trait 要新得多。为了
-/// 说明各个关联类型和方法,我们来实现一个自己的版本。
+/// `Iterator::try_fold` was stabilized to call back in Rust 1.27, but
+/// this trait is much newer.  To illustrate the various associated types and
+/// methods, let's implement our own version.
 ///
-/// 先回顾一下,一个不会失败(infallible)的 fold 大致长这样:
+/// As a reminder, an infallible version of a fold looks something like this:
 /// ```
 /// fn simple_fold<A, T>(
 ///     iter: impl Iterator<Item = T>,
@@ -33,10 +34,12 @@ use crate::ops::ControlFlow;
 /// }
 /// ```
 ///
-/// 因此,我们需要让 `f` 不再只返回一个 `A`,而是返回某个别的类型——它在“不短路”
-/// 的路径上会产出一个 `A`。方便的是,这个类型也正是我们需要从该函数返回的类型。
+/// So instead of `f` returning just an `A`, we'll need it to return some other
+/// type that produces an `A` in the "don't short circuit" path.  Conveniently,
+/// that's also the type we need to return from the function.
 ///
-/// 让我们为这个类型添加一个新的泛型参数 `R`,并把它约束到我们想要的输出类型上:
+/// Let's add a new generic parameter `R` for that type, and bound it to the
+/// output type that we want:
 /// ```
 /// # #![feature(try_trait_v2)]
 /// # use std::ops::Try;
@@ -49,8 +52,8 @@ use crate::ops::ControlFlow;
 /// }
 /// ```
 ///
-/// 如果我们走完了整个迭代器,就需要用 [`Try::from_output`] 把累加器(accumulator)
-/// 包装进返回类型:
+/// If we get through the entire iterator, we need to wrap up the accumulator
+/// into the return type using [`Try::from_output`]:
 /// ```
 /// # #![feature(try_trait_v2)]
 /// # use std::ops::{ControlFlow, Try};
@@ -70,9 +73,10 @@ use crate::ops::ControlFlow;
 /// }
 /// ```
 ///
-/// 我们还需要 [`FromResidual::from_residual`] 来把 residual(残值)转回原来的
-/// 类型。但由于它是 `Try` 的 supertrait,我们无需在约束中提到它。所有实现了
-/// `Try` 的类型都能从其对应的 residual 重建出来,所以我们直接调用它就好:
+/// We'll also need [`FromResidual::from_residual`] to turn the residual back
+/// into the original type.  But because it's a supertrait of `Try`, we don't
+/// need to mention it in the bounds.  All types which implement `Try` can be
+/// recreated from their corresponding residual, so we'll just call it:
 /// ```
 /// # #![feature(try_trait_v2)]
 /// # use std::ops::{ControlFlow, Try};
@@ -92,9 +96,9 @@ use crate::ops::ControlFlow;
 /// }
 /// ```
 ///
-/// 但这套“调用 `branch`,然后对它 `match`,如果是 `Break` 就 `return`”的流程,
-/// 恰恰就是 `?` 运算符内部所做的事。因此与其手动写这一整套,我们直接用 `?`
-/// 即可:
+/// But this "call `branch`, then `match` on it, and `return` if it was a
+/// `Break`" is exactly what happens inside the `?` operator.  So rather than
+/// do all this manually, we can just use `?` instead:
 /// ```
 /// # #![feature(try_trait_v2)]
 /// # use std::ops::Try;
@@ -127,37 +131,41 @@ use crate::ops::ControlFlow;
 #[lang = "Try"]
 #[rustc_const_unstable(feature = "const_try", issue = "74935")]
 pub const trait Try: [const] FromResidual {
-    /// `?` 在 *不* 短路时所产出的值的类型。
+    /// The type of the value produced by `?` when *not* short-circuiting.
     #[unstable(feature = "try_trait_v2", issue = "84277", old_name = "try_trait")]
     type Output;
 
-    /// 在 `?` 短路时,作为其一部分传给 [`FromResidual::from_residual`] 的值的类型。
+    /// The type of the value passed to [`FromResidual::from_residual`]
+    /// as part of `?` when short-circuiting.
     ///
-    /// 它表示 `Self` 类型中那些 *不* 由 `Output` 类型表示的可能取值。
+    /// This represents the possible values of the `Self` type which are *not*
+    /// represented by the `Output` type.
     ///
-    /// # 给实现者的提示
+    /// # Note to Implementors
     ///
-    /// 这个类型的选取对于相互转换(interconversion)至关重要。与 `Output` 类型
-    /// (它往往是一个裸的泛型类型)不同,这个类型通常是某种 newtype(新类型),
-    /// 用来给类型“染色”(color),使它能与其他类型的 residual 区分开来。
+    /// The choice of this type is critical to interconversion.
+    /// Unlike the `Output` type, which will often be a raw generic type,
+    /// this type is typically a newtype of some sort to "color" the type
+    /// so that it's distinguishable from the residuals of other types.
     ///
-    /// 这正是为什么 `Result<T, E>::Residual` 不是 `E`,而是 `Result<Infallible, E>`。
-    /// 这样一来,它就与(比如)`ControlFlow<E>::Residual` 有所区别,因此在一个
-    /// 返回 `Result` 的方法里,不能对 `ControlFlow` 使用 `?`。
+    /// This is why `Result<T, E>::Residual` is not `E`, but `Result<Infallible, E>`.
+    /// That way it's distinct from `ControlFlow<E>::Residual`, for example,
+    /// and thus `?` on `ControlFlow` cannot be used in a method returning `Result`.
     ///
-    /// 如果你正在编写一个实现了 `Try<Output = T>` 的泛型类型 `Foo<T>`,那么通常
-    /// 你可以用 `Foo<std::convert::Infallible>` 作为它的 `Residual` 类型:该类型
-    /// 会在恰当的位置留有一个“洞”(hole),并保持 residual 的“foo 性”(foo-ness),
-    /// 从而要求其他类型必须显式选择加入(opt-in)才能与之相互转换。
+    /// If you're making a generic type `Foo<T>` that implements `Try<Output = T>`,
+    /// then typically you can use `Foo<std::convert::Infallible>` as its `Residual`
+    /// type: that type will have a "hole" in the correct place, and will maintain the
+    /// "foo-ness" of the residual so other types need to opt-in to interconversion.
     #[unstable(feature = "try_trait_v2", issue = "84277", old_name = "try_trait")]
     type Residual;
 
-    /// 从该类型的 `Output` 类型构造出该类型。
+    /// Constructs the type from its `Output` type.
     ///
-    /// 它的实现应当与 `branch` 方法保持一致,使得应用 `?` 运算符能取回原来的值:
-    /// `Try::from_output(x).branch() --> ControlFlow::Continue(x)`。
+    /// This should be implemented consistently with the `branch` method
+    /// such that applying the `?` operator will get back the original value:
+    /// `Try::from_output(x).branch() --> ControlFlow::Continue(x)`.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// #![feature(try_trait_v2)]
@@ -175,7 +183,7 @@ pub const trait Try: [const] FromResidual {
     /// # None }
     /// # make_question_mark_work();
     ///
-    /// // 例如,在 `try_fold` 中的累加器上就会用到它:
+    /// // This is used, for example, on the accumulator in `try_fold`:
     /// let r = std::iter::empty().try_fold(4, |_, ()| -> Option<_> { unreachable!() });
     /// assert_eq!(r, Some(4));
     /// ```
@@ -183,11 +191,12 @@ pub const trait Try: [const] FromResidual {
     #[unstable(feature = "try_trait_v2", issue = "84277", old_name = "try_trait")]
     fn from_output(output: Self::Output) -> Self;
 
-    /// 在 `?` 中用来决定:该运算符应当产出一个值(因为它返回了
-    /// [`ControlFlow::Continue`]),还是应当把一个值向上传播回调用者(因为它返回了
-    /// [`ControlFlow::Break`])。
+    /// Used in `?` to decide whether the operator should produce a value
+    /// (because this returned [`ControlFlow::Continue`])
+    /// or propagate a value back to the caller
+    /// (because this returned [`ControlFlow::Break`]).
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// #![feature(try_trait_v2)]
@@ -210,10 +219,11 @@ pub const trait Try: [const] FromResidual {
     fn branch(self) -> ControlFlow<Self::Residual, Self::Output>;
 }
 
-/// 用来指定:哪些 residual 可以被转换成哪些 [`crate::ops::Try`] 类型。
+/// Used to specify which residuals can be converted into which [`crate::ops::Try`] types.
 ///
-/// 每个 `Try` 类型都需要能从它自己关联的 `Residual` 类型重建出来,但它还可以
-/// 拥有额外的 `FromResidual` 实现,以支持与其他 `Try` 类型之间的相互转换。
+/// Every `Try` type needs to be recreatable from its own associated
+/// `Residual` type, but can also have additional `FromResidual` implementations
+/// to support interconversion with other `Try` types.
 #[rustc_on_unimplemented(
     on(
         all(
@@ -231,9 +241,9 @@ pub const trait Try: [const] FromResidual {
             from_desugaring = "QuestionMark",
             Self = "core::result::Result<T, E>",
         ),
-        // 在 trait 选择代码中,对于 `?` 里的 `From` 有一条专门的错误信息,
-        // 因此这条信息不会在 result-in-result 错误中显示;也正因如此,它的措辞
-        // 可以比 `ControlFlow` 的更强硬。
+        // There's a special error message in the trait selection code for
+        // `From` in `?`, so this is not shown for result-in-result errors,
+        // and thus it can be phrased more strongly than `ControlFlow`'s.
         message = "the `?` operator can only be used on `Result`s \
             in {ItemContext} that returns `Result`",
         label = "this `?` produces `{R}`, which is incompatible with `{Self}`",
@@ -255,8 +265,8 @@ pub const trait Try: [const] FromResidual {
             from_desugaring = "QuestionMark",
             Self = "core::option::Option<T>",
         ),
-        // `Option`-in-`Option` 总是能工作,因为这里只有一种可能的 residual,
-        // 所以这条信息也可以措辞强硬。
+        // `Option`-in-`Option` always works, as there's only one possible
+        // residual, so this can also be phrased strongly.
         message = "the `?` operator can only be used on `Option`s \
             in {ItemContext} that returns `Option`",
         label = "this `?` produces `{R}`, which is incompatible with `{Self}`",
@@ -278,7 +288,7 @@ pub const trait Try: [const] FromResidual {
         all(
             from_desugaring = "QuestionMark",
             Self = "core::ops::control_flow::ControlFlow<B, C>",
-            // `R` 不是 `ControlFlow`,因为那种情形在前面已经匹配过了
+            // `R` is not a `ControlFlow`, as that case was matched previously
         ),
         message = "the `?` operator can only be used on `ControlFlow`s \
             in {ItemContext} that returns `ControlFlow`",
@@ -298,13 +308,14 @@ pub const trait Try: [const] FromResidual {
 #[unstable(feature = "try_trait_v2", issue = "84277", old_name = "try_trait")]
 #[rustc_const_unstable(feature = "const_try", issue = "74935")]
 pub const trait FromResidual<R = <Self as Try>::Residual> {
-    /// 从一个兼容的 `Residual` 类型构造出该类型。
+    /// Constructs the type from a compatible `Residual` type.
     ///
-    /// 它的实现应当与 `branch` 方法保持一致,使得应用 `?` 运算符能取回一个等价
-    /// 的 residual:`FromResidual::from_residual(r).branch() --> ControlFlow::Break(r)`。
-    ///(当涉及相互转换时,并不强制要求 residual 与原值 *完全相同*。)
+    /// This should be implemented consistently with the `branch` method such
+    /// that applying the `?` operator will get back an equivalent residual:
+    /// `FromResidual::from_residual(r).branch() --> ControlFlow::Break(r)`.
+    /// (The residual is not mandated to be *identical* when interconversion is involved.)
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// #![feature(try_trait_v2)]
@@ -328,9 +339,9 @@ pub const trait FromResidual<R = <Self as Try>::Residual> {
     reason = "just here to simplify the desugaring; will never be stabilized"
 )]
 #[inline]
-#[track_caller] // 因为 `Result::from_residual` 带有它
+#[track_caller] // because `Result::from_residual` has it
 #[lang = "from_yeet"]
-#[allow(unreachable_pub)] // 未对外暴露,但仍通过 lang-item 被使用
+#[allow(unreachable_pub)] // not-exposed but still used via lang-item
 pub fn from_yeet<T, Y>(yeeted: Y) -> T
 where
     T: FromResidual<Yeet<Y>>,
@@ -338,32 +349,34 @@ where
     FromResidual::from_residual(Yeet(yeeted))
 }
 
-/// 允许取回这样一个规范的、实现了 [`Try`] 的类型:它以本类型作为自己的 residual,
-/// 并允许它以 `O` 作为自己的 output。
+/// Allows retrieving the canonical type implementing [`Try`] that has this type
+/// as its residual and allows it to hold an `O` as its output.
 ///
-/// 如果你把 `Try` trait 想象成把一个类型拆分成它的 [`Try::Output`] 和
-/// [`Try::Residual`] 两部分,那么这个 trait 允许把它们重新拼回去。
+/// If you think of the `Try` trait as splitting a type into its [`Try::Output`]
+/// and [`Try::Residual`] components, this allows putting them back together.
 ///
-/// 例如,`Result<T, E>: Try<Output = T, Residual = Result<Infallible, E>>`,
-/// 而反方向则有
-/// `<Result<Infallible, E> as Residual<T>>::TryType = Result<T, E>`。
+/// For example,
+/// `Result<T, E>: Try<Output = T, Residual = Result<Infallible, E>>`,
+/// and in the other direction,
+/// `<Result<Infallible, E> as Residual<T>>::TryType = Result<T, E>`.
 #[unstable(feature = "try_trait_v2_residual", issue = "91285")]
 #[rustc_const_unstable(feature = "const_try_residual", issue = "91285")]
 pub const trait Residual<O>: Sized {
-    /// 这个元函数(meta-function)的“返回”类型。
+    /// The "return" type of this meta-function.
     #[unstable(feature = "try_trait_v2_residual", issue = "91285")]
-    // FIXME: 本应是被隐含(implied)的
+    // FIXME: ought to be implied
     type TryType: [const] Try<Output = O, Residual = Self>;
 }
 
-/// 用在 `try {}` 代码块中,使得 `?` 脱糖所产出的类型取决于 residual 类型 `R`
-/// 和该代码块的 output 类型 `O`,而关键在于:它 *不* 像我们直接调用
-/// `<_ as FromResidual>::from_residual(r)` 时那样依赖上下文类型。
+/// Used in `try {}` blocks so the type produced in the `?` desugaring
+/// depends on the residual type `R` and the output type of the block `O`,
+/// but importantly not on the contextual type the way it would be if
+/// we called `<_ as FromResidual>::from_residual(r)` directly.
 #[unstable(feature = "try_trait_v2_residual", issue = "91285")]
 #[rustc_const_unstable(feature = "const_try_residual", issue = "91285")]
-// 需要是 `pub` 以避免 `private type`(私有类型)错误
+// needs to be `pub` to avoid `private type` errors
 #[expect(unreachable_pub)]
-#[inline] // FIXME: 能用 force 就好了,但会失败 —— 见 #148915
+#[inline] // FIXME: force would be nice, but fails -- see #148915
 #[lang = "into_try_type"]
 pub const fn residual_into_try_type<R: [const] Residual<O>, O>(
     r: R,
@@ -376,16 +389,16 @@ pub const fn residual_into_try_type<R: [const] Residual<O>, O>(
 pub(crate) type ChangeOutputType<T: Try<Residual: Residual<V>>, V> =
     <T::Residual as Residual<V>>::TryType;
 
-/// 一个适配器,用于借助 `Try` 实现来实现那些非 try 的方法。
+/// An adapter for implementing non-try methods via the `Try` implementation.
 ///
-/// 它在概念上与 `Result<T, !>` 相同,但由于它是一个一目了然的 newtype、且没有
-/// 到处散落的 `From` 约束,因此在 trait 求解(trait solving)、可居留性
-/// (inhabited-ness)检查等方面所需的工作更少。
+/// Conceptually the same as `Result<T, !>`, but requiring less work in trait
+/// solving and inhabited-ness checking and such, by being an obvious newtype
+/// and not having `From` bounds lying around.
 ///
-/// 目前并不打算把它对外公开,所以只是 `pub(crate)`。
+/// Not currently planned to be exposed publicly, so just `pub(crate)`.
 #[repr(transparent)]
 pub(crate) struct NeverShortCircuit<T>(pub T);
-// FIXME(const-hack): 等加入 const 闭包后,替换为 `|a| NeverShortCircuit(f(a))`。
+// FIXME(const-hack): replace with `|a| NeverShortCircuit(f(a))` when const closures added.
 pub(crate) struct Wrapped<T, A, F: FnMut(A) -> T> {
     f: F,
     p: PhantomData<(T, A)>,
@@ -406,10 +419,10 @@ impl<T, A, F: [const] FnMut(A) -> T> const FnMut<(A,)> for Wrapped<T, A, F> {
 }
 
 impl<T> NeverShortCircuit<T> {
-    /// 包装一个一元函数,产生出另一个把其输出包进 `NeverShortCircuit` 的函数。
+    /// Wraps a unary function to produce one that wraps the output into a `NeverShortCircuit`.
     ///
-    /// 这在借助 `try_` 系列函数来实现不会失败(infallible)的函数时很有用,且不会
-    /// 意外地在闭包中捕获额外的泛型参数。
+    /// This is useful for implementing infallible functions in terms of the `try_` ones,
+    /// without accidentally capturing extra generic parameters in a closure.
     #[inline]
     pub(crate) const fn wrap_mut_1<A, F>(f: F) -> Wrapped<T, A, F>
     where
@@ -453,8 +466,8 @@ impl<T: [const] Destruct> const Residual<T> for NeverShortCircuitResidual {
     type TryType = NeverShortCircuit<T>;
 }
 
-/// 在你的类型上实现 `FromResidual<Yeet<T>>`,即可在返回你这个类型的函数中启用
-/// `do yeet expr` 语法。
+/// Implement `FromResidual<Yeet<T>>` on your type to enable
+/// `do yeet expr` syntax in functions returning your type.
 #[unstable(feature = "try_trait_v2_yeet", issue = "96374")]
 #[derive(Debug)]
 pub struct Yeet<T>(pub T);

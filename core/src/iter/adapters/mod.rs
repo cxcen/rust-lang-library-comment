@@ -61,28 +61,31 @@ pub use self::{
     scan::Scan, skip::Skip, skip_while::SkipWhile, take::Take, take_while::TakeWhile, zip::Zip,
 };
 
-/// 在迭代器适配器流水线中，传递式访问 source 阶段的 trait。
+/// This trait provides transitive access to source-stage in an iterator-adapter pipeline
+/// under the conditions that
+/// * the iterator source `S` itself implements `SourceIter<Source = S>`
+/// * there is a delegating implementation of this trait for each adapter in the pipeline between
+///   the source and the pipeline consumer.
 ///
-/// 满足下面条件时，流水线消费者可以通过该 trait 找到底层 source:
+/// When the source is an owning iterator struct (commonly called `IntoIter`) then
+/// this can be useful for specializing [`FromIterator`] implementations or recovering the
+/// remaining elements after an iterator has been partially exhausted.
 ///
-/// * 迭代器 source `S` 自身实现 `SourceIter<Source = S>`。
-/// * source 与流水线消费者之间的每个适配器都提供委托实现，把访问继续向内转发。
+/// Note that implementations do not necessarily have to provide access to the innermost
+/// source of a pipeline. A stateful intermediate adapter might eagerly evaluate a part
+/// of the pipeline and expose its internal storage as source.
 ///
-/// 当 source 是拥有元素的迭代器结构体(通常称为 `IntoIter`)时，这可用于特化
-/// [`FromIterator`] 实现，或在迭代器被部分消耗后取回剩余元素。
+/// The trait is unsafe because implementers must uphold additional safety properties.
+/// See [`as_inner`] for details.
 ///
-/// 注意，实现不一定必须暴露流水线最内层的 source。有状态的中间适配器可能已经急切
-/// 求值了流水线的一部分，并把自己的内部存储作为 source 暴露出去。
-///
-/// 该 trait 是 unsafe，因为实现者必须维护额外安全性质。细节见 [`as_inner`]。
-///
-/// 该 trait 的主要用途是原地迭代。更多信息见 [`vec::in_place_collect`] 模块文档。
+/// The primary use of this trait is in-place iteration. Refer to the [`vec::in_place_collect`]
+/// module documentation for more information.
 ///
 /// [`vec::in_place_collect`]: ../../../../alloc/vec/in_place_collect/index.html
 ///
-/// # 示例
+/// # Examples
 ///
-/// 取回已被部分消耗的 source:
+/// Retrieving a partially consumed source:
 ///
 /// ```
 /// # #![feature(inplace_iteration)]
@@ -100,49 +103,52 @@ pub use self::{
 #[doc(hidden)]
 #[rustc_specialization_trait]
 pub unsafe trait SourceIter {
-    /// 迭代器流水线中的 source 阶段。
+    /// A source stage in an iterator pipeline.
     type Source;
 
-    /// 取出迭代器流水线的 source。
+    /// Retrieve the source of an iterator pipeline.
     ///
-    /// # 安全性(Safety）
+    /// # Safety
     ///
-    /// 除非调用方替换了该引用，实现在自身生命周期内必须返回同一个可变引用。
+    /// Implementations must return the same mutable reference for their lifetime, unless
+    /// replaced by a caller.
     ///
-    /// 调用方只有在已经停止迭代，并且会在取出 source 后丢弃整条迭代器流水线时，
-    /// 才能替换这个引用。
+    /// Callers may only replace the reference when they stopped iteration and drop the
+    /// iterator pipeline after extracting the source.
     ///
-    /// 这意味着迭代器适配器可以在迭代过程中依赖 source 不会被替换，但不能在自己的
-    /// `Drop` 实现中继续依赖这一点。
+    /// This means iterator adapters can rely on the source not changing during
+    /// iteration but they cannot rely on it in their Drop implementations.
     ///
-    /// 实现该方法意味着适配器放弃对 source 的私有独占访问；之后只能依赖由方法接收
-    /// 者类型表达的保证。由于访问不再受私有限制，即使适配器能接触 source 内部，
-    /// 也必须维护 source 公共 API 承诺的不变量。
+    /// Implementing this method means adapters relinquish private-only access to their
+    /// source and can only rely on guarantees made based on method receiver types.
+    /// The lack of restricted access also requires that adapters must uphold the source's
+    /// public API even when they have access to its internals.
     ///
-    /// 反过来，调用方也必须接受 source 可能处于任何符合其公共 API 的状态，因为位于
-    /// 调用方与 source 之间的适配器拥有同样的访问能力。特别是，某个适配器可能已经
-    /// 消耗了比表面上严格需要更多的元素。
+    /// Callers in turn must expect the source to be in any state that is consistent with
+    /// its public API since adapters sitting between it and the source have the same
+    /// access. In particular an adapter may have consumed more elements than strictly necessary.
     ///
-    /// 这些要求的总体目标是允许流水线消费者使用:
-    ///
-    /// * 迭代停止后 source 中剩余的元素。
-    /// * 消耗型迭代器推进后变为空闲的内存。
+    /// The overall goal of these requirements is to let the consumer of a pipeline use
+    /// * whatever remains in the source after iteration has stopped
+    /// * the memory that has become unused by advancing a consuming iterator
     ///
     /// [`next()`]: Iterator::next()
     unsafe fn as_inner(&mut self) -> &mut Self::Source;
 }
 
-/// 一个迭代器适配器: 只要底层迭代器产出的值经 `Try::branch` 判断为
-/// `ControlFlow::Continue`，它就继续产出结果。
+/// An iterator adapter that produces output as long as the underlying
+/// iterator produces values where `Try::branch` says to `ControlFlow::Continue`.
 ///
-/// 如果遇到 `ControlFlow::Break`，迭代器会停止，并保存 residual。
+/// If a `ControlFlow::Break` is encountered, the iterator stops and the
+/// residual is stored.
 pub(crate) struct GenericShunt<'a, I, R> {
     iter: I,
     residual: &'a mut Option<R>,
 }
 
-/// 把给定迭代器当作产出元素的 `Try::Output` 类型来处理。遇到任何 `Try::Residual`
-/// 都会停止内部迭代器，并传播回整体结果。
+/// Process the given iterator as if it yielded the item's `Try::Output`
+/// type instead. Any `Try::Residual`s encountered will stop the inner iterator
+/// and be propagated back to the overall result.
 pub(crate) fn try_process<I, T, R, F, U>(iter: I, mut f: F) -> ChangeOutputType<I::Item, U>
 where
     I: Iterator<Item: Try<Output = T, Residual = R>>,
@@ -205,14 +211,14 @@ where
 
     #[inline]
     unsafe fn as_inner(&mut self) -> &mut Self::Source {
-        // SAFETY: 转发到具有相同要求的 unsafe 函数。
+        // SAFETY: unsafe function forwarding to unsafe function with the same requirements
         unsafe { SourceIter::as_inner(&mut self.iter) }
     }
 }
 
-// SAFETY: GenericShunt::next 调用 `I::try_for_each`；若要返回 `Some(_)`，它必须推进
-// `iter`。由于 `iter` 的类型满足 `I: InPlaceIterable`，每一步都保证至少从底层
-// source 中移出一项。
+// SAFETY: GenericShunt::next calls `I::try_for_each`, which has to advance `iter`
+// in order to return `Some(_)`. Since `iter` has type `I: InPlaceIterable` it's
+// guaranteed that at least one item will be moved out from the underlying source.
 #[unstable(issue = "none", feature = "inplace_iteration")]
 unsafe impl<I, R> InPlaceIterable for GenericShunt<'_, I, R>
 where

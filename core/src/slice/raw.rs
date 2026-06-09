@@ -1,65 +1,60 @@
-//! 用裸指针和长度构造 `&[T]` 与 `&mut [T]` 的自由函数。
-//!
-//! 这些函数是切片与 FFI、手写分配器、裸指针算法之间的边界。它们只把
-//! “起始地址 + 元素个数” 重新解释成 Rust 引用，不会证明内存是否真实有效；
-//! 调用方必须维护引用要求的有效性、对齐、生命周期和 aliasing 规则。
+//! Free functions to create `&[T]` and `&mut [T]`.
 
 use crate::ops::Range;
 use crate::{array, ptr, ub_checks};
 
-/// 由裸指针和长度构造共享切片。
+/// Forms a slice from a pointer and a length.
 ///
-/// `len` 参数表示 **元素个数**，不是字节数。实际覆盖的字节范围是
-/// `len * size_of::<T>()`，并且这个范围必须满足 Rust 对 `&[T]` 的所有不变量。
+/// The `len` argument is the number of **elements**, not the number of bytes.
 ///
-/// # 安全性(Safety）
+/// # Safety
 ///
-/// 违反下面任一条件都会导致 undefined behavior，即使随后没有真正读取返回的切片：
+/// Behavior is undefined if any of the following conditions are violated:
 ///
-/// * `data` 必须非空、按 `T` 正确对齐，并且在
-///   `len * size_of::<T>()` 字节范围内对读取是 [valid] 的。这尤其意味着：
+/// * `data` must be non-null, [valid] for reads for `len * size_of::<T>()` many bytes,
+///   and it must be properly aligned. This means in particular:
 ///
-///     * 这个切片的整个内存范围必须位于 **同一个 allocation** 内。切片不能跨越两个
-///       allocation，即使两个对象在数值地址上碰巧相邻也不行。见
-///       [下面](#错误用法) 的错误示例。
-///     * 即使 `len == 0`，或者 `T` 是 ZST，`data` 仍然必须非空且对齐。原因之一是
-///       enum layout 优化可能依赖引用（包括任意长度的切片引用）总是非空且对齐，
-///       用这些 niche 与其它数据区分。零长度切片可使用 [`NonNull::dangling()`]
-///       产生一个可作为 `data` 的哨兵指针。
+///     * The entire memory range of this slice must be contained within a single allocation!
+///       Slices can never span across multiple allocations. See [below](#incorrect-usage)
+///       for an example incorrectly not taking this into account.
+///     * `data` must be non-null and aligned even for zero-length slices or slices of ZSTs. One
+///       reason for this is that enum layout optimizations may rely on references
+///       (including slices of any length) being aligned and non-null to distinguish
+///       them from other data. You can obtain a pointer that is usable as `data`
+///       for zero-length slices using [`NonNull::dangling()`].
 ///
-/// * `data` 必须指向 `len` 个连续、已经正确初始化的 `T` 值；不能把未初始化字节、
-///   已经被移动走的值或不满足 `T` 有效性约束的位模式暴露成 `&[T]`。
+/// * `data` must point to `len` consecutive properly initialized values of type `T`.
 ///
-/// * 在返回切片的生命周期 `'a` 内，返回切片所引用的内存不得被修改，除非修改发生在
-///   `UnsafeCell` 内部。这是共享引用的 aliasing 契约：编译器可以假设普通
-///   `&[T]` 背后的 `T` 在 `'a` 内不会被其它可变路径改写。
+/// * The memory referenced by the returned slice must not be mutated for the duration
+///   of lifetime `'a`, except inside an `UnsafeCell`.
 ///
-/// * 切片总大小 `len * size_of::<T>()` 不能超过 `isize::MAX`，把这个大小加到
-///   `data` 上也不能让地址空间发生“回绕”。这是 [`pointer::offset`] 的安全前置，
-///   也是 Rust 用 `isize` 表示同一 allocation 内偏移时的优化假设。
+/// * The total size `len * size_of::<T>()` of the slice must be no larger than `isize::MAX`,
+///   and adding that size to `data` must not "wrap around" the address space.
+///   See the safety documentation of [`pointer::offset`].
 ///
-/// # 注意事项
+/// # Caveat
 ///
-/// 返回切片的生命周期由使用位置推断。为了避免不小心把裸指针扩展成过长的引用，
-/// 通常应通过辅助函数把这个生命周期绑定到某个真实宿主值的生命周期上，或在调用点
-/// 显式标注，使 `'a` 不会超过底层 allocation、初始化状态和 aliasing 保证的有效期。
+/// The lifetime for the returned slice is inferred from its usage. To
+/// prevent accidental misuse, it's suggested to tie the lifetime to whichever
+/// source lifetime is safe in the context, such as by providing a helper
+/// function taking the lifetime of a host value for the slice, or by explicit
+/// annotation.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// use std::slice;
 ///
-/// // 为单个元素构造长度为 1 的切片。
+/// // manifest a slice for a single element
 /// let x = 42;
 /// let ptr = &x as *const _;
 /// let slice = unsafe { slice::from_raw_parts(ptr, 1) };
 /// assert_eq!(slice[0], 42);
 /// ```
 ///
-/// ### 错误用法
+/// ### Incorrect usage
 ///
-/// 下面的 `join_slices` 函数是 **unsound** 的，因为它只比较了数值地址是否连续，
-/// 没有证明两个输入来自同一个 allocation。
+/// The following `join_slices` function is **unsound** ⚠️
 ///
 /// ```rust,no_run
 /// use std::slice;
@@ -69,49 +64,51 @@ use crate::{array, ptr, ub_checks};
 ///     let snd_start = snd.as_ptr();
 ///     assert_eq!(fst_end, snd_start, "Slices must be contiguous!");
 ///     unsafe {
-///         // 上面的断言只说明 `fst` 与 `snd` 的地址数值连续；它们仍可能属于
-///         // _不同 allocation_，此时把两者拼成一个切片就是 undefined behavior。
+///         // The assertion above ensures `fst` and `snd` are contiguous, but they might
+///         // still be contained within _different allocations_, in which case
+///         // creating this slice is undefined behavior.
 ///         slice::from_raw_parts(fst.as_ptr(), fst.len() + snd.len())
 ///     }
 /// }
 ///
 /// fn main() {
-///     // `a` 与 `b` 是不同 allocation...
+///     // `a` and `b` are different allocations...
 ///     let a = 42;
 ///     let b = 27;
-///     // ... 但它们在内存中的数值地址仍可能碰巧连续：| a | b |
+///     // ... which may nevertheless be laid out contiguously in memory: | a | b |
 ///     let _ = join_slices(slice::from_ref(&a), slice::from_ref(&b)); // UB
 /// }
 /// ```
 ///
-/// ### FFI: 处理空指针
+/// ### FFI: Handling null pointers
 ///
-/// 在 C++ 等语言中，空集合的 `data()` 指针不保证非空。Rust 切片引用要求指针非空，
-/// 因此外部接口传入 `(ptr, len)` 时必须先处理空指针，避免把 `NULL` 直接交给
-/// `from_raw_parts`。
+/// In languages such as C++, pointers to empty collections are not guaranteed to be non-null.
+/// When accepting such pointers, they have to be checked for null-ness to avoid undefined
+/// behavior.
 ///
 /// ```
 /// use std::slice;
 ///
-/// /// 对 FFI 传入的切片元素求和。
+/// /// Sum the elements of an FFI slice.
 /// ///
-/// /// # 安全性(Safety）
+/// /// # Safety
 /// ///
-/// /// 如果 ptr 不是 NULL，它必须正确对齐，并且指向 `len` 个已经初始化的 `f32`。
+/// /// If ptr is not NULL, it must be correctly aligned and
+/// /// point to `len` initialized items of type `f32`.
 /// unsafe extern "C" fn sum_slice(ptr: *const f32, len: usize) -> f32 {
 ///     let data = if ptr.is_null() {
-///         // 这里约定空指针只表示空切片，因此假定 `len` 为 0。
+///         // `len` is assumed to be 0.
 ///         &[]
 ///     } else {
-///         // SAFETY: 函数的安全文档要求非空分支中的 `ptr` 满足对齐、初始化和长度契约。
+///         // SAFETY: see function docstring.
 ///         unsafe { slice::from_raw_parts(ptr, len) }
 ///     };
 ///     data.into_iter().sum()
 /// }
 ///
-/// // 这可能是 C++ 的 std::vector::data() 对空 vector 的返回值：
+/// // This could be the result of C++'s std::vector::data():
 /// let ptr = std::ptr::null();
-/// // 这可能是 std::vector::size()：
+/// // And this could be std::vector::size():
 /// let len = 0;
 /// assert_eq!(unsafe { sum_slice(ptr, len) }, 0.0);
 /// ```
@@ -125,8 +122,7 @@ use crate::{array, ptr, ub_checks};
 #[rustc_diagnostic_item = "slice_from_raw_parts"]
 #[track_caller]
 pub const unsafe fn from_raw_parts<'a, T>(data: *const T, len: usize) -> &'a [T] {
-    // SAFETY: 调用方必须维护 `from_raw_parts` 的完整安全契约；这里的 UB 检查只覆盖
-    // 非空、对齐和总大小，初始化、同一 allocation、生命周期与 aliasing 仍由调用方保证。
+    // SAFETY: the caller must uphold the safety contract for `from_raw_parts`.
     unsafe {
         ub_checks::assert_unsafe_precondition!(
             check_language_ub,
@@ -144,30 +140,33 @@ pub const unsafe fn from_raw_parts<'a, T>(data: *const T, len: usize) -> &'a [T]
     }
 }
 
-/// 与 [`from_raw_parts`] 功能相同，但返回可变切片。
+/// Performs the same functionality as [`from_raw_parts`], except that a
+/// mutable slice is returned.
 ///
-/// `&mut [T]` 还会给编译器提供唯一访问权：在生命周期 `'a` 内，返回值覆盖的每个元素
-/// 都必须只能通过这个可变切片（或从它派生出的引用/指针）访问。
+/// # Safety
 ///
-/// # 安全性(Safety）
+/// Behavior is undefined if any of the following conditions are violated:
 ///
-/// 违反下面任一条件都会导致 undefined behavior：
+/// * `data` must be non-null, [valid] for both reads and writes for `len * size_of::<T>()` many bytes,
+///   and it must be properly aligned. This means in particular:
 ///
-/// * `data` 必须非空、按 `T` 正确对齐，并且在 `len * size_of::<T>()` 字节范围内
-///   对读取和写入都是 [valid] 的。这尤其意味着：
+///     * The entire memory range of this slice must be contained within a single allocation!
+///       Slices can never span across multiple allocations.
+///     * `data` must be non-null and aligned even for zero-length slices or slices of ZSTs. One
+///       reason for this is that enum layout optimizations may rely on references
+///       (including slices of any length) being aligned and non-null to distinguish
+///       them from other data. You can obtain a pointer that is usable as `data`
+///       for zero-length slices using [`NonNull::dangling()`].
 ///
-///     * 整个切片范围必须位于同一个 allocation 内，不能跨 allocation。
-///     * 即使是零长度切片或 ZST 切片，`data` 也必须非空且对齐；可用
-///       [`NonNull::dangling()`] 构造零长度情况下的有效哨兵指针。
+/// * `data` must point to `len` consecutive properly initialized values of type `T`.
 ///
-/// * `data` 必须指向 `len` 个连续、已经正确初始化的 `T` 值。
+/// * The memory referenced by the returned slice must not be accessed through any other pointer
+///   (not derived from the return value) for the duration of lifetime `'a`.
+///   Both read and write accesses are forbidden.
 ///
-/// * 在返回切片生命周期 `'a` 内，除从返回值派生出的引用或指针外，不能通过任何其它指针
-///   访问这段内存；读和写都禁止。这是 `&mut` 独占 aliasing 契约，违反它会破坏编译器
-///   对无别名可变引用的优化假设。
-///
-/// * 切片总大小 `len * size_of::<T>()` 不能超过 `isize::MAX`，把这个大小加到
-///   `data` 上也不能让地址空间回绕。见 [`pointer::offset`] 的安全文档。
+/// * The total size `len * size_of::<T>()` of the slice must be no larger than `isize::MAX`,
+///   and adding that size to `data` must not "wrap around" the address space.
+///   See the safety documentation of [`pointer::offset`].
 ///
 /// [valid]: ptr#safety
 /// [`NonNull::dangling()`]: ptr::NonNull::dangling
@@ -178,8 +177,7 @@ pub const unsafe fn from_raw_parts<'a, T>(data: *const T, len: usize) -> &'a [T]
 #[rustc_diagnostic_item = "slice_from_raw_parts_mut"]
 #[track_caller]
 pub const unsafe fn from_raw_parts_mut<'a, T>(data: *mut T, len: usize) -> &'a mut [T] {
-    // SAFETY: 调用方必须维护 `from_raw_parts_mut` 的完整安全契约；这里仅把裸的
-    // `(data, len)` 重新组成 `&mut [T]`，不会证明初始化、唯一访问权或生命周期。
+    // SAFETY: the caller must uphold the safety contract for `from_raw_parts_mut`.
     unsafe {
         ub_checks::assert_unsafe_precondition!(
             check_language_ub,
@@ -197,7 +195,7 @@ pub const unsafe fn from_raw_parts_mut<'a, T>(data: *mut T, len: usize) -> &'a m
     }
 }
 
-/// 将 `T` 的共享引用转换成长度为 1 的切片，不复制元素。
+/// Converts a reference to T into a slice of length 1 (without copying).
 #[stable(feature = "from_ref", since = "1.28.0")]
 #[rustc_const_stable(feature = "const_slice_from_ref_shared", since = "1.63.0")]
 #[rustc_diagnostic_item = "slice_from_ref"]
@@ -206,7 +204,7 @@ pub const fn from_ref<T>(s: &T) -> &[T] {
     array::from_ref(s)
 }
 
-/// 将 `T` 的可变引用转换成长度为 1 的可变切片，不复制元素。
+/// Converts a reference to T into a slice of length 1 (without copying).
 #[stable(feature = "from_ref", since = "1.28.0")]
 #[rustc_const_stable(feature = "const_slice_from_ref", since = "1.83.0")]
 #[must_use]
@@ -214,43 +212,50 @@ pub const fn from_mut<T>(s: &mut T) -> &mut [T] {
     array::from_mut(s)
 }
 
-/// 由指针范围构造共享切片。
+/// Forms a slice from a pointer range.
 ///
-/// 这适合与用两个指针表示内存区间的外部接口交互，例如 C++ 中常见的
-/// `[begin, end)` 约定。`end` 必须是一过末尾指针，范围长度由
-/// `end.offset_from_unsigned(start)` 推导。
+/// This function is useful for interacting with foreign interfaces which
+/// use two pointers to refer to a range of elements in memory, as is
+/// common in C++.
 ///
-/// # 安全性(Safety）
+/// # Safety
 ///
-/// 违反下面任一条件都会导致 undefined behavior：
+/// Behavior is undefined if any of the following conditions are violated:
 ///
-/// * 范围的 `start` 指针必须非空、[valid]、正确对齐，并指向切片第一个元素。
+/// * The `start` pointer of the range must be a non-null, [valid] and properly aligned pointer
+///   to the first element of a slice.
 ///
-/// * `end` 指针必须是 [valid] 且正确对齐的 *一过末尾* 指针；从 `start` 到 `end`
-///   的偏移必须正好等于切片长度。
+/// * The `end` pointer must be a [valid] and properly aligned pointer to *one past*
+///   the last element, such that the offset from the end to the start pointer is
+///   the length of the slice.
 ///
-/// * 整个切片内存范围必须位于同一个 allocation 内，切片不能跨 allocation。
+/// * The entire memory range of this slice must be contained within a single allocation!
+///   Slices can never span across multiple allocations.
 ///
-/// * 范围内必须包含 `N` 个连续、已经正确初始化的 `T` 值。
+/// * The range must contain `N` consecutive properly initialized values of type `T`.
 ///
-/// * 在返回切片生命周期 `'a` 内，这段内存不得被修改，除非修改发生在 `UnsafeCell` 内部。
+/// * The memory referenced by the returned slice must not be mutated for the duration
+///   of lifetime `'a`, except inside an `UnsafeCell`.
 ///
-/// * 范围总长度不能超过 `isize::MAX`，把对应字节大小加到 `start` 上不能让地址空间回绕。
-///   见 [`pointer::offset`] 的安全文档。
+/// * The total length of the range must be no larger than `isize::MAX`,
+///   and adding that size to `start` must not "wrap around" the address space.
+///   See the safety documentation of [`pointer::offset`].
 ///
-/// 注意，由 [`slice::as_ptr_range`] 从同一个有效切片产生的范围满足这些要求。
+/// Note that a range created from [`slice::as_ptr_range`] fulfills these requirements.
 ///
 /// # Panics
 ///
-/// 如果 `T` 是 Zero-Sized Type（“ZST”），本函数会 panic。ZST 没有可用的字节距离来
-/// 从两个指针恢复元素个数。
+/// This function panics if `T` is a Zero-Sized Type (“ZST”).
 ///
-/// # 注意事项
+/// # Caveat
 ///
-/// 返回切片的生命周期由使用位置推断；应把它绑定到真实宿主对象或外部缓冲区的有效期上，
-/// 避免把一对裸指针意外提升成过长的 `&[T]`。
+/// The lifetime for the returned slice is inferred from its usage. To
+/// prevent accidental misuse, it's suggested to tie the lifetime to whichever
+/// source lifetime is safe in the context, such as by providing a helper
+/// function taking the lifetime of a host value for the slice, or by explicit
+/// annotation.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// #![feature(slice_from_ptr_range)]
@@ -270,49 +275,58 @@ pub const fn from_mut<T>(s: &mut T) -> &mut [T] {
 #[rustc_const_unstable(feature = "const_slice_from_ptr_range", issue = "89792")]
 #[track_caller]
 pub const unsafe fn from_ptr_range<'a, T>(range: Range<*const T>) -> &'a [T] {
-    // SAFETY: 调用方保证 `range.start..range.end` 是同一 allocation 内的有效
-    // `[begin, end)` 范围；`offset_from_unsigned` 得到的长度可安全交给 `from_raw_parts`。
+    // SAFETY: the caller must uphold the safety contract for `from_ptr_range`.
     unsafe { from_raw_parts(range.start, range.end.offset_from_unsigned(range.start)) }
 }
 
-/// 由指针范围构造可变切片。
+/// Forms a mutable slice from a pointer range.
 ///
-/// 这与 [`from_ptr_range`] 功能相同，但返回 `&mut [T]`，因此还要求整个范围在
-/// 生命周期 `'a` 内具备唯一访问权。
+/// This is the same functionality as [`from_ptr_range`], except that a
+/// mutable slice is returned.
 ///
-/// 它适合与使用 `[begin, end)` 两指针约定的外部接口交互，例如 C++ 容器或手写缓冲区。
+/// This function is useful for interacting with foreign interfaces which
+/// use two pointers to refer to a range of elements in memory, as is
+/// common in C++.
 ///
-/// # 安全性(Safety）
+/// # Safety
 ///
-/// 违反下面任一条件都会导致 undefined behavior：
+/// Behavior is undefined if any of the following conditions are violated:
 ///
-/// * 范围的 `start` 指针必须非空、[valid]、正确对齐，并指向切片第一个元素。
+/// * The `start` pointer of the range must be a non-null, [valid] and properly aligned pointer
+///   to the first element of a slice.
 ///
-/// * `end` 指针必须是 [valid] 且正确对齐的 *一过末尾* 指针；从 `start` 到 `end`
-///   的偏移必须正好等于切片长度。
+/// * The `end` pointer must be a [valid] and properly aligned pointer to *one past*
+///   the last element, such that the offset from the end to the start pointer is
+///   the length of the slice.
 ///
-/// * 整个切片范围必须位于同一个 allocation 内，不能跨 allocation。
+/// * The entire memory range of this slice must be contained within a single allocation!
+///   Slices can never span across multiple allocations.
 ///
-/// * 范围内必须包含 `N` 个连续、已经正确初始化的 `T` 值。
+/// * The range must contain `N` consecutive properly initialized values of type `T`.
 ///
-/// * 在返回切片生命周期 `'a` 内，不能通过任何非返回值派生的指针访问这段内存；
-///   读和写都禁止，以维护 `&mut [T]` 的独占 aliasing 契约。
+/// * The memory referenced by the returned slice must not be accessed through any other pointer
+///   (not derived from the return value) for the duration of lifetime `'a`.
+///   Both read and write accesses are forbidden.
 ///
-/// * 范围总长度不能超过 `isize::MAX`，把对应字节大小加到 `start` 上不能让地址空间回绕。
-///   见 [`pointer::offset`] 的安全文档。
+/// * The total length of the range must be no larger than `isize::MAX`,
+///   and adding that size to `start` must not "wrap around" the address space.
+///   See the safety documentation of [`pointer::offset`].
 ///
-/// 注意，由 [`slice::as_mut_ptr_range`] 从同一个有效可变切片产生的范围满足这些要求。
+/// Note that a range created from [`slice::as_mut_ptr_range`] fulfills these requirements.
 ///
 /// # Panics
 ///
-/// 如果 `T` 是 Zero-Sized Type（“ZST”），本函数会 panic。
+/// This function panics if `T` is a Zero-Sized Type (“ZST”).
 ///
-/// # 注意事项
+/// # Caveat
 ///
-/// 返回切片的生命周期由使用位置推断；应把它显式绑定到真实缓冲区的生命周期，避免产生
-/// 比底层唯一借用更长的 `&mut [T]`。
+/// The lifetime for the returned slice is inferred from its usage. To
+/// prevent accidental misuse, it's suggested to tie the lifetime to whichever
+/// source lifetime is safe in the context, such as by providing a helper
+/// function taking the lifetime of a host value for the slice, or by explicit
+/// annotation.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// #![feature(slice_from_ptr_range)]
@@ -331,7 +345,6 @@ pub const unsafe fn from_ptr_range<'a, T>(range: Range<*const T>) -> &'a [T] {
 #[unstable(feature = "slice_from_ptr_range", issue = "89792")]
 #[rustc_const_unstable(feature = "const_slice_from_mut_ptr_range", issue = "89792")]
 pub const unsafe fn from_mut_ptr_range<'a, T>(range: Range<*mut T>) -> &'a mut [T] {
-    // SAFETY: 调用方保证该可变指针范围有效、同 allocation、已初始化且唯一可访问；
-    // 得到的长度因此可安全交给 `from_raw_parts_mut`。
+    // SAFETY: the caller must uphold the safety contract for `from_mut_ptr_range`.
     unsafe { from_raw_parts_mut(range.start, range.end.offset_from_unsigned(range.start)) }
 }

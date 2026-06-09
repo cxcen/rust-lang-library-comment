@@ -3,13 +3,13 @@ use crate::future::Future;
 use crate::pin::Pin;
 use crate::task::{Context, Poll};
 
-/// 创建一个 future,它包裹一个返回 [`Poll`] 的函数。
+/// Creates a future that wraps a function returning [`Poll`].
 ///
-/// 对该 future 的轮询会被委派给被包裹的函数。如果返回的 future 被固定(pin),那么被包裹函数
-/// 所捕获的环境也会被就地固定;因此只要闭包不把它捕获的内容移动出去,它就可以安全地为这些捕获
-/// 创建被固定的引用。
+/// Polling the future delegates to the wrapped function. If the returned future is pinned, then the
+/// captured environment of the wrapped function is also pinned in-place, so as long as the closure
+/// does not move out of its captures it can soundly create pinned references to them.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// # async fn run() {
@@ -25,16 +25,16 @@ use crate::task::{Context, Poll};
 /// # }
 /// ```
 ///
-/// ## 捕获一个被固定的状态
+/// ## Capturing a pinned state
 ///
-/// 一个闭包包裹内层 future 的例子:
+/// Example of a closure wrapping inner futures:
 ///
 /// ```
 /// # async fn run() {
 /// use core::future::{self, Future};
 /// use core::task::Poll;
 ///
-/// /// 解析为最先完成的那个 future。若平局,则 `a` 胜出。
+/// /// Resolves to the first future that completes. In the event of a tie, `a` wins.
 /// fn naive_select<T>(
 ///     a: impl Future<Output = T>,
 ///     b: impl Future<Output = T>,
@@ -65,11 +65,11 @@ use crate::task::{Context, Poll};
 /// let a = async { 42 };
 /// let b = async { 27 };
 /// let v = naive_select(a, b).await;
-/// assert_eq!(v, 42); // 平局时偏向 `a`!
+/// assert_eq!(v, 42); // biased towards `a` in case of tie!
 /// # }
 /// ```
 ///
-/// 这次不使用 [`Box::pin`]:
+/// This time without [`Box::pin`]ning:
 ///
 /// [`Box::pin`]: ../../std/boxed/struct.Box.html#method.pin
 ///
@@ -79,7 +79,7 @@ use crate::task::{Context, Poll};
 /// use core::pin::pin;
 /// use core::task::Poll;
 ///
-/// /// 解析为最先完成的那个 future。若平局,则 `a` 胜出。
+/// /// Resolves to the first future that completes. In the event of a tie, `a` wins.
 /// fn naive_select<T>(
 ///     a: impl Future<Output = T>,
 ///     b: impl Future<Output = T>,
@@ -106,8 +106,9 @@ use crate::task::{Context, Poll};
 /// # }
 /// ```
 ///
-///   - 注意:正因为身处 `async` 上下文中,我们才得以使用 [`pin!`] 宏,从而无需借助 unsafe 的
-///     <code>[Pin::new_unchecked](&mut fut)</code> 构造器。
+///   - Notice how, by virtue of being in an `async` context, we have been able to make the [`pin!`]
+///     macro work, thereby avoiding any need for the `unsafe`
+///     <code>[Pin::new_unchecked](&mut fut)</code> constructor.
 ///
 /// [`pin!`]: crate::pin::pin!
 #[stable(feature = "future_poll_fn", since = "1.64.0")]
@@ -118,9 +119,10 @@ where
     PollFn { f }
 }
 
-/// 一个包裹了“返回 [`Poll`] 的函数”的 Future。
+/// A Future that wraps a function returning [`Poll`].
 ///
-/// 该 `struct` 由 [`poll_fn()`] 创建。更多信息请参阅其文档。
+/// This `struct` is created by [`poll_fn()`]. See its
+/// documentation for more.
 #[must_use = "futures do nothing unless you `.await` or poll them"]
 #[stable(feature = "future_poll_fn", since = "1.64.0")]
 pub struct PollFn<F> {
@@ -145,7 +147,7 @@ where
     type Output = T;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<T> {
-        // SAFETY: 我们没有把被固定字段中的值移动出来,只是取得对 `f` 的可变引用并调用它。
+        // SAFETY: We are not moving out of the pinned field.
         (unsafe { &mut self.get_unchecked_mut().f })(cx)
     }
 }

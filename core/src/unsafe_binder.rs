@@ -1,6 +1,6 @@
-//! 用于把类型转换成 unsafe binder 以及转回来的操作符。
+//! Operators used to turn types into unsafe binders and back.
 
-/// 将 unsafe binder 解包成其底层类型。
+/// Unwrap an unsafe binder into its underlying type.
 #[allow_internal_unstable(builtin_syntax)]
 #[unstable(feature = "unsafe_binders", issue = "130516")]
 pub macro unwrap_binder {
@@ -12,7 +12,7 @@ pub macro unwrap_binder {
     },
 }
 
-/// 将类型包装成 unsafe binder。
+/// Wrap a type into an unsafe binder.
 #[allow_internal_unstable(builtin_syntax)]
 #[unstable(feature = "unsafe_binders", issue = "130516")]
 pub macro wrap_binder {

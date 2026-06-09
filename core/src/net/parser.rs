@@ -1,6 +1,7 @@
-//! IPv4、IPv6 和 socket 地址的私有解析器实现。
+//! A private parser implementation of IPv4, IPv6, and socket addresses.
 //!
-//! 本模块通过下面的 `FromStr` 实现“公开导出”其解析能力。
+//! This module is "publicly exported" through the `FromStr` implementations
+//! below.
 
 use crate::error::Error;
 use crate::fmt;
@@ -30,7 +31,7 @@ macro_rules! impl_helper {
 impl_helper! { u8 u16 u32 }
 
 struct Parser<'a> {
-    // 输入按 ASCII 解析，因此可以直接使用字节切片。
+    // Parsing as ASCII, so can use byte array.
     state: &'a [u8],
 }
 
@@ -39,7 +40,7 @@ impl<'a> Parser<'a> {
         Parser { state: input }
     }
 
-    /// 运行一个解析器；如果解析失败，则恢复到解析前的状态。
+    /// Run a parser, and restore the pre-parse state if it fails.
     fn read_atomically<T, F>(&mut self, inner: F) -> Option<T>
     where
         F: FnOnce(&mut Parser<'_>) -> Option<T>,
@@ -52,8 +53,8 @@ impl<'a> Parser<'a> {
         result
     }
 
-    /// 运行一个解析器，但如果没有消费完整输入则视为失败。
-    /// 该过程不是原子的；失败时不会自动回滚内部状态。
+    /// Run a parser, but fail if the entire input wasn't consumed.
+    /// Doesn't run atomically.
     fn parse_with<T, F>(&mut self, inner: F, kind: AddrKind) -> Result<T, AddrParseError>
     where
         F: FnOnce(&mut Parser<'_>) -> Option<T>,
@@ -62,12 +63,12 @@ impl<'a> Parser<'a> {
         if self.state.is_empty() { result } else { None }.ok_or(AddrParseError(kind))
     }
 
-    /// 查看输入中的下一个字符，但不消费它。
+    /// Peek the next character from the input
     fn peek_char(&self) -> Option<char> {
         self.state.first().map(|&b| char::from(b))
     }
 
-    /// 从输入中读取并消费下一个字符。
+    /// Reads the next character from the input
     fn read_char(&mut self) -> Option<char> {
         self.state.split_first().map(|(&b, tail)| {
             self.state = tail;
@@ -76,16 +77,17 @@ impl<'a> Parser<'a> {
     }
 
     #[must_use]
-    /// 如果输入中的下一个字符与目标字符匹配，则读取并消费它。
+    /// Reads the next character from the input if it matches the target.
     fn read_given_char(&mut self, target: char) -> Option<()> {
         self.read_atomically(|p| {
             p.read_char().and_then(|c| if c == target { Some(()) } else { None })
         })
     }
 
-    /// 在带索引循环中读取分隔符的辅助函数。仅当 `index > 0` 时才读取分隔符字符，
-    /// 随后运行传入的解析器。循环使用时，分隔符只会在 `index > 0` 的轮次被读取；
-    /// `read_ipv4_addr` 展示了这种用法。
+    /// Helper for reading separators in an indexed loop. Reads the separator
+    /// character iff index > 0, then runs the parser. When used in a loop,
+    /// the separator character will only be read on index > 0 (see
+    /// read_ipv4_addr for an example)
     fn read_separator<T, F>(&mut self, sep: char, index: usize, inner: F) -> Option<T>
     where
         F: FnOnce(&mut Parser<'_>) -> Option<T>,
@@ -98,10 +100,12 @@ impl<'a> Parser<'a> {
         })
     }
 
-    // 按给定基数从输入开头读取一个数字，遇到第一个非数字字符或输入结束时停止。
-    // 如果数字位数超过 `max_digits`，或者根本没有读到数字，则解析失败。
+    // Read a number off the front of the input in the given radix, stopping
+    // at the first non-digit character or eof. Fails if the number has more
+    // digits than max_digits or if there is no number.
     //
-    // INVARIANT: `max_digits` 必须小于 `u32` 可表示范围的最大十进制位数。
+    // INVARIANT: `max_digits` must be less than the number of digits that `u32`
+    // can represent.
     fn read_number<T: ReadNumberHelper + TryFrom<u32>>(
         &mut self,
         radix: u32,
@@ -112,11 +116,11 @@ impl<'a> Parser<'a> {
             let mut digit_count = 0;
             let has_leading_zero = p.peek_char() == Some('0');
 
-            // 如果 `max_digits.is_some()`，当前解析的是 `u8` 或 `u16`；
-            // 它们一定能放进 `u32`，因此无需使用带检查的算术运算。
+            // If max_digits.is_some(), then we are parsing a `u8` or `u16` and
+            // don't need to use checked arithmetic since it fits within a `u32`.
             let result = if let Some(max_digits) = max_digits {
-                // u32::MAX = 4_294_967_295u32，共 10 位十进制数字。
-                // `max_digits` 必须小于 10，才能确保不会溢出 `u32`。
+                // u32::MAX = 4_294_967_295u32, which is 10 digits long.
+                // `max_digits` must be less than 10 to not overflow a `u32`.
                 debug_assert!(max_digits < 10);
 
                 let mut result = 0_u32;
@@ -153,14 +157,14 @@ impl<'a> Parser<'a> {
         })
     }
 
-    /// 读取一个 IPv4 地址。
+    /// Reads an IPv4 address.
     fn read_ipv4_addr(&mut self) -> Option<Ipv4Addr> {
         self.read_atomically(|p| {
             let mut groups = [0; 4];
 
             for (i, slot) in groups.iter_mut().enumerate() {
                 *slot = p.read_separator('.', i, |p| {
-                    // IP 字符串中不允许使用八进制数字。
+                    // Disallow octal number in IP string.
                     // https://tools.ietf.org/html/rfc6943#section-3.1.1
                     p.read_number(10, Some(3), false)
                 })?;
@@ -170,16 +174,19 @@ impl<'a> Parser<'a> {
         })
     }
 
-    /// 读取一个 IPv6 地址。
+    /// Reads an IPv6 address.
     fn read_ipv6_addr(&mut self) -> Option<Ipv6Addr> {
-        /// 将 IPv6 地址的一段读入 `groups`。返回已读取的组数，以及一个 bool，
-        /// 表示是否读到了末尾嵌入的 IPv4 地址。具体来说，它会读取一串以冒号分隔的
-        /// IPv6 组（0x0000 - 0xFFFF），末尾可以附带一个嵌入的 IPv4 地址。
+        /// Read a chunk of an IPv6 address into `groups`. Returns the number
+        /// of groups read, along with a bool indicating if an embedded
+        /// trailing IPv4 address was read. Specifically, read a series of
+        /// colon-separated IPv6 groups (0x0000 - 0xFFFF), with an optional
+        /// trailing embedded IPv4 address.
         fn read_groups(p: &mut Parser<'_>, groups: &mut [u16]) -> (usize, bool) {
             let limit = groups.len();
 
             for (i, slot) in groups.iter_mut().enumerate() {
-                // 尝试读取末尾嵌入的 IPv4 地址；此时必须至少还剩两个 IPv6 组位置。
+                // Try to read a trailing embedded IPv4 address. There must be
+                // at least two groups left.
                 if i < limit - 1 {
                     let ipv4 = p.read_separator(':', i, |p| p.read_ipv4_addr());
 
@@ -202,7 +209,8 @@ impl<'a> Parser<'a> {
         }
 
         self.read_atomically(|p| {
-            // 读取地址的前半部分；可能是完整地址，也可能只读到第一个 `::` 之前。
+            // Read the front part of the address; either the whole thing, or up
+            // to the first ::
             let mut head = [0; 8];
             let (head_size, head_ipv4) = read_groups(p, &mut head);
 
@@ -210,34 +218,35 @@ impl<'a> Parser<'a> {
                 return Some(head.into());
             }
 
-            // 嵌入的 IPv4 部分不允许出现在 `::` 之前。
+            // IPv4 part is not allowed before `::`
             if head_ipv4 {
                 return None;
             }
 
-            // 如果前面的代码解析出的组数少于 8 组，则读取 `::`。
-            // `::` 表示一个或多个 16 位全零组。
+            // Read `::` if previous code parsed less than 8 groups.
+            // `::` indicates one or more groups of 16 bits of zeros.
             p.read_given_char(':')?;
             p.read_given_char(':')?;
 
-            // 读取地址的后半部分。`::` 必须至少代表一组全零值，所以后半部分最多 7 组。
+            // Read the back part of the address. The :: must contain at least one
+            // set of zeroes, so our max length is 7.
             let mut tail = [0; 7];
             let limit = 8 - (head_size + 1);
             let (tail_size, _) = read_groups(p, &mut tail[..limit]);
 
-            // 拼接 IP 地址的前半部分和后半部分。
+            // Concat the head and tail of the IP address
             head[(8 - tail_size)..8].copy_from_slice(&tail[..tail_size]);
 
             Some(head.into())
         })
     }
 
-    /// 读取一个 IP 地址，可以是 IPv4 或 IPv6。
+    /// Reads an IP address, either IPv4 or IPv6.
     fn read_ip_addr(&mut self) -> Option<IpAddr> {
         self.read_ipv4_addr().map(IpAddr::V4).or_else(move || self.read_ipv6_addr().map(IpAddr::V6))
     }
 
-    /// 读取一个 `:`，随后读取十进制端口号。
+    /// Reads a `:` followed by a port in base 10.
     fn read_port(&mut self) -> Option<u16> {
         self.read_atomically(|p| {
             p.read_given_char(':')?;
@@ -245,7 +254,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    /// 读取一个 `%`，随后读取十进制 scope ID。
+    /// Reads a `%` followed by a scope ID in base 10.
     fn read_scope_id(&mut self) -> Option<u32> {
         self.read_atomically(|p| {
             p.read_given_char('%')?;
@@ -253,7 +262,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    /// 读取带端口号的 IPv4 地址。
+    /// Reads an IPv4 address with a port.
     fn read_socket_addr_v4(&mut self) -> Option<SocketAddrV4> {
         self.read_atomically(|p| {
             let ip = p.read_ipv4_addr()?;
@@ -262,7 +271,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    /// 读取带端口号的 IPv6 地址。
+    /// Reads an IPv6 address with a port.
     fn read_socket_addr_v6(&mut self) -> Option<SocketAddrV6> {
         self.read_atomically(|p| {
             p.read_given_char('[')?;
@@ -275,7 +284,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    /// 读取带端口号的 IP 地址。
+    /// Reads an IP address with a port.
     fn read_socket_addr(&mut self) -> Option<SocketAddr> {
         self.read_socket_addr_v4()
             .map(SocketAddr::V4)
@@ -284,7 +293,7 @@ impl<'a> Parser<'a> {
 }
 
 impl IpAddr {
-    /// 从字节切片解析 IP 地址。
+    /// Parse an IP address from a slice of bytes.
     ///
     /// ```
     /// #![feature(addr_parse_ascii)]
@@ -312,7 +321,7 @@ impl FromStr for IpAddr {
 }
 
 impl Ipv4Addr {
-    /// 从字节切片解析 IPv4 地址。
+    /// Parse an IPv4 address from a slice of bytes.
     ///
     /// ```
     /// #![feature(addr_parse_ascii)]
@@ -325,7 +334,7 @@ impl Ipv4Addr {
     /// ```
     #[unstable(feature = "addr_parse_ascii", issue = "101035")]
     pub fn parse_ascii(b: &[u8]) -> Result<Self, AddrParseError> {
-        // 过长的输入不再尝试解析。
+        // don't try to parse if too long
         if b.len() > 15 {
             Err(AddrParseError(AddrKind::Ipv4))
         } else {
@@ -343,7 +352,7 @@ impl FromStr for Ipv4Addr {
 }
 
 impl Ipv6Addr {
-    /// 从字节切片解析 IPv6 地址。
+    /// Parse an IPv6 address from a slice of bytes.
     ///
     /// ```
     /// #![feature(addr_parse_ascii)]
@@ -369,7 +378,7 @@ impl FromStr for Ipv6Addr {
 }
 
 impl SocketAddrV4 {
-    /// 从字节切片解析 IPv4 socket 地址。
+    /// Parse an IPv4 socket address from a slice of bytes.
     ///
     /// ```
     /// #![feature(addr_parse_ascii)]
@@ -395,7 +404,7 @@ impl FromStr for SocketAddrV4 {
 }
 
 impl SocketAddrV6 {
-    /// 从字节切片解析 IPv6 socket 地址。
+    /// Parse an IPv6 socket address from a slice of bytes.
     ///
     /// ```
     /// #![feature(addr_parse_ascii)]
@@ -421,7 +430,7 @@ impl FromStr for SocketAddrV6 {
 }
 
 impl SocketAddr {
-    /// 从字节切片解析 socket 地址。
+    /// Parse a socket address from a slice of bytes.
     ///
     /// ```
     /// #![feature(addr_parse_ascii)]
@@ -458,27 +467,28 @@ enum AddrKind {
     SocketV6,
 }
 
-/// 解析 IP 地址或 socket 地址时可能返回的错误。
+/// An error which can be returned when parsing an IP address or a socket address.
 ///
-/// 该错误用作 [`IpAddr`]、[`Ipv4Addr`]、[`Ipv6Addr`]、[`SocketAddr`]、
-/// [`SocketAddrV4`] 和 [`SocketAddrV6`] 的 [`FromStr`] 实现的错误类型。
+/// This error is used as the error type for the [`FromStr`] implementation for
+/// [`IpAddr`], [`Ipv4Addr`], [`Ipv6Addr`], [`SocketAddr`], [`SocketAddrV4`], and
+/// [`SocketAddrV6`].
 ///
-/// # 可能原因
+/// # Potential causes
 ///
-/// 如果提供的字符串无法按目标类型解析，就可能产生 `AddrParseError`。常见情况是：
-/// 字符串中包含了另一个地址类型才会处理的信息。
+/// `AddrParseError` may be thrown because the provided string does not parse as the given type,
+/// often because it includes information only handled by a different address type.
 ///
 /// ```should_panic
 /// use std::net::IpAddr;
 /// let _foo: IpAddr = "127.0.0.1:8080".parse().expect("Cannot handle the socket port");
 /// ```
 ///
-/// [`IpAddr`] 不处理端口号；需要端口语义时应使用 [`SocketAddr`]。
+/// [`IpAddr`] doesn't handle the port. Use [`SocketAddr`] instead.
 ///
 /// ```
 /// use std::net::SocketAddr;
 ///
-/// // 没问题,`panic!` 消息已经消失了。
+/// // No problem, the `panic!` message has disappeared.
 /// let _foo: SocketAddr = "127.0.0.1:8080".parse().expect("unreachable panic");
 /// ```
 #[stable(feature = "rust1", since = "1.0.0")]

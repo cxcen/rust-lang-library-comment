@@ -1,16 +1,16 @@
 use crate::fmt;
 use crate::iter::FusedIterator;
 
-/// 创建一个迭代器，从初始项开始，用前一项计算后一项。
+/// Creates an iterator which, starting from an initial item,
+/// computes each successive item from the preceding one.
 ///
-/// 该迭代器保存一个可选项(`Option<T>`)和一个后继闭包
-/// (`impl FnMut(&T) -> Option<T>`)。它的 `next` 方法返回当前保存的可选项；如果该项是
-/// `Some(val)`，则会对 `&val` 调用后继闭包，计算并保存下一项。迭代器会持续把闭包
-/// 应用于已保存 option 中的值，直到 option 变为 `None`。
-///
-/// 这也意味着一旦保存的 option 是 `None`，它就会保持为 `None`，因为闭包不会再被
-/// 调用。因此创建出来的迭代器是 [`FusedIterator`]。该迭代器的元素包括初始项，以及
-/// 后继闭包计算出的全部后继项。
+/// This iterator stores an optional item (`Option<T>`) and a successor closure (`impl FnMut(&T) -> Option<T>`).
+/// Its `next` method returns the stored optional item and
+/// if it is `Some(val)` calls the stored closure on `&val` to compute and store its successor.
+/// The iterator will apply the closure successively to the stored option's value until the option is `None`.
+/// This also means that once the stored option is `None` it will remain `None`,
+/// as the closure will not be called again, so the created iterator is a [`FusedIterator`].
+/// The iterator's items will be the initial item and all of its successors as calculated by the successor closure.
 ///
 /// ```
 /// use std::iter::successors;
@@ -23,14 +23,17 @@ pub fn successors<T, F>(first: Option<T>, succ: F) -> Successors<T, F>
 where
     F: FnMut(&T) -> Option<T>,
 {
-    // 如果该函数返回 `impl Iterator<Item=T>`，它可以基于 `from_fn` 实现而不需要专用类型。
-    // 但具名的 `Successors<T, F>` 类型可以在 `T` 和 `F` 均为 Clone 时实现 Clone。
+    // If this function returned `impl Iterator<Item=T>`
+    // it could be based on `from_fn` and not need a dedicated type.
+    // However having a named `Successors<T, F>` type allows it to be `Clone` when `T` and `F` are.
     Successors { next: first, succ }
 }
 
-/// 从初始项开始、用前一项计算后一项的迭代器。
+/// An iterator which, starting from an initial item,
+/// computes each successive item from the preceding one.
 ///
-/// 该 `struct` 由 [`iter::successors()`] 函数创建。更多信息见该函数文档。
+/// This `struct` is created by the [`iter::successors()`] function.
+/// See its documentation for more.
 ///
 /// [`iter::successors()`]: successors
 #[derive(Clone)]

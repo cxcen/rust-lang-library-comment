@@ -5,25 +5,28 @@
 #[stable(feature = "core", since = "1.6.0")]
 #[rustc_diagnostic_item = "core_panic_macro"]
 macro_rules! panic {
-    // 根据调用者的 edition,展开为 `$crate::panic::panic_2015`
-    // 或 `$crate::panic::panic_2021`。
+    // Expands to either `$crate::panic::panic_2015` or `$crate::panic::panic_2021`
+    // depending on the edition of the caller.
     ($($arg:tt)*) => {
         /* compiler built-in */
     };
 }
 
-/// 断言两个表达式彼此相等(使用 [`PartialEq`])。
+/// Asserts that two expressions are equal to each other (using [`PartialEq`]).
 ///
-/// 断言在 debug 和 release 构建中都会始终检查,且无法禁用。若需要在
-/// release 构建中默认禁用的断言,请参见 [`debug_assert_eq!`]。
+/// Assertions are always checked in both debug and release builds, and cannot
+/// be disabled. See [`debug_assert_eq!`] for assertions that are disabled in
+/// release builds by default.
 ///
 /// [`debug_assert_eq!`]: crate::debug_assert_eq
 ///
-/// panic 时,本宏会用表达式的 debug 表示打印其值。
+/// On panic, this macro will print the values of the expressions with their
+/// debug representations.
 ///
-/// 与 [`assert!`] 类似,本宏还有第二种形式,可提供自定义 panic 消息。
+/// Like [`assert!`], this macro has a second form, where a custom
+/// panic message can be provided.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// let a = 3;
@@ -42,8 +45,9 @@ macro_rules! assert_eq {
             (left_val, right_val) => {
                 if !(*left_val == *right_val) {
                     let kind = $crate::panicking::AssertKind::Eq;
-                    // 下面的再借用是有意的。没有它们时,借用的栈槽会在值比较之前
-                    // 就被初始化,导致明显变慢。
+                    // The reborrows below are intentional. Without them, the stack slot for the
+                    // borrow is initialized even before the values are compared, leading to a
+                    // noticeable slow down.
                     $crate::panicking::assert_failed(kind, &*left_val, &*right_val, $crate::option::Option::None);
                 }
             }
@@ -54,8 +58,9 @@ macro_rules! assert_eq {
             (left_val, right_val) => {
                 if !(*left_val == *right_val) {
                     let kind = $crate::panicking::AssertKind::Eq;
-                    // 下面的再借用是有意的。没有它们时,借用的栈槽会在值比较之前
-                    // 就被初始化,导致明显变慢。
+                    // The reborrows below are intentional. Without them, the stack slot for the
+                    // borrow is initialized even before the values are compared, leading to a
+                    // noticeable slow down.
                     $crate::panicking::assert_failed(kind, &*left_val, &*right_val, $crate::option::Option::Some($crate::format_args!($($arg)+)));
                 }
             }
@@ -63,18 +68,21 @@ macro_rules! assert_eq {
     };
 }
 
-/// 断言两个表达式彼此不相等(使用 [`PartialEq`])。
+/// Asserts that two expressions are not equal to each other (using [`PartialEq`]).
 ///
-/// 断言在 debug 和 release 构建中都会始终检查,且无法禁用。若需要在
-/// release 构建中默认禁用的断言,请参见 [`debug_assert_ne!`]。
+/// Assertions are always checked in both debug and release builds, and cannot
+/// be disabled. See [`debug_assert_ne!`] for assertions that are disabled in
+/// release builds by default.
 ///
 /// [`debug_assert_ne!`]: crate::debug_assert_ne
 ///
-/// panic 时,本宏会用表达式的 debug 表示打印其值。
+/// On panic, this macro will print the values of the expressions with their
+/// debug representations.
 ///
-/// 与 [`assert!`] 类似,本宏还有第二种形式,可提供自定义 panic 消息。
+/// Like [`assert!`], this macro has a second form, where a custom
+/// panic message can be provided.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// let a = 3;
@@ -93,8 +101,9 @@ macro_rules! assert_ne {
             (left_val, right_val) => {
                 if *left_val == *right_val {
                     let kind = $crate::panicking::AssertKind::Ne;
-                    // 下面的再借用是有意的。没有它们时,借用的栈槽会在值比较之前
-                    // 就被初始化,导致明显变慢。
+                    // The reborrows below are intentional. Without them, the stack slot for the
+                    // borrow is initialized even before the values are compared, leading to a
+                    // noticeable slow down.
                     $crate::panicking::assert_failed(kind, &*left_val, &*right_val, $crate::option::Option::None);
                 }
             }
@@ -105,8 +114,9 @@ macro_rules! assert_ne {
             (left_val, right_val) => {
                 if *left_val == *right_val {
                     let kind = $crate::panicking::AssertKind::Ne;
-                    // 下面的再借用是有意的。没有它们时,借用的栈槽会在值比较之前
-                    // 就被初始化,导致明显变慢。
+                    // The reborrows below are intentional. Without them, the stack slot for the
+                    // borrow is initialized even before the values are compared, leading to a
+                    // noticeable slow down.
                     $crate::panicking::assert_failed(kind, &*left_val, &*right_val, $crate::option::Option::Some($crate::format_args!($($arg)+)));
                 }
             }
@@ -114,25 +124,27 @@ macro_rules! assert_ne {
     };
 }
 
-/// 断言一个表达式匹配给定模式。
+/// Asserts that an expression matches the provided pattern.
 ///
-/// 相比 `assert!(matches!(value, pattern))`,通常更推荐使用本宏,因为它能够打印
-/// 未满足期望的实际值形状的 debug 表示。相比之下,使用 [`assert!`] 只会打印
-/// 期望未满足,而不会说明原因。
+/// This macro is generally preferable to `assert!(matches!(value, pattern))`, because it can print
+/// the debug representation of the actual value shape that did not meet expectations. In contrast,
+/// using [`assert!`] will only print that expectations were not met, but not why.
 ///
-/// 模式语法与 match arm 和 `matches!` 宏中的语法完全相同。可选的 if guard
-/// 可用于添加额外检查;这些检查必须对匹配到的值为 true,否则本宏会 panic。
+/// The pattern syntax is exactly the same as found in a match arm and the `matches!` macro. The
+/// optional if guard can be used to add additional checks that must be true for the matched value,
+/// otherwise this macro will panic.
 ///
-/// 断言在 debug 和 release 构建中都会始终检查,且无法禁用。若需要在
-/// release 构建中默认禁用的断言,请参见 [`debug_assert_matches!`]。
+/// Assertions are always checked in both debug and release builds, and cannot
+/// be disabled. See [`debug_assert_matches!`] for assertions that are disabled in
+/// release builds by default.
 ///
 /// [`debug_assert_matches!`]: crate::assert_matches::debug_assert_matches
 ///
-/// panic 时,本宏会用表达式的 debug 表示打印其值。
+/// On panic, this macro will print the value of the expression with its debug representation.
 ///
-/// 与 [`assert!`] 类似,本宏还有第二种形式,可提供自定义 panic 消息。
+/// Like [`assert!`], this macro has a second form, where a custom panic message can be provided.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// #![feature(assert_matches)]
@@ -147,12 +159,12 @@ macro_rules! assert_ne {
 /// assert_matches!(a, Some(345));
 /// assert_matches!(a, Some(345) | None);
 ///
-/// // assert_matches!(a, None); // 会 panic
-/// // assert_matches!(b, Some(345)); // 会 panic
-/// // assert_matches!(b, Some(345) | None); // 会 panic
+/// // assert_matches!(a, None); // panics
+/// // assert_matches!(b, Some(345)); // panics
+/// // assert_matches!(b, Some(345) | None); // panics
 ///
 /// assert_matches!(a, Some(x) if x > 100);
-/// // assert_matches!(a, Some(x) if x < 100); // 会 panic
+/// // assert_matches!(a, Some(x) if x < 100); // panics
 /// ```
 #[unstable(feature = "assert_matches", issue = "82775")]
 #[allow_internal_unstable(panic_internals)]
@@ -184,22 +196,23 @@ pub macro assert_matches {
     },
 }
 
-/// 根据 `cfg` 谓词在编译期选择代码。
+/// Selects code at compile-time based on `cfg` predicates.
 ///
-/// 本宏会在编译期求值一系列 `cfg` 谓词,选择第一个为 true 的谓词,
-/// 并发出由该谓词守卫的代码。由其他谓词守卫的代码不会被发出。
+/// This macro evaluates, at compile-time, a series of `cfg` predicates,
+/// selects the first that is true, and emits the code guarded by that
+/// predicate. The code guarded by other predicates is not emitted.
 ///
-/// 可选的尾随 `_` 通配符可用于指定 fallback。如果没有任何谓词为 true,
-/// 则会发出 [`compile_error`]。
+/// An optional trailing `_` wildcard can be used to specify a fallback. If
+/// none of the predicates are true, a [`compile_error`] is emitted.
 ///
-/// # 示例
+/// # Example
 ///
 /// ```
 /// #![feature(cfg_select)]
 ///
 /// cfg_select! {
 ///     unix => {
-///         fn foo() { /* unix 特有的功能 */ }
+///         fn foo() { /* unix specific functionality */ }
 ///     }
 ///     target_pointer_width = "32" => {
 ///         fn foo() { /* non-unix, 32-bit functionality */ }
@@ -210,7 +223,8 @@ pub macro assert_matches {
 /// }
 /// ```
 ///
-/// `cfg_select!` 宏也可以用于表达式位置,右侧可带花括号也可不带:
+/// The `cfg_select!` macro can also be used in expression position, with or without braces on the
+/// right-hand side:
 ///
 /// ```
 /// #![feature(cfg_select)]
@@ -227,38 +241,44 @@ pub macro cfg_select($($tt:tt)*) {
     /* compiler built-in */
 }
 
-/// 断言一个布尔表达式在运行时为 `true`。
+/// Asserts that a boolean expression is `true` at runtime.
 ///
-/// 如果给定表达式在运行时无法求值为 `true`,则会调用 [`panic!`] 宏。
+/// This will invoke the [`panic!`] macro if the provided expression cannot be
+/// evaluated to `true` at runtime.
 ///
-/// 与 [`assert!`] 类似,本宏也有第二种形式,可提供自定义 panic 消息。
+/// Like [`assert!`], this macro also has a second version, where a custom panic
+/// message can be provided.
 ///
-/// # 用法
+/// # Uses
 ///
-/// 不同于 [`assert!`],`debug_assert!` 语句默认只在非优化构建中启用。
-/// 除非向编译器传入 `-C debug-assertions`,否则优化构建不会执行
-/// `debug_assert!` 语句。这使得 `debug_assert!` 适合执行那些放进 release
-/// 构建代价过高、但开发期间可能有帮助的检查。`debug_assert!` 展开后的结果
-/// 始终会进行类型检查。
+/// Unlike [`assert!`], `debug_assert!` statements are only enabled in non
+/// optimized builds by default. An optimized build will not execute
+/// `debug_assert!` statements unless `-C debug-assertions` is passed to the
+/// compiler. This makes `debug_assert!` useful for checks that are too
+/// expensive to be present in a release build but may be helpful during
+/// development. The result of expanding `debug_assert!` is always type checked.
 ///
-/// 未检查的断言会允许处于不一致状态的程序继续运行,这可能产生意外后果;
-/// 但只要这种情况只发生在安全代码中,就不会引入不安全性。然而,断言的性能成本
-/// 通常无法笼统衡量。因此,只有经过充分 profiling 后,才建议用 `debug_assert!`
-/// 替换 [`assert!`];更重要的是,只应在安全代码中这样做!
+/// An unchecked assertion allows a program in an inconsistent state to keep
+/// running, which might have unexpected consequences but does not introduce
+/// unsafety as long as this only happens in safe code. The performance cost
+/// of assertions, however, is not measurable in general. Replacing [`assert!`]
+/// with `debug_assert!` is thus only encouraged after thorough profiling, and
+/// more importantly, only in safe code!
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
-/// // 这些断言的 panic 消息是给定表达式字符串化后的值。
+/// // the panic message for these assertions is the stringified value of the
+/// // expression given.
 /// debug_assert!(true);
 ///
 /// fn some_expensive_computation() -> bool {
-///     // 这里执行某些昂贵计算。
+///     // Some expensive computation here
 ///     true
 /// }
 /// debug_assert!(some_expensive_computation());
 ///
-/// // 使用自定义消息进行断言。
+/// // assert with a custom message
 /// let x = true;
 /// debug_assert!(x, "x wasn't true!");
 ///
@@ -277,17 +297,19 @@ macro_rules! debug_assert {
     };
 }
 
-/// 断言两个表达式彼此相等。
+/// Asserts that two expressions are equal to each other.
 ///
-/// panic 时,本宏会用表达式的 debug 表示打印其值。
+/// On panic, this macro will print the values of the expressions with their
+/// debug representations.
 ///
-/// 不同于 [`assert_eq!`],`debug_assert_eq!` 语句默认只在非优化构建中启用。
-/// 除非向编译器传入 `-C debug-assertions`,否则优化构建不会执行
-/// `debug_assert_eq!` 语句。这使得 `debug_assert_eq!` 适合执行那些放进 release
-/// 构建代价过高、但开发期间可能有帮助的检查。`debug_assert_eq!` 展开后的结果
-/// 始终会进行类型检查。
+/// Unlike [`assert_eq!`], `debug_assert_eq!` statements are only enabled in non
+/// optimized builds by default. An optimized build will not execute
+/// `debug_assert_eq!` statements unless `-C debug-assertions` is passed to the
+/// compiler. This makes `debug_assert_eq!` useful for checks that are too
+/// expensive to be present in a release build but may be helpful during
+/// development. The result of expanding `debug_assert_eq!` is always type checked.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// let a = 3;
@@ -305,17 +327,19 @@ macro_rules! debug_assert_eq {
     };
 }
 
-/// 断言两个表达式彼此不相等。
+/// Asserts that two expressions are not equal to each other.
 ///
-/// panic 时,本宏会用表达式的 debug 表示打印其值。
+/// On panic, this macro will print the values of the expressions with their
+/// debug representations.
 ///
-/// 不同于 [`assert_ne!`],`debug_assert_ne!` 语句默认只在非优化构建中启用。
-/// 除非向编译器传入 `-C debug-assertions`,否则优化构建不会执行
-/// `debug_assert_ne!` 语句。这使得 `debug_assert_ne!` 适合执行那些放进 release
-/// 构建代价过高、但开发期间可能有帮助的检查。`debug_assert_ne!` 展开后的结果
-/// 始终会进行类型检查。
+/// Unlike [`assert_ne!`], `debug_assert_ne!` statements are only enabled in non
+/// optimized builds by default. An optimized build will not execute
+/// `debug_assert_ne!` statements unless `-C debug-assertions` is passed to the
+/// compiler. This makes `debug_assert_ne!` useful for checks that are too
+/// expensive to be present in a release build but may be helpful during
+/// development. The result of expanding `debug_assert_ne!` is always type checked.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// let a = 3;
@@ -333,26 +357,27 @@ macro_rules! debug_assert_ne {
     };
 }
 
-/// 断言一个表达式匹配给定模式。
+/// Asserts that an expression matches the provided pattern.
 ///
-/// 相比 `debug_assert!(matches!(value, pattern))`,通常更推荐使用本宏,因为它能够打印
-/// 未满足期望的实际值形状的 debug 表示。相比之下,使用 [`debug_assert!`] 只会打印
-/// 期望未满足,而不会说明原因。
+/// This macro is generally preferable to `debug_assert!(matches!(value, pattern))`, because it can
+/// print the debug representation of the actual value shape that did not meet expectations. In
+/// contrast, using [`debug_assert!`] will only print that expectations were not met, but not why.
 ///
-/// 模式语法与 match arm 和 `matches!` 宏中的语法完全相同。可选的 if guard
-/// 可用于添加额外检查;这些检查必须对匹配到的值为 true,否则本宏会 panic。
+/// The pattern syntax is exactly the same as found in a match arm and the `matches!` macro. The
+/// optional if guard can be used to add additional checks that must be true for the matched value,
+/// otherwise this macro will panic.
 ///
-/// panic 时,本宏会用表达式的 debug 表示打印其值。
+/// On panic, this macro will print the value of the expression with its debug representation.
 ///
-/// 与 [`assert!`] 类似,本宏还有第二种形式,可提供自定义 panic 消息。
+/// Like [`assert!`], this macro has a second form, where a custom panic message can be provided.
 ///
-/// 不同于 [`assert_matches!`],`debug_assert_matches!` 语句默认只在非优化构建中启用。
-/// 除非向编译器传入 `-C debug-assertions`,否则优化构建不会执行
-/// `debug_assert_matches!` 语句。这使得 `debug_assert_matches!` 适合执行那些放进
-/// release 构建代价过高、但开发期间可能有帮助的检查。`debug_assert_matches!`
-/// 展开后的结果始终会进行类型检查。
+/// Unlike [`assert_matches!`], `debug_assert_matches!` statements are only enabled in non optimized
+/// builds by default. An optimized build will not execute `debug_assert_matches!` statements unless
+/// `-C debug-assertions` is passed to the compiler. This makes `debug_assert_matches!` useful for
+/// checks that are too expensive to be present in a release build but may be helpful during
+/// development. The result of expanding `debug_assert_matches!` is always type checked.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// #![feature(assert_matches)]
@@ -367,12 +392,12 @@ macro_rules! debug_assert_ne {
 /// debug_assert_matches!(a, Some(345));
 /// debug_assert_matches!(a, Some(345) | None);
 ///
-/// // debug_assert_matches!(a, None); // 会 panic
-/// // debug_assert_matches!(b, Some(345)); // 会 panic
-/// // debug_assert_matches!(b, Some(345) | None); // 会 panic
+/// // debug_assert_matches!(a, None); // panics
+/// // debug_assert_matches!(b, Some(345)); // panics
+/// // debug_assert_matches!(b, Some(345) | None); // panics
 ///
 /// debug_assert_matches!(a, Some(x) if x > 100);
-/// // debug_assert_matches!(a, Some(x) if x < 100); // 会 panic
+/// // debug_assert_matches!(a, Some(x) if x < 100); // panics
 /// ```
 #[unstable(feature = "assert_matches", issue = "82775")]
 #[allow_internal_unstable(assert_matches)]
@@ -383,15 +408,17 @@ pub macro debug_assert_matches($($arg:tt)*) {
     }
 }
 
-/// 返回给定表达式是否匹配给定模式。
+/// Returns whether the given expression matches the provided pattern.
 ///
-/// 模式语法与 match arm 中的语法完全相同。可选的 if guard 可用于添加额外检查;
-/// 这些检查必须对匹配到的值为 true,否则本宏会返回 `false`。
+/// The pattern syntax is exactly the same as found in a match arm. The optional if guard can be
+/// used to add additional checks that must be true for the matched value, otherwise this macro will
+/// return `false`.
 ///
-/// 测试某个值是否匹配某个模式时,通常更推荐使用 [`assert_matches!`],
-/// 因为断言失败时它会打印该值的 debug 表示。
+/// When testing that a value matches a pattern, it's generally preferable to use
+/// [`assert_matches!`] as it will print the debug representation of the value if the assertion
+/// fails.
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// let foo = 'f';
@@ -414,23 +441,28 @@ macro_rules! matches {
     };
 }
 
-/// 解包一个 result,或传播其错误。
+/// Unwraps a result or propagates its error.
 ///
-/// [`?` 运算符][propagating-errors]被加入来取代 `try!`,
-/// 应优先使用它。此外,`try` 在 Rust 2018 中是保留字,因此如果必须使用它,
-/// 需要使用[原始标识符语法][ris]:`r#try`。
+/// The [`?` operator][propagating-errors] was added to replace `try!`
+/// and should be used instead. Furthermore, `try` is a reserved word
+/// in Rust 2018, so if you must use it, you will need to use the
+/// [raw-identifier syntax][ris]: `r#try`.
 ///
 /// [propagating-errors]: https://doc.rust-lang.org/book/ch09-02-recoverable-errors-with-result.html#a-shortcut-for-propagating-errors-the--operator
 /// [ris]: https://doc.rust-lang.org/nightly/rust-by-example/compatibility/raw_identifiers.html
 ///
-/// `try!` 会匹配给定的 [`Result`]。如果是 `Ok` 变体,表达式的值就是被包裹的值。
+/// `try!` matches the given [`Result`]. In case of the `Ok` variant, the
+/// expression has the value of the wrapped value.
 ///
-/// 如果是 `Err` 变体,它会取出内部错误。随后 `try!` 使用 `From` 执行转换。
-/// 这会在专门错误与更一般的错误之间提供自动转换。转换得到的错误会被立即返回。
+/// In case of the `Err` variant, it retrieves the inner error. `try!` then
+/// performs conversion using `From`. This provides automatic conversion
+/// between specialized errors and more general ones. The resulting
+/// error is then immediately returned.
 ///
-/// 由于会提前返回,`try!` 只能用于返回 [`Result`] 的函数。
+/// Because of the early return, `try!` can only be used in functions that
+/// return [`Result`].
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// use std::io;
@@ -447,21 +479,21 @@ macro_rules! matches {
 ///     }
 /// }
 ///
-/// // 快速返回错误的首选方式。
+/// // The preferred method of quick returning Errors
 /// fn write_to_file_question() -> Result<(), MyError> {
 ///     let mut file = File::create("my_best_friends.txt")?;
 ///     file.write_all(b"This is a list of my best friends.")?;
 ///     Ok(())
 /// }
 ///
-/// // 过去快速返回错误的方式。
+/// // The previous method of quick returning Errors
 /// fn write_to_file_using_try() -> Result<(), MyError> {
 ///     let mut file = r#try!(File::create("my_best_friends.txt"));
 ///     r#try!(file.write_all(b"This is a list of my best friends."));
 ///     Ok(())
 /// }
 ///
-/// // 这等价于:
+/// // This is equivalent to:
 /// fn write_to_file_using_match() -> Result<(), MyError> {
 ///     let mut file = r#try!(File::create("my_best_friends.txt"));
 ///     match file.write_all(b"This is a list of my best friends.") {
@@ -486,14 +518,16 @@ macro_rules! r#try {
     };
 }
 
-/// 将格式化数据写入缓冲区。
+/// Writes formatted data into a buffer.
 ///
-/// 本宏接受一个“writer”、一个格式字符串以及一组参数。参数会按照指定格式字符串
-/// 进行格式化,结果会传给 writer。writer 可以是任何带有 `write_fmt` 方法的值;
-/// 通常该方法来自 [`fmt::Write`] 或 [`io::Write`] trait 的实现。本宏返回
-/// `write_fmt` 方法的返回值;通常是 [`fmt::Result`] 或 [`io::Result`]。
+/// This macro accepts a 'writer', a format string, and a list of arguments. Arguments will be
+/// formatted according to the specified format string and the result will be passed to the writer.
+/// The writer may be any value with a `write_fmt` method; generally this comes from an
+/// implementation of either the [`fmt::Write`] or the [`io::Write`] trait. The macro
+/// returns whatever the `write_fmt` method returns; commonly a [`fmt::Result`], or an
+/// [`io::Result`].
 ///
-/// 有关格式字符串语法的更多信息,请参见 [`std::fmt`]。
+/// See [`std::fmt`] for more information on the format string syntax.
 ///
 /// [`std::fmt`]: ../std/fmt/index.html
 /// [`fmt::Write`]: crate::fmt::Write
@@ -501,7 +535,7 @@ macro_rules! r#try {
 /// [`fmt::Result`]: crate::fmt::Result
 /// [`io::Result`]: ../std/io/type.Result.html
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// use std::io::Write;
@@ -516,9 +550,10 @@ macro_rules! r#try {
 /// }
 /// ```
 ///
-/// 一个模块可以同时导入 `std::fmt::Write` 和 `std::io::Write`,并在实现其中任一
-/// trait 的对象上调用 `write!`,因为对象通常不会同时实现这两个 trait。不过,
-/// 模块必须避免 trait 名称冲突,例如把它们导入为 `_` 或以其他方式重命名:
+/// A module can import both `std::fmt::Write` and `std::io::Write` and call `write!` on objects
+/// implementing either, as objects do not typically implement both. However, the module must
+/// avoid conflict between the trait names, such as by importing them as `_` or otherwise renaming
+/// them:
 ///
 /// ```
 /// use std::fmt::Write as _;
@@ -528,15 +563,15 @@ macro_rules! r#try {
 ///     let mut s = String::new();
 ///     let mut v = Vec::new();
 ///
-///     write!(&mut s, "{} {}", "abc", 123)?; // 使用 fmt::Write::write_fmt
-///     write!(&mut v, "s = {:?}", s)?; // 使用 io::Write::write_fmt
+///     write!(&mut s, "{} {}", "abc", 123)?; // uses fmt::Write::write_fmt
+///     write!(&mut v, "s = {:?}", s)?; // uses io::Write::write_fmt
 ///     assert_eq!(v, b"s = \"abc 123\"");
 ///     Ok(())
 /// }
 /// ```
 ///
-/// 如果还需要 trait 名称本身,例如要为你的类型实现其中一个或两个 trait,
-/// 请导入包含它们的模块,然后使用带前缀的名称:
+/// If you also need the trait names themselves, such as to implement one or both on your types,
+/// import the containing module and then name them with a prefix:
 ///
 /// ```
 /// # #![allow(unused_imports)]
@@ -552,8 +587,8 @@ macro_rules! r#try {
 /// }
 /// ```
 ///
-/// 注意:本宏同样可用于 `no_std` 环境。在 `no_std` 环境中,
-/// 你需要负责相关组件的实现细节。
+/// Note: This macro can be used in `no_std` setups as well.
+/// In a `no_std` setup you are responsible for the implementation details of the components.
 ///
 /// ```no_run
 /// use core::fmt::Write;
@@ -578,16 +613,17 @@ macro_rules! write {
     };
 }
 
-/// 将格式化数据写入缓冲区,并追加换行符。
+/// Writes formatted data into a buffer, with a newline appended.
 ///
-/// 在所有平台上,换行符都只是 LINE FEED 字符(`\n`/`U+000A`),
-/// 不会额外加入 CARRIAGE RETURN(`\r`/`U+000D`)。
+/// On all platforms, the newline is the LINE FEED character (`\n`/`U+000A`) alone
+/// (no additional CARRIAGE RETURN (`\r`/`U+000D`).
 ///
-/// 有关更多信息,请参见 [`write!`]。有关格式字符串语法的信息,请参见 [`std::fmt`]。
+/// For more information, see [`write!`]. For information on the format string syntax, see
+/// [`std::fmt`].
 ///
 /// [`std::fmt`]: ../std/fmt/index.html
 ///
-/// # 示例
+/// # Examples
 ///
 /// ```
 /// use std::io::{Write, Result};
@@ -615,31 +651,33 @@ macro_rules! writeln {
     };
 }
 
-/// 标示不可达代码。
+/// Indicates unreachable code.
 ///
-/// 当编译器无法判定某些代码不可达时,本宏都很有用。例如:
+/// This is useful any time that the compiler can't determine that some code is unreachable. For
+/// example:
 ///
-/// * 带有 guard 条件的 match arm。
-/// * 动态终止的循环。
-/// * 动态终止的迭代器。
+/// * Match arms with guard conditions.
+/// * Loops that dynamically terminate.
+/// * Iterators that dynamically terminate.
 ///
-/// 如果“代码不可达”的判定被证明是错误的,程序会立即以 [`panic!`] 终止。
+/// If the determination that the code is unreachable proves incorrect, the
+/// program immediately terminates with a [`panic!`].
 ///
-/// 本宏的 unsafe 对应项是 [`unreachable_unchecked`] 函数;如果代码执行到那里,
-/// 会导致未定义行为。
+/// The unsafe counterpart of this macro is the [`unreachable_unchecked`] function, which
+/// will cause undefined behavior if the code is reached.
 ///
 /// [`unreachable_unchecked`]: crate::hint::unreachable_unchecked
 ///
 /// # Panics
 ///
-/// 本宏总是会 [`panic!`],因为 `unreachable!` 只是带有固定特定消息的
-/// `panic!` 简写。
+/// This will always [`panic!`] because `unreachable!` is just a shorthand for `panic!` with a
+/// fixed, specific message.
 ///
-/// 与 `panic!` 类似,本宏还有第二种形式,用于显示自定义值。
+/// Like `panic!`, this macro has a second form for displaying custom values.
 ///
-/// # 示例
+/// # Examples
 ///
-/// Match 分支:
+/// Match arms:
 ///
 /// ```
 /// # #[allow(dead_code)]
@@ -647,17 +685,17 @@ macro_rules! writeln {
 ///     match x {
 ///         Some(n) if n >= 0 => println!("Some(Non-negative)"),
 ///         Some(n) if n <  0 => println!("Some(Negative)"),
-///         Some(_)           => unreachable!(), // 如果注释掉这一行会导致编译错误
+///         Some(_)           => unreachable!(), // compile error if commented out
 ///         None              => println!("None")
 ///     }
 /// }
 /// ```
 ///
-/// 迭代器:
+/// Iterators:
 ///
 /// ```
 /// # #[allow(dead_code)]
-/// fn divide_by_three(x: u32) -> u32 { // 最差的 x/3 实现之一
+/// fn divide_by_three(x: u32) -> u32 { // one of the poorest implementations of x/3
 ///     for i in 0.. {
 ///         if 3*i < i { panic!("u32 overflow"); }
 ///         if x < 3*i { return i-1; }
@@ -671,36 +709,36 @@ macro_rules! writeln {
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_diagnostic_item = "unreachable_macro"]
 macro_rules! unreachable {
-    // 根据调用者的 edition,展开为 `$crate::panic::unreachable_2015`
-    // 或 `$crate::panic::unreachable_2021`。
+    // Expands to either `$crate::panic::unreachable_2015` or `$crate::panic::unreachable_2021`
+    // depending on the edition of the caller.
     ($($arg:tt)*) => {
         /* compiler built-in */
     };
 }
 
-/// 通过以 "not implemented" 消息 panic 来标示未实现代码。
+/// Indicates unimplemented code by panicking with a message of "not implemented".
 ///
-/// 这会让代码通过类型检查;在原型开发,或实现一个要求多个方法但你并不打算全部使用的
-/// trait 时很有用。
+/// This allows your code to type-check, which is useful if you are prototyping or
+/// implementing a trait that requires multiple methods which you don't plan to use all of.
 ///
-/// `unimplemented!` 与 [`todo!`] 的区别在于:`todo!` 表达了稍后实现该功能的意图,
-/// 消息为 "not yet implemented";而 `unimplemented!` 不做这样的声明,它的消息是
-/// 消息为 "not implemented"。
+/// The difference between `unimplemented!` and [`todo!`] is that while `todo!`
+/// conveys an intent of implementing the functionality later and the message is "not yet
+/// implemented", `unimplemented!` makes no such claims. Its message is "not implemented".
 ///
-/// 另外,某些 IDE 会标记 `todo!`。
+/// Also, some IDEs will mark `todo!`s.
 ///
 /// # Panics
 ///
-/// 本宏总是会 [`panic!`],因为 `unimplemented!` 只是带有固定特定消息的
-/// `panic!` 简写。
+/// This will always [`panic!`] because `unimplemented!` is just a shorthand for `panic!` with a
+/// fixed, specific message.
 ///
-/// 与 `panic!` 类似,本宏还有第二种形式,用于显示自定义值。
+/// Like `panic!`, this macro has a second form for displaying custom values.
 ///
 /// [`todo!`]: crate::todo
 ///
-/// # 示例
+/// # Examples
 ///
-/// 假设有一个 trait `Foo`:
+/// Say we have a trait `Foo`:
 ///
 /// ```
 /// trait Foo {
@@ -710,11 +748,13 @@ macro_rules! unreachable {
 /// }
 /// ```
 ///
-/// 我们想为 `MyStruct` 实现 `Foo`,但出于某种原因,只有实现 `bar()` 函数才有意义。
-/// 在 `Foo` 的实现中仍然需要定义 `baz()` 和 `qux()`,但可以在它们的定义中使用
-/// `unimplemented!`,让代码能够编译。
+/// We want to implement `Foo` for 'MyStruct', but for some reason it only makes sense
+/// to implement the `bar()` function. `baz()` and `qux()` will still need to be defined
+/// in our implementation of `Foo`, but we can use `unimplemented!` in their definitions
+/// to allow our code to compile.
 ///
-/// 如果执行到这些未实现方法,我们仍希望程序停止运行。
+/// We still want to have our program stop running if the unimplemented methods are
+/// reached.
 ///
 /// ```
 /// # trait Foo {
@@ -730,16 +770,17 @@ macro_rules! unreachable {
 ///     }
 ///
 ///     fn baz(&self) {
-///         // 对 `MyStruct` 执行 `baz` 没有意义,所以这里完全没有逻辑。
-///         // 这会显示 "thread 'main' panicked at 'not implemented'"。
+///         // It makes no sense to `baz` a `MyStruct`, so we have no logic here
+///         // at all.
+///         // This will display "thread 'main' panicked at 'not implemented'".
 ///         unimplemented!();
 ///     }
 ///
 ///     fn qux(&self) -> Result<u64, ()> {
-///         // 这里有一些逻辑。
-///         // 可以给 unimplemented! 添加消息来显示遗漏内容。
-///         // 这会显示:
-///         // 消息为 "thread 'main' panicked at 'not implemented: MyStruct isn't quxable'"。
+///         // We have some logic here,
+///         // We can add a message to unimplemented! to display our omission.
+///         // This will display:
+///         // "thread 'main' panicked at 'not implemented: MyStruct isn't quxable'".
 ///         unimplemented!("MyStruct isn't quxable");
 ///     }
 /// }
@@ -762,25 +803,27 @@ macro_rules! unimplemented {
     };
 }
 
-/// 标示尚未完成的代码。
+/// Indicates unfinished code.
 ///
-/// 如果你正在原型开发,只想要一个占位符让代码通过类型分析,本宏会很有用。
+/// This can be useful if you are prototyping and just
+/// want a placeholder to let your code pass type analysis.
 ///
-/// [`unimplemented!`] 与 `todo!` 的区别在于:`todo!` 表达了稍后实现该功能的意图,
-/// 消息为 "not yet implemented";而 `unimplemented!` 不做这样的声明,它的消息是
-/// 消息为 "not implemented"。
+/// The difference between [`unimplemented!`] and `todo!` is that while `todo!` conveys
+/// an intent of implementing the functionality later and the message is "not yet
+/// implemented", `unimplemented!` makes no such claims. Its message is "not implemented".
 ///
-/// 另外,某些 IDE 会标记 `todo!`。
+/// Also, some IDEs will mark `todo!`s.
 ///
 /// # Panics
 ///
-/// 本宏总是会 [`panic!`],因为 `todo!` 只是带有固定特定消息的 `panic!` 简写。
+/// This will always [`panic!`] because `todo!` is just a shorthand for `panic!` with a
+/// fixed, specific message.
 ///
-/// 与 `panic!` 类似,本宏还有第二种形式,用于显示自定义值。
+/// Like `panic!`, this macro has a second form for displaying custom values.
 ///
-/// # 示例
+/// # Examples
 ///
-/// 下面是一个进行中代码的示例。我们有一个 trait `Foo`:
+/// Here's an example of some in-progress code. We have a trait `Foo`:
 ///
 /// ```
 /// trait Foo {
@@ -790,8 +833,9 @@ macro_rules! unimplemented {
 /// }
 /// ```
 ///
-/// 我们想在自己的某个类型上实现 `Foo`,但也想先只处理 `bar()`。
-/// 为了让代码能够编译,需要实现 `baz()` 和 `qux()`,因此可以使用 `todo!`:
+/// We want to implement `Foo` on one of our types, but we also want to work on
+/// just `bar()` first. In order for our code to compile, we need to implement
+/// `baz()` and `qux()`, so we can use `todo!`:
 ///
 /// ```
 /// # trait Foo {
@@ -807,14 +851,14 @@ macro_rules! unimplemented {
 ///     }
 ///
 ///     fn baz(&self) {
-///         // 先不用担心实现 baz()。
+///         // Let's not worry about implementing baz() for now
 ///         todo!();
 ///     }
 ///
 ///     fn qux(&self) -> Result<u64, ()> {
-///         // 可以给 todo! 添加消息来显示遗漏内容。
-///         // 这会显示:
-///         // 消息为 "thread 'main' panicked at 'not yet implemented: MyStruct is not yet quxable'"。
+///         // We can add a message to todo! to display our omission.
+///         // This will display:
+///         // "thread 'main' panicked at 'not yet implemented: MyStruct is not yet quxable'".
 ///         todo!("MyStruct is not yet quxable");
 ///     }
 /// }
@@ -823,7 +867,7 @@ macro_rules! unimplemented {
 ///     let s = MyStruct;
 ///     s.bar();
 ///
-///     // 我们甚至没有使用 baz() 或 qux(),所以这里没问题。
+///     // We aren't even using baz() or qux(), so this is fine.
 /// }
 /// ```
 #[macro_export]
@@ -839,24 +883,26 @@ macro_rules! todo {
     };
 }
 
-/// 内建宏的定义。
+/// Definitions of built-in macros.
 ///
-/// 宏的大多数属性(稳定性、可见性等)都来自这里的源代码;例外是把宏输入转换为
-/// 输出的展开函数,这些函数由编译器提供。
+/// Most of the macro properties (stability, visibility, etc.) are taken from the source code here,
+/// with exception of expansion functions transforming macro inputs into outputs,
+/// those functions are provided by the compiler.
 pub(crate) mod builtin {
 
-    /// 遇到时用给定错误消息导致编译失败。
+    /// Causes compilation to fail with the given error message when encountered.
     ///
-    /// 当 crate 使用条件编译策略并希望为错误条件提供更好的错误消息时,
-    /// 应使用本宏。它是编译器级别的 [`panic!`] 形式,但会在*编译期*而不是
-    /// *运行时*发出错误。
+    /// This macro should be used when a crate uses a conditional compilation strategy to provide
+    /// better error messages for erroneous conditions. It's the compiler-level form of [`panic!`],
+    /// but emits an error during *compilation* rather than at *runtime*.
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 两类典型场景是宏和 `#[cfg]` 环境。
+    /// Two such examples are macros and `#[cfg]` environments.
     ///
-    /// 如果宏收到无效值,发出更好的编译器错误。没有最后一个分支时,
-    /// 编译器仍会发出错误,但错误消息不会提到两个有效值。
+    /// Emit a better compiler error if a macro is passed invalid values. Without the final branch,
+    /// the compiler would still emit an error, but the error's message would not mention the two
+    /// valid values.
     ///
     /// ```compile_fail
     /// macro_rules! give_me_foo_or_bar {
@@ -868,10 +914,10 @@ pub(crate) mod builtin {
     /// }
     ///
     /// give_me_foo_or_bar!(neither);
-    /// // ^ 会在编译期失败,消息为 "This macro only accepts `foo` or `bar`"
+    /// // ^ will fail at compile time with message "This macro only accepts `foo` or `bar`"
     /// ```
     ///
-    /// 如果一组 feature 中没有任何一个可用,则发出编译器错误。
+    /// Emit a compiler error if one of a number of features isn't available.
     ///
     /// ```compile_fail
     /// #[cfg(not(any(feature = "foo", feature = "bar")))]
@@ -884,21 +930,25 @@ pub(crate) mod builtin {
         ($msg:expr $(,)?) => {{ /* compiler built-in */ }};
     }
 
-    /// 为其他字符串格式化宏构造参数。
+    /// Constructs parameters for the other string-formatting macros.
     ///
-    /// 本宏接收一个格式化字符串字面量,其中为每个额外传入的参数包含 `{}`。
-    /// `format_args!` 会准备额外参数,确保输出可被解释为字符串,并把参数规范化为
-    /// 单一类型。任何实现 [`Display`] trait 的值都可以传给 `format_args!`;
-    /// 任何 [`Debug`] 实现也都可以传给格式字符串中的 `{:?}`。
+    /// This macro functions by taking a formatting string literal containing
+    /// `{}` for each additional argument passed. `format_args!` prepares the
+    /// additional parameters to ensure the output can be interpreted as a string
+    /// and canonicalizes the arguments into a single type. Any value that implements
+    /// the [`Display`] trait can be passed to `format_args!`, as can any
+    /// [`Debug`] implementation be passed to a `{:?}` within the formatting string.
     ///
-    /// 本宏会生成一个 [`fmt::Arguments`] 类型的值。该值可以传给 [`std::fmt`]
-    /// 中的宏来执行有用的重定向。所有其他格式化宏([`format!`]、[`write!`]、
-    /// [`println!`] 等)都通过它代理。不同于派生自它的宏,`format_args!`
-    /// 会避免堆分配。
+    /// This macro produces a value of type [`fmt::Arguments`]. This value can be
+    /// passed to the macros within [`std::fmt`] for performing useful redirection.
+    /// All other formatting macros ([`format!`], [`write!`], [`println!`], etc) are
+    /// proxied through this one. `format_args!`, unlike its derived macros, avoids
+    /// heap allocations.
     ///
-    /// 可以像下面这样在 `Debug` 和 `Display` 上下文中使用 `format_args!`
-    /// 返回的 [`fmt::Arguments`] 值。示例还展示了 `Debug` 和 `Display`
-    /// 会格式化为同一个东西:`format_args!` 中插值后的格式字符串。
+    /// You can use the [`fmt::Arguments`] value that `format_args!` returns
+    /// in `Debug` and `Display` contexts as seen below. The example also shows
+    /// that `Debug` and `Display` format to the same thing: the interpolated
+    /// format string in `format_args!`.
     ///
     /// ```rust
     /// let args = format_args!("{} foo {:?}", 1, 2);
@@ -908,8 +958,8 @@ pub(crate) mod builtin {
     /// assert_eq!(display, debug);
     /// ```
     ///
-    /// 有关宏参数语法的细节和更多信息,请参见
-    /// [`std::fmt` 中的格式化文档](../std/fmt/index.html)。
+    /// See [the formatting documentation in `std::fmt`](../std/fmt/index.html)
+    /// for details of the macro argument syntax, and further information.
     ///
     /// [`Display`]: crate::fmt::Display
     /// [`Debug`]: crate::fmt::Debug
@@ -918,7 +968,7 @@ pub(crate) mod builtin {
     /// [`format!`]: ../std/macro.format.html
     /// [`println!`]: ../std/macro.println.html
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// use std::fmt;
@@ -927,13 +977,14 @@ pub(crate) mod builtin {
     /// assert_eq!(s, format!("hello {}", "world"));
     /// ```
     ///
-    /// # 参数生命周期
+    /// # Argument lifetimes
     ///
-    /// 除了没有使用格式化参数的情况外,生成的 `fmt::Arguments` 值会借用临时值。
-    /// 为了允许将其存储起来供稍后使用,当 `format_args!` 出现在 `let` 语句的
-    /// 初始化表达式中时,参数的生命周期以及它们所借用临时值的生命周期可能会被
-    /// [延长][extended]。用于判定何时延长临时值生命周期的语法规则记录在
-    /// [Reference] 中。
+    /// Except when no formatting arguments are used,
+    /// the produced `fmt::Arguments` value borrows temporary values.
+    /// To allow it to be stored for later use, the arguments' lifetimes, as well as those of
+    /// temporaries they borrow, may be [extended] when `format_args!` appears in the initializer
+    /// expression of a `let` statement. The syntactic rules used to determine when temporaries'
+    /// lifetimes are extended are documented in the [Reference].
     ///
     /// [extended]: ../reference/destructors.html#temporary-lifetime-extension
     /// [Reference]: ../reference/destructors.html#extending-based-on-expressions
@@ -948,11 +999,11 @@ pub(crate) mod builtin {
         ($fmt:expr, $($args:tt)*) => {{ /* compiler built-in */ }};
     }
 
-    /// 与 [`format_args`] 相同,但可用于某些 const 上下文。
+    /// Same as [`format_args`], but can be used in some const contexts.
     ///
-    /// panic 宏会为 `const_panic` feature 使用本宏。
+    /// This macro is used by the panic macros for the `const_panic` feature.
     ///
-    /// 一旦 `format_args` 被允许用于 const 上下文,本宏就会被移除。
+    /// This macro will be removed once `format_args` is allowed in const contexts.
     #[unstable(feature = "const_format_args", issue = "none")]
     #[allow_internal_unstable(fmt_internals, fmt_arguments_from_str)]
     #[rustc_builtin_macro]
@@ -962,7 +1013,7 @@ pub(crate) mod builtin {
         ($fmt:expr, $($args:tt)*) => {{ /* compiler built-in */ }};
     }
 
-    /// 与 [`format_args`] 相同,但会在末尾添加换行符。
+    /// Same as [`format_args`], but adds a newline in the end.
     #[unstable(
         feature = "format_args_nl",
         issue = "none",
@@ -978,31 +1029,35 @@ pub(crate) mod builtin {
         ($fmt:expr, $($args:tt)*) => {{ /* compiler built-in */ }};
     }
 
-    /// 在编译期检查环境变量。
+    /// Inspects an environment variable at compile time.
     ///
-    /// 本宏会在编译期展开为指定环境变量的值,生成类型为 `&'static str` 的表达式。
-    /// 如果想在运行时读取该值,请改用 [`std::env::var`]。
+    /// This macro will expand to the value of the named environment variable at
+    /// compile time, yielding an expression of type `&'static str`. Use
+    /// [`std::env::var`] instead if you want to read the value at runtime.
     ///
     /// [`std::env::var`]: ../std/env/fn.var.html
     ///
-    /// 如果环境变量未定义,则会发出编译错误。若不想发出编译错误,请改用
-    /// [`option_env!`] 宏。如果环境变量不是有效的 Unicode 字符串,
-    /// 也会发出编译错误。
+    /// If the environment variable is not defined, then a compilation error
+    /// will be emitted. To not emit a compile error, use the [`option_env!`]
+    /// macro instead. A compilation error will also be emitted if the
+    /// environment variable is not a valid Unicode string.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let path: &'static str = env!("PATH");
     /// println!("the $PATH variable at the time of compiling was: {path}");
     /// ```
     ///
-    /// 可以通过传入字符串作为第二个参数来自定义错误消息:
+    /// You can customize the error message by passing a string as the second
+    /// parameter:
     ///
     /// ```compile_fail
     /// let doc: &'static str = env!("documentation", "what's that?!");
     /// ```
     ///
-    /// 如果未定义 `documentation` 环境变量,会得到如下错误:
+    /// If the `documentation` environment variable is not defined, you'll get
+    /// the following error:
     ///
     /// ```text
     /// error: what's that?!
@@ -1010,25 +1065,31 @@ pub(crate) mod builtin {
     #[stable(feature = "rust1", since = "1.0.0")]
     #[rustc_builtin_macro]
     #[macro_export]
-    #[rustc_diagnostic_item = "env_macro"] // 对外部 lint 有用
+    #[rustc_diagnostic_item = "env_macro"] // useful for external lints
     macro_rules! env {
         ($name:expr $(,)?) => {{ /* compiler built-in */ }};
         ($name:expr, $error_msg:expr $(,)?) => {{ /* compiler built-in */ }};
     }
 
-    /// 在编译期可选地检查环境变量。
+    /// Optionally inspects an environment variable at compile time.
     ///
-    /// 如果指定环境变量在编译期存在,本宏会展开为类型 `Option<&'static str>` 的表达式,
-    /// 其值为环境变量值对应的 `Some`(如果环境变量不是有效的 Unicode 字符串,
-    /// 会发出编译错误)。如果环境变量不存在,则展开为 `None`。有关该类型的更多信息,
-    /// 请参见 [`Option<T>`][Option]。如果想在运行时读取该值,请改用 [`std::env::var`]。
+    /// If the named environment variable is present at compile time, this will
+    /// expand into an expression of type `Option<&'static str>` whose value is
+    /// `Some` of the value of the environment variable (a compilation error
+    /// will be emitted if the environment variable is not a valid Unicode
+    /// string). If the environment variable is not present, then this will
+    /// expand to `None`. See [`Option<T>`][Option] for more information on this
+    /// type.  Use [`std::env::var`] instead if you want to read the value at
+    /// runtime.
     ///
     /// [`std::env::var`]: ../std/env/fn.var.html
     ///
-    /// 使用本宏时,只有环境变量存在但不是有效 Unicode 字符串才会发出编译期错误。
-    /// 如果还希望在环境变量不存在时发出编译错误,请改用 [`env!`] 宏。
+    /// A compile time error is only emitted when using this macro if the
+    /// environment variable exists and is not a valid Unicode string. To also
+    /// emit a compile error if the environment variable is not present, use the
+    /// [`env!`] macro instead.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let key: Option<&'static str> = option_env!("SECRET_KEY");
@@ -1037,22 +1098,22 @@ pub(crate) mod builtin {
     #[stable(feature = "rust1", since = "1.0.0")]
     #[rustc_builtin_macro]
     #[macro_export]
-    #[rustc_diagnostic_item = "option_env_macro"] // 对外部 lint 有用
+    #[rustc_diagnostic_item = "option_env_macro"] // useful for external lints
     macro_rules! option_env {
         ($name:expr $(,)?) => {{ /* compiler built-in */ }};
     }
 
-    /// 将字面量拼接为字节切片。
+    /// Concatenates literals into a byte slice.
     ///
-    /// 本宏接收任意数量用逗号分隔的字面量,并把它们拼接成一个整体,生成类型为
-    /// `&[u8; _]` 的表达式,表示所有字面量从左到右拼接后的内容。传入的字面量
-    /// 可以是以下任意组合:
+    /// This macro takes any number of comma-separated literals, and concatenates them all into
+    /// one, yielding an expression of type `&[u8; _]`, which represents all of the literals
+    /// concatenated left-to-right. The literals passed can be any combination of:
     ///
-    /// - 字节字面量(`b'r'`)
-    /// - 字节字符串(`b"Rust"`)
-    /// - 字节/数字数组(`[b'A', 66, b'C']`)
+    /// - byte literals (`b'r'`)
+    /// - byte strings (`b"Rust"`)
+    /// - arrays of bytes/numbers (`[b'A', 66, b'C']`)
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// #![feature(concat_bytes)]
@@ -1069,14 +1130,16 @@ pub(crate) mod builtin {
         ($($e:literal),+ $(,)?) => {{ /* compiler built-in */ }};
     }
 
-    /// 将字面量拼接为静态字符串切片。
+    /// Concatenates literals into a static string slice.
     ///
-    /// 本宏接收任意数量用逗号分隔的字面量,生成类型为 `&'static str` 的表达式,
-    /// 表示所有字面量从左到右拼接后的内容。
+    /// This macro takes any number of comma-separated literals, yielding an
+    /// expression of type `&'static str` which represents all of the literals
+    /// concatenated left-to-right.
     ///
-    /// 整数字面量和浮点字面量会先被[字符串化](core::stringify),再参与拼接。
+    /// Integer and floating point literals are [stringified](core::stringify) in order to be
+    /// concatenated.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let s = concat!("test", 10, 'b', true);
@@ -1090,16 +1153,19 @@ pub(crate) mod builtin {
         ($($e:expr),* $(,)?) => {{ /* compiler built-in */ }};
     }
 
-    /// 展开为调用位置所在的行号。
+    /// Expands to the line number on which it was invoked.
     ///
-    /// 与 [`column!`] 和 [`file!`] 一起,这些宏为开发者提供源码位置的调试信息。
+    /// With [`column!`] and [`file!`], these macros provide debugging information for
+    /// developers about the location within the source.
     ///
-    /// 展开的表达式类型为 `u32`,并且从 1 开始计数,因此每个文件的第一行求值为 1,
-    /// 第二行为 2,依此类推。这与常见编译器或流行编辑器的错误消息一致。
-    /// 返回的行号*不一定*是 `line!` 调用本身所在的行,而是通向 `line!` 宏调用的
-    /// 第一个宏调用所在的行。
+    /// The expanded expression has type `u32` and is 1-based, so the first line
+    /// in each file evaluates to 1, the second to 2, etc. This is consistent
+    /// with error messages by common compilers or popular editors.
+    /// The returned line is *not necessarily* the line of the `line!` invocation itself,
+    /// but rather the first macro invocation leading up to the invocation
+    /// of the `line!` macro.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let current_line = line!();
@@ -1114,29 +1180,32 @@ pub(crate) mod builtin {
         };
     }
 
-    /// 展开为调用位置所在的列号。
+    /// Expands to the column number at which it was invoked.
     ///
-    /// 与 [`line!`] 和 [`file!`] 一起,这些宏为开发者提供源码位置的调试信息。
+    /// With [`line!`] and [`file!`], these macros provide debugging information for
+    /// developers about the location within the source.
     ///
-    /// 展开的表达式类型为 `u32`,并且从 1 开始计数,因此每行的第一列求值为 1,
-    /// 第二列为 2,依此类推。这与常见编译器或流行编辑器的错误消息一致。
-    /// 返回的列号*不一定*是 `column!` 调用本身所在的列,而是通向 `column!` 宏调用的
-    /// 第一个宏调用所在的列。
+    /// The expanded expression has type `u32` and is 1-based, so the first column
+    /// in each line evaluates to 1, the second to 2, etc. This is consistent
+    /// with error messages by common compilers or popular editors.
+    /// The returned column is *not necessarily* the line of the `column!` invocation itself,
+    /// but rather the first macro invocation leading up to the invocation
+    /// of the `column!` macro.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let current_col = column!();
     /// println!("defined on column: {current_col}");
     /// ```
     ///
-    /// `column!` 计数 Unicode 码点,而不是字节或字素簇。因此,前两次调用返回相同值,
-    /// 第三次调用则不同。
+    /// `column!` counts Unicode code points, not bytes or graphemes. As a result, the first two
+    /// invocations return the same value, but the third does not.
     ///
     /// ```
     /// let a = ("foobar", column!()).1;
     /// let b = ("人之初性本善", column!()).1;
-    /// let c = ("f̅o̅o̅b̅a̅r̅", column!()).1; // 使用组合上划线(U+0305)
+    /// let c = ("f̅o̅o̅b̅a̅r̅", column!()).1; // Uses combining overline (U+0305)
     ///
     /// assert_eq!(a, b);
     /// assert_ne!(b, c);
@@ -1150,25 +1219,30 @@ pub(crate) mod builtin {
         };
     }
 
-    /// 展开为调用位置所在的文件名。
+    /// Expands to the file name in which it was invoked.
     ///
-    /// 与 [`line!`] 和 [`column!`] 一起,这些宏为开发者提供源码位置的调试信息。
+    /// With [`line!`] and [`column!`], these macros provide debugging information for
+    /// developers about the location within the source.
     ///
-    /// 展开的表达式类型为 `&'static str`,返回的文件不是 `file!` 宏调用本身所在的
-    /// 文件,而是通向 `file!` 宏调用的第一个宏调用所在的文件。
+    /// The expanded expression has type `&'static str`, and the returned file
+    /// is not the invocation of the `file!` macro itself, but rather the
+    /// first macro invocation leading up to the invocation of the `file!`
+    /// macro.
     ///
-    /// 文件名来自传给 Rust 编译器的 crate root 源路径,以及编译器从 crate root
-    /// 走到包含 `file!` 的模块时采用的路径序列;传给 Rust 编译器的标志
-    /// (例如 `--remap-path-prefix`)也可能修改它。如果 crate 的源路径是相对路径,
-    /// 初始基目录会是 Rust 编译器的工作目录。例如,如果传给编译器的源路径是
-    /// `./src/lib.rs`,其中有一个 `mod foo;`,其源路径是 `src/foo/mod.rs`,
-    /// 那么在 `mod foo;` 内调用 `file!` 将返回 `./src/foo/mod.rs`。
+    /// The file name is derived from the crate root's source path passed to the Rust compiler
+    /// and the sequence the compiler takes to get from the crate root to the
+    /// module containing `file!`, modified by any flags passed to the Rust compiler (e.g.
+    /// `--remap-path-prefix`).  If the crate's source path is relative, the initial base
+    /// directory will be the working directory of the Rust compiler.  For example, if the source
+    /// path passed to the compiler is `./src/lib.rs` which has a `mod foo;` with a source path of
+    /// `src/foo/mod.rs`, then calling `file!` inside `mod foo;` will return `./src/foo/mod.rs`.
     ///
-    /// 未来的编译器选项可能进一步改变 `file!` 的行为,包括可能让它完全为空。
-    /// 依赖 `file!` 生成可打开文件路径的代码(例如测试库)会与这类选项不兼容,
-    /// 可能需要建议不要使用这些选项。
+    /// Future compiler options might make further changes to the behavior of `file!`,
+    /// including potentially making it entirely empty. Code (e.g. test libraries)
+    /// relying on `file!` producing an openable file path would be incompatible
+    /// with such options, and might wish to recommend not using those options.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let this_file = file!();
@@ -1183,14 +1257,16 @@ pub(crate) mod builtin {
         };
     }
 
-    /// 将参数字符串化。
+    /// Stringifies its arguments.
     ///
-    /// 本宏会生成类型为 `&'static str` 的表达式,内容是传给宏的所有 token
-    /// 字符串化后的结果。宏调用本身的语法不受限制。
+    /// This macro will yield an expression of type `&'static str` which is the
+    /// stringification of all the tokens passed to the macro. No restrictions
+    /// are placed on the syntax of the macro invocation itself.
     ///
-    /// 注意,输入 token 的展开结果未来可能发生变化。如果依赖输出,应当谨慎。
+    /// Note that the expanded results of the input tokens may change in the
+    /// future. You should be careful if you rely on the output.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let one_plus_one = stringify!(1 + 1);
@@ -1205,24 +1281,28 @@ pub(crate) mod builtin {
         };
     }
 
-    /// 以字符串形式包含一个 UTF-8 编码文件。
+    /// Includes a UTF-8 encoded file as a string.
     ///
-    /// 文件位置相对于当前文件(类似模块查找方式)。给定路径会在编译期以平台特定方式解释。
-    /// 因此,例如带有反斜杠 `\` 的 Windows 路径调用在 Unix 上无法正确编译。
+    /// The file is located relative to the current file (similarly to how
+    /// modules are found). The provided path is interpreted in a platform-specific
+    /// way at compile time. So, for instance, an invocation with a Windows path
+    /// containing backslashes `\` would not compile correctly on Unix.
     ///
-    /// 本宏会生成类型为 `&'static str` 的表达式,内容是该文件的内容。
+    /// This macro will yield an expression of type `&'static str` which is the
+    /// contents of the file.
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 假设同一目录中有两个文件,内容如下:
+    /// Assume there are two files in the same directory with the following
+    /// contents:
     ///
-    /// 文件 'spanish.in':
+    /// File 'spanish.in':
     ///
     /// ```text
     /// adiós
     /// ```
     ///
-    /// 文件 'main.rs':
+    /// File 'main.rs':
     ///
     /// ```ignore (cannot-doctest-external-file-dependency)
     /// fn main() {
@@ -1232,7 +1312,7 @@ pub(crate) mod builtin {
     /// }
     /// ```
     ///
-    /// 编译 'main.rs' 并运行所得二进制文件会打印 "adiós"。
+    /// Compiling 'main.rs' and running the resulting binary will print "adiós".
     #[stable(feature = "rust1", since = "1.0.0")]
     #[rustc_builtin_macro]
     #[macro_export]
@@ -1241,24 +1321,28 @@ pub(crate) mod builtin {
         ($file:expr $(,)?) => {{ /* compiler built-in */ }};
     }
 
-    /// 以字节数组引用的形式包含一个文件。
+    /// Includes a file as a reference to a byte array.
     ///
-    /// 文件位置相对于当前文件(类似模块查找方式)。给定路径会在编译期以平台特定方式解释。
-    /// 因此,例如带有反斜杠 `\` 的 Windows 路径调用在 Unix 上无法正确编译。
+    /// The file is located relative to the current file (similarly to how
+    /// modules are found). The provided path is interpreted in a platform-specific
+    /// way at compile time. So, for instance, an invocation with a Windows path
+    /// containing backslashes `\` would not compile correctly on Unix.
     ///
-    /// 本宏会生成类型为 `&'static [u8; N]` 的表达式,内容是该文件的内容。
+    /// This macro will yield an expression of type `&'static [u8; N]` which is
+    /// the contents of the file.
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 假设同一目录中有两个文件,内容如下:
+    /// Assume there are two files in the same directory with the following
+    /// contents:
     ///
-    /// 文件 'spanish.in':
+    /// File 'spanish.in':
     ///
     /// ```text
     /// adiós
     /// ```
     ///
-    /// 文件 'main.rs':
+    /// File 'main.rs':
     ///
     /// ```ignore (cannot-doctest-external-file-dependency)
     /// fn main() {
@@ -1268,7 +1352,7 @@ pub(crate) mod builtin {
     /// }
     /// ```
     ///
-    /// 编译 'main.rs' 并运行所得二进制文件会打印 "adiós"。
+    /// Compiling 'main.rs' and running the resulting binary will print "adiós".
     #[stable(feature = "rust1", since = "1.0.0")]
     #[rustc_builtin_macro]
     #[macro_export]
@@ -1277,12 +1361,13 @@ pub(crate) mod builtin {
         ($file:expr $(,)?) => {{ /* compiler built-in */ }};
     }
 
-    /// 展开为表示当前模块路径的字符串。
+    /// Expands to a string that represents the current module path.
     ///
-    /// 当前模块路径可以理解为一路回到 crate root 的模块层级。返回路径的第一个
-    /// 组成部分是当前正在编译的 crate 名称。
+    /// The current module path can be thought of as the hierarchy of modules
+    /// leading back up to the crate root. The first component of the path
+    /// returned is the name of the crate currently being compiled.
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// mod test {
@@ -1302,19 +1387,22 @@ pub(crate) mod builtin {
         };
     }
 
-    /// 在编译期求值配置标志的布尔组合。
+    /// Evaluates boolean combinations of configuration flags at compile-time.
     ///
-    /// 除 `#[cfg]` 属性外,本宏提供配置标志的布尔表达式求值能力。这通常能减少重复代码。
+    /// In addition to the `#[cfg]` attribute, this macro is provided to allow
+    /// boolean expression evaluation of configuration flags. This frequently
+    /// leads to less duplicated code.
     ///
-    /// 传给本宏的语法与 [`cfg`] 属性的语法相同。
+    /// The syntax given to this macro is the same syntax as the [`cfg`]
+    /// attribute.
     ///
-    /// 不同于 `#[cfg]`,`cfg!` 不会移除任何代码,只会求值为 true 或 false。
-    /// 例如,当 `cfg!` 用作条件时,if/else 表达式中的所有块都必须有效,
-    /// 不论 `cfg!` 求值结果是什么。
+    /// `cfg!`, unlike `#[cfg]`, does not remove any code and only evaluates to true or false. For
+    /// example, all blocks in an if/else expression need to be valid when `cfg!` is used for
+    /// the condition, regardless of what `cfg!` is evaluating.
     ///
     /// [`cfg`]: ../reference/conditional-compilation.html#the-cfg-attribute
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
     /// let my_directory = if cfg!(windows) {
@@ -1332,37 +1420,45 @@ pub(crate) mod builtin {
         };
     }
 
-    /// 根据上下文把一个文件解析为表达式或条目。
+    /// Parses a file as an expression or an item according to the context.
     ///
-    /// **警告**:对于多文件 Rust 项目,`include!` 宏很可能不是你要找的东西。
-    /// 通常,多文件 Rust 项目使用
-    /// [模块](https://doc.rust-lang.org/reference/items/modules.html)。多文件项目和模块在
-    /// Rust-by-Example 一书的[这里](https://doc.rust-lang.org/rust-by-example/mod/split.html)
-    /// 有解释,模块系统也在 Rust Book 的[这里](https://doc.rust-lang.org/book/ch07-02-defining-modules-to-control-scope-and-privacy.html)
-    /// 有解释。
+    /// **Warning**: For multi-file Rust projects, the `include!` macro is probably not what you
+    /// are looking for. Usually, multi-file Rust projects use
+    /// [modules](https://doc.rust-lang.org/reference/items/modules.html). Multi-file projects and
+    /// modules are explained in the Rust-by-Example book
+    /// [here](https://doc.rust-lang.org/rust-by-example/mod/split.html) and the module system is
+    /// explained in the Rust Book
+    /// [here](https://doc.rust-lang.org/book/ch07-02-defining-modules-to-control-scope-and-privacy.html).
     ///
-    /// 被包含的文件会以[非卫生](https://doc.rust-lang.org/reference/macros-by-example.html#hygiene)
-    /// 的方式放入周围代码中。如果被包含文件被解析为表达式,并且两个文件之间共享变量
-    /// 或函数名,可能导致变量或函数与被包含文件期望的不同。
+    /// The included file is placed in the surrounding code
+    /// [unhygienically](https://doc.rust-lang.org/reference/macros-by-example.html#hygiene). If
+    /// the included file is parsed as an expression and variables or functions share names across
+    /// both files, it could result in variables or functions being different from what the
+    /// included file expected.
     ///
-    /// 被包含文件的位置相对于当前文件(类似模块查找方式)。给定路径会在编译期以
-    /// 平台特定方式解释。因此,例如带有反斜杠 `\` 的 Windows 路径调用在 Unix 上
-    /// 无法正确编译。
+    /// The included file is located relative to the current file (similarly to how modules are
+    /// found). The provided path is interpreted in a platform-specific way at compile time. So,
+    /// for instance, an invocation with a Windows path containing backslashes `\` would not
+    /// compile correctly on Unix.
     ///
-    /// # 用法
+    /// # Uses
     ///
-    /// `include!` 宏主要有两个用途。它用于包含写在单独文件中的文档,也用于包含
-    /// [通常由 `build.rs` 脚本生成的构建产物](https://doc.rust-lang.org/cargo/reference/build-scripts.html#outputs-of-the-build-script)。
+    /// The `include!` macro is primarily used for two purposes. It is used to include
+    /// documentation that is written in a separate file and it is used to include [build artifacts
+    /// usually as a result from the `build.rs`
+    /// script](https://doc.rust-lang.org/cargo/reference/build-scripts.html#outputs-of-the-build-script).
     ///
-    /// 使用 `include` 宏包含文档片段时,请记住被包含文件仍需是有效 Rust 语法。
-    /// 也可以在模块级使用 [`include_str`] 宏,例如 `#![doc = include_str!("...")]`,
-    /// 或在条目级使用 `#[doc = include_str!("...")]`,从纯文本或 markdown 文件中包含文档。
+    /// When using the `include` macro to include stretches of documentation, remember that the
+    /// included file still needs to be a valid Rust syntax. It is also possible to
+    /// use the [`include_str`] macro as `#![doc = include_str!("...")]` (at the module level) or
+    /// `#[doc = include_str!("...")]` (at the item level) to include documentation from a plain
+    /// text or markdown file.
     ///
-    /// # 示例
+    /// # Examples
     ///
-    /// 假设同一目录中有两个文件,内容如下:
+    /// Assume there are two files in the same directory with the following contents:
     ///
-    /// 文件 'monkeys.in':
+    /// File 'monkeys.in':
     ///
     /// ```ignore (only-for-syntax-highlight)
     /// ['🙈', '🙊', '🙉']
@@ -1372,7 +1468,7 @@ pub(crate) mod builtin {
     ///     .collect::<String>()
     /// ```
     ///
-    /// 文件 'main.rs':
+    /// File 'main.rs':
     ///
     /// ```ignore (cannot-doctest-external-file-dependency)
     /// fn main() {
@@ -1382,37 +1478,40 @@ pub(crate) mod builtin {
     /// }
     /// ```
     ///
-    /// 编译 'main.rs' 并运行所得二进制文件会打印
+    /// Compiling 'main.rs' and running the resulting binary will print
     /// "🙈🙊🙉🙈🙊🙉".
     #[stable(feature = "rust1", since = "1.0.0")]
     #[rustc_builtin_macro]
     #[macro_export]
-    #[rustc_diagnostic_item = "include_macro"] // 对外部 lint 有用
+    #[rustc_diagnostic_item = "include_macro"] // useful for external lints
     macro_rules! include {
         ($file:expr $(,)?) => {{ /* compiler built-in */ }};
     }
 
-    /// 本宏使用前向模式自动微分生成一个新函数。
-    /// 它只能应用于函数。新函数会计算被应用该宏的函数的导数。
+    /// This macro uses forward-mode automatic differentiation to generate a new function.
+    /// It may only be applied to a function. The new function will compute the derivative
+    /// of the function to which the macro was applied.
     ///
-    /// 期望的使用语法是:
+    /// The expected usage syntax is:
     /// `#[autodiff_forward(NAME, INPUT_ACTIVITIES, OUTPUT_ACTIVITY)]`
     ///
-    /// - `NAME`: 表示有效函数名的字符串。
-    /// - `INPUT_ACTIVITIES`: 为每个输入参数指定一个有效 activity。
-    /// - `OUTPUT_ACTIVITY`: 如果函数隐式不返回任何内容(或显式返回 `-> ()`),
-    ///   则不得设置。否则,它必须被设置为允许的 activity 之一。
+    /// - `NAME`: A string that represents a valid function name.
+    /// - `INPUT_ACTIVITIES`: Specifies one valid activity for each input parameter.
+    /// - `OUTPUT_ACTIVITY`: Must not be set if the function implicitly returns nothing
+    ///   (or explicitly returns `-> ()`). Otherwise, it must be set to one of the allowed activities.
     ///
-    /// ACTIVITIES 可以是 `Dual` 或 `Const`,之后会暴露更多选项。
+    /// ACTIVITIES might either be `Dual` or `Const`, more options will be exposed later.
     ///
-    /// `Const` 应用于非浮点参数;如果不关心相对于某个浮点参数的导数,
-    /// 也可以把它作为优化用于基于浮点的参数。
+    /// `Const` should be used on non-float arguments, or float-based arguments as an optimization
+    /// if we are not interested in computing the derivatives with respect to this argument.
     ///
-    /// `Dual` 可用于浮点标量值,也可用于引用、原始指针或其他间接输入参数。
-    /// 它也可用于浮点标量返回值。如果用于返回值,生成的函数会返回两个浮点标量组成的元组。
-    /// 如果用于输入参数,会创建一个同类型的新 shadow 参数,紧跟在原始参数之后。
+    /// `Dual` can be used for float scalar values or for references, raw pointers, or other
+    /// indirect input arguments. It can also be used on a scalar float return value.
+    /// If used on a return value, the generated function will return a tuple of two float scalars.
+    /// If used on an input argument, a new shadow argument of the same type will be created,
+    /// directly following the original argument.
     ///
-    /// ### 用法示例:
+    /// ### Usage examples:
     ///
     /// ```rust,ignore (autodiff requires a -Z flag as well as fat-lto for testing)
     /// #![feature(autodiff)]
@@ -1432,7 +1531,7 @@ pub(crate) mod builtin {
     ///   let x0 = rosenbrock(1.0, 3.0); // 400.0
     ///   let (x1, dx1) = rb_fwd1(1.0, 1.0, 3.0); // (400.0, -800.0)
     ///   let (x2, dy1) = rb_fwd2(1.0, 3.0, 1.0); // (400.0, 400.0)
-    ///   // 同时为两个参数播种时,切向返回值是两者之和。
+    ///   // When seeding both arguments at once the tangent return is the sum of both.
     ///   let (x3, dxy) = rb_fwd3(1.0, 1.0, 3.0, 1.0); // (400.0, -400.0)
     ///
     ///   let mut out = 0.0;
@@ -1442,11 +1541,13 @@ pub(crate) mod builtin {
     /// }
     /// ```
     ///
-    /// 我们可能想跟踪一个输入浮点数如何影响一个或多个输出浮点数。在这种情况下,
-    /// 一个输入的 shadow 应初始化为 `1.0`,其他输入的 shadow 应初始化为 `0.0`。
-    /// 输出的 shadow 应初始化为 `0.0`。调用生成的函数后,输入的 shadow 会被清零,
-    /// 输出的 shadow 会包含导数。当前标记为 `Dual` 的输出浮点数多于输入浮点数时,
-    /// 前向模式通常更高效。相关信息也可在术语 "Vector-Jacobian product" (VJP) 下找到。
+    /// We might want to track how one input float affects one or more output floats. In this case,
+    /// the shadow of one input should be initialized to `1.0`, while the shadows of the other
+    /// inputs should be initialized to `0.0`. The shadow of the output(s) should be initialized to
+    /// `0.0`. After calling the generated function, the shadow of the input will be zeroed,
+    /// while the shadow(s) of the output(s) will contain the derivatives. Forward mode is generally
+    /// more efficient if we have more output floats marked as `Dual` than input floats.
+    /// Related information can also be found under the term "Vector-Jacobian product" (VJP).
     #[unstable(feature = "autodiff", issue = "124509")]
     #[allow_internal_unstable(rustc_attrs)]
     #[allow_internal_unstable(core_intrinsics)]
@@ -1455,30 +1556,33 @@ pub(crate) mod builtin {
         /* compiler built-in */
     }
 
-    /// 本宏使用反向模式自动微分生成一个新函数。
-    /// 它只能应用于函数。新函数会计算被应用该宏的函数的导数。
+    /// This macro uses reverse-mode automatic differentiation to generate a new function.
+    /// It may only be applied to a function. The new function will compute the derivative
+    /// of the function to which the macro was applied.
     ///
-    /// 期望的使用语法是:
+    /// The expected usage syntax is:
     /// `#[autodiff_reverse(NAME, INPUT_ACTIVITIES, OUTPUT_ACTIVITY)]`
     ///
-    /// - `NAME`: 表示有效函数名的字符串。
-    /// - `INPUT_ACTIVITIES`: 为每个输入参数指定一个有效 activity。
-    /// - `OUTPUT_ACTIVITY`: 如果函数隐式不返回任何内容(或显式返回 `-> ()`),
-    ///   则不得设置。否则,它必须被设置为允许的 activity 之一。
+    /// - `NAME`: A string that represents a valid function name.
+    /// - `INPUT_ACTIVITIES`: Specifies one valid activity for each input parameter.
+    /// - `OUTPUT_ACTIVITY`: Must not be set if the function implicitly returns nothing
+    ///   (or explicitly returns `-> ()`). Otherwise, it must be set to one of the allowed activities.
     ///
-    /// ACTIVITIES 可以是 `Active`、`Duplicated` 或 `Const`,之后会暴露更多选项。
+    /// ACTIVITIES might either be `Active`, `Duplicated` or `Const`, more options will be exposed later.
     ///
-    /// `Active` 可用于浮点标量值。如果用于输入,会在生成函数的返回元组中追加一个
-    /// 新浮点数。如果函数返回浮点标量,`Active` 也可用于返回值。在这种情况下,
-    /// 会向参数列表追加一个浮点标量,它充当 seed。
+    /// `Active` can be used for float scalar values.
+    /// If used on an input, a new float will be appended to the return tuple of the generated
+    /// function. If the function returns a float scalar, `Active` can be used for the return as
+    /// well. In this case a float scalar will be appended to the argument list, it works as seed.
     ///
-    /// `Duplicated` 可用于引用、原始指针或其他间接输入参数。它会创建一个同类型的新
-    /// shadow 参数,跟在原始参数之后。const 引用或指针参数会接收可变引用或指针作为 shadow。
+    /// `Duplicated` can be used on references, raw pointers, or other indirect input
+    /// arguments. It creates a new shadow argument of the same type, following the original argument.
+    /// A const reference or pointer argument will receive a mutable reference or pointer as shadow.
     ///
-    /// `Const` 应用于非浮点参数;如果不关心相对于某个浮点参数的导数,
-    /// 也可以把它作为优化用于基于浮点的参数。
+    /// `Const` should be used on non-float arguments, or float-based arguments as an optimization
+    /// if we are not interested in computing the derivatives with respect to this argument.
     ///
-    /// ### 用法示例:
+    /// ### Usage examples:
     ///
     /// ```rust,ignore (autodiff requires a -Z flag as well as fat-lto for testing)
     /// #![feature(autodiff)]
@@ -1498,21 +1602,25 @@ pub(crate) mod builtin {
     ///     let mut output2 = 0.0;
     ///     let mut seed = 1.0;
     ///     let (dx2, dy2) = rb_inp_rev(1.0, 3.0, &mut output2, &mut seed);
-    ///     // 结果满足 (dx2, dy2, output2, seed) == (-800.0, 400.0, 400.0, 0.0)
+    ///     // (dx2, dy2, output2, seed) == (-800.0, 400.0, 400.0, 0.0)
     /// }
     /// ```
     ///
     ///
-    /// 我们经常想跟踪一个或多个输入浮点数如何影响一个输出浮点数。这个输出可以是
-    /// 标量返回值,也可以是可变引用或指针参数。在后一种情况下,可变输入应标记为
-    /// duplicated,且其 shadow 初始化为 `0.0`。输出的 shadow 应标记为 active 或
-    /// duplicated,并初始化为 `1.0`。调用生成的函数后,输入的 shadow 会包含导数。
-    /// 输出的 shadow("seed") 会被重置为零。如果函数有多个标记为 active 或 duplicated
-    /// 的输出浮点数,用户可能需要把其中一个设为 `1.0`,其他设为 `0.0` 来计算偏导数。
-    /// 不同于前向模式,调用生成函数不会重置输入的 shadow。active/duplicated 输入多于
-    /// 输出浮点数时,反向模式通常更高效。
+    /// We often want to track how one or more input floats affect one output float. This output can
+    /// be a scalar return value, or a mutable reference or pointer argument. In the latter case, the
+    /// mutable input should be marked as duplicated and its shadow initialized to `0.0`. The shadow of
+    /// the output should be marked as active or duplicated and initialized to `1.0`. After calling
+    /// the generated function, the shadow(s) of the input(s) will contain the derivatives. The
+    /// shadow of the outputs ("seed") will be reset to zero.
+    /// If the function has more than one output float marked as active or duplicated, users might want to
+    /// set one of them to `1.0` and the others to `0.0` to compute partial derivatives.
+    /// Unlike forward-mode, a call to the generated function does not reset the shadow of the
+    /// inputs.
+    /// Reverse mode is generally more efficient if we have more active/duplicated input than
+    /// output floats.
     ///
-    /// 相关信息也可在术语 "Jacobian-Vector Product" (JVP) 下找到。
+    /// Related information can also be found under the term "Jacobian-Vector Product" (JVP).
     #[unstable(feature = "autodiff", issue = "124509")]
     #[allow_internal_unstable(rustc_attrs)]
     #[allow_internal_unstable(core_intrinsics)]
@@ -1521,43 +1629,47 @@ pub(crate) mod builtin {
         /* compiler built-in */
     }
 
-    /// 断言一个布尔表达式在运行时为 `true`。
+    /// Asserts that a boolean expression is `true` at runtime.
     ///
-    /// 如果给定表达式在运行时无法求值为 `true`,则会调用 [`panic!`] 宏。
+    /// This will invoke the [`panic!`] macro if the provided expression cannot be
+    /// evaluated to `true` at runtime.
     ///
-    /// # 用法
+    /// # Uses
     ///
-    /// 断言在 debug 和 release 构建中都会始终检查,且无法禁用。若需要在 release
-    /// 构建中默认不启用的断言,请参见 [`debug_assert!`]。
+    /// Assertions are always checked in both debug and release builds, and cannot
+    /// be disabled. See [`debug_assert!`] for assertions that are not enabled in
+    /// release builds by default.
     ///
-    /// unsafe 代码可能依赖 `assert!` 强制执行运行时不变量;若这些不变量被违反,
-    /// 可能导致不安全性。
+    /// Unsafe code may rely on `assert!` to enforce run-time invariants that, if
+    /// violated could lead to unsafety.
     ///
-    /// `assert!` 的其他用例包括在安全代码中测试和强制执行运行时不变量
-    /// (这些不变量被违反不会导致不安全性)。
+    /// Other use-cases of `assert!` include testing and enforcing run-time
+    /// invariants in safe code (whose violation cannot result in unsafety).
     ///
-    /// # 自定义消息
+    /// # Custom Messages
     ///
-    /// 本宏还有第二种形式,可以提供自定义 panic 消息,并可带或不带格式化参数。
-    /// 这种形式的语法见 [`std::fmt`]。作为格式参数使用的表达式只有在断言失败时
-    /// 才会求值。
+    /// This macro has a second form, where a custom panic message can
+    /// be provided with or without arguments for formatting. See [`std::fmt`]
+    /// for syntax for this form. Expressions used as format arguments will only
+    /// be evaluated if the assertion fails.
     ///
     /// [`std::fmt`]: ../std/fmt/index.html
     ///
-    /// # 示例
+    /// # Examples
     ///
     /// ```
-    /// // 这些断言的 panic 消息是给定表达式字符串化后的值。
+    /// // the panic message for these assertions is the stringified value of the
+    /// // expression given.
     /// assert!(true);
     ///
     /// fn some_computation() -> bool {
-    ///     // 这里执行某些昂贵计算。
+    ///     // Some expensive computation here
     ///     true
     /// }
     ///
     /// assert!(some_computation());
     ///
-    /// // 使用自定义消息进行断言。
+    /// // assert with a custom message
     /// let x = true;
     /// assert!(x, "x wasn't true!");
     ///
@@ -1579,7 +1691,7 @@ pub(crate) mod builtin {
         ($cond:expr, $($arg:tt)+) => {{ /* compiler built-in */ }};
     }
 
-    /// 将传入的 token 打印到标准输出。
+    /// Prints passed tokens into the standard output.
     #[unstable(
         feature = "log_syntax",
         issue = "29598",
@@ -1593,7 +1705,7 @@ pub(crate) mod builtin {
         };
     }
 
-    /// 启用或禁用用于调试其他宏的跟踪功能。
+    /// Enables or disables tracing functionality used for debugging other macros.
     #[unstable(
         feature = "trace_macros",
         issue = "29598",
@@ -1606,9 +1718,9 @@ pub(crate) mod builtin {
         (false) => {{ /* compiler built-in */ }};
     }
 
-    /// 用于应用 derive 宏的属性宏。
+    /// Attribute macro used to apply derive macros.
     ///
-    /// 更多信息见 [the reference]。
+    /// See [the reference] for more info.
     ///
     /// [the reference]: ../../../reference/attributes/derive.html
     #[stable(feature = "rust1", since = "1.0.0")]
@@ -1617,9 +1729,10 @@ pub(crate) mod builtin {
         /* compiler built-in */
     }
 
-    /// 用于在 const 上下文中应用 derive 宏来实现 trait 的属性宏。
+    /// Attribute macro used to apply derive macros for implementing traits
+    /// in a const context.
     ///
-    /// 更多信息见 [the reference]。
+    /// See [the reference] for more info.
     ///
     /// [the reference]: ../../../reference/attributes/derive.html
     #[unstable(feature = "derive_const", issue = "118304")]
@@ -1628,9 +1741,9 @@ pub(crate) mod builtin {
         /* compiler built-in */
     }
 
-    /// 应用于函数的属性宏,用于把该函数变成单元测试。
+    /// Attribute macro applied to a function to turn it into a unit test.
     ///
-    /// 更多信息见 [the reference]。
+    /// See [the reference] for more info.
     ///
     /// [the reference]: ../../../reference/attributes/testing.html#the-test-attribute
     #[stable(feature = "rust1", since = "1.0.0")]
@@ -1640,7 +1753,7 @@ pub(crate) mod builtin {
         /* compiler built-in */
     }
 
-    /// 应用于函数的属性宏,用于把该函数变成基准测试。
+    /// Attribute macro applied to a function to turn it into a benchmark test.
     #[unstable(
         feature = "test",
         issue = "50297",
@@ -1652,7 +1765,7 @@ pub(crate) mod builtin {
         /* compiler built-in */
     }
 
-    /// `#[test]` 和 `#[bench]` 宏的实现细节。
+    /// An implementation detail of the `#[test]` and `#[bench]` macros.
     #[unstable(
         feature = "custom_test_frameworks",
         issue = "50297",
@@ -1664,9 +1777,9 @@ pub(crate) mod builtin {
         /* compiler built-in */
     }
 
-    /// 应用于 static 的属性宏,用于把它注册为全局分配器。
+    /// Attribute macro applied to a static to register it as a global allocator.
     ///
-    /// 另请参见 [`std::alloc::GlobalAlloc`](../../../std/alloc/trait.GlobalAlloc.html)。
+    /// See also [`std::alloc::GlobalAlloc`](../../../std/alloc/trait.GlobalAlloc.html).
     #[stable(feature = "global_allocator", since = "1.28.0")]
     #[allow_internal_unstable(rustc_attrs)]
     #[rustc_builtin_macro]
@@ -1674,10 +1787,11 @@ pub(crate) mod builtin {
         /* compiler built-in */
     }
 
-    /// 应用于函数的属性宏,用于给函数添加后置条件。
+    /// Attribute macro applied to a function to give it a post-condition.
     ///
-    /// 该属性携带一个参数 token-tree,最终会被解析为一元闭包表达式,
-    /// 并在返回值引用上调用。
+    /// The attribute carries an argument token-tree which is
+    /// eventually parsed as a unary closure expression that is
+    /// invoked on a reference to the return value.
     #[unstable(feature = "contracts", issue = "128044")]
     #[allow_internal_unstable(contracts_internals)]
     #[rustc_builtin_macro]
@@ -1685,10 +1799,11 @@ pub(crate) mod builtin {
         /* compiler built-in */
     }
 
-    /// 应用于函数的属性宏,用于给函数添加前置条件。
+    /// Attribute macro applied to a function to give it a precondition.
     ///
-    /// 该属性携带一个参数 token-tree,最终会被解析为一个布尔表达式,
-    /// 该表达式可以访问函数的形式参数。
+    /// The attribute carries an argument token-tree which is
+    /// eventually parsed as an boolean expression with access to the
+    /// function's formal parameters
     #[unstable(feature = "contracts", issue = "128044")]
     #[allow_internal_unstable(contracts_internals)]
     #[rustc_builtin_macro]
@@ -1696,9 +1811,9 @@ pub(crate) mod builtin {
         /* compiler built-in */
     }
 
-    /// 应用于函数的属性宏,用于把它注册为分配失败处理器。
+    /// Attribute macro applied to a function to register it as a handler for allocation failure.
     ///
-    /// 另请参见 [`std::alloc::handle_alloc_error`](../../../std/alloc/fn.handle_alloc_error.html)。
+    /// See also [`std::alloc::handle_alloc_error`](../../../std/alloc/fn.handle_alloc_error.html).
     #[unstable(feature = "alloc_error_handler", issue = "51540")]
     #[allow_internal_unstable(rustc_attrs)]
     #[rustc_builtin_macro]
@@ -1706,7 +1821,7 @@ pub(crate) mod builtin {
         /* compiler built-in */
     }
 
-    /// 如果传入路径可访问,保留被应用的条目;否则将其移除。
+    /// Keeps the item it's applied to if the passed path is accessible, and removes it otherwise.
     #[unstable(
         feature = "cfg_accessible",
         issue = "64797",
@@ -1717,7 +1832,7 @@ pub(crate) mod builtin {
         /* compiler built-in */
     }
 
-    /// 展开被应用代码片段中的所有 `#[cfg]` 和 `#[cfg_attr]` 属性。
+    /// Expands all `#[cfg]` and `#[cfg_attr]` attributes in the code fragment it's applied to.
     #[unstable(
         feature = "cfg_eval",
         issue = "82679",
@@ -1728,9 +1843,10 @@ pub(crate) mod builtin {
         /* compiler built-in */
     }
 
-    /// 向带有函数体的条目提供一组类型别名和其他包含 opaque type 的类型定义。
-    /// 该列表会在该函数体中用于定义 opaque type 的隐藏类型。
-    /// 只能应用于带有函数体的东西。
+    /// Provide a list of type aliases and other opaque-type-containing type definitions
+    /// to an item with a body. This list will be used in that body to define opaque
+    /// types' hidden types.
+    /// Can only be applied to things that have bodies.
     #[unstable(
         feature = "type_alias_impl_trait",
         issue = "63063",
@@ -1741,7 +1857,7 @@ pub(crate) mod builtin {
         /* compiler built-in */
     }
 
-    /// 类型 ascription 的不稳定占位符。
+    /// Unstable placeholder for type ascription.
     #[allow_internal_unstable(builtin_syntax)]
     #[unstable(
         feature = "type_ascription",
@@ -1753,7 +1869,7 @@ pub(crate) mod builtin {
         builtin # type_ascribe($expr, $ty)
     }
 
-    /// deref pattern 的不稳定占位符。
+    /// Unstable placeholder for deref patterns.
     #[allow_internal_unstable(builtin_syntax)]
     #[unstable(
         feature = "deref_patterns",
@@ -1764,17 +1880,19 @@ pub(crate) mod builtin {
         builtin # deref($pat)
     }
 
-    /// 生成 `From` trait impl 的 derive 宏。
-    /// 目前它只能用于单字段结构体。
-    // 注意,该宏位于与 `From` trait 不同的模块中,
-    // 以避免有人导入 `std::convert::From` 时触发不稳定 feature 被使用。
+    /// Derive macro generating an impl of the trait `From`.
+    /// Currently, it can only be used on single-field structs.
+    // Note that the macro is in a different module than the `From` trait,
+    // to avoid triggering an unstable feature being used if someone imports
+    // `std::convert::From`.
     #[rustc_builtin_macro]
     #[unstable(feature = "derive_from", issue = "144889")]
     pub macro From($item: item) {
         /* compiler built-in */
     }
 
-    /// Externally Implementable Item:定义一个可以覆盖被应用条目的属性宏。
+    /// Externally Implementable Item: Defines an attribute macro that can override the item
+    /// this is applied to.
     #[unstable(feature = "extern_item_impls", issue = "125418")]
     #[rustc_builtin_macro]
     #[allow_internal_unstable(eii_internals, decl_macro, rustc_attrs)]
@@ -1782,7 +1900,8 @@ pub(crate) mod builtin {
         /* compiler built-in */
     }
 
-    /// Unsafely Externally Implementable Item:定义一个可以覆盖被应用条目的 unsafe 属性宏。
+    /// Unsafely Externally Implementable Item: Defines an unsafe attribute macro that can override
+    /// the item this is applied to.
     #[unstable(feature = "extern_item_impls", issue = "125418")]
     #[rustc_builtin_macro]
     #[allow_internal_unstable(eii_internals, decl_macro, rustc_attrs)]
@@ -1790,7 +1909,7 @@ pub(crate) mod builtin {
         /* compiler built-in */
     }
 
-    /// EII 的实现细节。
+    /// Impl detail of EII
     #[unstable(feature = "eii_internals", issue = "none")]
     #[rustc_builtin_macro]
     pub macro eii_declaration($item:item) {

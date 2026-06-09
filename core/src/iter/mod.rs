@@ -1,33 +1,35 @@
-//! 可组合的外部迭代。
+//! Composable external iteration.
 //!
-//! 当某个集合需要逐个元素执行操作时，Rust 通常把这个过程表达为“迭代器”。
-//! 迭代器把“下一项是什么、何时结束、如何组合处理步骤”抽象成统一协议，
-//! 因而大量惯用 Rust 代码都会依赖它。理解本模块的 trait 契约，尤其是
-//! [`Iterator::next`]、[`Iterator::size_hint`] 以及若干 unsafe 标记 trait，
-//! 对实现自定义集合和适配器都很重要。
+//! If you've found yourself with a collection of some kind, and needed to
+//! perform an operation on the elements of said collection, you'll quickly run
+//! into 'iterators'. Iterators are heavily used in idiomatic Rust code, so
+//! it's worth becoming familiar with them.
 //!
-//! 继续说明之前，先看本模块如何组织:
+//! Before explaining more, let's talk about how this module is structured:
 //!
-//! # 组织结构
+//! # Organization
 //!
-//! 本模块大体按类型类别组织:
+//! This module is largely organized by type:
 //!
-//! * [Traits] 是核心部分: 这些 trait 定义了迭代器有哪些能力，以及调用方
-//!   可以依赖哪些语义。多数默认方法都建立在 [`Iterator::next`] 的最小契约上。
-//! * [Functions] 提供一些创建基础迭代器的辅助入口。
-//! * [Structs] 通常是各个 trait 方法返回的迭代器适配器类型。读文档时，
-//!   一般应先看创建该 `struct` 的方法，因为方法会说明它如何消耗、延迟执行
-//!   或改变底层迭代器。更多原因见“[实现 Iterator](#implementing-iterator)”。
+//! * [Traits] are the core portion: these traits define what kind of iterators
+//!   exist and what you can do with them. The methods of these traits are worth
+//!   putting some extra study time into.
+//! * [Functions] provide some helpful ways to create some basic iterators.
+//! * [Structs] are often the return types of the various methods on this
+//!   module's traits. You'll usually want to look at the method that creates
+//!   the `struct`, rather than the `struct` itself. For more detail about why,
+//!   see '[Implementing Iterator](#implementing-iterator)'.
 //!
 //! [Traits]: #traits
 //! [Functions]: #functions
 //! [Structs]: #structs
 //!
-//! 下面进入迭代器本身。
+//! That's it! Let's dig into iterators.
 //!
 //! # Iterator
 //!
-//! 本模块的核心是 [`Iterator`] trait。它的最小形态如下:
+//! The heart and soul of this module is the [`Iterator`] trait. The core of
+//! [`Iterator`] looks like this:
 //!
 //! ```
 //! trait Iterator {
@@ -36,69 +38,74 @@
 //! }
 //! ```
 //!
-//! 迭代器只有一个必须实现的方法: [`next`]。每次调用 [`next`] 都会推进迭代器的
-//! 内部状态，并返回 <code>[Option]\<Item></code>。仍有元素时返回 [`Some(Item)`]；
-//! 当前迭代序列结束时返回 `None`。需要特别注意的是，普通 [`Iterator`] 并不承诺
-//! “第一次 `None` 之后永远是 `None`”: 某些实现可以在之后再次返回 [`Some(Item)`]
-//! (例如 [`TryIter`])。如果调用方或适配器需要永久结束的保证，应使用
-//! [`FusedIterator`] 或显式调用 [`Iterator::fuse`]。
+//! An iterator has a method, [`next`], which when called, returns an
+//! <code>[Option]\<Item></code>. Calling [`next`] will return [`Some(Item)`] as long as there
+//! are elements, and once they've all been exhausted, will return `None` to
+//! indicate that iteration is finished. Individual iterators may choose to
+//! resume iteration, and so calling [`next`] again may or may not eventually
+//! start returning [`Some(Item)`] again at some point (for example, see [`TryIter`]).
 //!
-//! [`Iterator`] 的完整定义还包含许多默认方法。多数默认方法都通过反复调用
-//! [`next`] 来实现，所以只要实现了 [`next`]，通常就能获得这些组合能力。
-//! 迭代器也天然可组合: 常见写法会把多个适配器串联起来，形成复杂但仍按需执行的
-//! 处理流水线。更多细节见下面的[适配器](#adapters)小节。
+//! [`Iterator`]'s full definition includes a number of other methods as well,
+//! but they are default methods, built on top of [`next`], and so you get
+//! them for free.
+//!
+//! Iterators are also composable, and it's common to chain them together to do
+//! more complex forms of processing. See the [Adapters](#adapters) section
+//! below for more details.
 //!
 //! [`Some(Item)`]: Some
 //! [`next`]: Iterator::next
 //! [`TryIter`]: ../../std/sync/mpsc/struct.TryIter.html
 //!
-//! # 三种常见迭代形式
+//! # The three forms of iteration
 //!
-//! 集合通常通过三类方法创建迭代器:
+//! There are three common methods which can create iterators from a collection:
 //!
-//! * `iter()`: 产生 `&T`，只借用集合元素。
-//! * `iter_mut()`: 产生 `&mut T`，允许逐项修改元素。
-//! * `into_iter()`: 产生 `T`，按值消耗集合或值本身。
+//! * `iter()`, which iterates over `&T`.
+//! * `iter_mut()`, which iterates over `&mut T`.
+//! * `into_iter()`, which iterates over `T`.
 //!
-//! 标准库中的类型会按自身所有权和别名规则，选择实现其中一种或多种形式。
+//! Various things in the standard library may implement one or more of the
+//! three, where appropriate.
 //!
-//! # 实现 Iterator {#implementing-iterator}
+//! # Implementing Iterator
 //!
-//! 自定义迭代器通常分两步: 先创建一个保存迭代状态的 `struct`，再为这个
-//! `struct` 实现 [`Iterator`]。这也是本模块中有大量 `struct` 的原因:
-//! 每个迭代器源或适配器都需要保存自己的状态，例如当前位置、剩余长度、缓存项等。
+//! Creating an iterator of your own involves two steps: creating a `struct` to
+//! hold the iterator's state, and then implementing [`Iterator`] for that `struct`.
+//! This is why there are so many `struct`s in this module: there is one for
+//! each iterator and iterator adapter.
 //!
-//! 下面实现一个从 `1` 数到 `5` 的 `Counter`:
+//! Let's make an iterator named `Counter` which counts from `1` to `5`:
 //!
 //! ```
-//! // 首先定义保存状态的 struct:
+//! // First, the struct:
 //!
-//! /// 一个从一数到五的迭代器
+//! /// An iterator which counts from one to five
 //! struct Counter {
 //!     count: usize,
 //! }
 //!
-//! // 我们希望产出的第一个值是 1，所以提供一个 new() 构造函数。
-//! // 这不是严格必需的，但更方便。注意这里把 `count` 初始化为 0，
-//! // 下面的 `next()` 会先递增再判断。
+//! // we want our count to start at one, so let's add a new() method to help.
+//! // This isn't strictly necessary, but is convenient. Note that we start
+//! // `count` at zero, we'll see why in `next()`'s implementation below.
 //! impl Counter {
 //!     fn new() -> Counter {
 //!         Counter { count: 0 }
 //!     }
 //! }
 //!
-//! // 然后为 `Counter` 实现 `Iterator`:
+//! // Then, we implement `Iterator` for our `Counter`:
 //!
 //! impl Iterator for Counter {
-//!     // 产出的计数值使用 usize
+//!     // we will be counting with usize
 //!     type Item = usize;
 //!
-//!     // next() 是唯一必须实现的方法
+//!     // next() is the only required method
 //!     fn next(&mut self) -> Option<Self::Item> {
-//!         // 先推进内部状态，这也是初始化为 0 的原因。
+//!         // Increment our count. This is why we started at zero.
 //!         self.count += 1;
 //!
-//!         // 根据推进后的状态决定是否还有元素。
+//!         // Check to see if we've finished counting or not.
 //!         if self.count < 6 {
 //!             Some(self.count)
 //!         } else {
@@ -107,7 +114,7 @@
 //!     }
 //! }
 //!
-//! // 现在可以使用它。
+//! // And now we can use it!
 //!
 //! let mut counter = Counter::new();
 //!
@@ -119,16 +126,19 @@
 //! assert_eq!(counter.next(), None);
 //! ```
 //!
-//! 像这样手动反复调用 [`next`] 很快会变得冗长。Rust 提供了 `for` 循环语法，
-//! 它会自动调用 [`next`]，直到看到 `None` 为止。
+//! Calling [`next`] this way gets repetitive. Rust has a construct which can
+//! call [`next`] on your iterator, until it reaches `None`. Let's go over that
+//! next.
 //!
-//! 还要注意，`Iterator` 为 `nth`、`fold` 等方法提供了默认实现，这些实现通常
-//! 在内部调用 `next`。如果某个迭代器可以不逐项调用 `next` 就更高效地完成同一件事，
-//! 它也可以覆盖这些方法；覆盖后仍必须维护与逐项迭代一致的外部语义。
+//! Also note that `Iterator` provides a default implementation of methods such as `nth` and `fold`
+//! which call `next` internally. However, it is also possible to write a custom implementation of
+//! methods like `nth` and `fold` if an iterator can compute them more efficiently without calling
+//! `next`.
 //!
-//! # `for` 循环与 `IntoIterator`
+//! # `for` loops and `IntoIterator`
 //!
-//! Rust 的 `for` 循环语法本质上是迭代器协议的语法糖。下面是一个基本例子:
+//! Rust's `for` loop syntax is actually sugar for iterators. Here's a basic
+//! example of `for`:
 //!
 //! ```
 //! let values = vec![1, 2, 3, 4, 5];
@@ -138,9 +148,15 @@
 //! }
 //! ```
 //!
-//! 这会逐行打印一到五。这里看起来没有显式地把 `Vec` 转成迭代器，是因为
-//! `for` 会使用 [`IntoIterator`]。该 trait 通过 [`into_iter`] 把实现者转换为
-//! 一个迭代器。上面的 `for` 循环会被编译器近似展开为:
+//! This will print the numbers one through five, each on their own line. But
+//! you'll notice something here: we never called anything on our vector to
+//! produce an iterator. What gives?
+//!
+//! There's a trait in the standard library for converting something into an
+//! iterator: [`IntoIterator`]. This trait has one method, [`into_iter`],
+//! which converts the thing implementing [`IntoIterator`] into an iterator.
+//! Let's take a look at that `for` loop again, and what the compiler converts
+//! it into:
 //!
 //! [`into_iter`]: IntoIterator::into_iter
 //!
@@ -152,7 +168,7 @@
 //! }
 //! ```
 //!
-//! Rust 会把它脱糖为类似如下结构:
+//! Rust de-sugars this into:
 //!
 //! ```
 //! let values = vec![1, 2, 3, 4, 5];
@@ -172,26 +188,31 @@
 //! }
 //! ```
 //!
-//! 也就是说，先对值调用 `into_iter()`，再持有返回的迭代器并反复调用 [`next`]。
-//! 每次得到 `Some(val)` 就执行循环体；一旦得到 `None` 就 `break`，迭代结束。
+//! First, we call `into_iter()` on the value. Then, we match on the iterator
+//! that returns, calling [`next`] over and over until we see a `None`. At
+//! that point, we `break` out of the loop, and we're done iterating.
 //!
-//! 这里还有一个重要细节: 标准库为所有 [`Iterator`] 都实现了 [`IntoIterator`]:
+//! There's one more subtle bit here: the standard library contains an
+//! interesting implementation of [`IntoIterator`]:
 //!
 //! ```ignore (only-for-syntax-highlight)
 //! impl<I: Iterator> IntoIterator for I
 //! ```
 //!
-//! 换句话说，迭代器本身也可以被当作“可转换成迭代器的值”，转换结果就是它自己。
-//! 这带来两个直接后果:
+//! In other words, all [`Iterator`]s implement [`IntoIterator`], by just
+//! returning themselves. This means two things:
 //!
-//! 1. 只要实现了 [`Iterator`]，该类型就可以直接用于 `for` 循环。
-//! 2. 如果正在实现集合类型，为集合实现 [`IntoIterator`] 就能让它支持 `for` 循环。
+//! 1. If you're writing an [`Iterator`], you can use it with a `for` loop.
+//! 2. If you're creating a collection, implementing [`IntoIterator`] for it
+//!    will allow your collection to be used with the `for` loop.
 //!
-//! # 按引用迭代
+//! # Iterating by reference
 //!
-//! 因为 [`into_iter()`] 按值接收 `self`，直接对集合使用 `for` 循环通常会消耗集合。
-//! 很多场景只想借用集合而不是取得所有权，因此许多集合会提供按约定命名的
-//! `iter()` 和 `iter_mut()`，分别产生共享引用和可变引用:
+//! Since [`into_iter()`] takes `self` by value, using a `for` loop to iterate
+//! over a collection consumes that collection. Often, you may want to iterate
+//! over a collection without consuming it. Many collections offer methods that
+//! provide iterators over references, conventionally called `iter()` and
+//! `iter_mut()` respectively:
 //!
 //! ```
 //! let mut values = vec![41];
@@ -201,54 +222,61 @@
 //! for x in values.iter() {
 //!     assert_eq!(*x, 42);
 //! }
-//! assert_eq!(values.len(), 1); // `values` 仍由当前函数拥有。
+//! assert_eq!(values.len(), 1); // `values` is still owned by this function.
 //! ```
 //!
-//! 如果集合类型 `C` 提供 `iter()`，它通常也会为 `&C` 实现 `IntoIterator`，
-//! 并在实现中委托给 `iter()`。同理，提供 `iter_mut()` 的集合通常会为 `&mut C`
-//! 实现 `IntoIterator`，并委托给 `iter_mut()`。这样就能写出更简洁的形式:
+//! If a collection type `C` provides `iter()`, it usually also implements
+//! `IntoIterator` for `&C`, with an implementation that just calls `iter()`.
+//! Likewise, a collection `C` that provides `iter_mut()` generally implements
+//! `IntoIterator` for `&mut C` by delegating to `iter_mut()`. This enables a
+//! convenient shorthand:
 //!
 //! ```
 //! let mut values = vec![41];
 //! for x in &mut values {
-//!     //   ^ 等同于 `values.iter_mut()`
+//!     //   ^ same as `values.iter_mut()`
 //!     *x += 1;
 //! }
 //! for x in &values {
-//!     //   ^ 等同于 `values.iter()`
+//!     //   ^ same as `values.iter()`
 //!     assert_eq!(*x, 42);
 //! }
 //! assert_eq!(values.len(), 1);
 //! ```
 //!
-//! 许多集合都提供 `iter()`，但不是所有集合都能安全提供 `iter_mut()`。例如，
-//! 如果允许修改 [`HashSet<T>`] 中的键，键的 hash 发生变化后集合内部桶位置可能
-//! 不再满足不变量，因此该集合只提供 `iter()`。
+//! While many collections offer `iter()`, not all offer `iter_mut()`. For
+//! example, mutating the keys of a [`HashSet<T>`] could put the collection
+//! into an inconsistent state if the key hashes change, so this collection
+//! only offers `iter()`.
 //!
 //! [`into_iter()`]: IntoIterator::into_iter
 //! [`HashSet<T>`]: ../../std/collections/struct.HashSet.html
 //!
-//! # 适配器 {#adapters}
+//! # Adapters
 //!
-//! 接收一个 [`Iterator`] 并返回另一个 [`Iterator`] 的函数通常称为“迭代器适配器”。
-//! 它们把处理逻辑包装成新的迭代器节点，而不是立即执行处理。
+//! Functions which take an [`Iterator`] and return another [`Iterator`] are
+//! often called 'iterator adapters', as they're a form of the 'adapter
+//! pattern'.
 //!
-//! 常见适配器包括 [`map`]、[`take`] 和 [`filter`]。更多语义见各自文档。
+//! Common iterator adapters include [`map`], [`take`], and [`filter`].
+//! For more, see their documentation.
 //!
-//! 如果迭代器适配器发生 panic，迭代器会处于未指定但仍内存安全的状态。这个状态
-//! 也不保证跨 Rust 版本保持一致，因此不要依赖 panic 后继续迭代得到的具体值。
+//! If an iterator adapter panics, the iterator will be in an unspecified (but
+//! memory safe) state.  This state is also not guaranteed to stay the same
+//! across versions of Rust, so you should avoid relying on the exact values
+//! returned by an iterator which panicked.
 //!
 //! [`map`]: Iterator::map
 //! [`take`]: Iterator::take
 //! [`filter`]: Iterator::filter
 //!
-//! # 惰性求值
+//! # Laziness
 //!
-//! 迭代器以及迭代器[适配器](#adapters)都是惰性的。这意味着“创建迭代器”通常只
-//! 构造一个描述计算的值，并不会遍历元素、调用闭包或执行副作用；真正推进发生在
-//! 调用 [`next`]、`for` 循环、[`collect`]、[`for_each`] 等消费操作时。
-//! 如果只为了副作用创建迭代器，这一点很容易造成误解。例如 [`map`] 会在每个被
-//! 实际取出的元素上调用闭包:
+//! Iterators (and iterator [adapters](#adapters)) are *lazy*. This means that
+//! just creating an iterator doesn't _do_ a whole lot. Nothing really happens
+//! until you call [`next`]. This is sometimes a source of confusion when
+//! creating an iterator solely for its side effects. For example, the [`map`]
+//! method calls a closure on each element it iterates over:
 //!
 //! ```
 //! # #![allow(unused_must_use)]
@@ -257,21 +285,22 @@
 //! v.iter().map(|x| println!("{x}"));
 //! ```
 //!
-//! 这不会打印任何值，因为代码只创建了一个迭代器，没有消费它。编译器会对这类
-//! 行为发出警告:
+//! This will not print any values, as we only created an iterator, rather than
+//! using it. The compiler will warn us about this kind of behavior:
 //!
 //! ```text
 //! warning: unused result that must be used: iterators are lazy and
 //! do nothing unless consumed
 //! ```
 //!
-//! 如果目的是执行副作用，惯用写法是使用 `for` 循环，或者调用 [`for_each`]:
+//! The idiomatic way to write a [`map`] for its side effects is to use a
+//! `for` loop or call the [`for_each`] method:
 //!
 //! ```
 //! let v = vec![1, 2, 3, 4, 5];
 //!
 //! v.iter().for_each(|x| println!("{x}"));
-//! // 或者
+//! // or
 //! for x in &v {
 //!     println!("{x}");
 //! }
@@ -280,19 +309,22 @@
 //! [`map`]: Iterator::map
 //! [`for_each`]: Iterator::for_each
 //!
-//! 另一个常见消费方式是调用 [`collect`]，把迭代器中的元素收集成新的集合。
+//! Another common way to evaluate an iterator is to use the [`collect`]
+//! method to produce a new collection.
 //!
 //! [`collect`]: Iterator::collect
 //!
-//! # 无限迭代器
+//! # Infinity
 //!
-//! 迭代器不要求有限。例如，开放区间是一个无限迭代器:
+//! Iterators do not have to be finite. As an example, an open-ended range is
+//! an infinite iterator:
 //!
 //! ```
 //! let numbers = 0..;
 //! ```
 //!
-//! 常见做法是使用 [`take`] 适配器，把无限迭代器限制成有限迭代器:
+//! It is common to use the [`take`] iterator adapter to turn an infinite
+//! iterator into a finite one:
 //!
 //! ```
 //! let numbers = 0..;
@@ -303,16 +335,18 @@
 //! }
 //! ```
 //!
-//! 这会逐行打印 `0` 到 `4`。
+//! This will print the numbers `0` through `4`, each on their own line.
 //!
-//! 需要记住，对无限迭代器调用某些方法可能永不终止。即使某个结果在数学上似乎可
-//! 以有限时间确定，通用迭代器方法仍可能需要遍历所有元素。例如 [`min`] 在一般情
-//! 况下必须检查每个元素，因此对无限迭代器很可能无法返回。
+//! Bear in mind that methods on infinite iterators, even those for which a
+//! result can be determined mathematically in finite time, might not terminate.
+//! Specifically, methods such as [`min`], which in the general case require
+//! traversing every element in the iterator, are likely not to return
+//! successfully for any infinite iterators.
 //!
 //! ```no_run
 //! let ones = std::iter::repeat(1);
-//! let least = ones.min().unwrap(); // 糟糕: 这里会进入无限循环。
-//! // `ones.min()` 不会结束，因此不会执行到这里。
+//! let least = ones.min().unwrap(); // Oh no! An infinite loop!
+//! // `ones.min()` causes an infinite loop, so we won't reach this point!
 //! println!("The smallest number one is {least}.");
 //! ```
 //!
@@ -321,7 +355,7 @@
 
 #![stable(feature = "rust1", since = "1.0.0")]
 
-// 需要放在这里，子模块才能使用。
+// This needs to be up here in order to be usable in the child modules
 macro_rules! impl_fold_via_try_fold {
     (fold -> try_fold) => {
         impl_fold_via_try_fold! { @internal fold -> try_fold }

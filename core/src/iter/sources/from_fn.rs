@@ -1,36 +1,37 @@
 use crate::fmt;
 
-/// 创建一个迭代器，将给定闭包 `F: FnMut() -> Option<T>` 作为它的
-/// [`next`](Iterator::next) 方法。
+/// Creates an iterator with the provided closure
+/// `F: FnMut() -> Option<T>` as its [`next`](Iterator::next) method.
 ///
-/// 该迭代器会产出闭包返回的 `T`。
+/// The iterator will yield the `T`s returned from the closure.
 ///
-/// 这允许用闭包快速创建任意行为的自定义迭代器，而不必先定义专用类型再为它实现
-/// [`Iterator`] trait。
+/// This allows creating a custom iterator with any behavior
+/// without using the more verbose syntax of creating a dedicated type
+/// and implementing the [`Iterator`] trait for it.
 ///
-/// 注意，`FromFn` 不会假设闭包在返回 `None` 后是否还会再次返回 `Some(_)`，因此它
-/// 保守地不实现 [`FusedIterator`]，也不覆盖 [`Iterator::size_hint()`] 的默认
-/// `(0, None)`。
+/// Note that the `FromFn` iterator doesn’t make assumptions about the behavior of the closure,
+/// and therefore conservatively does not implement [`FusedIterator`],
+/// or override [`Iterator::size_hint()`] from its default `(0, None)`.
 ///
-/// 闭包可以通过捕获和自身环境在多次迭代之间保存状态。根据迭代器的使用方式，
-/// 这可能需要在闭包上指定 [`move`] 关键字。
+/// The closure can use captures and its environment to track state across iterations. Depending on
+/// how the iterator is used, this may require specifying the [`move`] keyword on the closure.
 ///
 /// [`move`]: ../../std/keyword.move.html
 /// [`FusedIterator`]: crate::iter::FusedIterator
 ///
-/// # 示例
+/// # Examples
 ///
-/// 重新实现[模块级文档]中的计数器迭代器:
+/// Let’s re-implement the counter iterator from [module-level documentation]:
 ///
-/// [模块级文档]: crate::iter
+/// [module-level documentation]: crate::iter
 ///
 /// ```
 /// let mut count = 0;
 /// let counter = std::iter::from_fn(move || {
-///     // 递增计数，这也是从零开始的原因。
+///     // Increment our count. This is why we started at zero.
 ///     count += 1;
 ///
-///     // 检查是否已经计数结束。
+///     // Check to see if we've finished counting or not.
 ///     if count < 6 {
 ///         Some(count)
 ///     } else {
@@ -48,9 +49,10 @@ where
     FromFn(f)
 }
 
-/// 每次迭代都会调用给定闭包 `F: FnMut() -> Option<T>` 的迭代器。
+/// An iterator where each iteration calls the provided closure `F: FnMut() -> Option<T>`.
 ///
-/// 该 `struct` 由 [`iter::from_fn()`] 函数创建。更多信息见该函数文档。
+/// This `struct` is created by the [`iter::from_fn()`] function.
+/// See its documentation for more.
 ///
 /// [`iter::from_fn()`]: from_fn
 #[derive(Clone)]
