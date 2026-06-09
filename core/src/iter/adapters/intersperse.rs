@@ -1,10 +1,9 @@
 use crate::fmt;
 use crate::iter::{Fuse, FusedIterator};
 
-/// An iterator adapter that places a separator between all elements.
+/// 在所有元素之间放置分隔符的迭代器适配器。
 ///
-/// This `struct` is created by [`Iterator::intersperse`]. See its documentation
-/// for more information.
+/// 该 `struct` 由 [`Iterator::intersperse`] 创建。更多信息见该方法文档。
 #[unstable(feature = "iter_intersperse", issue = "79524")]
 #[derive(Debug, Clone)]
 pub struct Intersperse<I: Iterator>
@@ -83,10 +82,9 @@ where
     }
 }
 
-/// An iterator adapter that places a separator between all elements.
+/// 在所有元素之间放置分隔符的迭代器适配器。
 ///
-/// This `struct` is created by [`Iterator::intersperse_with`]. See its
-/// documentation for more information.
+/// 该 `struct` 由 [`Iterator::intersperse_with`] 创建。更多信息见该方法文档。
 #[unstable(feature = "iter_intersperse", issue = "79524")]
 pub struct IntersperseWith<I, G>
 where
@@ -227,7 +225,7 @@ where
         next_item.take()
     } else {
         let n = iter.next();
-        // skip invoking fold() for empty iterators
+        // 空迭代器跳过 fold() 调用
         if n.is_none() {
             return accum;
         }

@@ -1,24 +1,24 @@
-//! MVP for exposing compile-time information about types in a
-//! runtime or const-eval processable way.
+//! 一个 MVP（最小可用产品），用于以一种运行时或 const-eval 可处理的方式
+//! 暴露关于类型的编译期信息。
 
 use crate::any::TypeId;
 use crate::intrinsics::type_of;
 
-/// Compile-time type information.
+/// 编译期类型信息。
 #[derive(Debug)]
 #[non_exhaustive]
 #[lang = "type_info"]
 #[unstable(feature = "type_info", issue = "146922")]
 pub struct Type {
-    /// Per-type information
+    /// 各类型独有的信息
     pub kind: TypeKind,
-    /// Size of the type. `None` if it is unsized
+    /// 该类型的大小。若它是不定长（unsized）类型则为 `None`
     pub size: Option<usize>,
 }
 
 impl TypeId {
-    /// Compute the type information of a concrete type.
-    /// It can only be called at compile time.
+    /// 计算某个具体类型的类型信息。
+    /// 它只能在编译期被调用。
     #[unstable(feature = "type_info", issue = "146922")]
     #[rustc_const_unstable(feature = "type_info", issue = "146922")]
     pub const fn info(self) -> Type {
@@ -27,122 +27,122 @@ impl TypeId {
 }
 
 impl Type {
-    /// Returns the type information of the generic type parameter.
+    /// 返回该泛型类型参数的类型信息。
     #[unstable(feature = "type_info", issue = "146922")]
     #[rustc_const_unstable(feature = "type_info", issue = "146922")]
-    // FIXME(reflection): don't require the 'static bound
+    // FIXME(reflection): 不要求 'static 约束
     pub const fn of<T: ?Sized + 'static>() -> Self {
         const { TypeId::of::<T>().info() }
     }
 }
 
-/// Compile-time type information.
+/// 编译期类型信息。
 #[derive(Debug)]
 #[non_exhaustive]
 #[unstable(feature = "type_info", issue = "146922")]
 pub enum TypeKind {
-    /// Tuples.
+    /// 元组。
     Tuple(Tuple),
-    /// Arrays.
+    /// 数组。
     Array(Array),
-    /// Primitive boolean type.
+    /// 原生布尔类型。
     Bool(Bool),
-    /// Primitive character type.
+    /// 原生字符类型。
     Char(Char),
-    /// Primitive signed and unsigned integer type.
+    /// 原生有符号与无符号整数类型。
     Int(Int),
-    /// Primitive floating-point type.
+    /// 原生浮点数类型。
     Float(Float),
-    /// String slice type.
+    /// 字符串切片类型。
     Str(Str),
-    /// References.
+    /// 引用。
     Reference(Reference),
-    /// FIXME(#146922): add all the common types
+    /// FIXME(#146922): 补全所有常见类型
     Other,
 }
 
-/// Compile-time type information about tuples.
+/// 关于元组的编译期类型信息。
 #[derive(Debug)]
 #[non_exhaustive]
 #[unstable(feature = "type_info", issue = "146922")]
 pub struct Tuple {
-    /// All fields of a tuple.
+    /// 元组的所有字段。
     pub fields: &'static [Field],
 }
 
-/// Compile-time type information about fields of tuples, structs and enum variants.
+/// 关于元组、结构体和枚举变体的字段的编译期类型信息。
 #[derive(Debug)]
 #[non_exhaustive]
 #[unstable(feature = "type_info", issue = "146922")]
 pub struct Field {
-    /// The field's type.
+    /// 该字段的类型。
     pub ty: TypeId,
-    /// Offset in bytes from the parent type
+    /// 相对于父类型的字节偏移量
     pub offset: usize,
 }
 
-/// Compile-time type information about arrays.
+/// 关于数组的编译期类型信息。
 #[derive(Debug)]
 #[non_exhaustive]
 #[unstable(feature = "type_info", issue = "146922")]
 pub struct Array {
-    /// The type of each element in the array.
+    /// 数组中每个元素的类型。
     pub element_ty: TypeId,
-    /// The length of the array.
+    /// 数组的长度。
     pub len: usize,
 }
 
-/// Compile-time type information about `bool`.
+/// 关于 `bool` 的编译期类型信息。
 #[derive(Debug)]
 #[non_exhaustive]
 #[unstable(feature = "type_info", issue = "146922")]
 pub struct Bool {
-    // No additional information to provide for now.
+    // 目前没有额外信息可供提供。
 }
 
-/// Compile-time type information about `char`.
+/// 关于 `char` 的编译期类型信息。
 #[derive(Debug)]
 #[non_exhaustive]
 #[unstable(feature = "type_info", issue = "146922")]
 pub struct Char {
-    // No additional information to provide for now.
+    // 目前没有额外信息可供提供。
 }
 
-/// Compile-time type information about signed and unsigned integer types.
+/// 关于有符号与无符号整数类型的编译期类型信息。
 #[derive(Debug)]
 #[non_exhaustive]
 #[unstable(feature = "type_info", issue = "146922")]
 pub struct Int {
-    /// The bit width of the signed integer type.
+    /// 该有符号整数类型的位宽（bit width）。
     pub bit_width: usize,
-    /// Whether the integer type is signed.
+    /// 该整数类型是否为有符号。
     pub signed: bool,
 }
 
-/// Compile-time type information about floating-point types.
+/// 关于浮点数类型的编译期类型信息。
 #[derive(Debug)]
 #[non_exhaustive]
 #[unstable(feature = "type_info", issue = "146922")]
 pub struct Float {
-    /// The bit width of the floating-point type.
+    /// 该浮点数类型的位宽（bit width）。
     pub bit_width: usize,
 }
 
-/// Compile-time type information about string slice types.
+/// 关于字符串切片类型的编译期类型信息。
 #[derive(Debug)]
 #[non_exhaustive]
 #[unstable(feature = "type_info", issue = "146922")]
 pub struct Str {
-    // No additional information to provide for now.
+    // 目前没有额外信息可供提供。
 }
 
-/// Compile-time type information about references.
+/// 关于引用的编译期类型信息。
 #[derive(Debug)]
 #[non_exhaustive]
 #[unstable(feature = "type_info", issue = "146922")]
 pub struct Reference {
-    /// The type of the value being referred to.
+    /// 被引用的值的类型。
     pub pointee: TypeId,
-    /// Whether this reference is mutable or not.
+    /// 此引用是否可变。
     pub mutable: bool,
 }

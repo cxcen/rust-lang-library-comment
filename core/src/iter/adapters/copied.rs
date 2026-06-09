@@ -6,10 +6,9 @@ use crate::num::NonZero;
 use crate::ops::Try;
 use crate::{array, ptr};
 
-/// An iterator that copies the elements of an underlying iterator.
+/// 复制底层迭代器元素的迭代器。
 ///
-/// This `struct` is created by the [`copied`] method on [`Iterator`]. See its
-/// documentation for more.
+/// 该 `struct` 由 [`Iterator`] 上的 [`copied`] 方法创建。更多信息见该方法文档。
 ///
 /// [`copied`]: Iterator::copied
 /// [`Iterator`]: trait.Iterator.html
@@ -102,8 +101,7 @@ where
     where
         Self: TrustedRandomAccessNoCoerce,
     {
-        // SAFETY: the caller must uphold the contract for
-        // `Iterator::__iterator_get_unchecked`.
+        // SAFETY: 调用方必须维护 `Iterator::__iterator_get_unchecked` 的契约。
         *unsafe { try_get_unchecked(&mut self.it, idx) }
     }
 }
@@ -213,18 +211,17 @@ where
         if T::IS_ZST {
             if len < N {
                 let _ = self.advance_by(len);
-                // SAFETY: ZSTs can be conjured ex nihilo; only the amount has to be correct
+                // SAFETY: ZST 可以凭空构造；只有数量需要正确。
                 return Err(unsafe { array::IntoIter::new_unchecked(raw_array, 0..len) });
             }
 
             let _ = self.advance_by(N);
-            // SAFETY: ditto
+            // SAFETY: 同上。
             return Ok(unsafe { MaybeUninit::array_assume_init(raw_array) });
         }
 
         if len < N {
-            // SAFETY: `len` indicates that this many elements are available and we just checked that
-            // it fits into the array.
+            // SAFETY: `len` 表示有这么多元素可用，并且刚刚检查过它能放入数组。
             unsafe {
                 ptr::copy_nonoverlapping(
                     self.as_ref().as_ptr(),
@@ -236,8 +233,7 @@ where
             }
         }
 
-        // SAFETY: `len` is larger than the array size. Copy a fixed amount here to fully initialize
-        // the array.
+        // SAFETY: `len` 大于数组大小。这里复制固定数量的元素来完整初始化数组。
         unsafe {
             ptr::copy_nonoverlapping(self.as_ref().as_ptr(), raw_array.as_mut_ptr() as *mut T, N);
             let _ = self.advance_by(N);
@@ -248,7 +244,7 @@ where
 
 #[stable(feature = "default_iters", since = "1.70.0")]
 impl<I: Default> Default for Copied<I> {
-    /// Creates a `Copied` iterator from the default value of `I`
+    /// 从 `I` 的默认值创建一个 `Copied` 迭代器。
     /// ```
     /// # use core::slice;
     /// # use core::iter::Copied;
@@ -269,7 +265,7 @@ where
 
     #[inline]
     unsafe fn as_inner(&mut self) -> &mut I::Source {
-        // SAFETY: unsafe function forwarding to unsafe function with the same requirements
+        // SAFETY: 转发到具有相同要求的 unsafe 函数。
         unsafe { SourceIter::as_inner(&mut self.it) }
     }
 }

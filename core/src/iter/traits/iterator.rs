@@ -12,13 +12,14 @@ use crate::ops::{ChangeOutputType, ControlFlow, FromResidual, Residual, Try};
 
 fn _assert_is_dyn_compatible(_: &dyn Iterator<Item = ()>) {}
 
-/// A trait for dealing with iterators.
+/// 处理迭代器的核心 trait。
 ///
-/// This is the main iterator trait. For more about the concept of iterators
-/// generally, please see the [module-level documentation]. In particular, you
-/// may want to know how to [implement `Iterator`][impl].
+/// 这是最主要的迭代器 trait。它描述“每次请求下一项时如何推进状态”，并把
+/// 许多常见遍历操作建立在同一个 [`next`](Iterator::next) 契约之上。关于迭代器
+/// 概念、`for` 循环脱糖、适配器和惰性求值的背景，请参阅[模块级文档]。如果要
+/// 编写自己的迭代器，尤其应先阅读[实现 `Iterator`][impl] 的说明。
 ///
-/// [module-level documentation]: crate::iter
+/// [模块级文档]: crate::iter
 /// [impl]: crate::iter#implementing-iterator
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_on_unimplemented(
@@ -38,36 +39,46 @@ fn _assert_is_dyn_compatible(_: &dyn Iterator<Item = ()>) {}
 #[rustc_diagnostic_item = "Iterator"]
 #[must_use = "iterators are lazy and do nothing unless consumed"]
 pub trait Iterator {
-    /// The type of the elements being iterated over.
+    /// 迭代器逐项产出的元素类型。
+    ///
+    /// `Item` 是关联类型而不是泛型参数，因此同一个迭代器类型只能有一个
+    /// 明确的产出类型。这让 `next`、`fold`、`collect` 等方法能围绕同一项类型
+    /// 建立一致的协议。
     #[rustc_diagnostic_item = "IteratorItem"]
     #[stable(feature = "rust1", since = "1.0.0")]
     type Item;
 
-    /// Advances the iterator and returns the next value.
+    /// 推进迭代器并返回下一项。
     ///
-    /// Returns [`None`] when iteration is finished. Individual iterator
-    /// implementations may choose to resume iteration, and so calling `next()`
-    /// again may or may not eventually start returning [`Some(Item)`] again at some
-    /// point.
+    /// 每次调用都会给实现一次推进内部状态的机会。仍有元素时返回
+    /// [`Some(Item)`]；当前序列结束时返回 [`None`]。普通 [`Iterator`] 的契约只
+    /// 要求“本次调用没有下一项”时返回 [`None`]，并不要求第一次 [`None`] 之后
+    /// 永远返回 [`None`]。也就是说，之后再次调用 `next()` 可能继续返回 [`None`]，
+    /// 也可能在某些非 fused 迭代器上重新返回 [`Some(Item)`]。
+    ///
+    /// 需要“结束后永久结束”语义的调用方不应从 [`Iterator`] 本身推断该性质，
+    /// 而应要求 [`FusedIterator`](crate::iter::FusedIterator)，或对迭代器调用
+    /// [`fuse`](Iterator::fuse)。适配器实现也必须尊重这个边界: 除非自身显式
+    /// 维护 fused 状态，否则不能把底层迭代器的一次 [`None`] 当成永久耗尽。
     ///
     /// [`Some(Item)`]: Some
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let a = [1, 2, 3];
     ///
     /// let mut iter = a.into_iter();
     ///
-    /// // A call to next() returns the next value...
+    /// // 调用 next() 会返回下一项...
     /// assert_eq!(Some(1), iter.next());
     /// assert_eq!(Some(2), iter.next());
     /// assert_eq!(Some(3), iter.next());
     ///
-    /// // ... and then None once it's over.
+    /// // ...结束后返回 None。
     /// assert_eq!(None, iter.next());
     ///
-    /// // More calls may or may not return `None`. Here, they always will.
+    /// // 之后的调用不一定都返回 `None`。这个迭代器会一直返回 `None`。
     /// assert_eq!(None, iter.next());
     /// assert_eq!(None, iter.next());
     /// ```
@@ -75,26 +86,27 @@ pub trait Iterator {
     #[stable(feature = "rust1", since = "1.0.0")]
     fn next(&mut self) -> Option<Self::Item>;
 
-    /// Advances the iterator and returns an array containing the next `N` values.
+    /// 推进迭代器，并返回包含接下来 `N` 个值的数组。
     ///
-    /// If there are not enough elements to fill the array then `Err` is returned
-    /// containing an iterator over the remaining elements.
+    /// 如果剩余元素不足以填满数组，则返回 `Err`，其中包含还能取出的剩余元素
+    /// 迭代器。成功时这 `N` 个元素已经从原迭代器中消耗；失败时也不会假装数组
+    /// 已经完整构造，而是把实际取得的尾部元素交还给调用方继续处理。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage:
+    /// 基本用法:
     ///
     /// ```
     /// #![feature(iter_next_chunk)]
     ///
     /// let mut iter = "lorem".chars();
     ///
-    /// assert_eq!(iter.next_chunk().unwrap(), ['l', 'o']);              // N is inferred as 2
-    /// assert_eq!(iter.next_chunk().unwrap(), ['r', 'e', 'm']);         // N is inferred as 3
-    /// assert_eq!(iter.next_chunk::<4>().unwrap_err().as_slice(), &[]); // N is explicitly 4
+    /// assert_eq!(iter.next_chunk().unwrap(), ['l', 'o']);              // N 被推断为 2
+    /// assert_eq!(iter.next_chunk().unwrap(), ['r', 'e', 'm']);         // N 被推断为 3
+    /// assert_eq!(iter.next_chunk::<4>().unwrap_err().as_slice(), &[]); // N 被显式指定为 4
     /// ```
     ///
-    /// Split a string and get the first three items.
+    /// 拆分字符串并取得前三项。
     ///
     /// ```
     /// #![feature(iter_next_chunk)]
@@ -116,36 +128,31 @@ pub trait Iterator {
         array::iter_next_chunk(self)
     }
 
-    /// Returns the bounds on the remaining length of the iterator.
+    /// 返回迭代器剩余长度的上下界。
     ///
-    /// Specifically, `size_hint()` returns a tuple where the first element
-    /// is the lower bound, and the second element is the upper bound.
+    /// `size_hint()` 返回 `(lower, upper)`。`lower` 是实现承诺的下界: 后续最多
+    /// 只能更准确，实际剩余元素数量不能少于它。`upper` 是可选上界:
+    /// `Some(n)` 表示实际剩余元素数量不能大于 `n`；[`None`] 表示没有已知上界，
+    /// 或上界无法用 [`usize`] 表示。
     ///
-    /// The second half of the tuple that is returned is an <code>[Option]<[usize]></code>.
-    /// A [`None`] here means that either there is no known upper bound, or the
-    /// upper bound is larger than [`usize`].
+    /// # 实现说明
     ///
-    /// # Implementation notes
+    /// [`Iterator`] 是 safe trait，类型系统不会强制实现真的产出声明数量的元素。
+    /// 有 bug 的实现可能少于下界或多于上界。正因为如此，`size_hint()` 主要用于
+    /// 预分配、选择算法路径等优化，unsafe 代码不能仅凭普通 `size_hint()` 省略
+    /// 边界检查或假定内存已经初始化。错误的 `size_hint()` 是 trait 协议违规，
+    /// 但不应单独导致内存安全问题。
     ///
-    /// It is not enforced that an iterator implementation yields the declared
-    /// number of elements. A buggy iterator may yield less than the lower bound
-    /// or more than the upper bound of elements.
+    /// 实现者仍有责任尽可能给出正确估计。适配器组合时必须用饱和加法、
+    /// `checked_add` 等方式维护上下界，不能因为溢出而把过小的值报告为精确上界。
+    /// 如果能证明剩余长度精确，应返回 `(n, Some(n))`；如果只能证明下界，则返回
+    /// 合理下界和 [`None`] 或保守上界。
     ///
-    /// `size_hint()` is primarily intended to be used for optimizations such as
-    /// reserving space for the elements of the iterator, but must not be
-    /// trusted to e.g., omit bounds checks in unsafe code. An incorrect
-    /// implementation of `size_hint()` should not lead to memory safety
-    /// violations.
+    /// 默认实现返回 <code>(0, [None])</code>，这对任何迭代器都是保守且正确的。
     ///
-    /// That said, the implementation should provide a correct estimation,
-    /// because otherwise it would be a violation of the trait's protocol.
+    /// # 示例
     ///
-    /// The default implementation returns <code>(0, [None])</code> which is correct for any
-    /// iterator.
-    ///
-    /// # Examples
-    ///
-    /// Basic usage:
+    /// 基本用法:
     ///
     /// ```
     /// let a = [1, 2, 3];
@@ -156,28 +163,26 @@ pub trait Iterator {
     /// assert_eq!((2, Some(2)), iter.size_hint());
     /// ```
     ///
-    /// A more complex example:
+    /// 更复杂的例子:
     ///
     /// ```
-    /// // The even numbers in the range of zero to nine.
+    /// // 零到九范围内的偶数。
     /// let iter = (0..10).filter(|x| x % 2 == 0);
     ///
-    /// // We might iterate from zero to ten times. Knowing that it's five
-    /// // exactly wouldn't be possible without executing filter().
+    /// // 可能迭代零到十次。不实际执行 filter() 就无法知道精确值是五。
     /// assert_eq!((0, Some(10)), iter.size_hint());
     ///
-    /// // Let's add five more numbers with chain()
+    /// // 再用 chain() 接上五个数。
     /// let iter = (0..10).filter(|x| x % 2 == 0).chain(15..20);
     ///
-    /// // now both bounds are increased by five
+    /// // 现在两个边界都增加五。
     /// assert_eq!((5, Some(15)), iter.size_hint());
     /// ```
     ///
-    /// Returning `None` for an upper bound:
+    /// 上界返回 `None`:
     ///
     /// ```
-    /// // an infinite iterator has no upper bound
-    /// // and the maximum possible lower bound
+    /// // 无限迭代器没有有限上界，并且下界饱和到最大 usize。
     /// let iter = 0..;
     ///
     /// assert_eq!((usize::MAX, None), iter.size_hint());
@@ -188,27 +193,23 @@ pub trait Iterator {
         (0, None)
     }
 
-    /// Consumes the iterator, counting the number of iterations and returning it.
+    /// 消耗迭代器，统计迭代次数并返回计数。
     ///
-    /// This method will call [`next`] repeatedly until [`None`] is encountered,
-    /// returning the number of times it saw [`Some`]. Note that [`next`] has to be
-    /// called at least once even if the iterator does not have any elements.
+    /// 该方法会反复调用 [`next`]，直到遇到 [`None`]，并返回看到 [`Some`] 的次数。
+    /// 即使迭代器没有任何元素，也至少需要调用一次 [`next`] 才能确认结束。
     ///
     /// [`next`]: Iterator::next
     ///
-    /// # Overflow Behavior
+    /// # 溢出行为
     ///
-    /// The method does no guarding against overflows, so counting elements of
-    /// an iterator with more than [`usize::MAX`] elements either produces the
-    /// wrong result or panics. If overflow checks are enabled, a panic is
-    /// guaranteed.
+    /// 该方法不会额外防护计数溢出。因此，如果迭代器元素数超过 [`usize::MAX`]，
+    /// 结果要么错误，要么 panic；启用溢出检查时保证会 panic。
     ///
     /// # Panics
     ///
-    /// This function might panic if the iterator has more than [`usize::MAX`]
-    /// elements.
+    /// 如果迭代器拥有超过 [`usize::MAX`] 个元素，本函数可能 panic。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let a = [1, 2, 3];
@@ -230,17 +231,16 @@ pub trait Iterator {
         )
     }
 
-    /// Consumes the iterator, returning the last element.
+    /// 消耗 iterator，并返回最后一个元素。
     ///
-    /// This method will evaluate the iterator until it returns [`None`]. While
-    /// doing so, it keeps track of the current element. After [`None`] is
-    /// returned, `last()` will then return the last element it saw.
+    /// 该方法会一直求值 iterator，直到它返回 [`None`]。在此过程中，它会记录当前
+    /// 元素。遇到 [`None`] 后，`last()` 返回它见到的最后一个元素。
     ///
     /// # Panics
     ///
-    /// This function might panic if the iterator is infinite.
+    /// 如果 iterator 是无限的，该函数可能 panic。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let a = [1, 2, 3];
@@ -263,25 +263,24 @@ pub trait Iterator {
         self.fold(None, some)
     }
 
-    /// Advances the iterator by `n` elements.
+    /// 将迭代器向前推进 `n` 个元素。
     ///
-    /// This method will eagerly skip `n` elements by calling [`next`] up to `n`
-    /// times until [`None`] is encountered.
+    /// 该方法会急切地跳过元素: 最多调用 [`next`] `n` 次，或在更早遇到 [`None`] 时
+    /// 停止。与大多数适配器不同，调用 `advance_by` 本身就是消费操作，会立即推进
+    /// 底层状态。
     ///
-    /// `advance_by(n)` will return `Ok(())` if the iterator successfully advances by
-    /// `n` elements, or a `Err(NonZero<usize>)` with value `k` if [`None`] is encountered,
-    /// where `k` is remaining number of steps that could not be advanced because the iterator ran out.
-    /// If `self` is empty and `n` is non-zero, then this returns `Err(n)`.
-    /// Otherwise, `k` is always less than `n`.
+    /// 如果成功推进 `n` 个元素，`advance_by(n)` 返回 `Ok(())`。如果中途遇到
+    /// [`None`]，则返回 `Err(NonZero<usize>)`，其中的 `k` 表示还剩多少步未能推进，
+    /// 因为迭代器已经耗尽。若 `self` 为空且 `n` 非零，则返回 `Err(n)`；否则
+    /// `k` 总是小于 `n`。
     ///
-    /// Calling `advance_by(0)` can do meaningful work, for example [`Flatten`]
-    /// can advance its outer iterator until it finds an inner iterator that is not empty, which
-    /// then often allows it to return a more accurate `size_hint()` than in its initial state.
+    /// 调用 `advance_by(0)` 也可能产生有意义的工作。例如 [`Flatten`] 可以推进外层
+    /// 迭代器直到找到非空的内层迭代器，从而让之后的 `size_hint()` 比初始状态更精确。
     ///
     /// [`Flatten`]: crate::iter::Flatten
     /// [`next`]: Iterator::next
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(iter_advance_by)]
@@ -294,12 +293,12 @@ pub trait Iterator {
     /// assert_eq!(iter.advance_by(2), Ok(()));
     /// assert_eq!(iter.next(), Some(3));
     /// assert_eq!(iter.advance_by(0), Ok(()));
-    /// assert_eq!(iter.advance_by(100), Err(NonZero::new(99).unwrap())); // only `4` was skipped
+    /// assert_eq!(iter.advance_by(100), Err(NonZero::new(99).unwrap())); // 只跳过了 `4`
     /// ```
     #[inline]
     #[unstable(feature = "iter_advance_by", issue = "77404")]
     fn advance_by(&mut self, n: usize) -> Result<(), NonZero<usize>> {
-        /// Helper trait to specialize `advance_by` via `try_fold` for `Sized` iterators.
+        /// 辅助 trait: 为 `Sized` 迭代器通过 `try_fold` 特化 `advance_by`。
         trait SpecAdvanceBy {
             fn spec_advance_by(&mut self, n: usize) -> Result<(), NonZero<usize>>;
         }
@@ -308,7 +307,7 @@ pub trait Iterator {
             default fn spec_advance_by(&mut self, n: usize) -> Result<(), NonZero<usize>> {
                 for i in 0..n {
                     if self.next().is_none() {
-                        // SAFETY: `i` is always less than `n`.
+                        // SAFETY: `i` 始终小于 `n`。
                         return Err(unsafe { NonZero::new_unchecked(n - i) });
                     }
                 }
@@ -334,29 +333,26 @@ pub trait Iterator {
         self.spec_advance_by(n)
     }
 
-    /// Returns the `n`th element of the iterator.
+    /// 返回 iterator 的第 `n` 个元素。
     ///
-    /// Like most indexing operations, the count starts from zero, so `nth(0)`
-    /// returns the first value, `nth(1)` the second, and so on.
+    /// 和大多数索引操作一样，计数从零开始，因此 `nth(0)` 返回第一个值，`nth(1)`
+    /// 返回第二个值，依此类推。
     ///
-    /// Note that all preceding elements, as well as the returned element, will be
-    /// consumed from the iterator. That means that the preceding elements will be
-    /// discarded, and also that calling `nth(0)` multiple times on the same iterator
-    /// will return different elements.
+    /// 注意，所有前置元素以及被返回的元素都会从 iterator 中消耗掉。这意味着前置
+    /// 元素会被丢弃，也意味着对同一个 iterator 多次调用 `nth(0)` 会返回不同元素。
     ///
-    /// `nth()` will return [`None`] if `n` is greater than or equal to the length of the
-    /// iterator.
+    /// 如果 `n` 大于或等于 iterator 的长度，`nth()` 会返回 [`None`]。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage:
+    /// 基本用法:
     ///
     /// ```
     /// let a = [1, 2, 3];
     /// assert_eq!(a.into_iter().nth(1), Some(2));
     /// ```
     ///
-    /// Calling `nth()` multiple times doesn't rewind the iterator:
+    /// 多次调用 `nth()` 不会倒回 iterator:
     ///
     /// ```
     /// let a = [1, 2, 3];
@@ -367,7 +363,7 @@ pub trait Iterator {
     /// assert_eq!(iter.nth(1), None);
     /// ```
     ///
-    /// Returning `None` if there are less than `n + 1` elements:
+    /// 元素少于 `n + 1` 个时返回 `None`:
     ///
     /// ```
     /// let a = [1, 2, 3];
@@ -380,21 +376,18 @@ pub trait Iterator {
         self.next()
     }
 
-    /// Creates an iterator starting at the same point, but stepping by
-    /// the given amount at each iteration.
+    /// 创建一个从同一点开始、每次迭代按给定步长前进的 iterator。
     ///
-    /// Note 1: The first element of the iterator will always be returned,
-    /// regardless of the step given.
+    /// 注意 1: 无论给定步长是多少，iterator 的第一个元素总会被返回。
     ///
-    /// Note 2: The time at which ignored elements are pulled is not fixed.
-    /// `StepBy` behaves like the sequence `self.next()`, `self.nth(step-1)`,
-    /// `self.nth(step-1)`, …, but is also free to behave like the sequence
-    /// `advance_n_and_return_first(&mut self, step)`,
-    /// `advance_n_and_return_first(&mut self, step)`, …
-    /// Which way is used may change for some iterators for performance reasons.
-    /// The second way will advance the iterator earlier and may consume more items.
+    /// 注意 2: 被忽略元素实际被拉取的时机并不固定。`StepBy` 可以表现得像
+    /// `self.next()`、`self.nth(step-1)`、`self.nth(step-1)`、... 这样的序列；
+    /// 也可以表现得像 `advance_n_and_return_first(&mut self, step)`、
+    /// `advance_n_and_return_first(&mut self, step)`、... 这样的序列。出于性能原因，
+    /// 某些 iterator 采用哪种方式可能会变化。第二种方式会更早推进 iterator，
+    /// 因而可能消耗更多元素。
     ///
-    /// `advance_n_and_return_first` is the equivalent of:
+    /// `advance_n_and_return_first` 等价于:
     /// ```
     /// fn advance_n_and_return_first<I>(iter: &mut I, n: usize) -> Option<I::Item>
     /// where
@@ -410,9 +403,9 @@ pub trait Iterator {
     ///
     /// # Panics
     ///
-    /// The method will panic if the given step is `0`.
+    /// 如果给定步长为 `0`，该方法会 panic。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let a = [0, 1, 2, 3, 4, 5];
@@ -432,20 +425,18 @@ pub trait Iterator {
         StepBy::new(self, step)
     }
 
-    /// Takes two iterators and creates a new iterator over both in sequence.
+    /// 接收两个 iterator，并创建一个按顺序遍历二者的新 iterator。
     ///
-    /// `chain()` will return a new iterator which will first iterate over
-    /// values from the first iterator and then over values from the second
-    /// iterator.
+    /// `chain()` 返回的新 iterator 会先遍历第一个 iterator 产出的值，再遍历第二个
+    /// iterator 产出的值。
     ///
-    /// In other words, it links two iterators together, in a chain. 🔗
+    /// 换句话说，它把两个 iterator 首尾相接成一条链。
     ///
-    /// [`once`] is commonly used to adapt a single value into a chain of
-    /// other kinds of iteration.
+    /// [`once`] 常用于把单个值适配成可接到其他迭代过程中的一段 iterator。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage:
+    /// 基本用法:
     ///
     /// ```
     /// let s1 = "abc".chars();
@@ -462,10 +453,9 @@ pub trait Iterator {
     /// assert_eq!(iter.next(), None);
     /// ```
     ///
-    /// Since the argument to `chain()` uses [`IntoIterator`], we can pass
-    /// anything that can be converted into an [`Iterator`], not just an
-    /// [`Iterator`] itself. For example, arrays (`[T]`) implement
-    /// [`IntoIterator`], and so can be passed to `chain()` directly:
+    /// 由于 `chain()` 的参数使用 [`IntoIterator`]，可以传入任何能转换成
+    /// [`Iterator`] 的值，而不只是 [`Iterator`] 本身。例如数组 (`[T]`) 实现了
+    /// [`IntoIterator`]，因此可以直接传给 `chain()`:
     ///
     /// ```
     /// let a1 = [1, 2, 3];
@@ -482,7 +472,7 @@ pub trait Iterator {
     /// assert_eq!(iter.next(), None);
     /// ```
     ///
-    /// If you work with Windows API, you may wish to convert [`OsStr`] to `Vec<u16>`:
+    /// 如果需要配合 Windows API，可能会想把 [`OsStr`] 转换成 `Vec<u16>`:
     ///
     /// ```
     /// #[cfg(windows)]
@@ -504,27 +494,25 @@ pub trait Iterator {
         Chain::new(self, other.into_iter())
     }
 
-    /// 'Zips up' two iterators into a single iterator of pairs.
+    /// 将两个 iterator “zip” 成一个产出成对元素的 iterator。
     ///
-    /// `zip()` returns a new iterator that will iterate over two other
-    /// iterators, returning a tuple where the first element comes from the
-    /// first iterator, and the second element comes from the second iterator.
+    /// `zip()` 返回一个新的 iterator，它会同时遍历另外两个 iterator，并返回元组:
+    /// 元组第一个元素来自第一个 iterator，第二个元素来自第二个 iterator。
     ///
-    /// In other words, it zips two iterators together, into a single one.
+    /// 换句话说，它把两个 iterator 合并成一个 iterator。
     ///
-    /// If either iterator returns [`None`], [`next`] from the zipped iterator
-    /// will return [`None`].
-    /// If the zipped iterator has no more elements to return then each further attempt to advance
-    /// it will first try to advance the first iterator at most one time and if it still yielded an item
-    /// try to advance the second iterator at most one time.
+    /// 如果任一 iterator 返回 [`None`]，zip 后 iterator 的 [`next`] 就会返回
+    /// [`None`]。如果 zip 后的 iterator 已经没有更多元素可返回，之后每次尝试推进它时，
+    /// 会先至多尝试推进第一个 iterator 一次；如果第一个 iterator 仍产出了元素，
+    /// 再至多尝试推进第二个 iterator 一次。
     ///
-    /// To 'undo' the result of zipping up two iterators, see [`unzip`].
+    /// 如果要“撤销”两个 iterator zip 后的结果，见 [`unzip`]。
     ///
     /// [`unzip`]: Iterator::unzip
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage:
+    /// 基本用法:
     ///
     /// ```
     /// let s1 = "abc".chars();
@@ -538,10 +526,9 @@ pub trait Iterator {
     /// assert_eq!(iter.next(), None);
     /// ```
     ///
-    /// Since the argument to `zip()` uses [`IntoIterator`], we can pass
-    /// anything that can be converted into an [`Iterator`], not just an
-    /// [`Iterator`] itself. For example, arrays (`[T]`) implement
-    /// [`IntoIterator`], and so can be passed to `zip()` directly:
+    /// 由于 `zip()` 的参数使用 [`IntoIterator`]，可以传入任何能转换成
+    /// [`Iterator`] 的值，而不只是 [`Iterator`] 本身。例如数组 (`[T]`) 实现了
+    /// [`IntoIterator`]，因此可以直接传给 `zip()`:
     ///
     /// ```
     /// let a1 = [1, 2, 3];
@@ -555,9 +542,9 @@ pub trait Iterator {
     /// assert_eq!(iter.next(), None);
     /// ```
     ///
-    /// `zip()` is often used to zip an infinite iterator to a finite one.
-    /// This works because the finite iterator will eventually return [`None`],
-    /// ending the zipper. Zipping with `(0..)` can look a lot like [`enumerate`]:
+    /// `zip()` 常用于把一个无限 iterator 和一个有限 iterator 配对。这可以正常工作，
+    /// 因为有限 iterator 最终会返回 [`None`]，从而结束 zip。与 `(0..)` 一起 zip
+    /// 看起来很像 [`enumerate`]:
     ///
     /// ```
     /// let enumerate: Vec<_> = "foo".chars().enumerate().collect();
@@ -574,7 +561,7 @@ pub trait Iterator {
     /// assert_eq!((2, 'o'), zipper[2]);
     /// ```
     ///
-    /// If both iterators have roughly equivalent syntax, it may be more readable to use [`zip`]:
+    /// 如果两个 iterator 的表达式结构大致对称，使用 [`zip`] 可能更易读:
     ///
     /// ```
     /// use std::iter::zip;
@@ -592,7 +579,7 @@ pub trait Iterator {
     /// assert_eq!(zipped.next(), None);
     /// ```
     ///
-    /// compared to:
+    /// 与下面写法相比:
     ///
     /// ```
     /// # let a = [1, 2, 3];
@@ -622,29 +609,28 @@ pub trait Iterator {
         Zip::new(self, other.into_iter())
     }
 
-    /// Creates a new iterator which places a copy of `separator` between adjacent
-    /// items of the original iterator.
+    /// 创建一个新的 iterator，在原 iterator 的相邻元素之间放入 `separator` 的副本。
     ///
-    /// In case `separator` does not implement [`Clone`] or needs to be
-    /// computed every time, use [`intersperse_with`].
+    /// 如果 `separator` 没有实现 [`Clone`]，或者需要每次重新计算分隔元素，请使用
+    /// [`intersperse_with`]。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage:
+    /// 基本用法:
     ///
     /// ```
     /// #![feature(iter_intersperse)]
     ///
     /// let mut a = [0, 1, 2].into_iter().intersperse(100);
-    /// assert_eq!(a.next(), Some(0));   // The first element from `a`.
-    /// assert_eq!(a.next(), Some(100)); // The separator.
-    /// assert_eq!(a.next(), Some(1));   // The next element from `a`.
-    /// assert_eq!(a.next(), Some(100)); // The separator.
-    /// assert_eq!(a.next(), Some(2));   // The last element from `a`.
-    /// assert_eq!(a.next(), None);       // The iterator is finished.
+    /// assert_eq!(a.next(), Some(0));   // `a` 的第一个元素。
+    /// assert_eq!(a.next(), Some(100)); // 分隔元素。
+    /// assert_eq!(a.next(), Some(1));   // `a` 的下一个元素。
+    /// assert_eq!(a.next(), Some(100)); // 分隔元素。
+    /// assert_eq!(a.next(), Some(2));   // `a` 的最后一个元素。
+    /// assert_eq!(a.next(), None);       // iterator 已结束。
     /// ```
     ///
-    /// `intersperse` can be very useful to join an iterator's items using a common element:
+    /// `intersperse` 对于用共同元素连接 iterator 的各项很有用:
     /// ```
     /// #![feature(iter_intersperse)]
     ///
@@ -665,20 +651,17 @@ pub trait Iterator {
         Intersperse::new(self, separator)
     }
 
-    /// Creates a new iterator which places an item generated by `separator`
-    /// between adjacent items of the original iterator.
+    /// 创建一个新的 iterator，在原 iterator 的相邻元素之间放入由 `separator` 生成的项。
     ///
-    /// The closure will be called exactly once each time an item is placed
-    /// between two adjacent items from the underlying iterator; specifically,
-    /// the closure is not called if the underlying iterator yields less than
-    /// two items and after the last item is yielded.
+    /// 每当需要在底层 iterator 的两个相邻项之间放入一个项时，该闭包都会被恰好调用
+    /// 一次。具体来说，如果底层 iterator 产出少于两个项，或最后一个项已经产出之后，
+    /// 闭包不会被调用。
     ///
-    /// If the iterator's item implements [`Clone`], it may be easier to use
-    /// [`intersperse`].
+    /// 如果 iterator 的项实现了 [`Clone`]，使用 [`intersperse`] 可能更简单。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage:
+    /// 基本用法:
     ///
     /// ```
     /// #![feature(iter_intersperse)]
@@ -689,22 +672,21 @@ pub trait Iterator {
     /// let v = [NotClone(0), NotClone(1), NotClone(2)];
     /// let mut it = v.into_iter().intersperse_with(|| NotClone(99));
     ///
-    /// assert_eq!(it.next(), Some(NotClone(0)));  // The first element from `v`.
-    /// assert_eq!(it.next(), Some(NotClone(99))); // The separator.
-    /// assert_eq!(it.next(), Some(NotClone(1)));  // The next element from `v`.
-    /// assert_eq!(it.next(), Some(NotClone(99))); // The separator.
-    /// assert_eq!(it.next(), Some(NotClone(2)));  // The last element from `v`.
-    /// assert_eq!(it.next(), None);               // The iterator is finished.
+    /// assert_eq!(it.next(), Some(NotClone(0)));  // `v` 的第一个元素。
+    /// assert_eq!(it.next(), Some(NotClone(99))); // 分隔元素。
+    /// assert_eq!(it.next(), Some(NotClone(1)));  // `v` 的下一个元素。
+    /// assert_eq!(it.next(), Some(NotClone(99))); // 分隔元素。
+    /// assert_eq!(it.next(), Some(NotClone(2)));  // `v` 的最后一个元素。
+    /// assert_eq!(it.next(), None);               // iterator 已结束。
     /// ```
     ///
-    /// `intersperse_with` can be used in situations where the separator needs
-    /// to be computed:
+    /// 当分隔元素需要计算时，可以使用 `intersperse_with`:
     /// ```
     /// #![feature(iter_intersperse)]
     ///
     /// let src = ["Hello", "to", "all", "people", "!!"].iter().copied();
     ///
-    /// // The closure mutably borrows its context to generate an item.
+    /// // 该闭包可变借用其上下文来生成一个项。
     /// let mut happy_emojis = [" ❤️ ", " 😀 "].into_iter();
     /// let separator = || happy_emojis.next().unwrap_or(" 🦀 ");
     ///
@@ -723,28 +705,24 @@ pub trait Iterator {
         IntersperseWith::new(self, separator)
     }
 
-    /// Takes a closure and creates an iterator which calls that closure on each
-    /// element.
+    /// 接收一个闭包，并创建一个会在每个元素上调用该闭包的 iterator。
     ///
-    /// `map()` transforms one iterator into another, by means of its argument:
-    /// something that implements [`FnMut`]. It produces a new iterator which
-    /// calls this closure on each element of the original iterator.
+    /// `map()` 通过它的参数，也就是某个实现 [`FnMut`] 的值，把一个 iterator 转换为
+    /// 另一个 iterator。它产生的新 iterator 会在原 iterator 的每个元素上调用该闭包。
     ///
-    /// If you are good at thinking in types, you can think of `map()` like this:
-    /// If you have an iterator that gives you elements of some type `A`, and
-    /// you want an iterator of some other type `B`, you can use `map()`,
-    /// passing a closure that takes an `A` and returns a `B`.
+    /// 如果习惯从类型角度思考，可以这样理解 `map()`: 你有一个产出某种类型 `A`
+    /// 元素的 iterator，而你想得到一个产出另一种类型 `B` 的 iterator；此时可以使用
+    /// `map()`，并传入一个接收 `A`、返回 `B` 的闭包。
     ///
-    /// `map()` is conceptually similar to a [`for`] loop. However, as `map()` is
-    /// lazy, it is best used when you're already working with other iterators.
-    /// If you're doing some sort of looping for a side effect, it's considered
-    /// more idiomatic to use [`for`] than `map()`.
+    /// 从概念上说，`map()` 类似一个 [`for`] 循环。不过 `map()` 是惰性的，因此最适合
+    /// 已经在组合其他 iterator 时使用。如果只是为了副作用而循环，使用 [`for`] 通常
+    /// 更符合惯用写法。
     ///
     /// [`for`]: ../../book/ch03-05-control-flow.html#looping-through-a-collection-with-for
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage:
+    /// 基本用法:
     ///
     /// ```
     /// let a = [1, 2, 3];
@@ -757,16 +735,16 @@ pub trait Iterator {
     /// assert_eq!(iter.next(), None);
     /// ```
     ///
-    /// If you're doing some sort of side effect, prefer [`for`] to `map()`:
+    /// 如果只是为了执行某种副作用，请优先使用 [`for`] 而不是 `map()`:
     ///
     /// ```
     /// # #![allow(unused_must_use)]
-    /// // don't do this:
+    /// // 不要这样做:
     /// (0..5).map(|x| println!("{x}"));
     ///
-    /// // it won't even execute, as it is lazy. Rust will warn you about this.
+    /// // 它甚至不会执行，因为它是惰性的。Rust 会对此发出警告。
     ///
-    /// // Instead, use a for-loop:
+    /// // 应改用 for 循环:
     /// for x in 0..5 {
     ///     println!("{x}");
     /// }
@@ -782,20 +760,18 @@ pub trait Iterator {
         Map::new(self, f)
     }
 
-    /// Calls a closure on each element of an iterator.
+    /// 在 iterator 的每个元素上调用闭包。
     ///
-    /// This is equivalent to using a [`for`] loop on the iterator, although
-    /// `break` and `continue` are not possible from a closure. It's generally
-    /// more idiomatic to use a `for` loop, but `for_each` may be more legible
-    /// when processing items at the end of longer iterator chains. In some
-    /// cases `for_each` may also be faster than a loop, because it will use
-    /// internal iteration on adapters like `Chain`.
+    /// 这等价于在 iterator 上使用 [`for`] 循环，不过闭包中不能使用 `break` 和
+    /// `continue`。通常使用 `for` 循环更符合惯用写法，但在较长 iterator 链的末端
+    /// 处理元素时，`for_each` 可能更清楚。在某些情况下 `for_each` 也可能比循环更快，
+    /// 因为它会在 `Chain` 等适配器上使用内部迭代。
     ///
     /// [`for`]: ../../book/ch03-05-control-flow.html#looping-through-a-collection-with-for
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage:
+    /// 基本用法:
     ///
     /// ```
     /// use std::sync::mpsc::channel;
@@ -808,8 +784,8 @@ pub trait Iterator {
     /// assert_eq!(v, vec![1, 3, 5, 7, 9]);
     /// ```
     ///
-    /// For such a small example, a `for` loop may be cleaner, but `for_each`
-    /// might be preferable to keep a functional style with longer iterators:
+    /// 对这样的小例子来说，`for` 循环可能更清楚；但对更长的 iterator 链，`for_each`
+    /// 可能更适合保持函数式风格:
     ///
     /// ```
     /// (0..5).flat_map(|x| (x * 100)..(x * 110))
@@ -832,16 +808,14 @@ pub trait Iterator {
         self.fold((), call(f));
     }
 
-    /// Creates an iterator which uses a closure to determine if an element
-    /// should be yielded.
+    /// 创建一个 iterator，使用闭包决定某个元素是否应该被产出。
     ///
-    /// Given an element the closure must return `true` or `false`. The returned
-    /// iterator will yield only the elements for which the closure returns
-    /// `true`.
+    /// 对给定元素，闭包必须返回 `true` 或 `false`。返回的 iterator 只会产出那些让
+    /// 闭包返回 `true` 的元素。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage:
+    /// 基本用法:
     ///
     /// ```
     /// let a = [0i32, 1, 2];
@@ -853,44 +827,43 @@ pub trait Iterator {
     /// assert_eq!(iter.next(), None);
     /// ```
     ///
-    /// Because the closure passed to `filter()` takes a reference, and many
-    /// iterators iterate over references, this leads to a possibly confusing
-    /// situation, where the type of the closure is a double reference:
+    /// 因为传给 `filter()` 的闭包接收引用，而很多 iterator 本身就迭代引用，所以
+    /// 可能出现让人困惑的情况: 闭包参数类型是双重引用。
     ///
     /// ```
     /// let s = &[0, 1, 2];
     ///
-    /// let mut iter = s.iter().filter(|x| **x > 1); // needs two *s!
+    /// let mut iter = s.iter().filter(|x| **x > 1); // 需要两个 *！
     ///
     /// assert_eq!(iter.next(), Some(&2));
     /// assert_eq!(iter.next(), None);
     /// ```
     ///
-    /// It's common to instead use destructuring on the argument to strip away one:
+    /// 常见写法是在参数上使用解构，去掉一层引用:
     ///
     /// ```
     /// let s = &[0, 1, 2];
     ///
-    /// let mut iter = s.iter().filter(|&x| *x > 1); // both & and *
+    /// let mut iter = s.iter().filter(|&x| *x > 1); // 同时使用 & 和 *
     ///
     /// assert_eq!(iter.next(), Some(&2));
     /// assert_eq!(iter.next(), None);
     /// ```
     ///
-    /// or both:
+    /// 或者去掉两层:
     ///
     /// ```
     /// let s = &[0, 1, 2];
     ///
-    /// let mut iter = s.iter().filter(|&&x| x > 1); // two &s
+    /// let mut iter = s.iter().filter(|&&x| x > 1); // 两个 &
     ///
     /// assert_eq!(iter.next(), Some(&2));
     /// assert_eq!(iter.next(), None);
     /// ```
     ///
-    /// of these layers.
+    /// 用于剥离这些引用层级。
     ///
-    /// Note that `iter.filter(f).next()` is equivalent to `iter.find(f)`.
+    /// 注意，`iter.filter(f).next()` 等价于 `iter.find(f)`。
     #[inline]
     #[stable(feature = "rust1", since = "1.0.0")]
     #[rustc_diagnostic_item = "iter_filter"]
@@ -902,21 +875,19 @@ pub trait Iterator {
         Filter::new(self, predicate)
     }
 
-    /// Creates an iterator that both filters and maps.
+    /// 创建一个同时执行过滤和映射的 iterator。
     ///
-    /// The returned iterator yields only the `value`s for which the supplied
-    /// closure returns `Some(value)`.
+    /// 返回的 iterator 只会产出那些让所提供闭包返回 `Some(value)` 的 `value`。
     ///
-    /// `filter_map` can be used to make chains of [`filter`] and [`map`] more
-    /// concise. The example below shows how a `map().filter().map()` can be
-    /// shortened to a single call to `filter_map`.
+    /// `filter_map` 可用于让 [`filter`] 和 [`map`] 组成的链更简洁。下面的示例展示了
+    /// 如何把 `map().filter().map()` 缩短为一次 `filter_map` 调用。
     ///
     /// [`filter`]: Iterator::filter
     /// [`map`]: Iterator::map
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage:
+    /// 基本用法:
     ///
     /// ```
     /// let a = ["1", "two", "NaN", "four", "5"];
@@ -928,7 +899,7 @@ pub trait Iterator {
     /// assert_eq!(iter.next(), None);
     /// ```
     ///
-    /// Here's the same example, but with [`filter`] and [`map`]:
+    /// 下面是同一个例子，但使用 [`filter`] 和 [`map`]:
     ///
     /// ```
     /// let a = ["1", "two", "NaN", "four", "5"];
@@ -947,31 +918,26 @@ pub trait Iterator {
         FilterMap::new(self, f)
     }
 
-    /// Creates an iterator which gives the current iteration count as well as
-    /// the next value.
+    /// 创建一个同时给出当前迭代计数和下一个值的 iterator。
     ///
-    /// The iterator returned yields pairs `(i, val)`, where `i` is the
-    /// current index of iteration and `val` is the value returned by the
-    /// iterator.
+    /// 返回的 iterator 会产出 `(i, val)` 对，其中 `i` 是当前迭代索引，`val` 是
+    /// iterator 返回的值。
     ///
-    /// `enumerate()` keeps its count as a [`usize`]. If you want to count by a
-    /// different sized integer, the [`zip`] function provides similar
-    /// functionality.
+    /// `enumerate()` 使用 [`usize`] 保存计数。如果想用其他大小的整数计数，
+    /// [`zip`] 函数可以提供类似功能。
     ///
-    /// # Overflow Behavior
+    /// # 溢出行为
     ///
-    /// The method does no guarding against overflows, so enumerating more than
-    /// [`usize::MAX`] elements either produces the wrong result or panics. If
-    /// overflow checks are enabled, a panic is guaranteed.
+    /// 该方法不会额外防护溢出，因此枚举超过 [`usize::MAX`] 个元素时，要么产生错误
+    /// 结果，要么 panic。如果启用了溢出检查，则保证会 panic。
     ///
     /// # Panics
     ///
-    /// The returned iterator might panic if the to-be-returned index would
-    /// overflow a [`usize`].
+    /// 如果将要返回的索引会使 [`usize`] 溢出，返回的 iterator 可能 panic。
     ///
     /// [`zip`]: Iterator::zip
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let a = ['a', 'b', 'c'];
@@ -993,63 +959,59 @@ pub trait Iterator {
         Enumerate::new(self)
     }
 
-    /// Creates an iterator which can use the [`peek`] and [`peek_mut`] methods
-    /// to look at the next element of the iterator without consuming it. See
-    /// their documentation for more information.
+    /// 创建一个 iterator，它可以用 [`peek`] 和 [`peek_mut`] 方法在不消耗元素的情况下
+    /// 查看下一个元素。更多信息见这些方法各自的文档。
     ///
-    /// Note that the underlying iterator is still advanced when [`peek`] or
-    /// [`peek_mut`] are called for the first time: In order to retrieve the
-    /// next element, [`next`] is called on the underlying iterator, hence any
-    /// side effects (i.e. anything other than fetching the next value) of
-    /// the [`next`] method will occur.
+    /// 注意，第一次调用 [`peek`] 或 [`peek_mut`] 时，底层 iterator 仍会被推进:
+    /// 为了取得下一个元素，会在底层 iterator 上调用 [`next`]，因此 [`next`] 方法的
+    /// 任何副作用（也就是“取得下一个值”以外的行为）都会发生。
     ///
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage:
+    /// 基本用法:
     ///
     /// ```
     /// let xs = [1, 2, 3];
     ///
     /// let mut iter = xs.into_iter().peekable();
     ///
-    /// // peek() lets us see into the future
+    /// // peek() 让我们可以预看下一个元素
     /// assert_eq!(iter.peek(), Some(&1));
     /// assert_eq!(iter.next(), Some(1));
     ///
     /// assert_eq!(iter.next(), Some(2));
     ///
-    /// // we can peek() multiple times, the iterator won't advance
+    /// // 可以多次 peek()，iterator 不会继续推进
     /// assert_eq!(iter.peek(), Some(&3));
     /// assert_eq!(iter.peek(), Some(&3));
     ///
     /// assert_eq!(iter.next(), Some(3));
     ///
-    /// // after the iterator is finished, so is peek()
+    /// // iterator 结束后，peek() 也结束
     /// assert_eq!(iter.peek(), None);
     /// assert_eq!(iter.next(), None);
     /// ```
     ///
-    /// Using [`peek_mut`] to mutate the next item without advancing the
-    /// iterator:
+    /// 使用 [`peek_mut`] 在不推进 iterator 的情况下修改下一项:
     ///
     /// ```
     /// let xs = [1, 2, 3];
     ///
     /// let mut iter = xs.into_iter().peekable();
     ///
-    /// // `peek_mut()` lets us see into the future
+    /// // `peek_mut()` 让我们可以预看下一个元素
     /// assert_eq!(iter.peek_mut(), Some(&mut 1));
     /// assert_eq!(iter.peek_mut(), Some(&mut 1));
     /// assert_eq!(iter.next(), Some(1));
     ///
     /// if let Some(p) = iter.peek_mut() {
     ///     assert_eq!(*p, 2);
-    ///     // put a value into the iterator
+    ///     // 向 iterator 中放入一个值
     ///     *p = 1000;
     /// }
     ///
-    /// // The value reappears as the iterator continues
+    /// // iterator 继续时，该值会再次出现
     /// assert_eq!(iter.collect::<Vec<_>>(), vec![1000, 3]);
     /// ```
     /// [`peek`]: Peekable::peek
@@ -1064,20 +1026,18 @@ pub trait Iterator {
         Peekable::new(self)
     }
 
-    /// Creates an iterator that [`skip`]s elements based on a predicate.
+    /// 创建一个根据谓词 [`skip`] 元素的 iterator。
     ///
     /// [`skip`]: Iterator::skip
     ///
-    /// `skip_while()` takes a closure as an argument. It will call this
-    /// closure on each element of the iterator, and ignore elements
-    /// until it returns `false`.
+    /// `skip_while()` 接收一个闭包作为参数。它会在 iterator 的每个元素上调用该闭包，
+    /// 并忽略元素，直到闭包返回 `false`。
     ///
-    /// After `false` is returned, `skip_while()`'s job is over, and the
-    /// rest of the elements are yielded.
+    /// 一旦返回 `false`，`skip_while()` 的工作就结束，剩余元素都会被产出。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage:
+    /// 基本用法:
     ///
     /// ```
     /// let a = [-1i32, 0, 1];
@@ -1089,21 +1049,20 @@ pub trait Iterator {
     /// assert_eq!(iter.next(), None);
     /// ```
     ///
-    /// Because the closure passed to `skip_while()` takes a reference, and many
-    /// iterators iterate over references, this leads to a possibly confusing
-    /// situation, where the type of the closure argument is a double reference:
+    /// 因为传给 `skip_while()` 的闭包接收引用，而很多 iterator 本身就迭代引用，
+    /// 所以可能出现让人困惑的情况: 闭包参数类型是双重引用。
     ///
     /// ```
     /// let s = &[-1, 0, 1];
     ///
-    /// let mut iter = s.iter().skip_while(|x| **x < 0); // need two *s!
+    /// let mut iter = s.iter().skip_while(|x| **x < 0); // 需要两个 *！
     ///
     /// assert_eq!(iter.next(), Some(&0));
     /// assert_eq!(iter.next(), Some(&1));
     /// assert_eq!(iter.next(), None);
     /// ```
     ///
-    /// Stopping after an initial `false`:
+    /// 遇到第一个 `false` 后停止跳过:
     ///
     /// ```
     /// let a = [-1, 0, 1, -2];
@@ -1113,8 +1072,8 @@ pub trait Iterator {
     /// assert_eq!(iter.next(), Some(0));
     /// assert_eq!(iter.next(), Some(1));
     ///
-    /// // while this would have been false, since we already got a false,
-    /// // skip_while() isn't used any more
+    /// // 虽然这个元素也会让谓词为 false，但由于前面已经遇到过 false，
+    /// // skip_while() 不再继续使用谓词
     /// assert_eq!(iter.next(), Some(-2));
     ///
     /// assert_eq!(iter.next(), None);
@@ -1130,18 +1089,16 @@ pub trait Iterator {
         SkipWhile::new(self, predicate)
     }
 
-    /// Creates an iterator that yields elements based on a predicate.
+    /// 创建一个根据谓词产出元素的 iterator。
     ///
-    /// `take_while()` takes a closure as an argument. It will call this
-    /// closure on each element of the iterator, and yield elements
-    /// while it returns `true`.
+    /// `take_while()` 接收一个闭包作为参数。它会在 iterator 的每个元素上调用该闭包，
+    /// 并在闭包返回 `true` 时产出元素。
     ///
-    /// After `false` is returned, `take_while()`'s job is over, and the
-    /// rest of the elements are ignored.
+    /// 一旦返回 `false`，`take_while()` 的工作就结束，剩余元素都会被忽略。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage:
+    /// 基本用法:
     ///
     /// ```
     /// let a = [-1i32, 0, 1];
@@ -1152,20 +1109,19 @@ pub trait Iterator {
     /// assert_eq!(iter.next(), None);
     /// ```
     ///
-    /// Because the closure passed to `take_while()` takes a reference, and many
-    /// iterators iterate over references, this leads to a possibly confusing
-    /// situation, where the type of the closure is a double reference:
+    /// 因为传给 `take_while()` 的闭包接收引用，而很多 iterator 本身就迭代引用，
+    /// 所以可能出现让人困惑的情况: 闭包参数类型是双重引用。
     ///
     /// ```
     /// let s = &[-1, 0, 1];
     ///
-    /// let mut iter = s.iter().take_while(|x| **x < 0); // need two *s!
+    /// let mut iter = s.iter().take_while(|x| **x < 0); // 需要两个 *！
     ///
     /// assert_eq!(iter.next(), Some(&-1));
     /// assert_eq!(iter.next(), None);
     /// ```
     ///
-    /// Stopping after an initial `false`:
+    /// 遇到第一个 `false` 后停止:
     ///
     /// ```
     /// let a = [-1, 0, 1, -2];
@@ -1174,14 +1130,13 @@ pub trait Iterator {
     ///
     /// assert_eq!(iter.next(), Some(-1));
     ///
-    /// // We have more elements that are less than zero, but since we already
-    /// // got a false, take_while() ignores the remaining elements.
+    /// // 后面还有小于零的元素，但由于前面已经遇到 false，
+    /// // take_while() 会忽略剩余元素。
     /// assert_eq!(iter.next(), None);
     /// ```
     ///
-    /// Because `take_while()` needs to look at the value in order to see if it
-    /// should be included or not, consuming iterators will see that it is
-    /// removed:
+    /// 因为 `take_while()` 需要查看值才能判断它是否应该被包含，所以消费原 iterator
+    /// 时会发现该值已经被移除:
     ///
     /// ```
     /// let a = [1, 2, 3, 4];
@@ -1196,8 +1151,8 @@ pub trait Iterator {
     /// assert_eq!(result, [4]);
     /// ```
     ///
-    /// The `3` is no longer there, because it was consumed in order to see if
-    /// the iteration should stop, but wasn't placed back into the iterator.
+    /// `3` 已经不在其中，因为它为了判断迭代是否应停止而被消耗，并且没有被放回
+    /// iterator。
     #[inline]
     #[stable(feature = "rust1", since = "1.0.0")]
     fn take_while<P>(self, predicate: P) -> TakeWhile<Self, P>
@@ -1208,15 +1163,14 @@ pub trait Iterator {
         TakeWhile::new(self, predicate)
     }
 
-    /// Creates an iterator that both yields elements based on a predicate and maps.
+    /// 创建一个同时按谓词产出元素并执行映射的 iterator。
     ///
-    /// `map_while()` takes a closure as an argument. It will call this
-    /// closure on each element of the iterator, and yield elements
-    /// while it returns [`Some(_)`][`Some`].
+    /// `map_while()` 接收一个闭包作为参数。它会在 iterator 的每个元素上调用该闭包，
+    /// 并在闭包返回 [`Some(_)`][`Some`] 时产出元素。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage:
+    /// 基本用法:
     ///
     /// ```
     /// let a = [-1i32, 4, 0, 1];
@@ -1228,7 +1182,7 @@ pub trait Iterator {
     /// assert_eq!(iter.next(), None);
     /// ```
     ///
-    /// Here's the same example, but with [`take_while`] and [`map`]:
+    /// 下面是同一个例子，但使用 [`take_while`] 和 [`map`]:
     ///
     /// [`take_while`]: Iterator::take_while
     /// [`map`]: Iterator::map
@@ -1246,7 +1200,7 @@ pub trait Iterator {
     /// assert_eq!(iter.next(), None);
     /// ```
     ///
-    /// Stopping after an initial [`None`]:
+    /// 遇到第一个 [`None`] 后停止:
     ///
     /// ```
     /// let a = [0, 1, 2, -3, 4, 5, -6];
@@ -1254,14 +1208,13 @@ pub trait Iterator {
     /// let iter = a.into_iter().map_while(|x| u32::try_from(x).ok());
     /// let vec: Vec<_> = iter.collect();
     ///
-    /// // We have more elements that could fit in u32 (such as 4, 5), but `map_while` returned `None` for `-3`
-    /// // (as the `predicate` returned `None`) and `collect` stops at the first `None` encountered.
+    /// // 后面还有能放入 u32 的元素（例如 4、5），但 `map_while` 对 `-3` 返回了 `None`
+    /// //（因为 `predicate` 返回 `None`），而 `collect` 会在遇到第一个 `None` 时停止。
     /// assert_eq!(vec, [0, 1, 2]);
     /// ```
     ///
-    /// Because `map_while()` needs to look at the value in order to see if it
-    /// should be included or not, consuming iterators will see that it is
-    /// removed:
+    /// 因为 `map_while()` 需要查看值才能判断它是否应该被包含，所以消费原 iterator
+    /// 时会发现该值已经被移除:
     ///
     /// ```
     /// let a = [1, 2, -3, 4];
@@ -1278,12 +1231,12 @@ pub trait Iterator {
     /// assert_eq!(result, [4]);
     /// ```
     ///
-    /// The `-3` is no longer there, because it was consumed in order to see if
-    /// the iteration should stop, but wasn't placed back into the iterator.
+    /// `-3` 已经不在其中，因为它为了判断迭代是否应停止而被消耗，并且没有被放回
+    /// iterator。
     ///
-    /// Note that unlike [`take_while`] this iterator is **not** fused.
-    /// It is also not specified what this iterator returns after the first [`None`] is returned.
-    /// If you need a fused iterator, use [`fuse`].
+    /// 注意，与 [`take_while`] 不同，该 iterator **不是** fused。第一次返回
+    /// [`None`] 之后它还会返回什么并未被指定。如果需要 fused iterator，请使用
+    /// [`fuse`]。
     ///
     /// [`fuse`]: Iterator::fuse
     #[inline]
@@ -1296,16 +1249,15 @@ pub trait Iterator {
         MapWhile::new(self, predicate)
     }
 
-    /// Creates an iterator that skips the first `n` elements.
+    /// 创建一个跳过前 `n` 个元素的 iterator。
     ///
-    /// `skip(n)` skips elements until `n` elements are skipped or the end of the
-    /// iterator is reached (whichever happens first). After that, all the remaining
-    /// elements are yielded. In particular, if the original iterator is too short,
-    /// then the returned iterator is empty.
+    /// `skip(n)` 会跳过元素，直到跳过了 `n` 个元素或到达 iterator 末尾（二者以先
+    /// 发生者为准）。之后，所有剩余元素都会被产出。特别地，如果原 iterator 太短，
+    /// 返回的 iterator 就是空的。
     ///
-    /// Rather than overriding this method directly, instead override the `nth` method.
+    /// 与其直接覆盖该方法，更应覆盖 `nth` 方法。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let a = [1, 2, 3];
@@ -1324,18 +1276,15 @@ pub trait Iterator {
         Skip::new(self, n)
     }
 
-    /// Creates an iterator that yields the first `n` elements, or fewer
-    /// if the underlying iterator ends sooner.
+    /// 创建一个产出前 `n` 个元素的 iterator；如果底层 iterator 更早结束，则产出更少。
     ///
-    /// `take(n)` yields elements until `n` elements are yielded or the end of
-    /// the iterator is reached (whichever happens first).
-    /// The returned iterator is a prefix of length `n` if the original iterator
-    /// contains at least `n` elements, otherwise it contains all of the
-    /// (fewer than `n`) elements of the original iterator.
+    /// `take(n)` 会产出元素，直到已经产出 `n` 个元素或到达 iterator 末尾（二者以
+    /// 先发生者为准）。如果原 iterator 至少包含 `n` 个元素，返回的 iterator 就是长度
+    /// 为 `n` 的前缀；否则它包含原 iterator 的全部元素（数量少于 `n`）。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage:
+    /// 基本用法:
     ///
     /// ```
     /// let a = [1, 2, 3];
@@ -1347,7 +1296,7 @@ pub trait Iterator {
     /// assert_eq!(iter.next(), None);
     /// ```
     ///
-    /// `take()` is often used with an infinite iterator, to make it finite:
+    /// `take()` 常用于无限 iterator，把它限制为有限 iterator:
     ///
     /// ```
     /// let mut iter = (0..).take(3);
@@ -1358,8 +1307,7 @@ pub trait Iterator {
     /// assert_eq!(iter.next(), None);
     /// ```
     ///
-    /// If less than `n` elements are available,
-    /// `take` will limit itself to the size of the underlying iterator:
+    /// 如果可用元素少于 `n` 个，`take` 会把自身限制到底层 iterator 的长度:
     ///
     /// ```
     /// let v = [1, 2];
@@ -1369,18 +1317,18 @@ pub trait Iterator {
     /// assert_eq!(iter.next(), None);
     /// ```
     ///
-    /// Use [`by_ref`] to take from the iterator without consuming it, and then
-    /// continue using the original iterator:
+    /// 使用 [`by_ref`] 可以在不消耗 iterator 所有权的情况下从中取元素，然后继续使用
+    /// 原 iterator:
     ///
     /// ```
     /// let mut words = ["hello", "world", "of", "Rust"].into_iter();
     ///
-    /// // Take the first two words.
+    /// // 取出前两个单词。
     /// let hello_world: Vec<_> = words.by_ref().take(2).collect();
     /// assert_eq!(hello_world, vec!["hello", "world"]);
     ///
-    /// // Collect the rest of the words.
-    /// // We can only do this because we used `by_ref` earlier.
+    /// // 收集剩余单词。
+    /// // 能这样做是因为前面使用了 `by_ref`。
     /// let of_rust: Vec<_> = words.collect();
     /// assert_eq!(of_rust, vec!["of", "Rust"]);
     /// ```
@@ -1396,36 +1344,33 @@ pub trait Iterator {
         Take::new(self, n)
     }
 
-    /// An iterator adapter which, like [`fold`], holds internal state, but
-    /// unlike [`fold`], produces a new iterator.
+    /// 一个 iterator 适配器，它和 [`fold`] 一样持有内部状态，但不同于 [`fold`]，
+    /// 它会产生新的 iterator。
     ///
     /// [`fold`]: Iterator::fold
     ///
-    /// `scan()` takes two arguments: an initial value which seeds the internal
-    /// state, and a closure with two arguments, the first being a mutable
-    /// reference to the internal state and the second an iterator element.
-    /// The closure can assign to the internal state to share state between
-    /// iterations.
+    /// `scan()` 接收两个参数: 一个作为内部状态初始种子的初始值，以及一个带两个参数
+    /// 的闭包。闭包第一个参数是指向内部状态的可变引用，第二个参数是 iterator 元素。
+    /// 闭包可以赋值给内部状态，从而在多次迭代之间共享状态。
     ///
-    /// On iteration, the closure will be applied to each element of the
-    /// iterator and the return value from the closure, an [`Option`], is
-    /// returned by the `next` method. Thus the closure can return
-    /// `Some(value)` to yield `value`, or `None` to end the iteration.
+    /// 迭代时，该闭包会应用到 iterator 的每个元素；闭包的返回值是一个 [`Option`]，
+    /// 并会由 `next` 方法返回。因此闭包可以返回 `Some(value)` 来产出 `value`，
+    /// 或返回 `None` 来结束迭代。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let a = [1, 2, 3, 4];
     ///
     /// let mut iter = a.into_iter().scan(1, |state, x| {
-    ///     // each iteration, we'll multiply the state by the element ...
+    ///     // 每次迭代都把状态乘以当前元素 ...
     ///     *state = *state * x;
     ///
-    ///     // ... and terminate if the state exceeds 6
+    ///     // ... 如果状态超过 6，则终止
     ///     if *state > 6 {
     ///         return None;
     ///     }
-    ///     // ... else yield the negation of the state
+    ///     // ... 否则产出状态的相反数
     ///     Some(-*state)
     /// });
     ///
@@ -1444,29 +1389,26 @@ pub trait Iterator {
         Scan::new(self, initial_state, f)
     }
 
-    /// Creates an iterator that works like map, but flattens nested structure.
+    /// 创建一个类似 map、但会展平嵌套结构的 iterator。
     ///
-    /// The [`map`] adapter is very useful, but only when the closure
-    /// argument produces values. If it produces an iterator instead, there's
-    /// an extra layer of indirection. `flat_map()` will remove this extra layer
-    /// on its own.
+    /// [`map`] 适配器很有用，但它最适合闭包参数直接产生值的情况。如果闭包产生的是
+    /// iterator，就会多出一层间接结构。`flat_map()` 会自行移除这一额外层级。
     ///
-    /// You can think of `flat_map(f)` as the semantic equivalent
-    /// of [`map`]ping, and then [`flatten`]ing as in `map(f).flatten()`.
+    /// 可以把 `flat_map(f)` 理解为先执行 [`map`]，再像 `map(f).flatten()` 那样执行
+    /// [`flatten`] 的语义等价形式。
     ///
-    /// Another way of thinking about `flat_map()`: [`map`]'s closure returns
-    /// one item for each element, and `flat_map()`'s closure returns an
-    /// iterator for each element.
+    /// 另一种理解 `flat_map()` 的方式是: [`map`] 的闭包为每个元素返回一个项，
+    /// 而 `flat_map()` 的闭包为每个元素返回一个 iterator。
     ///
     /// [`map`]: Iterator::map
     /// [`flatten`]: Iterator::flatten
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let words = ["alpha", "beta", "gamma"];
     ///
-    /// // chars() returns an iterator
+    /// // chars() 返回一个 iterator
     /// let merged: String = words.iter()
     ///                           .flat_map(|s| s.chars())
     ///                           .collect();
@@ -1483,15 +1425,14 @@ pub trait Iterator {
         FlatMap::new(self, f)
     }
 
-    /// Creates an iterator that flattens nested structure.
+    /// 创建一个展平嵌套结构的 iterator。
     ///
-    /// This is useful when you have an iterator of iterators or an iterator of
-    /// things that can be turned into iterators and you want to remove one
-    /// level of indirection.
+    /// 当你有一个由 iterator 组成的 iterator，或者一个由可转换为 iterator 的值组成的
+    /// iterator，并希望移除一层间接结构时，该方法很有用。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage:
+    /// 基本用法:
     ///
     /// ```
     /// let data = vec![vec![1, 2, 3, 4], vec![5, 6]];
@@ -1499,12 +1440,12 @@ pub trait Iterator {
     /// assert_eq!(flattened, [1, 2, 3, 4, 5, 6]);
     /// ```
     ///
-    /// Mapping and then flattening:
+    /// 先映射再展平:
     ///
     /// ```
     /// let words = ["alpha", "beta", "gamma"];
     ///
-    /// // chars() returns an iterator
+    /// // chars() 返回一个 iterator
     /// let merged: String = words.iter()
     ///                           .map(|s| s.chars())
     ///                           .flatten()
@@ -1512,20 +1453,19 @@ pub trait Iterator {
     /// assert_eq!(merged, "alphabetagamma");
     /// ```
     ///
-    /// You can also rewrite this in terms of [`flat_map()`], which is preferable
-    /// in this case since it conveys intent more clearly:
+    /// 也可以用 [`flat_map()`] 重写；在这个场景下它更推荐，因为能更清楚地表达意图:
     ///
     /// ```
     /// let words = ["alpha", "beta", "gamma"];
     ///
-    /// // chars() returns an iterator
+    /// // chars() 返回一个 iterator
     /// let merged: String = words.iter()
     ///                           .flat_map(|s| s.chars())
     ///                           .collect();
     /// assert_eq!(merged, "alphabetagamma");
     /// ```
     ///
-    /// Flattening works on any `IntoIterator` type, including `Option` and `Result`:
+    /// 展平适用于任何 `IntoIterator` 类型，包括 `Option` 和 `Result`:
     ///
     /// ```
     /// let options = vec![Some(123), Some(321), None, Some(231)];
@@ -1537,7 +1477,7 @@ pub trait Iterator {
     /// assert_eq!(flattened_results, [123, 321, 231]);
     /// ```
     ///
-    /// Flattening only removes one level of nesting at a time:
+    /// 每次展平只会移除一层嵌套:
     ///
     /// ```
     /// let d3 = [[[1, 2], [3, 4]], [[5, 6], [7, 8]]];
@@ -1549,11 +1489,9 @@ pub trait Iterator {
     /// assert_eq!(d1, [1, 2, 3, 4, 5, 6, 7, 8]);
     /// ```
     ///
-    /// Here we see that `flatten()` does not perform a "deep" flatten.
-    /// Instead, only one level of nesting is removed. That is, if you
-    /// `flatten()` a three-dimensional array, the result will be
-    /// two-dimensional and not one-dimensional. To get a one-dimensional
-    /// structure, you have to `flatten()` again.
+    /// 这里可以看到，`flatten()` 不会执行“深度”展平。它一次只移除一层嵌套。也就是说，
+    /// 如果对三维数组调用 `flatten()`，结果会是二维而不是一维。要得到一维结构，
+    /// 必须再次调用 `flatten()`。
     ///
     /// [`flat_map()`]: Iterator::flat_map
     #[inline]
@@ -1566,12 +1504,14 @@ pub trait Iterator {
         Flatten::new(self)
     }
 
-    /// Calls the given function `f` for each contiguous window of size `N` over
-    /// `self` and returns an iterator over the outputs of `f`. Like [`slice::windows()`],
-    /// the windows during mapping overlap as well.
+    /// 对 `self` 中每个长度为 `N` 的连续窗口调用函数 `f`，并返回产出 `f` 结果的迭代器。
     ///
-    /// In the following example, the closure is called three times with the
-    /// arguments `&['a', 'b']`, `&['b', 'c']` and `&['c', 'd']` respectively.
+    /// 和 [`slice::windows()`] 一样，映射时的窗口会相互重叠。该适配器仍然是惰性的:
+    /// 创建它时不会读取元素，只有调用 `next` 等消费方法时，才会维护内部窗口缓冲并
+    /// 调用闭包。
+    ///
+    /// 下面的例子中，闭包会分别以 `&['a', 'b']`、`&['b', 'c']` 和
+    /// `&['c', 'd']` 为参数调用三次。
     ///
     /// ```
     /// #![feature(iter_map_windows)]
@@ -1583,25 +1523,22 @@ pub trait Iterator {
     /// assert_eq!(strings, vec!["a+b", "b+c", "c+d"]);
     /// ```
     ///
-    /// Note that the const parameter `N` is usually inferred by the
-    /// destructured argument in the closure.
+    /// 注意，const 参数 `N` 通常会根据闭包的解构参数推断出来。
     ///
-    /// The returned iterator yields 𝑘 − `N` + 1 items (where 𝑘 is the number of
-    /// items yielded by `self`). If 𝑘 is less than `N`, this method yields an
-    /// empty iterator.
+    /// 返回的迭代器会产出 𝑘 - `N` + 1 项，其中 𝑘 是 `self` 实际产出的项数。
+    /// 如果 𝑘 小于 `N`，则返回的迭代器为空。
     ///
-    /// The returned iterator implements [`FusedIterator`], because once `self`
-    /// returns `None`, even if it returns a `Some(T)` again in the next iterations,
-    /// we cannot put it into a contiguous array buffer, and thus the returned iterator
-    /// should be fused.
+    /// 返回的迭代器实现 [`FusedIterator`]。原因是窗口必须表示一段连续历史；一旦
+    /// `self` 返回 [`None`]，即使底层非 fused 迭代器之后又返回 `Some(T)`，也无法把
+    /// 这个新元素放回一段没有空洞的连续数组窗口中，因此 `map_windows` 会把第一次
+    /// [`None`] 固化为永久结束。
     ///
     /// [`slice::windows()`]: slice::windows
     /// [`FusedIterator`]: crate::iter::FusedIterator
     ///
     /// # Panics
     ///
-    /// Panics if `N` is zero. This check will most probably get changed to a
-    /// compile time error before this method gets stabilized.
+    /// 如果 `N` 为零会 panic。该检查在方法稳定前很可能改成编译期错误。
     ///
     /// ```should_panic
     /// #![feature(iter_map_windows)]
@@ -1609,9 +1546,9 @@ pub trait Iterator {
     /// let iter = std::iter::repeat(0).map_windows(|&[]| ());
     /// ```
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Building the sums of neighboring numbers.
+    /// 计算相邻数字之和。
     ///
     /// ```
     /// #![feature(iter_map_windows)]
@@ -1623,8 +1560,7 @@ pub trait Iterator {
     /// assert_eq!(it.next(), None);
     /// ```
     ///
-    /// Since the elements in the following example implement `Copy`, we can
-    /// just copy the array and get an iterator over the windows.
+    /// 因为下面例子中的元素实现了 `Copy`，可以直接复制数组来取得窗口迭代结果。
     ///
     /// ```
     /// #![feature(iter_map_windows)]
@@ -1637,8 +1573,8 @@ pub trait Iterator {
     /// assert_eq!(it.next(), None);
     /// ```
     ///
-    /// You can also use this function to check the sortedness of an iterator.
-    /// For the simple case, rather use [`Iterator::is_sorted`].
+    /// 也可以用这个函数检查迭代器是否有序。简单场景更建议直接使用
+    /// [`Iterator::is_sorted`]。
     ///
     /// ```
     /// #![feature(iter_map_windows)]
@@ -1655,7 +1591,7 @@ pub trait Iterator {
     /// assert_eq!(it.next(), None);
     /// ```
     ///
-    /// For non-fused iterators, they are fused after `map_windows`.
+    /// 非 fused 迭代器经过 `map_windows` 后会变成 fused。
     ///
     /// ```
     /// #![feature(iter_map_windows)]
@@ -1672,7 +1608,7 @@ pub trait Iterator {
     ///         let val = self.state;
     ///         self.state = self.state + 1;
     ///
-    ///         // yields `0..5` first, then only even numbers since `6..`.
+    ///         // 先产出 `0..5`，之后从 `6..` 起只产出偶数。
     ///         if val < 5 || val % 2 == 0 {
     ///             Some(val)
     ///         } else {
@@ -1684,20 +1620,20 @@ pub trait Iterator {
     ///
     /// let mut iter = NonFusedIterator::default();
     ///
-    /// // yields 0..5 first.
+    /// // 先产出 0..5。
     /// assert_eq!(iter.next(), Some(0));
     /// assert_eq!(iter.next(), Some(1));
     /// assert_eq!(iter.next(), Some(2));
     /// assert_eq!(iter.next(), Some(3));
     /// assert_eq!(iter.next(), Some(4));
-    /// // then we can see our iterator going back and forth
+    /// // 然后可以看到该迭代器会在 Some 和 None 之间来回切换。
     /// assert_eq!(iter.next(), None);
     /// assert_eq!(iter.next(), Some(6));
     /// assert_eq!(iter.next(), None);
     /// assert_eq!(iter.next(), Some(8));
     /// assert_eq!(iter.next(), None);
     ///
-    /// // however, with `.map_windows()`, it is fused.
+    /// // 但是，经过 `.map_windows()` 后它会变成 fused。
     /// let mut iter = NonFusedIterator::default()
     ///     .map_windows(|arr: &[_; 2]| *arr);
     ///
@@ -1707,7 +1643,7 @@ pub trait Iterator {
     /// assert_eq!(iter.next(), Some([3, 4]));
     /// assert_eq!(iter.next(), None);
     ///
-    /// // it will always return `None` after the first time.
+    /// // 第一次返回 `None` 后，它会一直返回 `None`。
     /// assert_eq!(iter.next(), None);
     /// assert_eq!(iter.next(), None);
     /// assert_eq!(iter.next(), None);
@@ -1722,23 +1658,22 @@ pub trait Iterator {
         MapWindows::new(self, f)
     }
 
-    /// Creates an iterator which ends after the first [`None`].
+    /// 创建一个在第一次 [`None`] 之后永久结束的迭代器。
     ///
-    /// After an iterator returns [`None`], future calls may or may not yield
-    /// [`Some(T)`] again. `fuse()` adapts an iterator, ensuring that after a
-    /// [`None`] is given, it will always return [`None`] forever.
+    /// 普通迭代器返回 [`None`] 后，后续调用可能也可能不再产出 [`Some(T)`]。
+    /// `fuse()` 会包装迭代器，记录第一次 [`None`]，并保证之后永远返回 [`None`]。
     ///
-    /// Note that the [`Fuse`] wrapper is a no-op on iterators that implement
-    /// the [`FusedIterator`] trait. `fuse()` may therefore behave incorrectly
-    /// if the [`FusedIterator`] trait is improperly implemented.
+    /// 如果迭代器已经实现 [`FusedIterator`]，[`Fuse`] 包装器会被视为无操作以便优化。
+    /// 因此，错误实现 [`FusedIterator`] 会让 `fuse()` 的语义也变得错误: 调用方会
+    /// 信任该 trait 宣称的“结束后永久结束”契约。
     ///
     /// [`Some(T)`]: Some
     /// [`FusedIterator`]: crate::iter::FusedIterator
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
-    /// // an iterator which alternates between Some and None
+    /// // 一个在 Some 和 None 之间交替的迭代器
     /// struct Alternate {
     ///     state: i32,
     /// }
@@ -1750,26 +1685,26 @@ pub trait Iterator {
     ///         let val = self.state;
     ///         self.state = self.state + 1;
     ///
-    ///         // if it's even, Some(i32), else None
+    ///         // 偶数返回 Some(i32)，奇数返回 None
     ///         (val % 2 == 0).then_some(val)
     ///     }
     /// }
     ///
     /// let mut iter = Alternate { state: 0 };
     ///
-    /// // we can see our iterator going back and forth
+    /// // 可以看到这个迭代器会来回切换。
     /// assert_eq!(iter.next(), Some(0));
     /// assert_eq!(iter.next(), None);
     /// assert_eq!(iter.next(), Some(2));
     /// assert_eq!(iter.next(), None);
     ///
-    /// // however, once we fuse it...
+    /// // 但是，一旦对它调用 fuse()...
     /// let mut iter = iter.fuse();
     ///
     /// assert_eq!(iter.next(), Some(4));
     /// assert_eq!(iter.next(), None);
     ///
-    /// // it will always return `None` after the first time.
+    /// // 第一次返回 `None` 后，它会一直返回 `None`。
     /// assert_eq!(iter.next(), None);
     /// assert_eq!(iter.next(), None);
     /// assert_eq!(iter.next(), None);
@@ -1783,25 +1718,22 @@ pub trait Iterator {
         Fuse::new(self)
     }
 
-    /// Does something with each element of an iterator, passing the value on.
+    /// 对 iterator 的每个元素执行某个操作，并继续传递该值。
     ///
-    /// When using iterators, you'll often chain several of them together.
-    /// While working on such code, you might want to check out what's
-    /// happening at various parts in the pipeline. To do that, insert
-    /// a call to `inspect()`.
+    /// 使用 iterator 时，常会把多个适配器串成一条链。在编写这类代码时，可能希望查看
+    /// 管道中不同位置正在发生什么。要做到这一点，可以插入一次 `inspect()` 调用。
     ///
-    /// It's more common for `inspect()` to be used as a debugging tool than to
-    /// exist in your final code, but applications may find it useful in certain
-    /// situations when errors need to be logged before being discarded.
+    /// `inspect()` 更常作为调试工具使用，而不是留在最终代码中。不过在某些场景下，
+    /// 应用需要在丢弃错误前记录错误，此时它也可能很有用。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage:
+    /// 基本用法:
     ///
     /// ```
     /// let a = [1, 4, 2, 3];
     ///
-    /// // this iterator sequence is complex.
+    /// // 这条 iterator 序列比较复杂。
     /// let sum = a.iter()
     ///     .cloned()
     ///     .filter(|x| x % 2 == 0)
@@ -1809,7 +1741,7 @@ pub trait Iterator {
     ///
     /// println!("{sum}");
     ///
-    /// // let's add some inspect() calls to investigate what's happening
+    /// // 加入一些 inspect() 调用来观察发生了什么
     /// let sum = a.iter()
     ///     .cloned()
     ///     .inspect(|x| println!("about to filter: {x}"))
@@ -1820,7 +1752,7 @@ pub trait Iterator {
     /// println!("{sum}");
     /// ```
     ///
-    /// This will print:
+    /// 这会打印:
     ///
     /// ```text
     /// 6
@@ -1833,7 +1765,7 @@ pub trait Iterator {
     /// 6
     /// ```
     ///
-    /// Logging errors before discarding them:
+    /// 在丢弃错误前记录错误:
     ///
     /// ```
     /// let lines = ["1", "2", "a"];
@@ -1852,7 +1784,7 @@ pub trait Iterator {
     /// println!("Sum: {sum}");
     /// ```
     ///
-    /// This will print:
+    /// 这会打印:
     ///
     /// ```text
     /// Parsing error: invalid digit found in string
@@ -1868,31 +1800,29 @@ pub trait Iterator {
         Inspect::new(self, f)
     }
 
-    /// Creates a "by reference" adapter for this instance of `Iterator`.
+    /// 为这个 `Iterator` 实例创建一个“按引用”适配器。
     ///
-    /// Consuming method calls (direct or indirect calls to `next`)
-    /// on the "by reference" adapter will consume the original iterator,
-    /// but ownership-taking methods (those with a `self` parameter)
-    /// only take ownership of the "by reference" iterator.
+    /// 在“按引用”适配器上调用消费性方法（直接或间接调用 `next` 的方法）会消费原
+    /// iterator；但取得所有权的方法（带 `self` 参数的方法）只会取得这个“按引用”
+    /// iterator 的所有权。
     ///
-    /// This is useful for applying ownership-taking methods
-    /// (such as `take` in the example below)
-    /// without giving up ownership of the original iterator,
-    /// so you can use the original iterator afterwards.
+    /// 这对于在不放弃原 iterator 所有权的情况下调用取得所有权的方法很有用（例如
+    /// 下面示例中的 `take`），因此之后仍可继续使用原 iterator。
     ///
-    /// Uses [`impl<I: Iterator + ?Sized> Iterator for &mut I { type Item = I::Item; ...}`](https://doc.rust-lang.org/nightly/std/iter/trait.Iterator.html#impl-Iterator-for-%26mut+I).
+    /// 该方法使用
+    /// [`impl<I: Iterator + ?Sized> Iterator for &mut I { type Item = I::Item; ...}`](https://doc.rust-lang.org/nightly/std/iter/trait.Iterator.html#impl-Iterator-for-%26mut+I)。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let mut words = ["hello", "world", "of", "Rust"].into_iter();
     ///
-    /// // Take the first two words.
+    /// // 取出前两个单词。
     /// let hello_world: Vec<_> = words.by_ref().take(2).collect();
     /// assert_eq!(hello_world, vec!["hello", "world"]);
     ///
-    /// // Collect the rest of the words.
-    /// // We can only do this because we used `by_ref` earlier.
+    /// // 收集剩余单词。
+    /// // 能这样做是因为前面使用了 `by_ref`。
     /// let of_rust: Vec<_> = words.collect();
     /// assert_eq!(of_rust, vec!["of", "Rust"]);
     /// ```
@@ -1904,33 +1834,26 @@ pub trait Iterator {
         self
     }
 
-    /// Transforms an iterator into a collection.
+    /// 将 iterator 转换为集合。
     ///
-    /// `collect()` takes ownership of an iterator and produces whichever
-    /// collection type you request. The iterator itself carries no knowledge of
-    /// the eventual container; the target collection is chosen entirely by the
-    /// type you ask `collect()` to return. This makes `collect()` one of the
-    /// more powerful methods in the standard library, and it shows up in a wide
-    /// variety of contexts.
+    /// `collect()` 获取 iterator 的所有权，并产生你请求的集合类型。iterator 本身并不
+    /// 知道最终容器是什么；目标集合完全由你要求 `collect()` 返回的类型决定。这使
+    /// `collect()` 成为标准库中能力很强的方法之一，并在大量场景中出现。
     ///
-    /// The most basic pattern in which `collect()` is used is to turn one
-    /// collection into another. You take a collection, call [`iter`] on it,
-    /// do a bunch of transformations, and then `collect()` at the end.
+    /// `collect()` 最基本的使用模式，是把一个集合转换成另一个集合。你取一个集合，
+    /// 在其上调用 [`iter`]，执行一系列转换，最后调用 `collect()`。
     ///
-    /// `collect()` can also create instances of types that are not typical
-    /// collections. For example, a [`String`] can be built from [`char`]s,
-    /// and an iterator of [`Result<T, E>`][`Result`] items can be collected
-    /// into `Result<Collection<T>, E>`. See the examples below for more.
+    /// `collect()` 也可以创建那些并非典型集合的类型实例。例如，可以从 [`char`] 构造
+    /// [`String`]，也可以把产出 [`Result<T, E>`][`Result`] 项的 iterator 收集为
+    /// `Result<Collection<T>, E>`。更多内容见下面的示例。
     ///
-    /// Because `collect()` is so general, it can cause problems with type
-    /// inference. As such, `collect()` is one of the few times you'll see
-    /// the syntax affectionately known as the 'turbofish': `::<>`. This
-    /// helps the inference algorithm understand specifically which collection
-    /// you're trying to collect into.
+    /// 因为 `collect()` 非常通用，它可能给类型推断带来问题。因此，`collect()` 是少数
+    /// 经常需要看到被亲切称为“turbofish”的语法 `::<>` 的地方之一。该语法帮助推断
+    /// 算法明确理解你想收集到哪一种集合中。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage:
+    /// 基本用法:
     ///
     /// ```
     /// let a = [1, 2, 3];
@@ -1942,8 +1865,8 @@ pub trait Iterator {
     /// assert_eq!(vec![2, 4, 6], doubled);
     /// ```
     ///
-    /// Note that we needed the `: Vec<i32>` on the left-hand side. This is because
-    /// we could collect into, for example, a [`VecDeque<T>`] instead:
+    /// 注意，左侧需要写出 `: Vec<i32>`。这是因为也可以收集到其他类型中，例如
+    /// [`VecDeque<T>`]:
     ///
     /// [`VecDeque<T>`]: ../../std/collections/struct.VecDeque.html
     ///
@@ -1959,7 +1882,7 @@ pub trait Iterator {
     /// assert_eq!(6, doubled[2]);
     /// ```
     ///
-    /// Using the 'turbofish' instead of annotating `doubled`:
+    /// 使用 “turbofish” 而不是给 `doubled` 写类型标注:
     ///
     /// ```
     /// let a = [1, 2, 3];
@@ -1969,8 +1892,8 @@ pub trait Iterator {
     /// assert_eq!(vec![2, 4, 6], doubled);
     /// ```
     ///
-    /// Because `collect()` only cares about what you're collecting into, you can
-    /// still use a partial type hint, `_`, with the turbofish:
+    /// 因为 `collect()` 只关心要收集到什么类型中，所以仍可在 turbofish 中使用部分
+    /// 类型提示 `_`:
     ///
     /// ```
     /// let a = [1, 2, 3];
@@ -1980,7 +1903,7 @@ pub trait Iterator {
     /// assert_eq!(vec![2, 4, 6], doubled);
     /// ```
     ///
-    /// Using `collect()` to make a [`String`]:
+    /// 使用 `collect()` 创建 [`String`]:
     ///
     /// ```
     /// let chars = ['g', 'd', 'k', 'k', 'n'];
@@ -1993,22 +1916,22 @@ pub trait Iterator {
     /// assert_eq!("hello", hello);
     /// ```
     ///
-    /// If you have a list of [`Result<T, E>`][`Result`]s, you can use `collect()` to
-    /// see if any of them failed:
+    /// 如果有一组 [`Result<T, E>`][`Result`]，可以使用 `collect()` 检查其中是否有
+    /// 失败项:
     ///
     /// ```
     /// let results = [Ok(1), Err("nope"), Ok(3), Err("bad")];
     ///
     /// let result: Result<Vec<_>, &str> = results.into_iter().collect();
     ///
-    /// // gives us the first error
+    /// // 得到第一个错误
     /// assert_eq!(Err("nope"), result);
     ///
     /// let results = [Ok(1), Ok(3)];
     ///
     /// let result: Result<Vec<_>, &str> = results.into_iter().collect();
     ///
-    /// // gives us the list of answers
+    /// // 得到结果列表
     /// assert_eq!(Ok(vec![1, 3]), result);
     /// ```
     ///
@@ -2023,10 +1946,9 @@ pub trait Iterator {
     where
         Self: Sized,
     {
-        // This is too aggressive to turn on for everything all the time, but PR#137908
-        // accidentally noticed that some rustc iterators had malformed `size_hint`s,
-        // so this will help catch such things in debug-assertions-std runners,
-        // even if users won't actually ever see it.
+        // 对所有场景一直启用这个检查过于激进，但 PR#137908 意外发现一些 rustc
+        // iterator 的 `size_hint` 格式不正确，因此该检查可以帮助
+        // debug-assertions-std runner 捕获这类问题，即使用户实际上不会看到它。
         if cfg!(debug_assertions) {
             let hint = self.size_hint();
             assert!(hint.1.is_none_or(|high| high >= hint.0), "Malformed size_hint {hint:?}");
@@ -2035,25 +1957,22 @@ pub trait Iterator {
         FromIterator::from_iter(self)
     }
 
-    /// Fallibly transforms an iterator into a collection, short circuiting if
-    /// a failure is encountered.
+    /// 以可失败方式将 iterator 转换为集合，遇到失败时短路。
     ///
-    /// `try_collect()` is a variation of [`collect()`][`collect`] that allows fallible
-    /// conversions during collection. Its main use case is simplifying conversions from
-    /// iterators yielding [`Option<T>`][`Option`] into `Option<Collection<T>>`, or similarly for other [`Try`]
-    /// types (e.g. [`Result`]).
+    /// `try_collect()` 是 [`collect()`][`collect`] 的变体，允许收集过程中发生可失败转换。
+    /// 它的主要用途是简化从产出 [`Option<T>`][`Option`] 的 iterator 到
+    /// `Option<Collection<T>>` 的转换；其他 [`Try`] 类型（例如 [`Result`]）也类似。
     ///
-    /// Importantly, `try_collect()` doesn't require that the outer [`Try`] type also implements [`FromIterator`];
-    /// only the inner type produced on `Try::Output` must implement it. Concretely,
-    /// this means that collecting into `ControlFlow<_, Vec<i32>>` is valid because `Vec<i32>` implements
-    /// [`FromIterator`], even though [`ControlFlow`] doesn't.
+    /// 重要的是，`try_collect()` 不要求外层 [`Try`] 类型也实现 [`FromIterator`]；只有
+    /// `Try::Output` 上产生的内层类型必须实现它。具体来说，这意味着收集到
+    /// `ControlFlow<_, Vec<i32>>` 是有效的，因为 `Vec<i32>` 实现了 [`FromIterator`]，
+    /// 即使 [`ControlFlow`] 没有实现。
     ///
-    /// Also, if a failure is encountered during `try_collect()`, the iterator is still valid and
-    /// may continue to be used, in which case it will continue iterating starting after the element that
-    /// triggered the failure. See the last example below for an example of how this works.
+    /// 此外，如果 `try_collect()` 期间遇到失败，iterator 仍然有效，并且可以继续使用。
+    /// 在这种情况下，它会从触发失败的元素之后继续迭代。最后一个示例展示了这种行为。
     ///
-    /// # Examples
-    /// Successfully collecting an iterator of `Option<i32>` into `Option<Vec<i32>>`:
+    /// # 示例
+    /// 成功把产出 `Option<i32>` 的 iterator 收集为 `Option<Vec<i32>>`:
     /// ```
     /// #![feature(iterator_try_collect)]
     ///
@@ -2062,7 +1981,7 @@ pub trait Iterator {
     /// assert_eq!(v, Some(vec![1, 2, 3]));
     /// ```
     ///
-    /// Failing to collect in the same way:
+    /// 以相同方式收集但失败:
     /// ```
     /// #![feature(iterator_try_collect)]
     ///
@@ -2071,7 +1990,7 @@ pub trait Iterator {
     /// assert_eq!(v, None);
     /// ```
     ///
-    /// A similar example, but with `Result`:
+    /// 类似示例，但使用 `Result`:
     /// ```
     /// #![feature(iterator_try_collect)]
     ///
@@ -2084,9 +2003,8 @@ pub trait Iterator {
     /// assert_eq!(v, Err(()));
     /// ```
     ///
-    /// Finally, even [`ControlFlow`] works, despite the fact that it
-    /// doesn't implement [`FromIterator`]. Note also that the iterator can
-    /// continue to be used, even if a failure is encountered:
+    /// 最后，即使 [`ControlFlow`] 没有实现 [`FromIterator`]，它也可以工作。还要注意，
+    /// 即使遇到失败，iterator 也可以继续使用:
     ///
     /// ```
     /// #![feature(iterator_try_collect)]
@@ -2115,21 +2033,19 @@ pub trait Iterator {
         try_process(ByRefSized(self), |i| i.collect())
     }
 
-    /// Collects all the items from an iterator into a collection.
+    /// 将 iterator 的所有项收集到一个集合中。
     ///
-    /// This method consumes the iterator and adds all its items to the
-    /// passed collection. The collection is then returned, so the call chain
-    /// can be continued.
+    /// 该方法会消耗 iterator，并把它的所有项加入传入的集合。随后返回该集合的可变
+    /// 引用，因此调用链可以继续。
     ///
-    /// This is useful when you already have a collection and want to add
-    /// the iterator items to it.
+    /// 当你已经有一个集合，并希望把 iterator 的项加入其中时，该方法很有用。
     ///
-    /// This method is a convenience method to call [Extend::extend](trait.Extend.html),
-    /// but instead of being called on a collection, it's called on an iterator.
+    /// 该方法是调用 [Extend::extend](trait.Extend.html) 的便利形式；不同之处在于，
+    /// 它是在 iterator 上调用，而不是在集合上调用。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage:
+    /// 基本用法:
     ///
     /// ```
     /// #![feature(iter_collect_into)]
@@ -2143,7 +2059,7 @@ pub trait Iterator {
     /// assert_eq!(vec, vec![0, 1, 2, 4, 6, 10, 20, 30]);
     /// ```
     ///
-    /// `Vec` can have a manual set capacity to avoid reallocating it:
+    /// 可以手动设置 `Vec` 容量，以避免重新分配:
     ///
     /// ```
     /// #![feature(iter_collect_into)]
@@ -2158,7 +2074,7 @@ pub trait Iterator {
     /// assert_eq!(vec, vec![2, 4, 6, 10, 20, 30]);
     /// ```
     ///
-    /// The returned mutable reference can be used to continue the call chain:
+    /// 返回的可变引用可用于继续调用链:
     ///
     /// ```
     /// #![feature(iter_collect_into)]
@@ -2186,18 +2102,18 @@ pub trait Iterator {
         collection
     }
 
-    /// Consumes an iterator, creating two collections from it.
+    /// 消耗 iterator，并从中创建两个集合。
     ///
-    /// The predicate passed to `partition()` can return `true`, or `false`.
-    /// `partition()` returns a pair, all of the elements for which it returned
-    /// `true`, and all of the elements for which it returned `false`.
+    /// 传给 `partition()` 的谓词可以返回 `true` 或 `false`。`partition()` 返回一对
+    /// 集合: 第一个包含所有让谓词返回 `true` 的元素，第二个包含所有让谓词返回
+    /// `false` 的元素。
     ///
-    /// See also [`is_partitioned()`] and [`partition_in_place()`].
+    /// 另见 [`is_partitioned()`] 和 [`partition_in_place()`]。
     ///
     /// [`is_partitioned()`]: Iterator::is_partitioned
     /// [`partition_in_place()`]: Iterator::partition_in_place
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let a = [1, 2, 3];
@@ -2239,37 +2155,36 @@ pub trait Iterator {
         (left, right)
     }
 
-    /// Reorders the elements of this iterator *in-place* according to the given predicate,
-    /// such that all those that return `true` precede all those that return `false`.
-    /// Returns the number of `true` elements found.
+    /// 按给定谓词*原地*重排此 iterator 的元素，使所有返回 `true` 的元素排在所有返回
+    /// `false` 的元素之前。返回找到的 `true` 元素数量。
     ///
-    /// The relative order of partitioned items is not maintained.
+    /// 分区后各项的相对顺序不会被保持。
     ///
-    /// # Current implementation
+    /// # 当前实现
     ///
-    /// The current algorithm tries to find the first element for which the predicate evaluates
-    /// to false and the last element for which it evaluates to true, and repeatedly swaps them.
+    /// 当前算法会尝试找到第一个让谓词求值为 false 的元素，以及最后一个让谓词求值为
+    /// true 的元素，并反复交换它们。
     ///
-    /// Time complexity: *O*(*n*)
+    /// 时间复杂度: *O*(*n*)
     ///
-    /// See also [`is_partitioned()`] and [`partition()`].
+    /// 另见 [`is_partitioned()`] 和 [`partition()`]。
     ///
     /// [`is_partitioned()`]: Iterator::is_partitioned
     /// [`partition()`]: Iterator::partition
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(iter_partition_in_place)]
     ///
     /// let mut a = [1, 2, 3, 4, 5, 6, 7];
     ///
-    /// // Partition in-place between evens and odds
+    /// // 在偶数和奇数之间原地分区
     /// let i = a.iter_mut().partition_in_place(|n| n % 2 == 0);
     ///
     /// assert_eq!(i, 3);
-    /// assert!(a[..i].iter().all(|n| n % 2 == 0)); // evens
-    /// assert!(a[i..].iter().all(|n| n % 2 == 1)); // odds
+    /// assert!(a[..i].iter().all(|n| n % 2 == 0)); // 偶数
+    /// assert!(a[i..].iter().all(|n| n % 2 == 1)); // 奇数
     /// ```
     #[unstable(feature = "iter_partition_in_place", issue = "62543")]
     fn partition_in_place<'a, T: 'a, P>(mut self, ref mut predicate: P) -> usize
@@ -2277,10 +2192,10 @@ pub trait Iterator {
         Self: Sized + DoubleEndedIterator<Item = &'a mut T>,
         P: FnMut(&T) -> bool,
     {
-        // FIXME: should we worry about the count overflowing? The only way to have more than
-        // `usize::MAX` mutable references is with ZSTs, which aren't useful to partition...
+        // FIXME: 是否应担心计数溢出？拥有超过 `usize::MAX` 个可变引用的唯一方式是
+        // ZST，而对 ZST 进行分区并没有什么用途...
 
-        // These closure "factory" functions exist to avoid genericity in `Self`.
+        // 这些闭包“工厂”函数用于避免在 `Self` 上引入泛型性。
 
         #[inline]
         fn is_false<'a, T>(
@@ -2299,7 +2214,7 @@ pub trait Iterator {
             move |x| predicate(&**x)
         }
 
-        // Repeatedly find the first `false` and swap it with the last `true`.
+        // 反复找到第一个 `false`，并与最后一个 `true` 交换。
         let mut true_count = 0;
         while let Some(head) = self.find(is_false(predicate, &mut true_count)) {
             if let Some(tail) = self.rfind(is_true(predicate)) {
@@ -2312,15 +2227,15 @@ pub trait Iterator {
         true_count
     }
 
-    /// Checks if the elements of this iterator are partitioned according to the given predicate,
-    /// such that all those that return `true` precede all those that return `false`.
+    /// 检查此 iterator 的元素是否已按给定谓词分区，也就是所有返回 `true` 的元素都排在
+    /// 所有返回 `false` 的元素之前。
     ///
-    /// See also [`partition()`] and [`partition_in_place()`].
+    /// 另见 [`partition()`] 和 [`partition_in_place()`]。
     ///
     /// [`partition()`]: Iterator::partition
     /// [`partition_in_place()`]: Iterator::partition_in_place
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(iter_is_partitioned)]
@@ -2334,71 +2249,60 @@ pub trait Iterator {
         Self: Sized,
         P: FnMut(Self::Item) -> bool,
     {
-        // Either all items test `true`, or the first clause stops at `false`
-        // and we check that there are no more `true` items after that.
+        // 要么所有项测试结果都是 `true`，要么第一个子句停在 `false` 处，
+        // 然后检查其后不再有 `true` 项。
         self.all(&mut predicate) || !self.any(predicate)
     }
 
-    /// An iterator method that applies a function as long as it returns
-    /// successfully, producing a single, final value.
+    /// 一个 iterator 方法，会在函数持续成功返回时不断应用它，并产生单个最终值。
     ///
-    /// `try_fold()` takes two arguments: an initial value, and a closure with
-    /// two arguments: an 'accumulator', and an element. The closure either
-    /// returns successfully, with the value that the accumulator should have
-    /// for the next iteration, or it returns failure, with an error value that
-    /// is propagated back to the caller immediately (short-circuiting).
+    /// `try_fold()` 接收两个参数: 一个初始值，以及一个带两个参数的闭包。闭包参数为
+    /// “累加器”和一个元素。闭包要么成功返回下一轮迭代中累加器应持有的值，要么返回
+    /// 失败，并把错误值立即传播给调用方（短路）。
     ///
-    /// The initial value is the value the accumulator will have on the first
-    /// call. If applying the closure succeeded against every element of the
-    /// iterator, `try_fold()` returns the final accumulator as success.
+    /// 初始值就是第一次调用闭包时累加器持有的值。如果对 iterator 的每个元素应用闭包
+    /// 都成功，`try_fold()` 会把最终累加器作为成功结果返回。
     ///
-    /// Folding is useful whenever you have a collection of something, and want
-    /// to produce a single value from it.
+    /// 当你有一组内容并希望从中产生单个值时，folding 很有用。
     ///
-    /// # Note to Implementors
+    /// # 给实现者的说明
     ///
-    /// Several of the other (forward) methods have default implementations in
-    /// terms of this one, so try to implement this explicitly if it can
-    /// do something better than the default `for` loop implementation.
+    /// 其他多个（前向）方法的默认实现都基于该方法，因此如果能比默认 `for` 循环实现
+    /// 做得更好，请尽量显式实现它。
     ///
-    /// In particular, try to have this call `try_fold()` on the internal parts
-    /// from which this iterator is composed. If multiple calls are needed,
-    /// the `?` operator may be convenient for chaining the accumulator value
-    /// along, but beware any invariants that need to be upheld before those
-    /// early returns. This is a `&mut self` method, so iteration needs to be
-    /// resumable after hitting an error here.
+    /// 尤其应尽量让它在组成此 iterator 的内部部件上调用 `try_fold()`。如果需要多次
+    /// 调用，`?` 运算符便于串接累加器值；但要注意在这些提前返回之前必须维护好的
+    /// 任何不变量。该方法接收 `&mut self`，因此这里遇到错误之后，迭代仍必须可以恢复。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage:
+    /// 基本用法:
     ///
     /// ```
     /// let a = [1, 2, 3];
     ///
-    /// // the checked sum of all of the elements of the array
+    /// // 对数组的所有元素执行带检查的求和
     /// let sum = a.into_iter().try_fold(0i8, |acc, x| acc.checked_add(x));
     ///
     /// assert_eq!(sum, Some(6));
     /// ```
     ///
-    /// Short-circuiting:
+    /// 短路行为:
     ///
     /// ```
     /// let a = [10, 20, 30, 100, 40, 50];
     /// let mut iter = a.into_iter();
     ///
-    /// // This sum overflows when adding the 100 element
+    /// // 加到 100 这个元素时，该求和会溢出
     /// let sum = iter.try_fold(0i8, |acc, x| acc.checked_add(x));
     /// assert_eq!(sum, None);
     ///
-    /// // Because it short-circuited, the remaining elements are still
-    /// // available through the iterator.
+    /// // 由于发生了短路，剩余元素仍可通过 iterator 取得。
     /// assert_eq!(iter.len(), 2);
     /// assert_eq!(iter.next(), Some(40));
     /// ```
     ///
-    /// While you cannot `break` from a closure, the [`ControlFlow`] type allows
-    /// a similar idea:
+    /// 虽然不能从闭包中直接 `break`，但 [`ControlFlow`] 类型允许表达类似想法:
     ///
     /// ```
     /// use std::ops::ControlFlow;
@@ -2436,16 +2340,14 @@ pub trait Iterator {
         try { accum }
     }
 
-    /// An iterator method that applies a fallible function to each item in the
-    /// iterator, stopping at the first error and returning that error.
+    /// 一个 iterator 方法，会在每个项上应用可失败函数，并在第一个错误处停止且返回该错误。
     ///
-    /// This can also be thought of as the fallible form of [`for_each()`]
-    /// or as the stateless version of [`try_fold()`].
+    /// 也可以把它看作 [`for_each()`] 的可失败形式，或 [`try_fold()`] 的无状态版本。
     ///
     /// [`for_each()`]: Iterator::for_each
     /// [`try_fold()`]: Iterator::try_fold
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::fs::rename;
@@ -2460,12 +2362,12 @@ pub trait Iterator {
     /// let mut it = data.iter().cloned();
     /// let res = it.try_for_each(|x| rename(x, Path::new(x).with_extension("old")));
     /// assert!(res.is_err());
-    /// // It short-circuited, so the remaining items are still in the iterator:
+    /// // 它发生了短路，因此剩余项仍留在 iterator 中:
     /// assert_eq!(it.next(), Some("stale_bread.json"));
     /// ```
     ///
-    /// The [`ControlFlow`] type can be used with this method for the situations
-    /// in which you'd use `break` and `continue` in a normal loop:
+    /// 在普通循环中会使用 `break` 和 `continue` 的场景，也可以在该方法中配合
+    /// [`ControlFlow`] 类型表达:
     ///
     /// ```
     /// use std::ops::ControlFlow;
@@ -2495,59 +2397,49 @@ pub trait Iterator {
         self.try_fold((), call(f))
     }
 
-    /// Folds every element into an accumulator by applying an operation,
-    /// returning the final result.
+    /// 通过应用一个操作，把每个元素折叠进累加器，并返回最终结果。
     ///
-    /// `fold()` takes two arguments: an initial value, and a closure with two
-    /// arguments: an 'accumulator', and an element. The closure returns the value that
-    /// the accumulator should have for the next iteration.
+    /// `fold()` 接收两个参数: 一个初始值，以及一个带两个参数的闭包。闭包参数为
+    /// “累加器”和一个元素；闭包返回下一轮迭代中累加器应持有的值。
     ///
-    /// The initial value is the value the accumulator will have on the first
-    /// call.
+    /// 初始值就是第一次调用闭包时累加器持有的值。
     ///
-    /// After applying this closure to every element of the iterator, `fold()`
-    /// returns the accumulator.
+    /// 将该闭包应用到 iterator 的每个元素之后，`fold()` 返回累加器。
     ///
-    /// This operation is sometimes called 'reduce' or 'inject'.
+    /// 这个操作有时也称为“reduce”或“inject”。
     ///
-    /// Folding is useful whenever you have a collection of something, and want
-    /// to produce a single value from it.
+    /// 当你有一组内容并希望从中产生单个值时，folding 很有用。
     ///
-    /// Note: `fold()`, and similar methods that traverse the entire iterator,
-    /// might not terminate for infinite iterators, even on traits for which a
-    /// result is determinable in finite time.
+    /// 注意: `fold()` 以及其他会遍历整个 iterator 的类似方法，在无限 iterator 上可能
+    /// 不会终止；即使对某些 trait 来说，结果本可在有限时间内确定，也是如此。
     ///
-    /// Note: [`reduce()`] can be used to use the first element as the initial
-    /// value, if the accumulator type and item type is the same.
+    /// 注意: 如果累加器类型和项类型相同，可以使用 [`reduce()`] 把第一个元素作为初始值。
     ///
-    /// Note: `fold()` combines elements in a *left-associative* fashion. For associative
-    /// operators like `+`, the order the elements are combined in is not important, but for non-associative
-    /// operators like `-` the order will affect the final result.
-    /// For a *right-associative* version of `fold()`, see [`DoubleEndedIterator::rfold()`].
+    /// 注意: `fold()` 以*左结合*方式组合元素。对于 `+` 这类满足结合律的运算符，
+    /// 元素组合顺序并不重要；但对于 `-` 这类不满足结合律的运算符，顺序会影响最终
+    /// 结果。需要 `fold()` 的*右结合*版本时，见 [`DoubleEndedIterator::rfold()`]。
     ///
-    /// # Note to Implementors
+    /// # 给实现者的说明
     ///
-    /// Several of the other (forward) methods have default implementations in
-    /// terms of this one, so try to implement this explicitly if it can
-    /// do something better than the default `for` loop implementation.
+    /// 其他多个（前向）方法的默认实现都基于该方法，因此如果能比默认 `for` 循环实现
+    /// 做得更好，请尽量显式实现它。
     ///
-    /// In particular, try to have this call `fold()` on the internal parts
-    /// from which this iterator is composed.
+    /// 尤其应尽量让它在组成此 iterator 的内部部件上调用 `fold()`。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage:
+    /// 基本用法:
     ///
     /// ```
     /// let a = [1, 2, 3];
     ///
-    /// // the sum of all of the elements of the array
+    /// // 数组中所有元素的和
     /// let sum = a.iter().fold(0, |acc, x| acc + x);
     ///
     /// assert_eq!(sum, 6);
     /// ```
     ///
-    /// Let's walk through each step of the iteration here:
+    /// 下面逐步查看这里的每一步迭代:
     ///
     /// | element | acc | x | result |
     /// |---------|-----|---|--------|
@@ -2556,11 +2448,10 @@ pub trait Iterator {
     /// | 2       | 1   | 2 | 3      |
     /// | 3       | 3   | 3 | 6      |
     ///
-    /// And so, our final result, `6`.
+    /// 因此，最终结果为 `6`。
     ///
-    /// This example demonstrates the left-associative nature of `fold()`:
-    /// it builds a string, starting with an initial value
-    /// and continuing with each element from the front until the back:
+    /// 该示例展示 `fold()` 的左结合性质: 它从初始值开始构造字符串，并从前往后依次
+    /// 处理每个元素:
     ///
     /// ```
     /// let numbers = [1, 2, 3, 4, 5];
@@ -2573,9 +2464,8 @@ pub trait Iterator {
     ///
     /// assert_eq!(result, "(((((0 + 1) + 2) + 3) + 4) + 5)");
     /// ```
-    /// It's common for people who haven't used iterators a lot to
-    /// use a `for` loop with a list of things to build up a result. Those
-    /// can be turned into `fold()`s:
+    /// 不常使用 iterator 的人，经常会用 `for` 循环遍历一组内容并逐步构造结果。这类
+    /// 代码可以转换成 `fold()`:
     ///
     /// [`for`]: ../../book/ch03-05-control-flow.html#looping-through-a-collection-with-for
     ///
@@ -2584,7 +2474,7 @@ pub trait Iterator {
     ///
     /// let mut result = 0;
     ///
-    /// // for loop:
+    /// // for 循环:
     /// for i in &numbers {
     ///     result = result + i;
     /// }
@@ -2592,7 +2482,7 @@ pub trait Iterator {
     /// // fold:
     /// let result2 = numbers.iter().fold(0, |acc, &x| acc + x);
     ///
-    /// // they're the same
+    /// // 二者相同
     /// assert_eq!(result, result2);
     /// ```
     ///
@@ -2612,26 +2502,23 @@ pub trait Iterator {
         accum
     }
 
-    /// Reduces the elements to a single one, by repeatedly applying a reducing
-    /// operation.
+    /// 通过反复应用归约操作，把元素归约为单个元素。
     ///
-    /// If the iterator is empty, returns [`None`]; otherwise, returns the
-    /// result of the reduction.
+    /// 如果 iterator 为空，则返回 [`None`]；否则返回归约结果。
     ///
-    /// The reducing function is a closure with two arguments: an 'accumulator', and an element.
-    /// For iterators with at least one element, this is the same as [`fold()`]
-    /// with the first element of the iterator as the initial accumulator value, folding
-    /// every subsequent element into it.
+    /// 归约函数是一个带两个参数的闭包: “累加器”和一个元素。对于至少有一个元素的
+    /// iterator，这等价于以 iterator 的第一个元素作为初始累加器值调用 [`fold()`]，
+    /// 并把后续每个元素折叠进去。
     ///
     /// [`fold()`]: Iterator::fold
     ///
-    /// # Example
+    /// # 示例
     ///
     /// ```
     /// let reduced: i32 = (1..10).reduce(|acc, e| acc + e).unwrap_or(0);
     /// assert_eq!(reduced, 45);
     ///
-    /// // Which is equivalent to doing it with `fold`:
+    /// // 这等价于用 `fold` 完成:
     /// let folded: i32 = (1..10).fold(0, |acc, e| acc + e);
     /// assert_eq!(reduced, folded);
     /// ```
@@ -2646,25 +2533,24 @@ pub trait Iterator {
         Some(self.fold(first, f))
     }
 
-    /// Reduces the elements to a single one by repeatedly applying a reducing operation. If the
-    /// closure returns a failure, the failure is propagated back to the caller immediately.
+    /// 通过反复应用归约操作，把元素归约为单个元素。如果闭包返回失败，该失败会立即
+    /// 传播回调用方。
     ///
-    /// The return type of this method depends on the return type of the closure. If the closure
-    /// returns `Result<Self::Item, E>`, then this function will return `Result<Option<Self::Item>,
-    /// E>`. If the closure returns `Option<Self::Item>`, then this function will return
-    /// `Option<Option<Self::Item>>`.
+    /// 该方法的返回类型取决于闭包的返回类型。如果闭包返回 `Result<Self::Item, E>`，
+    /// 则该函数返回 `Result<Option<Self::Item>, E>`。如果闭包返回
+    /// `Option<Self::Item>`，则该函数返回 `Option<Option<Self::Item>>`。
     ///
-    /// When called on an empty iterator, this function will return either `Some(None)` or
-    /// `Ok(None)` depending on the type of the provided closure.
+    /// 在空 iterator 上调用时，该函数会根据所提供闭包的类型返回 `Some(None)` 或
+    /// `Ok(None)`。
     ///
-    /// For iterators with at least one element, this is essentially the same as calling
-    /// [`try_fold()`] with the first element of the iterator as the initial accumulator value.
+    /// 对于至少有一个元素的 iterator，这本质上等价于以 iterator 的第一个元素作为
+    /// 初始累加器值调用 [`try_fold()`]。
     ///
     /// [`try_fold()`]: Iterator::try_fold
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Safely calculate the sum of a series of numbers:
+    /// 安全地计算一串数字之和:
     ///
     /// ```
     /// #![feature(iterator_try_reduce)]
@@ -2674,7 +2560,7 @@ pub trait Iterator {
     /// assert_eq!(sum, Some(Some(58)));
     /// ```
     ///
-    /// Determine when a reduction short circuited:
+    /// 判断归约何时发生短路:
     ///
     /// ```
     /// #![feature(iterator_try_reduce)]
@@ -2684,7 +2570,7 @@ pub trait Iterator {
     /// assert_eq!(sum, None);
     /// ```
     ///
-    /// Determine when a reduction was not performed because there are no elements:
+    /// 判断因为没有元素而未执行归约的情况:
     ///
     /// ```
     /// #![feature(iterator_try_reduce)]
@@ -2694,7 +2580,7 @@ pub trait Iterator {
     /// assert_eq!(sum, Some(None));
     /// ```
     ///
-    /// Use a [`Result`] instead of an [`Option`]:
+    /// 使用 [`Result`] 而不是 [`Option`]:
     ///
     /// ```
     /// #![feature(iterator_try_reduce)]
@@ -2727,22 +2613,20 @@ pub trait Iterator {
         }
     }
 
-    /// Tests if every element of the iterator matches a predicate.
+    /// 测试 iterator 的每个元素是否都匹配谓词。
     ///
-    /// `all()` takes a closure that returns `true` or `false`. It applies
-    /// this closure to each element of the iterator, and if they all return
-    /// `true`, then so does `all()`. If any of them return `false`, it
-    /// returns `false`.
+    /// `all()` 接收一个返回 `true` 或 `false` 的闭包。它把该闭包应用到 iterator 的
+    /// 每个元素；如果所有元素都返回 `true`，`all()` 也返回 `true`。如果任一元素返回
+    /// `false`，则返回 `false`。
     ///
-    /// `all()` is short-circuiting; in other words, it will stop processing
-    /// as soon as it finds a `false`, given that no matter what else happens,
-    /// the result will also be `false`.
+    /// `all()` 会短路；换句话说，一旦找到 `false`，它就会停止处理，因为无论之后
+    /// 发生什么，结果都已经必然为 `false`。
     ///
-    /// An empty iterator returns `true`.
+    /// 空 iterator 返回 `true`。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage:
+    /// 基本用法:
     ///
     /// ```
     /// let a = [1, 2, 3];
@@ -2752,7 +2636,7 @@ pub trait Iterator {
     /// assert!(!a.into_iter().all(|x| x > 2));
     /// ```
     ///
-    /// Stopping at the first `false`:
+    /// 在第一个 `false` 处停止:
     ///
     /// ```
     /// let a = [1, 2, 3];
@@ -2761,7 +2645,7 @@ pub trait Iterator {
     ///
     /// assert!(!iter.all(|x| x != 2));
     ///
-    /// // we can still use `iter`, as there are more elements.
+    /// // 由于还有剩余元素，仍然可以继续使用 `iter`。
     /// assert_eq!(iter.next(), Some(3));
     /// ```
     #[inline]
@@ -2780,22 +2664,20 @@ pub trait Iterator {
         self.try_fold((), check(f)) == ControlFlow::Continue(())
     }
 
-    /// Tests if any element of the iterator matches a predicate.
+    /// 测试 iterator 是否有任一元素匹配谓词。
     ///
-    /// `any()` takes a closure that returns `true` or `false`. It applies
-    /// this closure to each element of the iterator, and if any of them return
-    /// `true`, then so does `any()`. If they all return `false`, it
-    /// returns `false`.
+    /// `any()` 接收一个返回 `true` 或 `false` 的闭包。它把该闭包应用到 iterator 的
+    /// 每个元素；如果任一元素返回 `true`，`any()` 也返回 `true`。如果全部返回
+    /// `false`，则返回 `false`。
     ///
-    /// `any()` is short-circuiting; in other words, it will stop processing
-    /// as soon as it finds a `true`, given that no matter what else happens,
-    /// the result will also be `true`.
+    /// `any()` 会短路；换句话说，一旦找到 `true`，它就会停止处理，因为无论之后
+    /// 发生什么，结果都已经必然为 `true`。
     ///
-    /// An empty iterator returns `false`.
+    /// 空 iterator 返回 `false`。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage:
+    /// 基本用法:
     ///
     /// ```
     /// let a = [1, 2, 3];
@@ -2805,7 +2687,7 @@ pub trait Iterator {
     /// assert!(!a.into_iter().any(|x| x > 5));
     /// ```
     ///
-    /// Stopping at the first `true`:
+    /// 在第一个 `true` 处停止:
     ///
     /// ```
     /// let a = [1, 2, 3];
@@ -2814,7 +2696,7 @@ pub trait Iterator {
     ///
     /// assert!(iter.any(|x| x != 2));
     ///
-    /// // we can still use `iter`, as there are more elements.
+    /// // 由于还有剩余元素，仍然可以继续使用 `iter`。
     /// assert_eq!(iter.next(), Some(2));
     /// ```
     #[inline]
@@ -2834,29 +2716,25 @@ pub trait Iterator {
         self.try_fold((), check(f)) == ControlFlow::Break(())
     }
 
-    /// Searches for an element of an iterator that satisfies a predicate.
+    /// 搜索 iterator 中满足谓词的元素。
     ///
-    /// `find()` takes a closure that returns `true` or `false`. It applies
-    /// this closure to each element of the iterator, and if any of them return
-    /// `true`, then `find()` returns [`Some(element)`]. If they all return
-    /// `false`, it returns [`None`].
+    /// `find()` 接收一个返回 `true` 或 `false` 的闭包。它把该闭包应用到 iterator 的
+    /// 每个元素；如果任一元素返回 `true`，`find()` 返回 [`Some(element)`]。如果全部
+    /// 返回 `false`，则返回 [`None`]。
     ///
-    /// `find()` is short-circuiting; in other words, it will stop processing
-    /// as soon as the closure returns `true`.
+    /// `find()` 会短路；换句话说，一旦闭包返回 `true`，它就会停止处理。
     ///
-    /// Because `find()` takes a reference, and many iterators iterate over
-    /// references, this leads to a possibly confusing situation where the
-    /// argument is a double reference. You can see this effect in the
-    /// examples below, with `&&x`.
+    /// 因为 `find()` 接收引用，而很多 iterator 本身就迭代引用，所以可能出现让人困惑的
+    /// 双重引用参数。下面示例中的 `&&x` 展示了这种效果。
     ///
-    /// If you need the index of the element, see [`position()`].
+    /// 如果需要元素索引，见 [`position()`]。
     ///
     /// [`Some(element)`]: Some
     /// [`position()`]: Iterator::position
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage:
+    /// 基本用法:
     ///
     /// ```
     /// let a = [1, 2, 3];
@@ -2865,18 +2743,17 @@ pub trait Iterator {
     /// assert_eq!(a.into_iter().find(|&x| x == 5), None);
     /// ```
     ///
-    /// Iterating over references:
+    /// 迭代引用:
     ///
     /// ```
     /// let a = [1, 2, 3];
     ///
-    /// // `iter()` yields references i.e. `&i32` and `find()` takes a
-    /// // reference to each element.
+    /// // `iter()` 产出引用，即 `&i32`；而 `find()` 会取得每个元素的引用。
     /// assert_eq!(a.iter().find(|&&x| x == 2), Some(&2));
     /// assert_eq!(a.iter().find(|&&x| x == 5), None);
     /// ```
     ///
-    /// Stopping at the first `true`:
+    /// 在第一个 `true` 处停止:
     ///
     /// ```
     /// let a = [1, 2, 3];
@@ -2885,11 +2762,11 @@ pub trait Iterator {
     ///
     /// assert_eq!(iter.find(|&x| x == 2), Some(2));
     ///
-    /// // we can still use `iter`, as there are more elements.
+    /// // 由于还有剩余元素，仍然可以继续使用 `iter`。
     /// assert_eq!(iter.next(), Some(3));
     /// ```
     ///
-    /// Note that `iter.find(f)` is equivalent to `iter.filter(f).next()`.
+    /// 注意，`iter.find(f)` 等价于 `iter.filter(f).next()`。
     #[inline]
     #[stable(feature = "rust1", since = "1.0.0")]
     fn find<P>(&mut self, predicate: P) -> Option<Self::Item>
@@ -2907,12 +2784,11 @@ pub trait Iterator {
         self.try_fold((), check(predicate)).break_value()
     }
 
-    /// Applies function to the elements of iterator and returns
-    /// the first non-none result.
+    /// 将函数应用到 iterator 的元素，并返回第一个非 none 的结果。
     ///
-    /// `iter.find_map(f)` is equivalent to `iter.filter_map(f).next()`.
+    /// `iter.find_map(f)` 等价于 `iter.filter_map(f).next()`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let a = ["lol", "NaN", "2", "5"];
@@ -2939,14 +2815,13 @@ pub trait Iterator {
         self.try_fold((), check(f)).break_value()
     }
 
-    /// Applies function to the elements of iterator and returns
-    /// the first true result or the first error.
+    /// 将函数应用到 iterator 的元素，并返回第一个 true 结果或第一个错误。
     ///
-    /// The return type of this method depends on the return type of the closure.
-    /// If you return `Result<bool, E>` from the closure, you'll get a `Result<Option<Self::Item>, E>`.
-    /// If you return `Option<bool>` from the closure, you'll get an `Option<Option<Self::Item>>`.
+    /// 该方法的返回类型取决于闭包的返回类型。如果闭包返回 `Result<bool, E>`，
+    /// 则得到 `Result<Option<Self::Item>, E>`；如果闭包返回 `Option<bool>`，
+    /// 则得到 `Option<Option<Self::Item>>`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(try_find)]
@@ -2964,7 +2839,7 @@ pub trait Iterator {
     /// assert!(result.is_err());
     /// ```
     ///
-    /// This also supports other types which implement [`Try`], not just [`Result`].
+    /// 这也支持其他实现 [`Try`] 的类型，而不只是 [`Result`]。
     ///
     /// ```
     /// #![feature(try_find)]
@@ -3010,33 +2885,28 @@ pub trait Iterator {
         }
     }
 
-    /// Searches for an element in an iterator, returning its index.
+    /// 在 iterator 中搜索元素，并返回其索引。
     ///
-    /// `position()` takes a closure that returns `true` or `false`. It applies
-    /// this closure to each element of the iterator, and if one of them
-    /// returns `true`, then `position()` returns [`Some(index)`]. If all of
-    /// them return `false`, it returns [`None`].
+    /// `position()` 接收一个返回 `true` 或 `false` 的闭包。它把该闭包应用到 iterator
+    /// 的每个元素；如果某个元素返回 `true`，`position()` 返回 [`Some(index)`]。
+    /// 如果全部返回 `false`，则返回 [`None`]。
     ///
-    /// `position()` is short-circuiting; in other words, it will stop
-    /// processing as soon as it finds a `true`.
+    /// `position()` 会短路；换句话说，一旦找到 `true`，它就会停止处理。
     ///
-    /// # Overflow Behavior
+    /// # 溢出行为
     ///
-    /// The method does no guarding against overflows, so if there are more
-    /// than [`usize::MAX`] non-matching elements, it either produces the wrong
-    /// result or panics. If overflow checks are enabled, a panic is
-    /// guaranteed.
+    /// 该方法不会额外防护溢出，因此如果不匹配元素数量超过 [`usize::MAX`]，它要么产生
+    /// 错误结果，要么 panic。如果启用了溢出检查，则保证会 panic。
     ///
     /// # Panics
     ///
-    /// This function might panic if the iterator has more than `usize::MAX`
-    /// non-matching elements.
+    /// 如果 iterator 中不匹配元素超过 `usize::MAX` 个，本函数可能 panic。
     ///
     /// [`Some(index)`]: Some
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage:
+    /// 基本用法:
     ///
     /// ```
     /// let a = [1, 2, 3];
@@ -3046,7 +2916,7 @@ pub trait Iterator {
     /// assert_eq!(a.into_iter().position(|x| x == 5), None);
     /// ```
     ///
-    /// Stopping at the first `true`:
+    /// 在第一个 `true` 处停止:
     ///
     /// ```
     /// let a = [1, 2, 3, 4];
@@ -3055,10 +2925,10 @@ pub trait Iterator {
     ///
     /// assert_eq!(iter.position(|x| x >= 2), Some(1));
     ///
-    /// // we can still use `iter`, as there are more elements.
+    /// // 由于还有剩余元素，仍然可以继续使用 `iter`。
     /// assert_eq!(iter.next(), Some(3));
     ///
-    /// // The returned index depends on iterator state
+    /// // 返回索引取决于 iterator 当前状态
     /// assert_eq!(iter.position(|x| x == 4), Some(0));
     ///
     /// ```
@@ -3089,22 +2959,19 @@ pub trait Iterator {
         self.try_fold((), check(predicate, &mut acc)).break_value()
     }
 
-    /// Searches for an element in an iterator from the right, returning its
-    /// index.
+    /// 从右侧开始在 iterator 中搜索元素，并返回其索引。
     ///
-    /// `rposition()` takes a closure that returns `true` or `false`. It applies
-    /// this closure to each element of the iterator, starting from the end,
-    /// and if one of them returns `true`, then `rposition()` returns
-    /// [`Some(index)`]. If all of them return `false`, it returns [`None`].
+    /// `rposition()` 接收一个返回 `true` 或 `false` 的闭包。它从末端开始把该闭包应用到
+    /// iterator 的每个元素；如果某个元素返回 `true`，`rposition()` 返回
+    /// [`Some(index)`]。如果全部返回 `false`，则返回 [`None`]。
     ///
-    /// `rposition()` is short-circuiting; in other words, it will stop
-    /// processing as soon as it finds a `true`.
+    /// `rposition()` 会短路；换句话说，一旦找到 `true`，它就会停止处理。
     ///
     /// [`Some(index)`]: Some
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage:
+    /// 基本用法:
     ///
     /// ```
     /// let a = [1, 2, 3];
@@ -3114,7 +2981,7 @@ pub trait Iterator {
     /// assert_eq!(a.into_iter().rposition(|x| x == 5), None);
     /// ```
     ///
-    /// Stopping at the first `true`:
+    /// 在第一个 `true` 处停止:
     ///
     /// ```
     /// let a = [-1, 2, 3, 4];
@@ -3123,7 +2990,7 @@ pub trait Iterator {
     ///
     /// assert_eq!(iter.rposition(|x| x >= 2), Some(3));
     ///
-    /// // we can still use `iter`, as there are more elements.
+    /// // 由于还有剩余元素，仍然可以继续使用 `iter`。
     /// assert_eq!(iter.next(), Some(-1));
     /// assert_eq!(iter.next_back(), Some(3));
     /// ```
@@ -3134,8 +3001,7 @@ pub trait Iterator {
         P: FnMut(Self::Item) -> bool,
         Self: Sized + ExactSizeIterator + DoubleEndedIterator,
     {
-        // No need for an overflow check here, because `ExactSizeIterator`
-        // implies that the number of elements fits into a `usize`.
+        // 这里不需要溢出检查，因为 `ExactSizeIterator` 意味着元素数量能放入 `usize`。
         #[inline]
         fn check<T>(
             mut predicate: impl FnMut(T) -> bool,
@@ -3150,13 +3016,12 @@ pub trait Iterator {
         self.try_rfold(n, check(predicate)).break_value()
     }
 
-    /// Returns the maximum element of an iterator.
+    /// 返回 iterator 中的最大元素。
     ///
-    /// If several elements are equally maximum, the last element is
-    /// returned. If the iterator is empty, [`None`] is returned.
+    /// 如果多个元素并列最大，则返回最后一个。如果 iterator 为空，则返回 [`None`]。
     ///
-    /// Note that [`f32`]/[`f64`] doesn't implement [`Ord`] due to NaN being
-    /// incomparable. You can work around this by using [`Iterator::reduce`]:
+    /// 注意，由于 NaN 不可比较，[`f32`]/[`f64`] 没有实现 [`Ord`]。可以使用
+    /// [`Iterator::reduce`] 绕过这一点:
     /// ```
     /// assert_eq!(
     ///     [2.4, f32::NAN, 1.3]
@@ -3167,7 +3032,7 @@ pub trait Iterator {
     /// );
     /// ```
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let a = [1, 2, 3];
@@ -3186,13 +3051,12 @@ pub trait Iterator {
         self.max_by(Ord::cmp)
     }
 
-    /// Returns the minimum element of an iterator.
+    /// 返回 iterator 中的最小元素。
     ///
-    /// If several elements are equally minimum, the first element is returned.
-    /// If the iterator is empty, [`None`] is returned.
+    /// 如果多个元素并列最小，则返回第一个。如果 iterator 为空，则返回 [`None`]。
     ///
-    /// Note that [`f32`]/[`f64`] doesn't implement [`Ord`] due to NaN being
-    /// incomparable. You can work around this by using [`Iterator::reduce`]:
+    /// 注意，由于 NaN 不可比较，[`f32`]/[`f64`] 没有实现 [`Ord`]。可以使用
+    /// [`Iterator::reduce`] 绕过这一点:
     /// ```
     /// assert_eq!(
     ///     [2.4, f32::NAN, 1.3]
@@ -3203,7 +3067,7 @@ pub trait Iterator {
     /// );
     /// ```
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let a = [1, 2, 3];
@@ -3222,13 +3086,11 @@ pub trait Iterator {
         self.min_by(Ord::cmp)
     }
 
-    /// Returns the element that gives the maximum value from the
-    /// specified function.
+    /// 返回使指定函数产生最大值的元素。
     ///
-    /// If several elements are equally maximum, the last element is
-    /// returned. If the iterator is empty, [`None`] is returned.
+    /// 如果多个元素并列最大，则返回最后一个。如果 iterator 为空，则返回 [`None`]。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let a = [-3_i32, 0, 1, 5, -10];
@@ -3255,13 +3117,11 @@ pub trait Iterator {
         Some(x)
     }
 
-    /// Returns the element that gives the maximum value with respect to the
-    /// specified comparison function.
+    /// 按指定比较函数返回最大元素。
     ///
-    /// If several elements are equally maximum, the last element is
-    /// returned. If the iterator is empty, [`None`] is returned.
+    /// 如果多个元素并列最大，则返回最后一个。如果 iterator 为空，则返回 [`None`]。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let a = [-3_i32, 0, 1, 5, -10];
@@ -3282,13 +3142,11 @@ pub trait Iterator {
         self.reduce(fold(compare))
     }
 
-    /// Returns the element that gives the minimum value from the
-    /// specified function.
+    /// 返回使指定函数产生最小值的元素。
     ///
-    /// If several elements are equally minimum, the first element is
-    /// returned. If the iterator is empty, [`None`] is returned.
+    /// 如果多个元素并列最小，则返回第一个。如果 iterator 为空，则返回 [`None`]。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let a = [-3_i32, 0, 1, 5, -10];
@@ -3315,13 +3173,11 @@ pub trait Iterator {
         Some(x)
     }
 
-    /// Returns the element that gives the minimum value with respect to the
-    /// specified comparison function.
+    /// 按指定比较函数返回最小元素。
     ///
-    /// If several elements are equally minimum, the first element is
-    /// returned. If the iterator is empty, [`None`] is returned.
+    /// 如果多个元素并列最小，则返回第一个。如果 iterator 为空，则返回 [`None`]。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let a = [-3_i32, 0, 1, 5, -10];
@@ -3342,15 +3198,14 @@ pub trait Iterator {
         self.reduce(fold(compare))
     }
 
-    /// Reverses an iterator's direction.
+    /// 反转 iterator 的方向。
     ///
-    /// Usually, iterators iterate from left to right. After using `rev()`,
-    /// an iterator will instead iterate from right to left.
+    /// 通常 iterator 从左到右迭代。使用 `rev()` 后，iterator 会改为从右到左迭代。
     ///
-    /// This is only possible if the iterator has an end, so `rev()` only
-    /// works on [`DoubleEndedIterator`]s.
+    /// 只有 iterator 有末端时才可能做到这一点，因此 `rev()` 只适用于
+    /// [`DoubleEndedIterator`]。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let a = [1, 2, 3];
@@ -3373,17 +3228,16 @@ pub trait Iterator {
         Rev::new(self)
     }
 
-    /// Converts an iterator of pairs into a pair of containers.
+    /// 将由成对元素组成的 iterator 转换为一对容器。
     ///
-    /// `unzip()` consumes an entire iterator of pairs, producing two
-    /// collections: one from the left elements of the pairs, and one
-    /// from the right elements.
+    /// `unzip()` 会消耗整个成对元素 iterator，并产生两个集合: 一个来自每对元素的左侧，
+    /// 另一个来自右侧。
     ///
-    /// This function is, in some sense, the opposite of [`zip`].
+    /// 从某种意义上说，该函数与 [`zip`] 相反。
     ///
     /// [`zip`]: Iterator::zip
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let a = [(1, 2), (3, 4), (5, 6)];
@@ -3393,7 +3247,7 @@ pub trait Iterator {
     /// assert_eq!(left, [1, 3, 5]);
     /// assert_eq!(right, [2, 4, 6]);
     ///
-    /// // you can also unzip multiple nested tuples at once
+    /// // 也可以一次 unzip 多层嵌套元组
     /// let a = [(1, (2, 3)), (4, (5, 6))];
     ///
     /// let (x, (y, z)): (Vec<_>, (Vec<_>, Vec<_>)) = a.into_iter().unzip();
@@ -3413,19 +3267,18 @@ pub trait Iterator {
         unzipped
     }
 
-    /// Creates an iterator which copies all of its elements.
+    /// 创建一个会复制其所有元素的 iterator。
     ///
-    /// This is useful when you have an iterator over `&T`, but you need an
-    /// iterator over `T`.
+    /// 当你有一个遍历 `&T` 的 iterator，但需要遍历 `T` 的 iterator 时，该方法很有用。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let a = [1, 2, 3];
     ///
     /// let v_copied: Vec<_> = a.iter().copied().collect();
     ///
-    /// // copied is the same as .map(|&x| x)
+    /// // copied 等同于 .map(|&x| x)
     /// let v_map: Vec<_> = a.iter().map(|&x| x).collect();
     ///
     /// assert_eq!(v_copied, [1, 2, 3]);
@@ -3441,41 +3294,39 @@ pub trait Iterator {
         Copied::new(self)
     }
 
-    /// Creates an iterator which [`clone`]s all of its elements.
+    /// 创建一个会 [`clone`] 其所有元素的 iterator。
     ///
-    /// This is useful when you have an iterator over `&T`, but you need an
-    /// iterator over `T`.
+    /// 当你有一个遍历 `&T` 的 iterator，但需要遍历 `T` 的 iterator 时，该方法很有用。
     ///
-    /// There is no guarantee whatsoever about the `clone` method actually
-    /// being called *or* optimized away. So code should not depend on
-    /// either.
+    /// 完全不保证 `clone` 方法一定会实际被调用，也不保证一定会被优化掉。因此代码不应
+    /// 依赖这两种情况中的任何一种。
     ///
     /// [`clone`]: Clone::clone
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage:
+    /// 基本用法:
     ///
     /// ```
     /// let a = [1, 2, 3];
     ///
     /// let v_cloned: Vec<_> = a.iter().cloned().collect();
     ///
-    /// // cloned is the same as .map(|&x| x), for integers
+    /// // 对整数来说，cloned 等同于 .map(|&x| x)
     /// let v_map: Vec<_> = a.iter().map(|&x| x).collect();
     ///
     /// assert_eq!(v_cloned, [1, 2, 3]);
     /// assert_eq!(v_map, [1, 2, 3]);
     /// ```
     ///
-    /// To get the best performance, try to clone late:
+    /// 为获得最佳性能，尽量延后 clone:
     ///
     /// ```
     /// let a = [vec![0_u8, 1, 2], vec![3, 4], vec![23]];
-    /// // don't do this:
+    /// // 不要这样做:
     /// let slower: Vec<_> = a.iter().cloned().filter(|s| s.len() == 1).collect();
     /// assert_eq!(&[vec![23]], &slower[..]);
-    /// // instead call `cloned` late
+    /// // 改为更晚调用 `cloned`
     /// let faster: Vec<_> = a.iter().filter(|s| s.len() == 1).cloned().collect();
     /// assert_eq!(&[vec![23]], &faster[..]);
     /// ```
@@ -3489,14 +3340,12 @@ pub trait Iterator {
         Cloned::new(self)
     }
 
-    /// Repeats an iterator endlessly.
+    /// 无限重复一个 iterator。
     ///
-    /// Instead of stopping at [`None`], the iterator will instead start again,
-    /// from the beginning. After iterating again, it will start at the
-    /// beginning again. And again. And again. Forever. Note that in case the
-    /// original iterator is empty, the resulting iterator will also be empty.
+    /// iterator 不会在 [`None`] 处停止，而是会从头再次开始。再次迭代完后，它又会从头
+    /// 开始。如此反复，永不结束。注意，如果原 iterator 为空，结果 iterator 也为空。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let a = [1, 2, 3];
@@ -3519,20 +3368,19 @@ pub trait Iterator {
         Cycle::new(self)
     }
 
-    /// Returns an iterator over `N` elements of the iterator at a time.
+    /// 返回一个每次遍历原 iterator 中 `N` 个元素的 iterator。
     ///
-    /// The chunks do not overlap. If `N` does not divide the length of the
-    /// iterator, then the last up to `N-1` elements will be omitted and can be
-    /// retrieved from the [`.into_remainder()`][ArrayChunks::into_remainder]
-    /// function of the iterator.
+    /// 这些块不会重叠。如果 `N` 不能整除 iterator 的长度，那么最后最多 `N-1` 个元素
+    /// 会被省略，并可通过该 iterator 的
+    /// [`.into_remainder()`][ArrayChunks::into_remainder] 函数取回。
     ///
     /// # Panics
     ///
-    /// Panics if `N` is zero.
+    /// 如果 `N` 为零则 panic。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage:
+    /// 基本用法:
     ///
     /// ```
     /// #![feature(iter_array_chunks)]
@@ -3562,23 +3410,22 @@ pub trait Iterator {
         ArrayChunks::new(self)
     }
 
-    /// Sums the elements of an iterator.
+    /// 对 iterator 的元素求和。
     ///
-    /// Takes each element, adds them together, and returns the result.
+    /// 取出每个元素，将它们相加，并返回结果。
     ///
-    /// An empty iterator returns the *additive identity* ("zero") of the type,
-    /// which is `0` for integers and `-0.0` for floats.
+    /// 空 iterator 返回该类型的*加法单位元*（“零”），也就是整数的 `0` 和浮点数的
+    /// `-0.0`。
     ///
-    /// `sum()` can be used to sum any type implementing [`Sum`][`core::iter::Sum`],
-    /// including [`Option`][`Option::sum`] and [`Result`][`Result::sum`].
+    /// `sum()` 可用于对任何实现 [`Sum`][`core::iter::Sum`] 的类型求和，包括
+    /// [`Option`][`Option::sum`] 和 [`Result`][`Result::sum`]。
     ///
     /// # Panics
     ///
-    /// When calling `sum()` and a primitive integer type is being returned, this
-    /// method will panic if the computation overflows and overflow checks are
-    /// enabled.
+    /// 调用 `sum()` 且返回的是基本整数类型时，如果计算溢出并且启用了溢出检查，该方法
+    /// 会 panic。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let a = [1, 2, 3];
@@ -3599,20 +3446,19 @@ pub trait Iterator {
         Sum::sum(self)
     }
 
-    /// Iterates over the entire iterator, multiplying all the elements
+    /// 遍历整个 iterator，并把所有元素相乘。
     ///
-    /// An empty iterator returns the one value of the type.
+    /// 空 iterator 返回该类型的一值。
     ///
-    /// `product()` can be used to multiply any type implementing [`Product`][`core::iter::Product`],
-    /// including [`Option`][`Option::product`] and [`Result`][`Result::product`].
+    /// `product()` 可用于对任何实现 [`Product`][`core::iter::Product`] 的类型求积，
+    /// 包括 [`Option`][`Option::product`] 和 [`Result`][`Result::product`]。
     ///
     /// # Panics
     ///
-    /// When calling `product()` and a primitive integer type is being returned,
-    /// method will panic if the computation overflows and overflow checks are
-    /// enabled.
+    /// 调用 `product()` 且返回的是基本整数类型时，如果计算溢出并且启用了溢出检查，
+    /// 该方法会 panic。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// fn factorial(n: u32) -> u32 {
@@ -3631,10 +3477,10 @@ pub trait Iterator {
         Product::product(self)
     }
 
-    /// [Lexicographically](Ord#lexicographical-comparison) compares the elements of this [`Iterator`] with those
-    /// of another.
+    /// 按[字典序](Ord#lexicographical-comparison)比较此 [`Iterator`] 的元素与另一
+    /// iterator 的元素。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::cmp::Ordering;
@@ -3653,10 +3499,10 @@ pub trait Iterator {
         self.cmp_by(other, |x, y| x.cmp(&y))
     }
 
-    /// [Lexicographically](Ord#lexicographical-comparison) compares the elements of this [`Iterator`] with those
-    /// of another with respect to the specified comparison function.
+    /// 使用指定比较函数，按[字典序](Ord#lexicographical-comparison)比较此 [`Iterator`]
+    /// 的元素与另一 iterator 的元素。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(iter_order_by)]
@@ -3694,12 +3540,11 @@ pub trait Iterator {
         }
     }
 
-    /// [Lexicographically](Ord#lexicographical-comparison) compares the [`PartialOrd`] elements of
-    /// this [`Iterator`] with those of another. The comparison works like short-circuit
-    /// evaluation, returning a result without comparing the remaining elements.
-    /// As soon as an order can be determined, the evaluation stops and a result is returned.
+    /// 按[字典序](Ord#lexicographical-comparison)比较此 [`Iterator`] 中实现
+    /// [`PartialOrd`] 的元素与另一 iterator 的元素。比较过程类似短路求值，会在不比较
+    /// 剩余元素的情况下返回结果。一旦能够确定顺序，求值就会停止并返回结果。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::cmp::Ordering;
@@ -3709,14 +3554,13 @@ pub trait Iterator {
     /// assert_eq!([1., 2.].iter().partial_cmp([1.].iter()), Some(Ordering::Greater));
     /// ```
     ///
-    /// For floating-point numbers, NaN does not have a total order and will result
-    /// in `None` when compared:
+    /// 对浮点数来说，NaN 没有全序，比较时会得到 `None`:
     ///
     /// ```
     /// assert_eq!([f64::NAN].iter().partial_cmp([1.].iter()), None);
     /// ```
     ///
-    /// The results are determined by the order of evaluation.
+    /// 结果由求值顺序决定。
     ///
     /// ```
     /// use std::cmp::Ordering;
@@ -3736,10 +3580,10 @@ pub trait Iterator {
         self.partial_cmp_by(other, |x, y| x.partial_cmp(&y))
     }
 
-    /// [Lexicographically](Ord#lexicographical-comparison) compares the elements of this [`Iterator`] with those
-    /// of another with respect to the specified comparison function.
+    /// 使用指定比较函数，按[字典序](Ord#lexicographical-comparison)比较此 [`Iterator`]
+    /// 的元素与另一 iterator 的元素。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(iter_order_by)]
@@ -3786,10 +3630,9 @@ pub trait Iterator {
         }
     }
 
-    /// Determines if the elements of this [`Iterator`] are equal to those of
-    /// another.
+    /// 判断此 [`Iterator`] 的元素是否等于另一 iterator 的元素。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// assert_eq!([1].iter().eq([1].iter()), true);
@@ -3805,10 +3648,9 @@ pub trait Iterator {
         self.eq_by(other, |x, y| x == y)
     }
 
-    /// Determines if the elements of this [`Iterator`] are equal to those of
-    /// another with respect to the specified equality function.
+    /// 使用指定相等性函数，判断此 [`Iterator`] 的元素是否等于另一 iterator 的元素。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(iter_order_by)]
@@ -3838,10 +3680,9 @@ pub trait Iterator {
         SpecIterEq::spec_iter_eq(self, other.into_iter(), compare(eq))
     }
 
-    /// Determines if the elements of this [`Iterator`] are not equal to those of
-    /// another.
+    /// 判断此 [`Iterator`] 的元素是否不等于另一 iterator 的元素。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// assert_eq!([1].iter().ne([1].iter()), false);
@@ -3857,10 +3698,10 @@ pub trait Iterator {
         !self.eq(other)
     }
 
-    /// Determines if the elements of this [`Iterator`] are [lexicographically](Ord#lexicographical-comparison)
-    /// less than those of another.
+    /// 判断此 [`Iterator`] 的元素是否按[字典序](Ord#lexicographical-comparison)小于另一
+    /// iterator 的元素。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// assert_eq!([1].iter().lt([1].iter()), false);
@@ -3878,10 +3719,10 @@ pub trait Iterator {
         self.partial_cmp(other) == Some(Ordering::Less)
     }
 
-    /// Determines if the elements of this [`Iterator`] are [lexicographically](Ord#lexicographical-comparison)
-    /// less or equal to those of another.
+    /// 判断此 [`Iterator`] 的元素是否按[字典序](Ord#lexicographical-comparison)小于或
+    /// 等于另一 iterator 的元素。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// assert_eq!([1].iter().le([1].iter()), true);
@@ -3899,10 +3740,10 @@ pub trait Iterator {
         matches!(self.partial_cmp(other), Some(Ordering::Less | Ordering::Equal))
     }
 
-    /// Determines if the elements of this [`Iterator`] are [lexicographically](Ord#lexicographical-comparison)
-    /// greater than those of another.
+    /// 判断此 [`Iterator`] 的元素是否按[字典序](Ord#lexicographical-comparison)大于另一
+    /// iterator 的元素。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// assert_eq!([1].iter().gt([1].iter()), false);
@@ -3920,10 +3761,10 @@ pub trait Iterator {
         self.partial_cmp(other) == Some(Ordering::Greater)
     }
 
-    /// Determines if the elements of this [`Iterator`] are [lexicographically](Ord#lexicographical-comparison)
-    /// greater than or equal to those of another.
+    /// 判断此 [`Iterator`] 的元素是否按[字典序](Ord#lexicographical-comparison)大于或
+    /// 等于另一 iterator 的元素。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// assert_eq!([1].iter().ge([1].iter()), true);
@@ -3941,16 +3782,15 @@ pub trait Iterator {
         matches!(self.partial_cmp(other), Some(Ordering::Greater | Ordering::Equal))
     }
 
-    /// Checks if the elements of this iterator are sorted.
+    /// 检查此 iterator 的元素是否已排序。
     ///
-    /// That is, for each element `a` and its following element `b`, `a <= b` must hold. If the
-    /// iterator yields exactly zero or one element, `true` is returned.
+    /// 也就是说，对每个元素 `a` 及其后继元素 `b`，都必须满足 `a <= b`。如果 iterator
+    /// 恰好产出零个或一个元素，则返回 `true`。
     ///
-    /// Note that if `Self::Item` is only `PartialOrd`, but not `Ord`, the above definition
-    /// implies that this function returns `false` if any two consecutive items are not
-    /// comparable.
+    /// 注意，如果 `Self::Item` 只有 `PartialOrd` 而没有 `Ord`，上述定义意味着只要任意
+    /// 两个连续项不可比较，该函数就会返回 `false`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// assert!([1, 2, 2, 9].iter().is_sorted());
@@ -3969,12 +3809,12 @@ pub trait Iterator {
         self.is_sorted_by(|a, b| a <= b)
     }
 
-    /// Checks if the elements of this iterator are sorted using the given comparator function.
+    /// 使用给定比较函数检查此 iterator 的元素是否已排序。
     ///
-    /// Instead of using `PartialOrd::partial_cmp`, this function uses the given `compare`
-    /// function to determine whether two elements are to be considered in sorted order.
+    /// 该函数不使用 `PartialOrd::partial_cmp`，而是使用给定的 `compare` 函数判断两个元素
+    /// 是否应被视为已按顺序排列。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// assert!([1, 2, 2, 9].iter().is_sorted_by(|a, b| a <= b));
@@ -4014,16 +3854,14 @@ pub trait Iterator {
         self.all(check(&mut last, compare))
     }
 
-    /// Checks if the elements of this iterator are sorted using the given key extraction
-    /// function.
+    /// 使用给定键提取函数检查此 iterator 的元素是否已排序。
     ///
-    /// Instead of comparing the iterator's elements directly, this function compares the keys of
-    /// the elements, as determined by `f`. Apart from that, it's equivalent to [`is_sorted`]; see
-    /// its documentation for more information.
+    /// 该函数不直接比较 iterator 的元素，而是比较由 `f` 决定的元素键。除此之外，它
+    /// 等价于 [`is_sorted`]；更多信息见其文档。
     ///
     /// [`is_sorted`]: Iterator::is_sorted
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// assert!(["c", "bb", "aaa"].iter().is_sorted_by_key(|s| s.len()));
@@ -4040,9 +3878,8 @@ pub trait Iterator {
         self.map(f).is_sorted()
     }
 
-    /// See [TrustedRandomAccess][super::super::TrustedRandomAccess]
-    // The unusual name is to avoid name collisions in method resolution
-    // see #76479.
+    /// 见 [TrustedRandomAccess][super::super::TrustedRandomAccess]
+    // 这个不寻常的名字用于避免方法解析中的名称冲突，见 #76479。
     #[inline]
     #[doc(hidden)]
     #[unstable(feature = "trusted_random_access", issue = "none")]
@@ -4076,13 +3913,13 @@ impl<A: Iterator + TrustedLen, B: Iterator + TrustedLen> SpecIterEq<B> for A {
     where
         F: FnMut(Self::Item, <B as Iterator>::Item) -> ControlFlow<()>,
     {
-        // we *can't* short-circuit if:
+        // 在以下情况下*不能*短路:
         match (self.size_hint(), b.size_hint()) {
-            // ... both iterators have the same length
+            // ... 两个 iterator 长度相同
             ((_, Some(a)), (_, Some(b))) if a == b => {}
-            // ... or both of them are longer than `usize::MAX` (i.e. have an unknown length).
+            // ... 或者二者都长于 `usize::MAX`（即长度未知）。
             ((_, None), (_, None)) => {}
-            // otherwise, we can ascertain that they are unequal without actually comparing items
+            // 否则，无需实际比较元素即可确定二者不相等
             _ => return false,
         }
 
@@ -4090,16 +3927,15 @@ impl<A: Iterator + TrustedLen, B: Iterator + TrustedLen> SpecIterEq<B> for A {
     }
 }
 
-/// Compares two iterators element-wise using the given function.
+/// 使用给定函数逐元素比较两个 iterator。
 ///
-/// If `ControlFlow::Continue(())` is returned from the function, the comparison moves on to the next
-/// elements of both iterators. Returning `ControlFlow::Break(x)` short-circuits the iteration and
-/// returns `ControlFlow::Break(x)`. If one of the iterators runs out of elements,
-/// `ControlFlow::Continue(ord)` is returned where `ord` is the result of comparing the lengths of
-/// the iterators.
+/// 如果函数返回 `ControlFlow::Continue(())`，比较会继续推进到两个 iterator 的下一组
+/// 元素。返回 `ControlFlow::Break(x)` 会短路迭代，并返回 `ControlFlow::Break(x)`。
+/// 如果其中一个 iterator 耗尽，则返回 `ControlFlow::Continue(ord)`，其中 `ord` 是
+/// 比较两个 iterator 长度得到的结果。
 ///
-/// Isolates the logic shared by ['cmp_by'](Iterator::cmp_by),
-/// ['partial_cmp_by'](Iterator::partial_cmp_by), and ['eq_by'](Iterator::eq_by).
+/// 该函数隔离出 ['cmp_by'](Iterator::cmp_by)、['partial_cmp_by'](Iterator::partial_cmp_by)
+/// 和 ['eq_by'](Iterator::eq_by) 共享的逻辑。
 #[inline]
 fn iter_compare<A, B, F, T>(mut a: A, mut b: B, f: F) -> ControlFlow<T, Ordering>
 where
@@ -4140,9 +3976,9 @@ where
     iter_compare(a, b, f).continue_value().is_some_and(|ord| ord == Ordering::Equal)
 }
 
-/// Implements `Iterator` for mutable references to iterators, such as those produced by [`Iterator::by_ref`].
+/// 为 iterator 的可变引用实现 `Iterator`，例如 [`Iterator::by_ref`] 产生的引用。
 ///
-/// This implementation passes all method calls on to the original iterator.
+/// 该实现会把所有方法调用转发给原 iterator。
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<I: Iterator + ?Sized> Iterator for &mut I {
     type Item = I::Item;
@@ -4174,7 +4010,7 @@ impl<I: Iterator + ?Sized> Iterator for &mut I {
     }
 }
 
-/// Helper trait to specialize `fold` and `try_fold` for `&mut I where I: Sized`
+/// 用于为 `&mut I where I: Sized` 特化 `fold` 和 `try_fold` 的辅助 trait。
 trait IteratorRefSpec: Iterator {
     fn spec_fold<B, F>(self, init: B, f: F) -> B
     where

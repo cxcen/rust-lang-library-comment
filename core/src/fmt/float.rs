@@ -4,8 +4,10 @@ use crate::num::{flt2dec, fmt as numfmt};
 
 #[doc(hidden)]
 trait GeneralFormat: PartialOrd {
-    /// Determines if a value should use exponential based on its magnitude, given the precondition
-    /// that it will not be rounded any further before it is displayed.
+    /// 在“显示前不会再被进一步舍入”的前提下,根据数值大小判断是否应使用指数格式。
+    ///
+    /// 这对应 `Debug` 的一般格式选择:很小或很大的浮点数用指数形式更清晰,
+    /// 其余值则优先使用普通十进制形式。
     fn already_rounded_value_should_use_exponential(&self) -> bool;
 }
 
@@ -24,8 +26,8 @@ macro_rules! impl_general_format {
 impl_general_format! { f16 }
 impl_general_format! { f32 f64 }
 
-// Don't inline this so callers don't use the stack space this function
-// requires unless they have to.
+// 不内联此函数,这样调用方只有确实走到精确十进制格式化路径时,
+// 才会承担该函数所需的栈空间。
 #[inline(never)]
 fn float_to_decimal_common_exact<T>(
     fmt: &mut Formatter<'_>,
@@ -36,7 +38,7 @@ fn float_to_decimal_common_exact<T>(
 where
     T: flt2dec::DecodableFloat,
 {
-    let mut buf: [MaybeUninit<u8>; 1024] = [MaybeUninit::uninit(); 1024]; // enough for f32 and f64
+    let mut buf: [MaybeUninit<u8>; 1024] = [MaybeUninit::uninit(); 1024]; // 对 f32 和 f64 足够大
     let mut parts: [MaybeUninit<numfmt::Part<'_>>; 4] = [MaybeUninit::uninit(); 4];
     let formatted = flt2dec::to_exact_fixed_str(
         flt2dec::strategy::grisu::format_exact,
@@ -46,12 +48,12 @@ where
         &mut buf,
         &mut parts,
     );
-    // SAFETY: `to_exact_fixed_str` and `format_exact` produce only ASCII characters.
+    // SAFETY: `to_exact_fixed_str` 和 `format_exact` 只会产生 ASCII 字符。
     unsafe { fmt.pad_formatted_parts(&formatted) }
 }
 
-// Don't inline this so callers that call both this and the above won't wind
-// up using the combined stack space of both functions in some cases.
+// 不内联此函数,避免同时调用本函数和上面函数的调用方在某些情况下
+// 承担两条格式化路径合并后的栈空间。
 #[inline(never)]
 fn float_to_decimal_common_shortest<T>(
     fmt: &mut Formatter<'_>,
@@ -62,7 +64,7 @@ fn float_to_decimal_common_shortest<T>(
 where
     T: flt2dec::DecodableFloat,
 {
-    // enough for f32 and f64
+    // 对 f32 和 f64 足够大
     let mut buf: [MaybeUninit<u8>; flt2dec::MAX_SIG_DIGITS] =
         [MaybeUninit::uninit(); flt2dec::MAX_SIG_DIGITS];
     let mut parts: [MaybeUninit<numfmt::Part<'_>>; 4] = [MaybeUninit::uninit(); 4];
@@ -74,7 +76,7 @@ where
         &mut buf,
         &mut parts,
     );
-    // SAFETY: `to_shortest_str` and `format_shortest` produce only ASCII characters.
+    // SAFETY: `to_shortest_str` 和 `format_shortest` 只会产生 ASCII 字符。
     unsafe { fmt.pad_formatted_parts(&formatted) }
 }
 
@@ -96,8 +98,8 @@ where
     }
 }
 
-// Don't inline this so callers don't use the stack space this function
-// requires unless they have to.
+// 不内联此函数,这样调用方只有确实走到精确指数格式化路径时,
+// 才会承担该函数所需的栈空间。
 #[inline(never)]
 fn float_to_exponential_common_exact<T>(
     fmt: &mut Formatter<'_>,
@@ -109,7 +111,7 @@ fn float_to_exponential_common_exact<T>(
 where
     T: flt2dec::DecodableFloat,
 {
-    let mut buf: [MaybeUninit<u8>; 1024] = [MaybeUninit::uninit(); 1024]; // enough for f32 and f64
+    let mut buf: [MaybeUninit<u8>; 1024] = [MaybeUninit::uninit(); 1024]; // 对 f32 和 f64 足够大
     let mut parts: [MaybeUninit<numfmt::Part<'_>>; 6] = [MaybeUninit::uninit(); 6];
     let formatted = flt2dec::to_exact_exp_str(
         flt2dec::strategy::grisu::format_exact,
@@ -120,12 +122,12 @@ where
         &mut buf,
         &mut parts,
     );
-    // SAFETY: `to_exact_exp_str` and `format_exact` produce only ASCII characters.
+    // SAFETY: `to_exact_exp_str` 和 `format_exact` 只会产生 ASCII 字符。
     unsafe { fmt.pad_formatted_parts(&formatted) }
 }
 
-// Don't inline this so callers that call both this and the above won't wind
-// up using the combined stack space of both functions in some cases.
+// 不内联此函数,避免同时调用本函数和上面函数的调用方在某些情况下
+// 承担两条格式化路径合并后的栈空间。
 #[inline(never)]
 fn float_to_exponential_common_shortest<T>(
     fmt: &mut Formatter<'_>,
@@ -136,7 +138,7 @@ fn float_to_exponential_common_shortest<T>(
 where
     T: flt2dec::DecodableFloat,
 {
-    // enough for f32 and f64
+    // 对 f32 和 f64 足够大
     let mut buf: [MaybeUninit<u8>; flt2dec::MAX_SIG_DIGITS] =
         [MaybeUninit::uninit(); flt2dec::MAX_SIG_DIGITS];
     let mut parts: [MaybeUninit<numfmt::Part<'_>>; 6] = [MaybeUninit::uninit(); 6];
@@ -149,11 +151,11 @@ where
         &mut buf,
         &mut parts,
     );
-    // SAFETY: `to_shortest_exp_str` and `format_shortest` produce only ASCII characters.
+    // SAFETY: `to_shortest_exp_str` 和 `format_shortest` 只会产生 ASCII 字符。
     unsafe { fmt.pad_formatted_parts(&formatted) }
 }
 
-// Common code of floating point LowerExp and UpperExp.
+// 浮点数 `LowerExp` 与 `UpperExp` 共用的格式化逻辑。
 fn float_to_exponential_common<T>(fmt: &mut Formatter<'_>, num: &T, upper: bool) -> Result
 where
     T: flt2dec::DecodableFloat,
@@ -165,7 +167,7 @@ where
     };
 
     if let Some(precision) = fmt.options.get_precision() {
-        // 1 integral digit + `precision` fractional digits = `precision + 1` total digits
+        // 1 个整数位 + `precision` 个小数位 = 总计 `precision + 1` 个有效数字。
         float_to_exponential_common_exact(fmt, num, sign, precision + 1, upper)
     } else {
         float_to_exponential_common_shortest(fmt, num, sign, upper)
@@ -183,10 +185,10 @@ where
     };
 
     if let Some(precision) = fmt.options.get_precision() {
-        // this behavior of {:.PREC?} predates exponential formatting for {:?}
+        // `{:.PREC?}` 的这一行为早于 `{:?}` 的指数格式化支持。
         float_to_decimal_common_exact(fmt, num, sign, precision)
     } else {
-        // since there is no precision, there will be no rounding
+        // 没有精度参数时不会发生舍入,因此可以基于当前值直接选择格式。
         if num.already_rounded_value_should_use_exponential() {
             let upper = false;
             float_to_exponential_common_shortest(fmt, num, sign, upper)
@@ -236,8 +238,8 @@ floating! { f32 f64 }
 #[cfg(target_has_reliable_f16)]
 floating! { f16 }
 
-// FIXME(f16_f128): A fallback is used when the backend+target does not support f16 well, in order
-// to avoid ICEs.
+// FIXME(f16_f128): 当后端+目标平台尚不能良好支持 f16 时使用回退实现,
+// 以避免 ICE。
 
 #[cfg(not(target_has_reliable_f16))]
 #[stable(feature = "rust1", since = "1.0.0")]

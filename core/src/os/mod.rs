@@ -1,4 +1,4 @@
-//! OS-specific functionality.
+//! 操作系统特定功能。
 
 #![unstable(feature = "darwin_objc", issue = "145496")]
 
@@ -12,7 +12,7 @@
 #[unstable(issue = "none", feature = "std_internals")]
 pub mod darwin {}
 
-// darwin
+// Darwin 平台
 #[cfg(not(all(
     doc,
     any(

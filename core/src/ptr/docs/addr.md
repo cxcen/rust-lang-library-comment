@@ -1,22 +1,19 @@
-Gets the "address" portion of the pointer.
+获取指针的"地址"(address)部分。
 
-This is similar to `self as usize`, except that the [provenance][crate::ptr#provenance] of
-the pointer is discarded and not [exposed][crate::ptr#exposed-provenance]. This means that
-casting the returned address back to a pointer yields a [pointer without
-provenance][without_provenance], which is undefined behavior to dereference. To properly
-restore the lost information and obtain a dereferenceable pointer, use
-[`with_addr`][pointer::with_addr] or [`map_addr`][pointer::map_addr].
+这类似于 `self as usize`,区别在于该指针的 [provenance(来源/可证溯性)][crate::ptr#provenance]
+会被丢弃,且不会被[暴露(exposed)][crate::ptr#exposed-provenance]。这意味着:把
+返回的地址再转换回指针,得到的是一个[没有 provenance 的指针][without_provenance],
+解引用它属于未定义行为。要正确地恢复丢失的信息并获得一个可解引用的指针,请使用
+[`with_addr`][pointer::with_addr] 或 [`map_addr`][pointer::map_addr]。
 
-If using those APIs is not possible because there is no way to preserve a pointer with the
-required provenance, then Strict Provenance might not be for you. Use pointer-integer casts
-or [`expose_provenance`][pointer::expose_provenance] and [`with_exposed_provenance`][with_exposed_provenance]
-instead. However, note that this makes your code less portable and less amenable to tools
-that check for compliance with the Rust memory model.
+如果由于无法保留一个带有所需 provenance 的指针,导致那些 API 用不了,那么严格
+来源(Strict Provenance)模型也许并不适合你。此时请改用指针-整数转换(pointer-integer
+casts),或者 [`expose_provenance`][pointer::expose_provenance] 与
+[`with_exposed_provenance`][with_exposed_provenance]。不过请注意,这样做会让你的
+代码更不可移植,也更难被那些检查是否符合 Rust 内存模型的工具所分析。
 
-On most platforms this will produce a value with the same bytes as the original
-pointer, because all the bytes are dedicated to describing the address.
-Platforms which need to store additional information in the pointer may
-perform a change of representation to produce a value containing only the address
-portion of the pointer. What that means is up to the platform to define.
+在大多数平台上,这会产生一个与原指针字节完全相同的值,因为指针的所有字节都用于
+描述地址。对于那些需要在指针中存储额外信息的平台,则可能进行一次表示形式的转换,
+以产生一个只包含指针地址部分的值。这具体意味着什么,由各平台自行定义。
 
-This is a [Strict Provenance][crate::ptr#strict-provenance] API.
+这是一个[严格来源(Strict Provenance)][crate::ptr#strict-provenance] API。

@@ -1,4 +1,4 @@
-//! Helper trait for generic float types.
+//! 面向泛型浮点类型的辅助 trait。
 
 use core::f64;
 
@@ -6,12 +6,12 @@ use crate::fmt::{Debug, LowerExp};
 use crate::num::FpCategory;
 use crate::ops::{self, Add, Div, Mul, Neg};
 
-/// Lossy `as` casting between two types.
+/// 两个类型之间可能有损的 `as` 转换。
 pub trait CastInto<T: Copy>: Copy {
     fn cast(self) -> T;
 }
 
-/// Collection of traits that allow us to be generic over integer size.
+/// 让算法能对不同整数位宽保持泛型的一组 trait 约束。
 pub trait Integer:
     Sized
     + Clone
@@ -47,11 +47,12 @@ macro_rules! int {
 
 int!(u16, u32, u64);
 
-/// A helper trait to avoid duplicating basically all the conversion code for IEEE floats.
+/// 避免为每种 IEEE 754 浮点类型重复编写转换代码的辅助 trait。
 ///
-/// See the parent module's doc comment for why this is necessary.
+/// 为什么不能先解析为 `f64` 再转换为较小类型，见父模块文档中关于二次舍入的说明。
 ///
-/// Should **never ever** be implemented for other types or be used outside the `dec2flt` module.
+/// 该 trait 只描述标准浮点格式的内部契约，**绝不**应为其他类型实现，也不应在 `dec2flt`
+/// 模块之外使用。
 #[doc(hidden)]
 pub trait RawFloat:
     Sized
@@ -67,136 +68,130 @@ pub trait RawFloat:
     + Copy
     + Debug
 {
-    /// The unsigned integer with the same size as the float
+    /// 与浮点类型具有相同大小的无符号整数类型。
     type Int: Integer + Into<u64>;
 
-    /* general constants */
+    /* 通用常量 */
 
     const INFINITY: Self;
     const NEG_INFINITY: Self;
     const NAN: Self;
     const NEG_NAN: Self;
 
-    /// Bit width of the float
+    /// 浮点类型的总位宽。
     const BITS: u32;
 
-    /// The number of bits in the significand, *including* the hidden bit.
+    /// significand 的位数，**包含**隐藏位。
     const SIG_TOTAL_BITS: u32;
 
     const EXP_MASK: Self::Int;
     const SIG_MASK: Self::Int;
 
-    /// The number of bits in the significand, *excluding* the hidden bit.
+    /// significand 的位数，**不包含**隐藏位。
     const SIG_BITS: u32 = Self::SIG_TOTAL_BITS - 1;
 
-    /// Number of bits in the exponent.
+    /// exponent 字段的位数。
     const EXP_BITS: u32 = Self::BITS - Self::SIG_BITS - 1;
 
-    /// The saturated (maximum bitpattern) value of the exponent, i.e. the infinite
-    /// representation.
+    /// exponent 的饱和值（最大位模式），也就是 Inf/NaN 使用的 exponent 编码。
     ///
-    /// This shifted fully right, use `EXP_MASK` for the shifted value.
+    /// 该值尚未左移到 exponent 字段位置；需要已移位掩码时使用 `EXP_MASK`。
     const EXP_SAT: u32 = (1 << Self::EXP_BITS) - 1;
 
-    /// Signed version of `EXP_SAT` since we convert a lot.
+    /// `EXP_SAT` 的有符号版本，便于大量指数计算复用。
     const INFINITE_POWER: i32 = Self::EXP_SAT as i32;
 
-    /// The exponent bias value. This is also the maximum value of the exponent.
+    /// exponent bias 值；它也是有限普通值可用 exponent 的最大无偏值。
     const EXP_BIAS: u32 = Self::EXP_SAT >> 1;
 
-    /// Minimum exponent value of normal values.
+    /// 普通(normal)值的最小无偏 exponent。
     const EXP_MIN: i32 = -(Self::EXP_BIAS as i32 - 1);
 
-    /// Round-to-even only happens for negative values of q
-    /// when q ≥ −4 in the 64-bit case and when q ≥ −17 in
-    /// the 32-bit case.
+    /// ties-to-even 只需要在有限的十进制指数范围内额外处理。
     ///
-    /// When q ≥ 0,we have that 5^q ≤ 2m+1. In the 64-bit case,we
-    /// have 5^q ≤ 2m+1 ≤ 2^54 or q ≤ 23. In the 32-bit case,we have
-    /// 5^q ≤ 2m+1 ≤ 2^25 or q ≤ 10.
+    /// 当 `q >= 0` 时，有 `5^q <= 2m + 1`。对 64 位路径，
+    /// `5^q <= 2m + 1 <= 2^54`，因此 `q <= 23`；对 32 位路径，
+    /// `5^q <= 2m + 1 <= 2^25`，因此 `q <= 10`。
     ///
-    /// When q < 0, we have w ≥ (2m+1)×5^−q. We must have that w < 2^64
-    /// so (2m+1)×5^−q < 2^64. We have that 2m+1 > 2^53 (64-bit case)
-    /// or 2m+1 > 2^24 (32-bit case). Hence,we must have 2^53×5^−q < 2^64
-    /// (64-bit) and 2^24×5^−q < 2^64 (32-bit). Hence we have 5^−q < 2^11
-    /// or q ≥ −4 (64-bit case) and 5^−q < 2^40 or q ≥ −17 (32-bit case).
+    /// 当 `q < 0` 时，有 `w >= (2m + 1) * 5^-q`。由于必须满足 `w < 2^64`，
+    /// 因而 `(2m + 1) * 5^-q < 2^64`。64 位情况下 `2m + 1 > 2^53`，
+    /// 32 位情况下 `2m + 1 > 2^24`，所以分别需要
+    /// `2^53 * 5^-q < 2^64` 与 `2^24 * 5^-q < 2^64`。这推出 64 位下
+    /// `5^-q < 2^11`，即 `q >= -4`；32 位下 `5^-q < 2^40`，即 `q >= -17`。
     ///
-    /// Thus we have that we only need to round ties to even when
-    /// we have that q ∈ [−4,23](in the 64-bit case) or q∈[−17,10]
-    /// (in the 32-bit case). In both cases,the power of five(5^|q|)
-    /// fits in a 64-bit word.
+    /// 因此只有 `q` 位于 64 位的 `[-4, 23]` 或 32 位的 `[-17, 10]` 时，才需要显式检查
+    /// ties-to-even。两个范围内的 `5^|q|` 都能放进 64 位字。
     const MIN_EXPONENT_ROUND_TO_EVEN: i32;
     const MAX_EXPONENT_ROUND_TO_EVEN: i32;
 
-    /* limits related to Fast pathing */
+    /* 与 fast path 有关的边界 */
 
-    /// Largest decimal exponent for a non-infinite value.
+    /// 仍可能得到非 Inf 值的最大十进制 exponent。
     ///
-    /// This is the max exponent in binary converted to the max exponent in decimal. Allows fast
-    /// pathing anything larger than `10^LARGEST_POWER_OF_TEN`, which will round to infinity.
+    /// 这是把二进制最大 exponent 转换成十进制后的边界。大于 `10^LARGEST_POWER_OF_TEN`
+    /// 的输入会舍入为 Inf，可以快速处理。
     const LARGEST_POWER_OF_TEN: i32 = {
         let largest_pow2 = Self::EXP_BIAS + 1;
         pow2_to_pow10(largest_pow2 as i64) as i32
     };
 
-    /// Smallest decimal exponent for a non-zero value. This allows for fast pathing anything
-    /// smaller than `10^SMALLEST_POWER_OF_TEN`, which will round to zero.
+    /// 仍可能得到非零值的最小十进制 exponent。
     ///
-    /// The smallest power of ten is represented by `⌊log10(2^-n / (2^64 - 1))⌋`, where `n` is
-    /// the smallest power of two. The `2^64 - 1)` denominator comes from the number of values
-    /// that are representable by the intermediate storage format. I don't actually know _why_
-    /// the storage format is relevant here.
+    /// 小于 `10^SMALLEST_POWER_OF_TEN` 的输入会舍入为零，可以快速处理。
     ///
-    /// The values may be calculated using the formula. Unfortunately we cannot calculate them at
-    /// compile time since intermediates exceed the range of an `f64`.
+    /// 最小 10 的幂表示为 `floor(log10(2^-n / (2^64 - 1)))`，其中 `n` 是最小 2 的幂。
+    /// 分母 `2^64 - 1` 来自中间存储格式可表示的值数量；这个存储格式为何进入该界限，
+    /// 仍是当前实现沿用的算法细节。
+    ///
+    /// 这些值可以用公式计算；但中间量会超过 `f64` 范围，因此无法在编译期直接计算。
     const SMALLEST_POWER_OF_TEN: i32;
 
-    /// Maximum exponent for a fast path case, or `⌊(SIG_BITS+1)/log2(5)⌋`
-    // assuming FLT_EVAL_METHOD = 0
+    /// fast path 支持的最大 exponent，即 `floor((SIG_BITS + 1) / log2(5))`。
+    // 假设 FLT_EVAL_METHOD = 0。
     const MAX_EXPONENT_FAST_PATH: i64 = {
         let log2_5 = f64::consts::LOG2_10 - 1.0;
         (Self::SIG_TOTAL_BITS as f64 / log2_5) as i64
     };
 
-    /// Minimum exponent for a fast path case, or `-⌊(SIG_BITS+1)/log2(5)⌋`
+    /// fast path 支持的最小 exponent，即 `-floor((SIG_BITS + 1) / log2(5))`。
     const MIN_EXPONENT_FAST_PATH: i64 = -Self::MAX_EXPONENT_FAST_PATH;
 
-    /// Maximum exponent that can be represented for a disguised-fast path case.
-    /// This is `MAX_EXPONENT_FAST_PATH + ⌊(SIG_BITS+1)/log2(10)⌋`
+    /// disguised-fast path 能表示的最大 exponent。
+    ///
+    /// 该值为 `MAX_EXPONENT_FAST_PATH + floor((SIG_BITS + 1) / log2(10))`。
     const MAX_EXPONENT_DISGUISED_FAST_PATH: i64 =
         Self::MAX_EXPONENT_FAST_PATH + (Self::SIG_TOTAL_BITS as f64 / f64::consts::LOG2_10) as i64;
 
-    /// Maximum mantissa for the fast-path (`1 << 53` for f64).
+    /// fast path 允许的最大 mantissa（对 f64 是 `1 << 53`）。
     const MAX_MANTISSA_FAST_PATH: u64 = 1 << Self::SIG_TOTAL_BITS;
 
-    /// Converts integer into float through an as cast.
-    /// This is only called in the fast-path algorithm, and therefore
-    /// will not lose precision, since the value will always have
-    /// only if the value is <= Self::MAX_MANTISSA_FAST_PATH.
+    /// 通过 `as` 转换把整数转成浮点。
+    ///
+    /// 该函数只在 fast path 算法中调用；调用前会保证值不超过
+    /// `Self::MAX_MANTISSA_FAST_PATH`，因此不会丢失精度。
     fn from_u64(v: u64) -> Self;
 
-    /// Performs a raw transmutation from an integer.
+    /// 从整数位模式构造浮点值。
     fn from_u64_bits(v: u64) -> Self;
 
-    /// Gets a small power-of-ten for fast-path multiplication.
+    /// 取得 fast path 乘法用的小型 10 的幂。
     fn pow10_fast_path(exponent: usize) -> Self;
 
-    /// Returns the category that this number falls into.
+    /// 返回该数所属的浮点分类。
     fn classify(self) -> FpCategory;
 
-    /// Transmute to the integer representation
+    /// 转换为底层整数位表示。
     fn to_bits(self) -> Self::Int;
 
-    /// Returns the mantissa, exponent and sign as integers.
+    /// 以整数形式返回 mantissa、exponent 和符号。
     ///
-    /// This returns `(m, p, s)` such that `s * m * 2^p` represents the original float. For 0, the
-    /// exponent will be `-(EXP_BIAS + SIG_BITS)`, which is the minimum subnormal power. For
-    /// infinity or NaN, the exponent will be `EXP_SAT - EXP_BIAS - SIG_BITS`.
+    /// 返回 `(m, p, s)`，满足 `s * m * 2^p` 表示原浮点数。对 0，exponent 是
+    /// `-(EXP_BIAS + SIG_BITS)`，也就是最小 subnormal 幂。对 Inf 或 NaN，exponent 是
+    /// `EXP_SAT - EXP_BIAS - SIG_BITS`。
     ///
-    /// If subnormal, the mantissa will be shifted one bit to the left. Otherwise, it is returned
-    /// with the explicit bit set but otherwise unshifted
+    /// 若值为 subnormal，mantissa 会左移一位；否则返回时会补上显式隐藏位，但不做其他移位。
     ///
-    /// `s` is only ever +/-1.
+    /// `s` 只会是 `+1` 或 `-1`。
     fn integer_decode(self) -> (u64, i16, i8) {
         let bits = self.to_bits();
         let sign: i8 = if bits >> (Self::BITS - 1) == Self::Int::ZERO { 1 } else { -1 };
@@ -206,13 +201,13 @@ pub trait RawFloat:
         } else {
             (bits & Self::SIG_MASK) | (Self::Int::ONE << Self::SIG_BITS)
         };
-        // Exponent bias + mantissa shift
+        // exponent bias 加上 mantissa 位移。
         exponent -= (Self::EXP_BIAS + Self::SIG_BITS) as i16;
         (mantissa.into(), exponent, sign)
     }
 }
 
-/// Solve for `b` in `10^b = 2^a`
+/// 求解满足 `10^b = 2^a` 的 `b`。
 const fn pow2_to_pow10(a: i64) -> i64 {
     let res = (a as f64) / f64::consts::LOG2_10;
     res as i64

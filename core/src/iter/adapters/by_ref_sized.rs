@@ -1,16 +1,15 @@
 use crate::num::NonZero;
 use crate::ops::{NeverShortCircuit, Try};
 
-/// Like `Iterator::by_ref`, but requiring `Sized` so it can forward generics.
+/// 类似 `Iterator::by_ref`，但要求 `Sized`，因此可以转发泛型方法。
 ///
-/// Ideally this will no longer be required, eventually, but as can be seen in
-/// the benchmarks (as of Feb 2022 at least) `by_ref` can have performance cost.
+/// 理想情况下，最终不应再需要它；但从 benchmark 可见（至少截至 2022 年 2 月），
+/// `by_ref` 可能带来性能开销。
 #[unstable(feature = "std_internals", issue = "none")]
 #[derive(Debug)]
 pub struct ByRefSized<'a, I>(pub &'a mut I);
 
-// The following implementations use UFCS-style, rather than trusting autoderef,
-// to avoid accidentally calling the `&mut Iterator` implementations.
+// 下面的实现使用 UFCS 风格，而不是依赖 autoderef，以避免意外调用 `&mut Iterator` 实现。
 
 #[unstable(feature = "std_internals", issue = "none")]
 impl<I: Iterator> Iterator for ByRefSized<'_, I> {
@@ -41,7 +40,7 @@ impl<I: Iterator> Iterator for ByRefSized<'_, I> {
     where
         F: FnMut(B, Self::Item) -> B,
     {
-        // `fold` needs ownership, so this can't forward directly.
+        // `fold` 需要所有权，因此这里不能直接转发。
         I::try_fold(self.0, init, NeverShortCircuit::wrap_mut_2(f)).0
     }
 
@@ -77,7 +76,7 @@ impl<I: DoubleEndedIterator> DoubleEndedIterator for ByRefSized<'_, I> {
     where
         F: FnMut(B, Self::Item) -> B,
     {
-        // `rfold` needs ownership, so this can't forward directly.
+        // `rfold` 需要所有权，所以这里无法直接转发。
         I::try_rfold(self.0, init, NeverShortCircuit::wrap_mut_2(f)).0
     }
 

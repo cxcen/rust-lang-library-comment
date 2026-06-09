@@ -1,4 +1,4 @@
-//! Numeric traits and functions for the built-in numeric types.
+//! 内建数值类型的数值 trait 和函数。
 
 #![stable(feature = "rust1", since = "1.0.0")]
 
@@ -7,7 +7,7 @@ use crate::str::FromStr;
 use crate::ub_checks::assert_unsafe_precondition;
 use crate::{ascii, intrinsics, mem};
 
-// FIXME(const-hack): Used because the `?` operator is not allowed in a const context.
+// FIXME(const-hack): 用于绕开 const 上下文中不允许使用 `?` 运算符的问题。
 macro_rules! try_opt {
     ($e:expr) => {
         match $e {
@@ -17,7 +17,7 @@ macro_rules! try_opt {
     };
 }
 
-// Use this when the generated code should differ between signed and unsigned types.
+// 当生成代码需要在有符号和无符号类型之间不同时使用。
 macro_rules! sign_dependent_expr {
     (signed ? if signed { $signed_case:expr } if unsigned { $unsigned_case:expr } ) => {
         $signed_case
@@ -27,7 +27,7 @@ macro_rules! sign_dependent_expr {
     };
 }
 
-// All these modules are technically private and only exposed for coretests:
+// 这些模块严格说都是私有的，只是为了 coretests 而暴露：
 #[cfg(not(no_fp_fmt_parse))]
 pub mod bignum;
 #[cfg(not(no_fp_fmt_parse))]
@@ -39,9 +39,9 @@ pub mod flt2dec;
 pub mod fmt;
 
 #[macro_use]
-mod int_macros; // import int_impl!
+mod int_macros; // 导入 int_impl!
 #[macro_use]
-mod uint_macros; // import uint_impl!
+mod uint_macros; // 导入 uint_impl!
 
 mod error;
 mod int_bits;
@@ -53,7 +53,7 @@ mod overflow_panic;
 mod saturating;
 mod wrapping;
 
-/// 100% perma-unstable
+/// 100% 永久不稳定
 #[doc(hidden)]
 pub mod niche_types;
 
@@ -87,9 +87,8 @@ macro_rules! u8_xe_bytes_doc {
     () => {
         "
 
-**Note**: This function is meaningless on `u8`. Byte order does not exist as a
-concept for byte-sized integers. This function is only provided in symmetry
-with larger integer types.
+**注意**：此函数对 `u8` 没有意义。字节序这个概念不适用于字节大小的整数。
+提供此函数只是为了与更大的整数类型保持对称。
 
 "
     };
@@ -99,10 +98,10 @@ macro_rules! i8_xe_bytes_doc {
     () => {
         "
 
-**Note**: This function is meaningless on `i8`. Byte order does not exist as a
-concept for byte-sized integers. This function is only provided in symmetry
-with larger integer types. You can cast from and to `u8` using
-[`cast_signed`](u8::cast_signed) and [`cast_unsigned`](Self::cast_unsigned).
+**注意**：此函数对 `i8` 没有意义。字节序这个概念不适用于字节大小的整数。
+提供此函数只是为了与更大的整数类型保持对称。你可以使用
+[`cast_signed`](u8::cast_signed) 和 [`cast_unsigned`](Self::cast_unsigned)
+在该类型与 `u8` 之间转换。
 
 "
     };
@@ -112,8 +111,7 @@ macro_rules! usize_isize_to_xe_bytes_doc {
     () => {
         "
 
-**Note**: This function returns an array of length 2, 4 or 8 bytes
-depending on the target pointer size.
+**注意**：此函数根据目标指针大小，返回长度为 2、4 或 8 字节的数组。
 
 "
     };
@@ -123,8 +121,7 @@ macro_rules! usize_isize_from_xe_bytes_doc {
     () => {
         "
 
-**Note**: This function takes an array of length 2, 4 or 8 bytes
-depending on the target pointer size.
+**注意**：此函数根据目标指针大小，接受长度为 2、4 或 8 字节的数组。
 
 "
     };
@@ -132,13 +129,12 @@ depending on the target pointer size.
 
 macro_rules! midpoint_impl {
     ($SelfT:ty, unsigned) => {
-        /// Calculates the midpoint (average) between `self` and `rhs`.
+        /// 计算 `self` 与 `rhs` 之间的中点（平均值）。
         ///
-        /// `midpoint(a, b)` is `(a + b) / 2` as if it were performed in a
-        /// sufficiently-large unsigned integral type. This implies that the result is
-        /// always rounded towards zero and that no overflow will ever occur.
+        /// `midpoint(a, b)` 就像在足够大的无符号整数类型中执行 `(a + b) / 2`
+        /// 一样。这意味着结果始终向零舍入，并且永远不会发生溢出。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(0", stringify!($SelfT), ".midpoint(4), 2);")]
@@ -152,19 +148,18 @@ macro_rules! midpoint_impl {
         #[doc(alias = "average")]
         #[inline]
         pub const fn midpoint(self, rhs: $SelfT) -> $SelfT {
-            // Use the well known branchless algorithm from Hacker's Delight to compute
-            // `(a + b) / 2` without overflowing: `((a ^ b) >> 1) + (a & b)`.
+            // 使用 Hacker's Delight 中众所周知的无分支算法，在不溢出的情况下计算
+            // `(a + b) / 2`：`((a ^ b) >> 1) + (a & b)`。
             ((self ^ rhs) >> 1) + (self & rhs)
         }
     };
     ($SelfT:ty, signed) => {
-        /// Calculates the midpoint (average) between `self` and `rhs`.
+        /// 计算 `self` 与 `rhs` 之间的中点（平均值）。
         ///
-        /// `midpoint(a, b)` is `(a + b) / 2` as if it were performed in a
-        /// sufficiently-large signed integral type. This implies that the result is
-        /// always rounded towards zero and that no overflow will ever occur.
+        /// `midpoint(a, b)` 就像在足够大的有符号整数类型中执行 `(a + b) / 2`
+        /// 一样。这意味着结果始终向零舍入，并且永远不会发生溢出。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(0", stringify!($SelfT), ".midpoint(4), 2);")]
@@ -182,22 +177,21 @@ macro_rules! midpoint_impl {
         #[doc(alias = "average")]
         #[inline]
         pub const fn midpoint(self, rhs: Self) -> Self {
-            // Use the well known branchless algorithm from Hacker's Delight to compute
-            // `(a + b) / 2` without overflowing: `((a ^ b) >> 1) + (a & b)`.
+            // 使用 Hacker's Delight 中众所周知的无分支算法，在不溢出的情况下计算
+            // `(a + b) / 2`：`((a ^ b) >> 1) + (a & b)`。
             let t = ((self ^ rhs) >> 1) + (self & rhs);
-            // Except that it fails for integers whose sum is an odd negative number as
-            // their floor is one less than their average. So we adjust the result.
+            // 不过，当两个整数之和是负奇数时它会失效，因为其向下取整值比平均值小 1。
+            // 因此这里调整结果。
             t + (if t < 0 { 1 } else { 0 } & (self ^ rhs))
         }
     };
     ($SelfT:ty, $WideT:ty, unsigned) => {
-        /// Calculates the midpoint (average) between `self` and `rhs`.
+        /// 计算 `self` 与 `rhs` 之间的中点（平均值）。
         ///
-        /// `midpoint(a, b)` is `(a + b) / 2` as if it were performed in a
-        /// sufficiently-large unsigned integral type. This implies that the result is
-        /// always rounded towards zero and that no overflow will ever occur.
+        /// `midpoint(a, b)` 就像在足够大的无符号整数类型中执行 `(a + b) / 2`
+        /// 一样。这意味着结果始终向零舍入，并且永远不会发生溢出。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(0", stringify!($SelfT), ".midpoint(4), 2);")]
@@ -215,13 +209,12 @@ macro_rules! midpoint_impl {
         }
     };
     ($SelfT:ty, $WideT:ty, signed) => {
-        /// Calculates the midpoint (average) between `self` and `rhs`.
+        /// 计算 `self` 与 `rhs` 之间的中点（平均值）。
         ///
-        /// `midpoint(a, b)` is `(a + b) / 2` as if it were performed in a
-        /// sufficiently-large signed integral type. This implies that the result is
-        /// always rounded towards zero and that no overflow will ever occur.
+        /// `midpoint(a, b)` 就像在足够大的有符号整数类型中执行 `(a + b) / 2`
+        /// 一样。这意味着结果始终向零舍入，并且永远不会发生溢出。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(0", stringify!($SelfT), ".midpoint(4), 2);")]
@@ -441,7 +434,7 @@ impl isize {
     midpoint_impl! { isize, signed }
 }
 
-/// If the bit selected by this mask is set, ascii is lower case.
+/// 如果该掩码选中的位被设置，则 ASCII 字符是小写。
 const ASCII_CASE_MASK: u8 = 0b0010_0000;
 
 impl u8 {
@@ -469,9 +462,9 @@ impl u8 {
     }
     midpoint_impl! { u8, u16, unsigned }
 
-    /// Checks if the value is within the ASCII range.
+    /// 检查该值是否在 ASCII 范围内。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let ascii = 97u8;
@@ -488,8 +481,8 @@ impl u8 {
         *self <= 127
     }
 
-    /// If the value of this byte is within the ASCII range, returns it as an
-    /// [ASCII character](ascii::Char).  Otherwise, returns `None`.
+    /// 如果该字节的值在 ASCII 范围内，则将其作为
+    /// [ASCII 字符](ascii::Char) 返回；否则返回 `None`。
     #[must_use]
     #[unstable(feature = "ascii_char", issue = "110998")]
     #[inline]
@@ -497,12 +490,11 @@ impl u8 {
         ascii::Char::from_u8(*self)
     }
 
-    /// Converts this byte to an [ASCII character](ascii::Char), without
-    /// checking whether or not it's valid.
+    /// 将该字节转换为 [ASCII 字符](ascii::Char)，不检查其是否有效。
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// This byte must be valid ASCII, or else this is UB.
+    /// 该字节必须是有效 ASCII，否则属于 UB。
     #[must_use]
     #[unstable(feature = "ascii_char", issue = "110998")]
     #[inline]
@@ -513,18 +505,18 @@ impl u8 {
             (it: &u8 = self) => it.is_ascii()
         );
 
-        // SAFETY: the caller promised that this byte is ASCII.
+        // SAFETY: 调用方承诺该字节是 ASCII。
         unsafe { ascii::Char::from_u8_unchecked(*self) }
     }
 
-    /// Makes a copy of the value in its ASCII upper case equivalent.
+    /// 返回该值对应的 ASCII 大写副本。
     ///
-    /// ASCII letters 'a' to 'z' are mapped to 'A' to 'Z',
-    /// but non-ASCII letters are unchanged.
+    /// ASCII 字母 'a' 到 'z' 会映射到 'A' 到 'Z'，
+    /// 但非 ASCII 字母保持不变。
     ///
-    /// To uppercase the value in-place, use [`make_ascii_uppercase`].
+    /// 若要就地转为大写，请使用 [`make_ascii_uppercase`]。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let lowercase_a = 97u8;
@@ -538,18 +530,18 @@ impl u8 {
     #[rustc_const_stable(feature = "const_ascii_methods_on_intrinsics", since = "1.52.0")]
     #[inline]
     pub const fn to_ascii_uppercase(&self) -> u8 {
-        // Toggle the 6th bit if this is a lowercase letter
+        // 如果这是小写字母，则翻转第 6 位。
         *self ^ ((self.is_ascii_lowercase() as u8) * ASCII_CASE_MASK)
     }
 
-    /// Makes a copy of the value in its ASCII lower case equivalent.
+    /// 返回该值对应的 ASCII 小写副本。
     ///
-    /// ASCII letters 'A' to 'Z' are mapped to 'a' to 'z',
-    /// but non-ASCII letters are unchanged.
+    /// ASCII 字母 'A' 到 'Z' 会映射到 'a' 到 'z'，
+    /// 但非 ASCII 字母保持不变。
     ///
-    /// To lowercase the value in-place, use [`make_ascii_lowercase`].
+    /// 若要就地转为小写，请使用 [`make_ascii_lowercase`]。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let uppercase_a = 65u8;
@@ -563,21 +555,21 @@ impl u8 {
     #[rustc_const_stable(feature = "const_ascii_methods_on_intrinsics", since = "1.52.0")]
     #[inline]
     pub const fn to_ascii_lowercase(&self) -> u8 {
-        // Set the 6th bit if this is an uppercase letter
+        // 如果这是大写字母，则设置第 6 位。
         *self | (self.is_ascii_uppercase() as u8 * ASCII_CASE_MASK)
     }
 
-    /// Assumes self is ascii
+    /// 假定 `self` 是 ASCII。
     #[inline]
     pub(crate) const fn ascii_change_case_unchecked(&self) -> u8 {
         *self ^ ASCII_CASE_MASK
     }
 
-    /// Checks that two values are an ASCII case-insensitive match.
+    /// 检查两个值按 ASCII 大小写不敏感规则是否匹配。
     ///
-    /// This is equivalent to `to_ascii_lowercase(a) == to_ascii_lowercase(b)`.
+    /// 这等价于 `to_ascii_lowercase(a) == to_ascii_lowercase(b)`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let lowercase_a = 97u8;
@@ -592,15 +584,14 @@ impl u8 {
         self.to_ascii_lowercase() == other.to_ascii_lowercase()
     }
 
-    /// Converts this value to its ASCII upper case equivalent in-place.
+    /// 将该值就地转换为对应的 ASCII 大写形式。
     ///
-    /// ASCII letters 'a' to 'z' are mapped to 'A' to 'Z',
-    /// but non-ASCII letters are unchanged.
+    /// ASCII 字母 'a' 到 'z' 会映射到 'A' 到 'Z'，
+    /// 但非 ASCII 字母保持不变。
     ///
-    /// To return a new uppercased value without modifying the existing one, use
-    /// [`to_ascii_uppercase`].
+    /// 若要返回新的大写值而不修改现有值，请使用 [`to_ascii_uppercase`]。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let mut byte = b'a';
@@ -618,15 +609,14 @@ impl u8 {
         *self = self.to_ascii_uppercase();
     }
 
-    /// Converts this value to its ASCII lower case equivalent in-place.
+    /// 将该值就地转换为对应的 ASCII 小写形式。
     ///
-    /// ASCII letters 'A' to 'Z' are mapped to 'a' to 'z',
-    /// but non-ASCII letters are unchanged.
+    /// ASCII 字母 'A' 到 'Z' 会映射到 'a' 到 'z'，
+    /// 但非 ASCII 字母保持不变。
     ///
-    /// To return a new lowercased value without modifying the existing one, use
-    /// [`to_ascii_lowercase`].
+    /// 若要返回新的小写值而不修改现有值，请使用 [`to_ascii_lowercase`]。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let mut byte = b'A';
@@ -644,12 +634,12 @@ impl u8 {
         *self = self.to_ascii_lowercase();
     }
 
-    /// Checks if the value is an ASCII alphabetic character:
+    /// 检查该值是否为 ASCII 字母字符：
     ///
-    /// - U+0041 'A' ..= U+005A 'Z', or
+    /// - U+0041 'A' ..= U+005A 'Z'，或
     /// - U+0061 'a' ..= U+007A 'z'.
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let uppercase_a = b'A';
@@ -680,10 +670,10 @@ impl u8 {
         matches!(*self, b'A'..=b'Z' | b'a'..=b'z')
     }
 
-    /// Checks if the value is an ASCII uppercase character:
+    /// 检查该值是否为 ASCII 大写字符：
     /// U+0041 'A' ..= U+005A 'Z'.
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let uppercase_a = b'A';
@@ -714,10 +704,10 @@ impl u8 {
         matches!(*self, b'A'..=b'Z')
     }
 
-    /// Checks if the value is an ASCII lowercase character:
+    /// 检查该值是否为 ASCII 小写字符：
     /// U+0061 'a' ..= U+007A 'z'.
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let uppercase_a = b'A';
@@ -748,13 +738,13 @@ impl u8 {
         matches!(*self, b'a'..=b'z')
     }
 
-    /// Checks if the value is an ASCII alphanumeric character:
+    /// 检查该值是否为 ASCII 字母数字字符：
     ///
-    /// - U+0041 'A' ..= U+005A 'Z', or
-    /// - U+0061 'a' ..= U+007A 'z', or
+    /// - U+0041 'A' ..= U+005A 'Z'，或
+    /// - U+0061 'a' ..= U+007A 'z'，或
     /// - U+0030 '0' ..= U+0039 '9'.
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let uppercase_a = b'A';
@@ -785,10 +775,10 @@ impl u8 {
         matches!(*self, b'0'..=b'9') | matches!(*self, b'A'..=b'Z') | matches!(*self, b'a'..=b'z')
     }
 
-    /// Checks if the value is an ASCII decimal digit:
+    /// 检查该值是否为 ASCII 十进制数字：
     /// U+0030 '0' ..= U+0039 '9'.
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let uppercase_a = b'A';
@@ -819,10 +809,10 @@ impl u8 {
         matches!(*self, b'0'..=b'9')
     }
 
-    /// Checks if the value is an ASCII octal digit:
+    /// 检查该值是否为 ASCII 八进制数字：
     /// U+0030 '0' ..= U+0037 '7'.
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(is_ascii_octdigit)]
@@ -850,13 +840,13 @@ impl u8 {
         matches!(*self, b'0'..=b'7')
     }
 
-    /// Checks if the value is an ASCII hexadecimal digit:
+    /// 检查该值是否为 ASCII 十六进制数字：
     ///
-    /// - U+0030 '0' ..= U+0039 '9', or
-    /// - U+0041 'A' ..= U+0046 'F', or
+    /// - U+0030 '0' ..= U+0039 '9'，或
+    /// - U+0041 'A' ..= U+0046 'F'，或
     /// - U+0061 'a' ..= U+0066 'f'.
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let uppercase_a = b'A';
@@ -887,14 +877,14 @@ impl u8 {
         matches!(*self, b'0'..=b'9') | matches!(*self, b'A'..=b'F') | matches!(*self, b'a'..=b'f')
     }
 
-    /// Checks if the value is an ASCII punctuation character:
+    /// 检查该值是否为 ASCII 标点字符：
     ///
-    /// - U+0021 ..= U+002F `! " # $ % & ' ( ) * + , - . /`, or
-    /// - U+003A ..= U+0040 `: ; < = > ? @`, or
-    /// - U+005B ..= U+0060 `` [ \ ] ^ _ ` ``, or
+    /// - U+0021 ..= U+002F `! " # $ % & ' ( ) * + , - . /`，或
+    /// - U+003A ..= U+0040 `: ; < = > ? @`，或
+    /// - U+005B ..= U+0060 `` [ \ ] ^ _ ` ``，或
     /// - U+007B ..= U+007E `{ | } ~`
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let uppercase_a = b'A';
@@ -928,10 +918,10 @@ impl u8 {
             | matches!(*self, b'{'..=b'~')
     }
 
-    /// Checks if the value is an ASCII graphic character:
+    /// 检查该值是否为 ASCII 图形字符：
     /// U+0021 '!' ..= U+007E '~'.
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let uppercase_a = b'A';
@@ -962,27 +952,23 @@ impl u8 {
         matches!(*self, b'!'..=b'~')
     }
 
-    /// Checks if the value is an ASCII whitespace character:
+    /// 检查该值是否为 ASCII 空白字符：
     /// U+0020 SPACE, U+0009 HORIZONTAL TAB, U+000A LINE FEED,
-    /// U+000C FORM FEED, or U+000D CARRIAGE RETURN.
+    /// U+000C FORM FEED，或 U+000D CARRIAGE RETURN。
     ///
-    /// Rust uses the WhatWG Infra Standard's [definition of ASCII
-    /// whitespace][infra-aw]. There are several other definitions in
-    /// wide use. For instance, [the POSIX locale][pct] includes
-    /// U+000B VERTICAL TAB as well as all the above characters,
-    /// but—from the very same specification—[the default rule for
-    /// "field splitting" in the Bourne shell][bfs] considers *only*
-    /// SPACE, HORIZONTAL TAB, and LINE FEED as whitespace.
+    /// Rust 使用 WhatWG Infra Standard 的 [ASCII 空白定义][infra-aw]。
+    /// 还有若干其他定义也被广泛使用。例如，[POSIX locale][pct] 除了上述所有字符外
+    /// 还包含 U+000B VERTICAL TAB；但同一规范中的
+    /// [Bourne shell 的“字段拆分”默认规则][bfs] 只把 SPACE、HORIZONTAL TAB 和
+    /// LINE FEED 视为空白。
     ///
-    /// If you are writing a program that will process an existing
-    /// file format, check what that format's definition of whitespace is
-    /// before using this function.
+    /// 如果你编写的程序要处理既有文件格式，请在使用此函数前确认该格式采用的空白定义。
     ///
     /// [infra-aw]: https://infra.spec.whatwg.org/#ascii-whitespace
     /// [pct]: https://pubs.opengroup.org/onlinepubs/9699919799/basedefs/V1_chap07.html#tag_07_03_01
     /// [bfs]: https://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html#tag_18_06_05
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let uppercase_a = b'A';
@@ -1013,12 +999,11 @@ impl u8 {
         matches!(*self, b'\t' | b'\n' | b'\x0C' | b'\r' | b' ')
     }
 
-    /// Checks if the value is an ASCII control character:
-    /// U+0000 NUL ..= U+001F UNIT SEPARATOR, or U+007F DELETE.
-    /// Note that most ASCII whitespace characters are control
-    /// characters, but SPACE is not.
+    /// 检查该值是否为 ASCII 控制字符：
+    /// U+0000 NUL ..= U+001F UNIT SEPARATOR，或 U+007F DELETE。
+    /// 注意，大多数 ASCII 空白字符都是控制字符，但 SPACE 不是。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let uppercase_a = b'A';
@@ -1049,12 +1034,11 @@ impl u8 {
         matches!(*self, b'\0'..=b'\x1F' | b'\x7F')
     }
 
-    /// Returns an iterator that produces an escaped version of a `u8`,
-    /// treating it as an ASCII character.
+    /// 返回一个迭代器，产出把该 `u8` 当作 ASCII 字符处理后的转义形式。
     ///
-    /// The behavior is identical to [`ascii::escape_default`].
+    /// 行为与 [`ascii::escape_default`] 相同。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// assert_eq!("0", b'0'.escape_ascii().to_string());
@@ -1076,7 +1060,7 @@ impl u8 {
 
     #[inline]
     pub(crate) const fn is_utf8_char_boundary(self) -> bool {
-        // This is bit magic equivalent to: b < 128 || b >= 192
+        // 这段位运算等价于：b < 128 || b >= 192
         (self as i8) >= -0x40
     }
 }
@@ -1106,9 +1090,9 @@ impl u16 {
     }
     midpoint_impl! { u16, u32, unsigned }
 
-    /// Checks if the value is a Unicode surrogate code point, which are disallowed values for [`char`].
+    /// 检查该值是否为 Unicode 代理码点；这些值不允许作为 [`char`]。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(utf16_extra)]
@@ -1293,19 +1277,19 @@ impl usize {
 }
 
 impl usize {
-    /// Returns an `usize` where every byte is equal to `x`.
+    /// 返回一个每个字节都等于 `x` 的 `usize`。
     #[inline]
     pub(crate) const fn repeat_u8(x: u8) -> usize {
         usize::from_ne_bytes([x; size_of::<usize>()])
     }
 
-    /// Returns an `usize` where every byte pair is equal to `x`.
+    /// 返回一个每个双字节单元都等于 `x` 的 `usize`。
     #[inline]
     pub(crate) const fn repeat_u16(x: u16) -> usize {
         let mut r = 0usize;
         let mut i = 0;
         while i < size_of::<usize>() {
-            // Use `wrapping_shl` to make it work on targets with 16-bit `usize`
+            // 使用 `wrapping_shl`，使其能在 `usize` 为 16 位的目标上工作。
             r = r.wrapping_shl(16) | (x as usize);
             i += 2;
         }
@@ -1313,12 +1297,12 @@ impl usize {
     }
 }
 
-/// A classification of floating point numbers.
+/// 浮点数的分类。
 ///
-/// This `enum` is used as the return type for [`f32::classify`] and [`f64::classify`]. See
-/// their documentation for more.
+/// 此 `enum` 用作 [`f32::classify`] 和 [`f64::classify`] 的返回类型。
+/// 更多信息请参见它们的文档。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use std::num::FpCategory;
@@ -1338,49 +1322,42 @@ impl usize {
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[stable(feature = "rust1", since = "1.0.0")]
 pub enum FpCategory {
-    /// NaN (not a number): this value results from calculations like `(-1.0).sqrt()`.
+    /// NaN（非数）：这个值来自 `(-1.0).sqrt()` 这类计算。
     ///
-    /// See [the documentation for `f32`](f32) for more information on the unusual properties
-    /// of NaN.
+    /// 更多关于 NaN 异常性质的信息，请参见 [`f32` 的文档](f32)。
     #[stable(feature = "rust1", since = "1.0.0")]
     Nan,
 
-    /// Positive or negative infinity, which often results from dividing a nonzero number
-    /// by zero.
+    /// 正无穷或负无穷，常由非零数除以零产生。
     #[stable(feature = "rust1", since = "1.0.0")]
     Infinite,
 
-    /// Positive or negative zero.
+    /// 正零或负零。
     ///
-    /// See [the documentation for `f32`](f32) for more information on the signedness of zeroes.
+    /// 更多关于零的符号性的信息，请参见 [`f32` 的文档](f32)。
     #[stable(feature = "rust1", since = "1.0.0")]
     Zero,
 
-    /// “Subnormal” or “denormal” floating point representation (less precise, relative to
-    /// their magnitude, than [`Normal`]).
+    /// “次正规”或“非正规”浮点表示；相对于其量级，它比 [`Normal`] 精度更低。
     ///
-    /// Subnormal numbers are larger in magnitude than [`Zero`] but smaller in magnitude than all
-    /// [`Normal`] numbers.
+    /// 次正规数的量级大于 [`Zero`]，但小于所有 [`Normal`] 数的量级。
     ///
     /// [`Normal`]: Self::Normal
     /// [`Zero`]: Self::Zero
     #[stable(feature = "rust1", since = "1.0.0")]
     Subnormal,
 
-    /// A regular floating point number, not any of the exceptional categories.
+    /// 常规浮点数，不属于任何异常分类。
     ///
-    /// The smallest positive normal numbers are [`f32::MIN_POSITIVE`] and [`f64::MIN_POSITIVE`],
-    /// and the largest positive normal numbers are [`f32::MAX`] and [`f64::MAX`]. (Unlike signed
-    /// integers, floating point numbers are symmetric in their range, so negating any of these
-    /// constants will produce their negative counterpart.)
+    /// 最小的正规正数是 [`f32::MIN_POSITIVE`] 和 [`f64::MIN_POSITIVE`]，
+    /// 最大的正规正数是 [`f32::MAX`] 和 [`f64::MAX`]。（与有符号整数不同，
+    /// 浮点数的取值范围是对称的，因此对其中任一常量取负会得到对应的负数。）
     #[stable(feature = "rust1", since = "1.0.0")]
     Normal,
 }
 
-/// Determines if a string of text of that length of that radix could be guaranteed to be
-/// stored in the given type T.
-/// Note that if the radix is known to the compiler, it is just the check of digits.len that
-/// is done at runtime.
+/// 判断给定进制和长度的文本串是否可以保证存入给定类型 `T`。
+/// 注意：如果 `radix` 对编译器已知，运行时只需要检查 `digits.len`。
 #[doc(hidden)]
 #[inline(always)]
 #[unstable(issue = "none", feature = "std_internals")]
@@ -1407,9 +1384,9 @@ macro_rules! from_str_int_impl {
         impl const FromStr for $int_ty {
             type Err = ParseIntError;
 
-            /// Parses an integer from a string slice with decimal digits.
+            /// 从包含十进制数字的字符串切片解析整数。
             ///
-            /// The characters are expected to be an optional
+            /// 字符预期为一个可选的
             #[doc = sign_dependent_expr!{
                 $signedness ?
                 if signed {
@@ -1419,22 +1396,21 @@ macro_rules! from_str_int_impl {
                     " `+` "
                 }
             }]
-            /// sign followed by only digits. Leading and trailing non-digit characters (including
-            /// whitespace) represent an error. Underscores (which are accepted in Rust literals)
-            /// also represent an error.
+            /// 符号，后面只跟数字。前后出现非数字字符（包括空白）表示错误。
+            /// 下划线（Rust 字面量中允许）同样表示错误。
             ///
-            /// # See also
-            /// For parsing numbers in other bases, such as binary or hexadecimal,
-            /// see [`from_str_radix`][Self::from_str_radix].
+            /// # 另请参阅
+            /// 若要解析其他进制（如二进制或十六进制）的数字，
+            /// 请参见 [`from_str_radix`][Self::from_str_radix]。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             /// use std::str::FromStr;
             ///
             #[doc = concat!("assert_eq!(", stringify!($int_ty), "::from_str(\"+10\"), Ok(10));")]
             /// ```
-            /// Trailing space returns error:
+            /// 尾随空格会返回错误：
             /// ```
             /// # use std::str::FromStr;
             /// #
@@ -1447,9 +1423,9 @@ macro_rules! from_str_int_impl {
         }
 
         impl $int_ty {
-            /// Parses an integer from a string slice with digits in a given base.
+            /// 从字符串切片中按给定进制解析整数。
             ///
-            /// The string is expected to be an optional
+            /// 字符串预期为一个可选的
             #[doc = sign_dependent_expr!{
                 $signedness ?
                 if signed {
@@ -1459,33 +1435,32 @@ macro_rules! from_str_int_impl {
                     " `+` "
                 }
             }]
-            /// sign followed by only digits. Leading and trailing non-digit characters (including
-            /// whitespace) represent an error. Underscores (which are accepted in Rust literals)
-            /// also represent an error.
+            /// 符号，后面只跟数字。前后出现非数字字符（包括空白）表示错误。
+            /// 下划线（Rust 字面量中允许）同样表示错误。
             ///
-            /// Digits are a subset of these characters, depending on `radix`:
+            /// 数字字符的集合取决于 `radix`，是下列字符的子集：
             /// * `0-9`
             /// * `a-z`
             /// * `A-Z`
             ///
             /// # Panics
             ///
-            /// This function panics if `radix` is not in the range from 2 to 36.
+            /// 如果 `radix` 不在 2 到 36 的范围内，此函数会 panic。
             ///
-            /// # See also
-            /// If the string to be parsed is in base 10 (decimal),
-            /// [`from_str`] or [`str::parse`] can also be used.
+            /// # 另请参阅
+            /// 如果要解析的字符串是十进制，也可以使用
+            /// [`from_str`] 或 [`str::parse`]。
             ///
-            // FIXME(#122566): These HTML links work around a rustdoc-json test failure.
+            // FIXME(#122566): 这些 HTML 链接用于绕开一个 rustdoc-json 测试失败。
             /// [`from_str`]: #method.from_str
             /// [`str::parse`]: primitive.str.html#method.parse
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             #[doc = concat!("assert_eq!(", stringify!($int_ty), "::from_str_radix(\"A\", 16), Ok(10));")]
             /// ```
-            /// Trailing space returns error:
+            /// 尾随空格会返回错误：
             /// ```
             #[doc = concat!("assert!(", stringify!($int_ty), "::from_str_radix(\"1 \", 10).is_err());")]
             /// ```
@@ -1496,9 +1471,9 @@ macro_rules! from_str_int_impl {
                 <$int_ty>::from_ascii_radix(src.as_bytes(), radix)
             }
 
-            /// Parses an integer from an ASCII-byte slice with decimal digits.
+            /// 从包含十进制数字的 ASCII 字节切片解析整数。
             ///
-            /// The characters are expected to be an optional
+            /// 这些字节预期表示一个可选的
             #[doc = sign_dependent_expr!{
                 $signedness ?
                 if signed {
@@ -1508,18 +1483,17 @@ macro_rules! from_str_int_impl {
                     " `+` "
                 }
             }]
-            /// sign followed by only digits. Leading and trailing non-digit characters (including
-            /// whitespace) represent an error. Underscores (which are accepted in Rust literals)
-            /// also represent an error.
+            /// 符号，后面只跟数字。前后出现非数字字符（包括空白）表示错误。
+            /// 下划线（Rust 字面量中允许）同样表示错误。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             /// #![feature(int_from_ascii)]
             ///
             #[doc = concat!("assert_eq!(", stringify!($int_ty), "::from_ascii(b\"+10\"), Ok(10));")]
             /// ```
-            /// Trailing space returns error:
+            /// 尾随空格会返回错误：
             /// ```
             /// # #![feature(int_from_ascii)]
             /// #
@@ -1531,9 +1505,9 @@ macro_rules! from_str_int_impl {
                 <$int_ty>::from_ascii_radix(src, 10)
             }
 
-            /// Parses an integer from an ASCII-byte slice with digits in a given base.
+            /// 从 ASCII 字节切片中按给定进制解析整数。
             ///
-            /// The characters are expected to be an optional
+            /// 这些字节预期表示一个可选的
             #[doc = sign_dependent_expr!{
                 $signedness ?
                 if signed {
@@ -1543,27 +1517,26 @@ macro_rules! from_str_int_impl {
                     " `+` "
                 }
             }]
-            /// sign followed by only digits. Leading and trailing non-digit characters (including
-            /// whitespace) represent an error. Underscores (which are accepted in Rust literals)
-            /// also represent an error.
+            /// 符号，后面只跟数字。前后出现非数字字符（包括空白）表示错误。
+            /// 下划线（Rust 字面量中允许）同样表示错误。
             ///
-            /// Digits are a subset of these characters, depending on `radix`:
+            /// 数字字符的集合取决于 `radix`，是下列字符的子集：
             /// * `0-9`
             /// * `a-z`
             /// * `A-Z`
             ///
             /// # Panics
             ///
-            /// This function panics if `radix` is not in the range from 2 to 36.
+            /// 如果 `radix` 不在 2 到 36 的范围内，此函数会 panic。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             /// #![feature(int_from_ascii)]
             ///
             #[doc = concat!("assert_eq!(", stringify!($int_ty), "::from_ascii_radix(b\"A\", 16), Ok(10));")]
             /// ```
-            /// Trailing space returns error:
+            /// 尾随空格会返回错误：
             /// ```
             /// # #![feature(int_from_ascii)]
             /// #
@@ -1607,14 +1580,14 @@ macro_rules! from_str_int_impl {
                 }
 
                 if can_not_overflow::<$int_ty>(radix, is_signed_ty, digits) {
-                    // If the len of the str is short compared to the range of the type
-                    // we are parsing into, then we can be certain that an overflow will not occur.
-                    // This bound is when `radix.pow(digits.len()) - 1 <= T::MAX` but the condition
-                    // above is a faster (conservative) approximation of this.
+                    // 如果字符串长度相对于要解析到的类型范围足够短，
+                    // 就可以确定不会发生溢出。
+                    // 精确边界是 `radix.pow(digits.len()) - 1 <= T::MAX`，
+                    // 但上面的条件是更快的保守近似。
                     //
-                    // Consider radix 16 as it has the highest information density per digit and will thus overflow the earliest:
-                    // `u8::MAX` is `ff` - any str of len 2 is guaranteed to not overflow.
-                    // `i8::MAX` is `7f` - only a str of len 1 is guaranteed to not overflow.
+                    // 以 16 进制为例：它每个数字的信息密度最高，因此会最早溢出：
+                    // `u8::MAX` 是 `ff`，任何长度为 2 的字符串都保证不会溢出。
+                    // `i8::MAX` 是 `7f`，只有长度为 1 的字符串保证不会溢出。
                     macro_rules! run_unchecked_loop {
                         ($unchecked_additive_op:tt) => {{
                             while let [c, rest @ ..] = digits {
@@ -1634,16 +1607,13 @@ macro_rules! from_str_int_impl {
                     macro_rules! run_checked_loop {
                         ($checked_additive_op:ident, $overflow_err:ident) => {{
                             while let [c, rest @ ..] = digits {
-                                // When `radix` is passed in as a literal, rather than doing a slow `imul`
-                                // the compiler can use shifts if `radix` can be expressed as a
-                                // sum of powers of 2 (x*10 can be written as x*8 + x*2).
-                                // When the compiler can't use these optimisations,
-                                // the latency of the multiplication can be hidden by issuing it
-                                // before the result is needed to improve performance on
-                                // modern out-of-order CPU as multiplication here is slower
-                                // than the other instructions, we can get the end result faster
-                                // doing multiplication first and let the CPU spends other cycles
-                                // doing other computation and get multiplication result later.
+                                // 当 `radix` 以字面量传入时，如果 `radix` 可以表示为
+                                // 若干 2 的幂之和，编译器就能使用移位而不是较慢的 `imul`
+                                //（x*10 可以写成 x*8 + x*2）。
+                                // 当编译器无法使用这些优化时，可以在需要结果之前先发出乘法，
+                                // 隐藏乘法延迟，从而提升现代乱序执行 CPU 上的性能。
+                                // 这里乘法比其他指令更慢；先做乘法，让 CPU 用其他周期执行
+                                // 其他计算，稍后再取得乘法结果，可以更快得到最终结果。
                                 let mul = result.checked_mul(radix as $int_ty);
                                 let x = unwrap_or_PIE!((*c as char).to_digit(radix), InvalidDigit) as $int_ty;
                                 result = unwrap_or_PIE!(mul, $overflow_err);

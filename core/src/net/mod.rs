@@ -1,13 +1,13 @@
-//! Networking primitives for IP communication.
+//! 用于 IP 通信的网络基础类型。
 //!
-//! This module provides types for IP and socket addresses.
+//! 本模块提供 IP 地址和 socket 地址相关的类型。
 //!
-//! # Organization
+//! # 组织结构
 //!
-//! * [`IpAddr`] represents IP addresses of either IPv4 or IPv6; [`Ipv4Addr`] and
-//!   [`Ipv6Addr`] are respectively IPv4 and IPv6 addresses
-//! * [`SocketAddr`] represents socket addresses of either IPv4 or IPv6; [`SocketAddrV4`]
-//!   and [`SocketAddrV6`] are respectively IPv4 and IPv6 socket addresses
+//! * [`IpAddr`] 表示 IPv4 或 IPv6 IP 地址；[`Ipv4Addr`] 和 [`Ipv6Addr`]
+//!   分别表示 IPv4 地址和 IPv6 地址。
+//! * [`SocketAddr`] 表示 IPv4 或 IPv6 socket 地址；[`SocketAddrV4`]
+//!   和 [`SocketAddrV6`] 分别表示 IPv4 socket 地址和 IPv6 socket 地址。
 
 #![stable(feature = "ip_in_core", since = "1.77.0")]
 

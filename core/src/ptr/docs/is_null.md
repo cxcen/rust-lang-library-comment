@@ -1,18 +1,13 @@
-Returns `true` if the pointer is null.
+如果指针为空(null),返回 `true`。
 
-Note that unsized types have many possible null pointers, as only the
-raw data pointer is considered, not their length, vtable, etc.
-Therefore, two pointers that are null may still not compare equal to
-each other.
+注意:非固定大小类型(unsized types)有许多种可能的空指针,因为这里只考虑裸的
+数据指针(raw data pointer),而不考虑其长度、vtable 等元数据。因此,两个都为空的
+指针之间仍然可能比较为不相等。
 
-# Panics during const evaluation
+# Panics
 
-If this method is used during const evaluation, and `self` is a pointer
-that is offset beyond the bounds of the memory it initially pointed to,
-then there might not be enough information to determine whether the
-pointer is null. This is because the absolute address in memory is not
-known at compile time. If the nullness of the pointer cannot be
-determined, this method will panic.
+如果在 const 求值(const evaluation)期间使用本方法,而 `self` 是一个被偏移到其
+最初所指向内存边界之外的指针,那么可能没有足够的信息来判定该指针是否为空。这是
+因为内存中的绝对地址在编译期是未知的。如果无法判定指针是否为空,本方法将 panic。
 
-In-bounds pointers are never null, so the method will never panic for
-such pointers.
+落在边界内(in-bounds)的指针永远不会为空,因此对于这类指针,本方法永远不会 panic。

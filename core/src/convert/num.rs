@@ -1,15 +1,15 @@
 use crate::num::TryFromIntError;
 
 mod private {
-    /// This trait being unreachable from outside the crate
-    /// prevents other implementations of the `FloatToInt` trait,
-    /// which allows potentially adding more trait methods after the trait is `#[stable]`.
+    /// 让本 trait 从 crate 外部无法触及,从而阻止了对 `FloatToInt` trait 的
+    /// 其他实现,这就为在该 trait 被标记为 `#[stable]` 之后仍有可能增加更多
+    /// trait 方法留出了余地。
     #[unstable(feature = "convert_float_to_int", issue = "67057")]
     pub trait Sealed {}
 }
 
-/// Supporting trait for inherent methods of `f32` and `f64` such as `to_int_unchecked`.
-/// Typically doesn’t need to be used directly.
+/// 为 `f32` 和 `f64` 的固有方法(例如 `to_int_unchecked`)提供支持的 trait。
+/// 通常不需要直接使用它。
 #[unstable(feature = "convert_float_to_int", issue = "67057")]
 pub trait FloatToInt<Int>: private::Sealed + Sized {
     #[unstable(feature = "convert_float_to_int", issue = "67057")]
@@ -26,7 +26,7 @@ macro_rules! impl_float_to_int {
             impl FloatToInt<$Int> for $Float {
                 #[inline]
                 unsafe fn to_int_unchecked(self) -> $Int {
-                    // SAFETY: the safety contract must be upheld by the caller.
+                    // SAFETY:安全契约必须由调用者来维护。
                     unsafe { crate::intrinsics::float_to_int_unchecked(self) }
                 }
             }
@@ -39,19 +39,19 @@ impl_float_to_int!(f32 => u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i12
 impl_float_to_int!(f64 => u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize);
 impl_float_to_int!(f128 => u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize);
 
-// Conversion traits for primitive integer and float types
-// Conversions T -> T are covered by a blanket impl and therefore excluded
-// Some conversions from and to usize/isize are not implemented due to portability concerns
+// 面向原始整数和浮点类型的转换 trait
+// T -> T 的转换由一条覆盖性实现覆盖,因此排除在外
+// 出于可移植性方面的考虑,某些与 usize/isize 之间的转换没有实现
 macro_rules! impl_from {
     (bool => $Int:ty $(,)?) => {
         impl_from!(
             bool => $Int,
             #[stable(feature = "from_bool", since = "1.28.0")],
             concat!(
-                "Converts a [`bool`] to [`", stringify!($Int), "`] losslessly.\n",
-                "The resulting value is `0` for `false` and `1` for `true` values.\n",
+                "把一个 [`bool`] 无损地转换为 [`", stringify!($Int), "`]。\n",
+                "对于 `false` 值结果为 `0`,对于 `true` 值结果为 `1`。\n",
                 "\n",
-                "# Examples\n",
+                "# 示例\n",
                 "\n",
                 "```\n",
                 "assert_eq!(", stringify!($Int), "::from(true), 1);\n",
@@ -64,15 +64,15 @@ macro_rules! impl_from {
         impl_from!(
             $Small => $Large,
             #[$attr],
-            concat!("Converts [`", stringify!($Small), "`] to [`", stringify!($Large), "`] losslessly."),
+            concat!("把 [`", stringify!($Small), "`] 无损地转换为 [`", stringify!($Large), "`]。"),
         );
     };
     ($Small:ty => $Large:ty, #[$attr:meta], $doc:expr $(,)?) => {
         #[$attr]
         #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
         impl const From<$Small> for $Large {
-            // Rustdocs on the impl block show a "[+] show undocumented items" toggle.
-            // Rustdocs on functions do not.
+            // impl 块上的 rustdoc 会显示一个“[+] 显示未文档化条目”的切换开关。
+            // 而函数上的 rustdoc 则没有。
             #[doc = $doc]
             #[inline(always)]
             fn from(small: $Small) -> Self {
@@ -82,7 +82,7 @@ macro_rules! impl_from {
     };
 }
 
-// boolean -> integer
+// 布尔 -> 整数
 impl_from!(bool => u8);
 impl_from!(bool => u16);
 impl_from!(bool => u32);
@@ -96,7 +96,7 @@ impl_from!(bool => i64);
 impl_from!(bool => i128);
 impl_from!(bool => isize);
 
-// unsigned integer -> unsigned integer
+// 无符号整数 -> 无符号整数
 impl_from!(u8 => u16, #[stable(feature = "lossless_int_conv", since = "1.5.0")]);
 impl_from!(u8 => u32, #[stable(feature = "lossless_int_conv", since = "1.5.0")]);
 impl_from!(u8 => u64, #[stable(feature = "lossless_int_conv", since = "1.5.0")]);
@@ -109,7 +109,7 @@ impl_from!(u32 => u64, #[stable(feature = "lossless_int_conv", since = "1.5.0")]
 impl_from!(u32 => u128, #[stable(feature = "i128", since = "1.26.0")]);
 impl_from!(u64 => u128, #[stable(feature = "i128", since = "1.26.0")]);
 
-// signed integer -> signed integer
+// 有符号整数 -> 有符号整数
 impl_from!(i8 => i16, #[stable(feature = "lossless_int_conv", since = "1.5.0")]);
 impl_from!(i8 => i32, #[stable(feature = "lossless_int_conv", since = "1.5.0")]);
 impl_from!(i8 => i64, #[stable(feature = "lossless_int_conv", since = "1.5.0")]);
@@ -122,7 +122,7 @@ impl_from!(i32 => i64, #[stable(feature = "lossless_int_conv", since = "1.5.0")]
 impl_from!(i32 => i128, #[stable(feature = "i128", since = "1.26.0")]);
 impl_from!(i64 => i128, #[stable(feature = "i128", since = "1.26.0")]);
 
-// unsigned integer -> signed integer
+// 无符号整数 -> 有符号整数
 impl_from!(u8 => i16, #[stable(feature = "lossless_int_conv", since = "1.5.0")]);
 impl_from!(u8 => i32, #[stable(feature = "lossless_int_conv", since = "1.5.0")]);
 impl_from!(u8 => i64, #[stable(feature = "lossless_int_conv", since = "1.5.0")]);
@@ -134,31 +134,31 @@ impl_from!(u32 => i64, #[stable(feature = "lossless_int_conv", since = "1.5.0")]
 impl_from!(u32 => i128, #[stable(feature = "i128", since = "1.26.0")]);
 impl_from!(u64 => i128, #[stable(feature = "i128", since = "1.26.0")]);
 
-// The C99 standard defines bounds on INTPTR_MIN, INTPTR_MAX, and UINTPTR_MAX
-// which imply that pointer-sized integers must be at least 16 bits:
+// C99 标准对 INTPTR_MIN、INTPTR_MAX 和 UINTPTR_MAX 定义了边界,
+// 这隐含着指针大小的整数必须至少有 16 位:
 // https://port70.net/~nsz/c/c99/n1256.html#7.18.2.4
 impl_from!(u16 => usize, #[stable(feature = "lossless_iusize_conv", since = "1.26.0")]);
 impl_from!(u8 => isize, #[stable(feature = "lossless_iusize_conv", since = "1.26.0")]);
 impl_from!(i16 => isize, #[stable(feature = "lossless_iusize_conv", since = "1.26.0")]);
 
-// RISC-V defines the possibility of a 128-bit address space (RV128).
+// RISC-V 定义了 128 位地址空间(RV128)的可能性。
 
-// CHERI proposes 128-bit “capabilities”. Unclear if this would be relevant to usize/isize.
+// CHERI 提出了 128 位的“能力(capability)”。尚不清楚这是否与 usize/isize 相关。
 // https://www.cl.cam.ac.uk/research/security/ctsrd/pdfs/20171017a-cheri-poster.pdf
 // https://www.cl.cam.ac.uk/techreports/UCAM-CL-TR-951.pdf
 
-// Note: integers can only be represented with full precision in a float if
-// they fit in the significand, which is:
-// * 11 bits in f16
-// * 24 bits in f32
-// * 53 bits in f64
-// * 113 bits in f128
-// Lossy float conversions are not implemented at this time.
-// FIXME(f16_f128): The `f16`/`f128` impls `#[stable]` attributes should be changed to reference
-// `f16`/`f128` when they are stabilised (trait impls have to have a `#[stable]` attribute, but none
-// of the `f16`/`f128` impls can be used on stable as the `f16` and `f128` types are unstable).
+// 注意:整数只有在能放进尾数(significand)时,才能在浮点数中以完整精度表示,
+// 尾数位数为:
+// * f16 中 11 位
+// * f32 中 24 位
+// * f64 中 53 位
+// * f128 中 113 位
+// 目前尚未实现有损的浮点转换。
+// FIXME(f16_f128):`f16`/`f128` 这些 impl 的 `#[stable]` 属性,应当在 `f16`/`f128`
+// 被稳定化后改为引用 `f16`/`f128`(trait impl 必须带有 `#[stable]` 属性,但由于 `f16`
+// 和 `f128` 类型尚不稳定,所以这些 `f16`/`f128` 的 impl 在 stable 上都无法使用)。
 
-// signed integer -> float
+// 有符号整数 -> 浮点
 impl_from!(i8 => f16, #[stable(feature = "lossless_float_conv", since = "1.6.0")]);
 impl_from!(i8 => f32, #[stable(feature = "lossless_float_conv", since = "1.6.0")]);
 impl_from!(i8 => f64, #[stable(feature = "lossless_float_conv", since = "1.6.0")]);
@@ -168,10 +168,10 @@ impl_from!(i16 => f64, #[stable(feature = "lossless_float_conv", since = "1.6.0"
 impl_from!(i16 => f128, #[stable(feature = "lossless_float_conv", since = "1.6.0")]);
 impl_from!(i32 => f64, #[stable(feature = "lossless_float_conv", since = "1.6.0")]);
 impl_from!(i32 => f128, #[stable(feature = "lossless_float_conv", since = "1.6.0")]);
-// FIXME(f16_f128): This impl would allow using `f128` on stable before it is stabilised.
+// FIXME(f16_f128):这条 impl 会让 `f128` 在稳定化之前就能在 stable 上使用。
 // impl_from!(i64 => f128, #[stable(feature = "lossless_float_conv", since = "1.6.0")]);
 
-// unsigned integer -> float
+// 无符号整数 -> 浮点
 impl_from!(u8 => f16, #[stable(feature = "lossless_float_conv", since = "1.6.0")]);
 impl_from!(u8 => f32, #[stable(feature = "lossless_float_conv", since = "1.6.0")]);
 impl_from!(u8 => f64, #[stable(feature = "lossless_float_conv", since = "1.6.0")]);
@@ -181,11 +181,11 @@ impl_from!(u16 => f64, #[stable(feature = "lossless_float_conv", since = "1.6.0"
 impl_from!(u16 => f128, #[stable(feature = "lossless_float_conv", since = "1.6.0")]);
 impl_from!(u32 => f64, #[stable(feature = "lossless_float_conv", since = "1.6.0")]);
 impl_from!(u32 => f128, #[stable(feature = "lossless_float_conv", since = "1.6.0")]);
-// FIXME(f16_f128): This impl would allow using `f128` on stable before it is stabilised.
+// FIXME(f16_f128):这条 impl 会让 `f128` 在稳定化之前就能在 stable 上使用。
 // impl_from!(u64 => f128, #[stable(feature = "lossless_float_conv", since = "1.6.0")]);
 
-// float -> float
-// FIXME(f16_f128): adding additional `From<{float}>` impls to `f32` breaks inference. See
+// 浮点 -> 浮点
+// FIXME(f16_f128):给 `f32` 添加额外的 `From<{float}>` impl 会破坏类型推断。参见
 // <https://github.com/rust-lang/rust/issues/123831>
 impl_from!(f16 => f64, #[stable(feature = "lossless_float_conv", since = "1.6.0")]);
 impl_from!(f16 => f128, #[stable(feature = "lossless_float_conv", since = "1.6.0")]);
@@ -203,10 +203,10 @@ macro_rules! impl_float_from_bool {
         #[stable(feature = "float_from_bool", since = "1.68.0")]
         #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
             impl const From<bool> for $float {
-            #[doc = concat!("Converts a [`bool`] to [`", stringify!($float),"`] losslessly.")]
-            /// The resulting value is positive `0.0` for `false` and `1.0` for `true` values.
+            #[doc = concat!("把一个 [`bool`] 无损地转换为 [`", stringify!($float),"`]。")]
+            /// 对于 `false` 值结果为正的 `0.0`,对于 `true` 值结果为 `1.0`。
             ///
-            /// # Examples
+            /// # 示例
             /// ```
             $($(#[doc = $doctest_prefix])*)?
             #[doc = concat!("let x: ", stringify!($float)," = false.into();")]
@@ -225,11 +225,11 @@ macro_rules! impl_float_from_bool {
     };
 }
 
-// boolean -> float
+// 布尔 -> 浮点
 impl_float_from_bool!(
     f16;
     doctest_prefix:
-    // rustdoc doesn't remove the conventional space after the `///`
+    // rustdoc 不会移除 `///` 之后那个约定俗成的空格
     ///#![feature(f16)]
     ///# #[cfg(all(target_arch = "x86_64", target_os = "linux"))] {
     ///
@@ -248,7 +248,7 @@ impl_float_from_bool!(
     ///# }
 );
 
-// no possible bounds violation
+// 不可能违反边界
 macro_rules! impl_try_from_unbounded {
     ($source:ty => $($target:ty),+) => {$(
         #[stable(feature = "try_from", since = "1.34.0")]
@@ -256,9 +256,8 @@ macro_rules! impl_try_from_unbounded {
         impl const TryFrom<$source> for $target {
             type Error = TryFromIntError;
 
-            /// Tries to create the target number type from a source
-            /// number type. This returns an error if the source value
-            /// is outside of the range of the target type.
+            /// 尝试从源数值类型创建目标数值类型。如果源值超出目标类型的
+            /// 取值范围,则返回一个错误。
             #[inline]
             fn try_from(value: $source) -> Result<Self, Self::Error> {
                 Ok(value as Self)
@@ -267,7 +266,7 @@ macro_rules! impl_try_from_unbounded {
     )*}
 }
 
-// only negative bounds
+// 仅有负向边界
 macro_rules! impl_try_from_lower_bounded {
     ($source:ty => $($target:ty),+) => {$(
         #[stable(feature = "try_from", since = "1.34.0")]
@@ -275,9 +274,8 @@ macro_rules! impl_try_from_lower_bounded {
         impl const TryFrom<$source> for $target {
             type Error = TryFromIntError;
 
-            /// Tries to create the target number type from a source
-            /// number type. This returns an error if the source value
-            /// is outside of the range of the target type.
+            /// 尝试从源数值类型创建目标数值类型。如果源值超出目标类型的
+            /// 取值范围,则返回一个错误。
             #[inline]
             fn try_from(u: $source) -> Result<Self, Self::Error> {
                 if u >= 0 {
@@ -290,7 +288,7 @@ macro_rules! impl_try_from_lower_bounded {
     )*}
 }
 
-// unsigned to signed (only positive bound)
+// 无符号转有符号(仅有正向边界)
 macro_rules! impl_try_from_upper_bounded {
     ($source:ty => $($target:ty),+) => {$(
         #[stable(feature = "try_from", since = "1.34.0")]
@@ -298,9 +296,8 @@ macro_rules! impl_try_from_upper_bounded {
         impl const TryFrom<$source> for $target {
             type Error = TryFromIntError;
 
-            /// Tries to create the target number type from a source
-            /// number type. This returns an error if the source value
-            /// is outside of the range of the target type.
+            /// 尝试从源数值类型创建目标数值类型。如果源值超出目标类型的
+            /// 取值范围,则返回一个错误。
             #[inline]
             fn try_from(u: $source) -> Result<Self, Self::Error> {
                 if u > (Self::MAX as $source) {
@@ -313,7 +310,7 @@ macro_rules! impl_try_from_upper_bounded {
     )*}
 }
 
-// all other cases
+// 所有其他情形
 macro_rules! impl_try_from_both_bounded {
     ($source:ty => $($target:ty),+) => {$(
         #[stable(feature = "try_from", since = "1.34.0")]
@@ -321,9 +318,8 @@ macro_rules! impl_try_from_both_bounded {
         impl const TryFrom<$source> for $target {
             type Error = TryFromIntError;
 
-            /// Tries to create the target number type from a source
-            /// number type. This returns an error if the source value
-            /// is outside of the range of the target type.
+            /// 尝试从源数值类型创建目标数值类型。如果源值超出目标类型的
+            /// 取值范围,则返回一个错误。
             #[inline]
             fn try_from(u: $source) -> Result<Self, Self::Error> {
                 let min = Self::MIN as $source;
@@ -344,26 +340,26 @@ macro_rules! rev {
     )*}
 }
 
-// unsigned integer -> unsigned integer
+// 无符号整数 -> 无符号整数
 impl_try_from_upper_bounded!(u16 => u8);
 impl_try_from_upper_bounded!(u32 => u8, u16);
 impl_try_from_upper_bounded!(u64 => u8, u16, u32);
 impl_try_from_upper_bounded!(u128 => u8, u16, u32, u64);
 
-// signed integer -> signed integer
+// 有符号整数 -> 有符号整数
 impl_try_from_both_bounded!(i16 => i8);
 impl_try_from_both_bounded!(i32 => i8, i16);
 impl_try_from_both_bounded!(i64 => i8, i16, i32);
 impl_try_from_both_bounded!(i128 => i8, i16, i32, i64);
 
-// unsigned integer -> signed integer
+// 无符号整数 -> 有符号整数
 impl_try_from_upper_bounded!(u8 => i8);
 impl_try_from_upper_bounded!(u16 => i8, i16);
 impl_try_from_upper_bounded!(u32 => i8, i16, i32);
 impl_try_from_upper_bounded!(u64 => i8, i16, i32, i64);
 impl_try_from_upper_bounded!(u128 => i8, i16, i32, i64, i128);
 
-// signed integer -> unsigned integer
+// 有符号整数 -> 无符号整数
 impl_try_from_lower_bounded!(i8 => u8, u16, u32, u64, u128);
 impl_try_from_both_bounded!(i16 => u8);
 impl_try_from_lower_bounded!(i16 => u16, u32, u64, u128);
@@ -450,7 +446,7 @@ mod ptr_try_from_impls {
     rev!(impl_try_from_both_bounded, isize => i128);
 }
 
-// Conversion traits for non-zero integer types
+// 面向非零整数类型的转换 trait
 use crate::num::NonZero;
 
 macro_rules! impl_nonzero_int_from_nonzero_int {
@@ -458,20 +454,20 @@ macro_rules! impl_nonzero_int_from_nonzero_int {
         #[stable(feature = "nz_int_conv", since = "1.41.0")]
         #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
         impl const From<NonZero<$Small>> for NonZero<$Large> {
-            // Rustdocs on the impl block show a "[+] show undocumented items" toggle.
-            // Rustdocs on functions do not.
+            // impl 块上的 rustdoc 会显示一个“[+] 显示未文档化条目”的切换开关。
+            // 而函数上的 rustdoc 则没有。
             #[doc = concat!("Converts <code>[NonZero]\\<[", stringify!($Small), "]></code> ")]
             #[doc = concat!("to <code>[NonZero]\\<[", stringify!($Large), "]></code> losslessly.")]
             #[inline]
             fn from(small: NonZero<$Small>) -> Self {
-                // SAFETY: input type guarantees the value is non-zero
+                // SAFETY: 输入类型保证该值非零。
                 unsafe { Self::new_unchecked(From::from(small.get())) }
             }
         }
     };
 }
 
-// non-zero unsigned integer -> non-zero unsigned integer
+// 非零无符号整数 -> 非零无符号整数
 impl_nonzero_int_from_nonzero_int!(u8 => u16);
 impl_nonzero_int_from_nonzero_int!(u8 => u32);
 impl_nonzero_int_from_nonzero_int!(u8 => u64);
@@ -485,7 +481,7 @@ impl_nonzero_int_from_nonzero_int!(u32 => u64);
 impl_nonzero_int_from_nonzero_int!(u32 => u128);
 impl_nonzero_int_from_nonzero_int!(u64 => u128);
 
-// non-zero signed integer -> non-zero signed integer
+// 非零有符号整数 -> 非零有符号整数
 impl_nonzero_int_from_nonzero_int!(i8 => i16);
 impl_nonzero_int_from_nonzero_int!(i8 => i32);
 impl_nonzero_int_from_nonzero_int!(i8 => i64);
@@ -499,7 +495,7 @@ impl_nonzero_int_from_nonzero_int!(i32 => i64);
 impl_nonzero_int_from_nonzero_int!(i32 => i128);
 impl_nonzero_int_from_nonzero_int!(i64 => i128);
 
-// non-zero unsigned -> non-zero signed integer
+// 非零无符号 -> 非零有符号整数
 impl_nonzero_int_from_nonzero_int!(u8 => i16);
 impl_nonzero_int_from_nonzero_int!(u8 => i32);
 impl_nonzero_int_from_nonzero_int!(u8 => i64);
@@ -519,8 +515,8 @@ macro_rules! impl_nonzero_int_try_from_int {
         impl const TryFrom<$Int> for NonZero<$Int> {
             type Error = TryFromIntError;
 
-            // Rustdocs on the impl block show a "[+] show undocumented items" toggle.
-            // Rustdocs on functions do not.
+            // impl 块上的 rustdoc 会显示一个“[+] 显示未文档化条目”的切换开关。
+            // 而函数上的 rustdoc 则没有。
             #[doc = concat!("Attempts to convert [`", stringify!($Int), "`] ")]
             #[doc = concat!("to <code>[NonZero]\\<[", stringify!($Int), "]></code>.")]
             #[inline]
@@ -531,7 +527,7 @@ macro_rules! impl_nonzero_int_try_from_int {
     };
 }
 
-// integer -> non-zero integer
+// 整数 -> 非零整数
 impl_nonzero_int_try_from_int!(u8);
 impl_nonzero_int_try_from_int!(u16);
 impl_nonzero_int_try_from_int!(u32);
@@ -552,34 +548,34 @@ macro_rules! impl_nonzero_int_try_from_nonzero_int {
         impl const TryFrom<NonZero<$source>> for NonZero<$target> {
             type Error = TryFromIntError;
 
-            // Rustdocs on the impl block show a "[+] show undocumented items" toggle.
-            // Rustdocs on functions do not.
+            // impl 块上的 rustdoc 会显示一个“[+] 显示未文档化条目”的切换开关。
+            // 而函数上的 rustdoc 则没有。
             #[doc = concat!("Attempts to convert <code>[NonZero]\\<[", stringify!($source), "]></code> ")]
             #[doc = concat!("to <code>[NonZero]\\<[", stringify!($target), "]></code>.")]
             #[inline]
             fn try_from(value: NonZero<$source>) -> Result<Self, Self::Error> {
-                // SAFETY: Input is guaranteed to be non-zero.
+                // SAFETY: 输入值已经保证非零。
                 Ok(unsafe { Self::new_unchecked(<$target>::try_from(value.get())?) })
             }
         }
     )*};
 }
 
-// unsigned non-zero integer -> unsigned non-zero integer
+// 非零无符号整数 -> 非零无符号整数
 impl_nonzero_int_try_from_nonzero_int!(u16 => u8);
 impl_nonzero_int_try_from_nonzero_int!(u32 => u8, u16, usize);
 impl_nonzero_int_try_from_nonzero_int!(u64 => u8, u16, u32, usize);
 impl_nonzero_int_try_from_nonzero_int!(u128 => u8, u16, u32, u64, usize);
 impl_nonzero_int_try_from_nonzero_int!(usize => u8, u16, u32, u64, u128);
 
-// signed non-zero integer -> signed non-zero integer
+// 非零有符号整数 -> 非零有符号整数
 impl_nonzero_int_try_from_nonzero_int!(i16 => i8);
 impl_nonzero_int_try_from_nonzero_int!(i32 => i8, i16, isize);
 impl_nonzero_int_try_from_nonzero_int!(i64 => i8, i16, i32, isize);
 impl_nonzero_int_try_from_nonzero_int!(i128 => i8, i16, i32, i64, isize);
 impl_nonzero_int_try_from_nonzero_int!(isize => i8, i16, i32, i64, i128);
 
-// unsigned non-zero integer -> signed non-zero integer
+// 非零无符号整数 -> 非零有符号整数
 impl_nonzero_int_try_from_nonzero_int!(u8 => i8);
 impl_nonzero_int_try_from_nonzero_int!(u16 => i8, i16, isize);
 impl_nonzero_int_try_from_nonzero_int!(u32 => i8, i16, i32, isize);
@@ -587,7 +583,7 @@ impl_nonzero_int_try_from_nonzero_int!(u64 => i8, i16, i32, i64, isize);
 impl_nonzero_int_try_from_nonzero_int!(u128 => i8, i16, i32, i64, i128, isize);
 impl_nonzero_int_try_from_nonzero_int!(usize => i8, i16, i32, i64, i128, isize);
 
-// signed non-zero integer -> unsigned non-zero integer
+// 非零有符号整数 -> 非零无符号整数
 impl_nonzero_int_try_from_nonzero_int!(i8 => u8, u16, u32, u64, u128, usize);
 impl_nonzero_int_try_from_nonzero_int!(i16 => u8, u16, u32, u64, u128, usize);
 impl_nonzero_int_try_from_nonzero_int!(i32 => u8, u16, u32, u64, u128, usize);

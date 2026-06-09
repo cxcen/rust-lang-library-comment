@@ -1,7 +1,7 @@
-/// Collapses all unit items from an iterator into one.
+/// 将 iterator 中所有 unit 项折叠成一个值。
 ///
-/// This is more useful when combined with higher-level abstractions, like
-/// collecting to a `Result<(), E>` where you only care about errors:
+/// 它与更高层抽象结合时更有用，例如收集到 `Result<(), E>`，
+/// 其中你只关心错误：
 ///
 /// ```
 /// use std::io::*;

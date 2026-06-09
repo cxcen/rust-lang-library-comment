@@ -1,29 +1,27 @@
-Adds a signed offset to a pointer.
+为指针加上一个有符号偏移量(signed offset)。
 
-`count` is in units of T; e.g., a `count` of 3 represents a pointer
-offset of `3 * size_of::<T>()` bytes.
+`count` 以 T 为单位;例如 `count` 为 3 表示一个 `3 * size_of::<T>()` 字节的指针
+偏移。
 
-# Safety
+# 安全性(Safety）
 
-If any of the following conditions are violated, the result is Undefined Behavior:
+如果违反以下任一条件,结果即为未定义行为(Undefined Behavior):
 
-* The offset in bytes, `count * size_of::<T>()`, computed on mathematical integers (without
-"wrapping around"), must fit in an `isize`.
+* 以字节计的偏移量 `count * size_of::<T>()`,在数学整数意义上计算(不发生"回绕
+wrapping around"),必须能够容纳进一个 `isize`。
 
-* If the computed offset is non-zero, then `self` must be [derived from][crate::ptr#provenance] a pointer to some
-[allocation], and the entire memory range between `self` and the result must be in
-bounds of that allocation. In particular, this range must not "wrap around" the edge
-of the address space. Note that "range" here refers to a half-open range as usual in Rust,
-i.e., `self..result` for non-negative offsets and `result..self` for negative offsets.
+* 如果计算出的偏移量非零,那么 `self` 必须[派生自][crate::ptr#provenance]一个指向
+某个[分配对象(allocation)][allocation]的指针,并且 `self` 与结果指针之间的整个
+内存范围都必须落在该分配对象的边界内。特别地,该范围不得"回绕"地址空间的边缘。
+注意,这里的"范围"指的是 Rust 中惯常的半开区间(half-open range),即:对于非负
+偏移量是 `self..result`,对于负偏移量是 `result..self`。
 
-Allocations can never be larger than `isize::MAX` bytes, so if the computed offset
-stays in bounds of the allocation, it is guaranteed to satisfy the first requirement.
-This implies, for instance, that `vec.as_ptr().add(vec.len())` (for `vec: Vec<T>`) is always
-safe.
+分配对象的大小永远不会超过 `isize::MAX` 字节,因此只要计算出的偏移量保持在分配
+对象的边界内,就保证满足上述第一项要求。举例而言,这意味着
+`vec.as_ptr().add(vec.len())`(对于 `vec: Vec<T>`)永远是安全的。
 
-Consider using [`wrapping_offset`] instead if these constraints are
-difficult to satisfy. The only advantage of this method is that it
-enables more aggressive compiler optimizations.
+如果这些约束难以满足,可考虑改用 [`wrapping_offset`]。本方法相较之下的唯一优势是
+它能启用更激进的编译器优化。
 
 [`wrapping_offset`]: #method.wrapping_offset
 [allocation]: crate::ptr#allocation

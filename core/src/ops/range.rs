@@ -1,21 +1,21 @@
 use crate::fmt;
 use crate::hash::Hash;
 use crate::marker::Destruct;
-/// An unbounded range (`..`).
+/// 一个无界区间(`..`)。
 ///
-/// `RangeFull` is primarily used as a [slicing index], its shorthand is `..`.
-/// It cannot serve as an [`Iterator`] because it doesn't have a starting point.
+/// `RangeFull` 主要用作[切片索引][slicing index],其简写形式是 `..`。它不能充当
+/// [`Iterator`],因为它没有起点。
 ///
-/// # Examples
+/// # 示例
 ///
-/// The `..` syntax is a `RangeFull`:
+/// `..` 语法就是一个 `RangeFull`:
 ///
 /// ```
 /// assert_eq!(.., std::ops::RangeFull);
 /// ```
 ///
-/// It does not have an [`IntoIterator`] implementation, so you can't use it in
-/// a `for` loop directly. This won't compile:
+/// 它没有 [`IntoIterator`] 实现,所以你不能直接在 `for` 循环里使用它。下面这段
+/// 不会通过编译:
 ///
 /// ```compile_fail,E0277
 /// for i in .. {
@@ -23,11 +23,11 @@ use crate::marker::Destruct;
 /// }
 /// ```
 ///
-/// Used as a [slicing index], `RangeFull` produces the full array as a slice.
+/// 用作[切片索引][slicing index]时,`RangeFull` 会产出整个数组构成的切片。
 ///
 /// ```
 /// let arr = [0, 1, 2, 3, 4];
-/// assert_eq!(arr[ ..  ], [0, 1, 2, 3, 4]); // This is the `RangeFull`
+/// assert_eq!(arr[ ..  ], [0, 1, 2, 3, 4]); // 这就是 `RangeFull`
 /// assert_eq!(arr[ .. 3], [0, 1, 2      ]);
 /// assert_eq!(arr[ ..=3], [0, 1, 2, 3   ]);
 /// assert_eq!(arr[1..  ], [   1, 2, 3, 4]);
@@ -50,15 +50,14 @@ impl fmt::Debug for RangeFull {
     }
 }
 
-/// A (half-open) range bounded inclusively below and exclusively above
-/// (`start..end`).
+/// 一个下界包含、上界不包含的(半开)区间(`start..end`)。
 ///
-/// The range `start..end` contains all values with `start <= x < end`.
-/// It is empty if `start >= end`.
+/// 区间 `start..end` 包含所有满足 `start <= x < end` 的值。当 `start >= end`
+/// 时它为空。
 ///
-/// # Examples
+/// # 示例
 ///
-/// The `start..end` syntax is a `Range`:
+/// `start..end` 语法就是一个 `Range`:
 ///
 /// ```
 /// assert_eq!((3..5), std::ops::Range { start: 3, end: 5 });
@@ -71,19 +70,19 @@ impl fmt::Debug for RangeFull {
 /// assert_eq!(arr[ .. 3], [0, 1, 2      ]);
 /// assert_eq!(arr[ ..=3], [0, 1, 2, 3   ]);
 /// assert_eq!(arr[1..  ], [   1, 2, 3, 4]);
-/// assert_eq!(arr[1.. 3], [   1, 2      ]); // This is a `Range`
+/// assert_eq!(arr[1.. 3], [   1, 2      ]); // 这就是一个 `Range`
 /// assert_eq!(arr[1..=3], [   1, 2, 3   ]);
 /// ```
 #[lang = "Range"]
 #[doc(alias = "..")]
 #[derive(Eq, Hash)]
-#[derive_const(Clone, Default, PartialEq)] // not Copy -- see #27186
+#[derive_const(Clone, Default, PartialEq)] // 不是 Copy —— 见 #27186
 #[stable(feature = "rust1", since = "1.0.0")]
 pub struct Range<Idx> {
-    /// The lower bound of the range (inclusive).
+    /// 区间的下界(包含)。
     #[stable(feature = "rust1", since = "1.0.0")]
     pub start: Idx,
-    /// The upper bound of the range (exclusive).
+    /// 区间的上界(不包含)。
     #[stable(feature = "rust1", since = "1.0.0")]
     pub end: Idx,
 }
@@ -99,9 +98,9 @@ impl<Idx: fmt::Debug> fmt::Debug for Range<Idx> {
 }
 
 impl<Idx: PartialOrd<Idx>> Range<Idx> {
-    /// Returns `true` if `item` is contained in the range.
+    /// 如果 `item` 包含在该区间内,返回 `true`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// assert!(!(3..5).contains(&2));
@@ -128,9 +127,9 @@ impl<Idx: PartialOrd<Idx>> Range<Idx> {
         <Self as RangeBounds<Idx>>::contains(self, item)
     }
 
-    /// Returns `true` if the range contains no items.
+    /// 如果该区间不含任何元素,返回 `true`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// assert!(!(3..5).is_empty());
@@ -138,7 +137,7 @@ impl<Idx: PartialOrd<Idx>> Range<Idx> {
     /// assert!( (3..2).is_empty());
     /// ```
     ///
-    /// The range is empty if either side is incomparable:
+    /// 如果两端中的任意一端不可比较(incomparable),该区间即为空:
     ///
     /// ```
     /// assert!(!(3.0..5.0).is_empty());
@@ -156,24 +155,21 @@ impl<Idx: PartialOrd<Idx>> Range<Idx> {
     }
 }
 
-/// A range only bounded inclusively below (`start..`).
+/// 一个仅下界包含的区间(`start..`)。
 ///
-/// The `RangeFrom` `start..` contains all values with `x >= start`.
+/// `RangeFrom`(即 `start..`)包含所有满足 `x >= start` 的值。
 ///
-/// *Note*: Overflow in the [`Iterator`] implementation (when the contained
-/// data type reaches its numerical limit) is allowed to panic, wrap, or
-/// saturate. This behavior is defined by the implementation of the [`Step`]
-/// trait. For primitive integers, this follows the normal rules, and respects
-/// the overflow checks profile (panic in debug, wrap in release). Note also
-/// that overflow happens earlier than you might assume: the overflow happens
-/// in the call to `next` that yields the maximum value, as the range must be
-/// set to a state to yield the next value.
+/// *注意*:[`Iterator`] 实现中的溢出(当所含数据类型达到其数值上限时)允许 panic、
+/// 回绕(wrap)或饱和(saturate)。这一行为由 [`Step`] trait 的实现决定。对于
+/// 原生整数,它遵循通常的规则,并尊重溢出检查的配置(debug 下 panic,release 下
+/// 回绕)。还要注意溢出发生得比你可能以为的更早:溢出发生在那次产出最大值的
+/// `next` 调用之中,因为此时区间必须被设置到能产出下一个值的状态。
 ///
 /// [`Step`]: crate::iter::Step
 ///
-/// # Examples
+/// # 示例
 ///
-/// The `start..` syntax is a `RangeFrom`:
+/// `start..` 语法就是一个 `RangeFrom`:
 ///
 /// ```
 /// assert_eq!((2..), std::ops::RangeFrom { start: 2 });
@@ -185,17 +181,17 @@ impl<Idx: PartialOrd<Idx>> Range<Idx> {
 /// assert_eq!(arr[ ..  ], [0, 1, 2, 3, 4]);
 /// assert_eq!(arr[ .. 3], [0, 1, 2      ]);
 /// assert_eq!(arr[ ..=3], [0, 1, 2, 3   ]);
-/// assert_eq!(arr[1..  ], [   1, 2, 3, 4]); // This is a `RangeFrom`
+/// assert_eq!(arr[1..  ], [   1, 2, 3, 4]); // 这就是一个 `RangeFrom`
 /// assert_eq!(arr[1.. 3], [   1, 2      ]);
 /// assert_eq!(arr[1..=3], [   1, 2, 3   ]);
 /// ```
 #[lang = "RangeFrom"]
 #[doc(alias = "..")]
 #[derive(Eq, Hash)]
-#[derive_const(Clone, PartialEq)] // not Copy -- see #27186
+#[derive_const(Clone, PartialEq)] // 不是 Copy —— 见 #27186
 #[stable(feature = "rust1", since = "1.0.0")]
 pub struct RangeFrom<Idx> {
-    /// The lower bound of the range (inclusive).
+    /// 区间的下界(包含)。
     #[stable(feature = "rust1", since = "1.0.0")]
     pub start: Idx,
 }
@@ -210,9 +206,9 @@ impl<Idx: fmt::Debug> fmt::Debug for RangeFrom<Idx> {
 }
 
 impl<Idx: PartialOrd<Idx>> RangeFrom<Idx> {
-    /// Returns `true` if `item` is contained in the range.
+    /// 如果 `item` 包含在该区间内,返回 `true`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// assert!(!(3..).contains(&2));
@@ -235,21 +231,21 @@ impl<Idx: PartialOrd<Idx>> RangeFrom<Idx> {
     }
 }
 
-/// A range only bounded exclusively above (`..end`).
+/// 一个仅上界不包含的区间(`..end`)。
 ///
-/// The `RangeTo` `..end` contains all values with `x < end`.
-/// It cannot serve as an [`Iterator`] because it doesn't have a starting point.
+/// `RangeTo`(即 `..end`)包含所有满足 `x < end` 的值。它不能充当 [`Iterator`],
+/// 因为它没有起点。
 ///
-/// # Examples
+/// # 示例
 ///
-/// The `..end` syntax is a `RangeTo`:
+/// `..end` 语法就是一个 `RangeTo`:
 ///
 /// ```
 /// assert_eq!((..5), std::ops::RangeTo { end: 5 });
 /// ```
 ///
-/// It does not have an [`IntoIterator`] implementation, so you can't use it in
-/// a `for` loop directly. This won't compile:
+/// 它没有 [`IntoIterator`] 实现,所以你不能直接在 `for` 循环里使用它。下面这段
+/// 不会通过编译:
 ///
 /// ```compile_fail,E0277
 /// // error[E0277]: the trait bound `std::ops::RangeTo<{integer}>:
@@ -259,13 +255,13 @@ impl<Idx: PartialOrd<Idx>> RangeFrom<Idx> {
 /// }
 /// ```
 ///
-/// When used as a [slicing index], `RangeTo` produces a slice of all array
-/// elements before the index indicated by `end`.
+/// 用作[切片索引][slicing index]时,`RangeTo` 会产出由 `end` 所指位置之前的所有
+/// 数组元素构成的切片。
 ///
 /// ```
 /// let arr = [0, 1, 2, 3, 4];
 /// assert_eq!(arr[ ..  ], [0, 1, 2, 3, 4]);
-/// assert_eq!(arr[ .. 3], [0, 1, 2      ]); // This is a `RangeTo`
+/// assert_eq!(arr[ .. 3], [0, 1, 2      ]); // 这就是一个 `RangeTo`
 /// assert_eq!(arr[ ..=3], [0, 1, 2, 3   ]);
 /// assert_eq!(arr[1..  ], [   1, 2, 3, 4]);
 /// assert_eq!(arr[1.. 3], [   1, 2      ]);
@@ -279,7 +275,7 @@ impl<Idx: PartialOrd<Idx>> RangeFrom<Idx> {
 #[derive_const(Clone, PartialEq)]
 #[stable(feature = "rust1", since = "1.0.0")]
 pub struct RangeTo<Idx> {
-    /// The upper bound of the range (exclusive).
+    /// 区间的上界(不包含)。
     #[stable(feature = "rust1", since = "1.0.0")]
     pub end: Idx,
 }
@@ -294,9 +290,9 @@ impl<Idx: fmt::Debug> fmt::Debug for RangeTo<Idx> {
 }
 
 impl<Idx: PartialOrd<Idx>> RangeTo<Idx> {
-    /// Returns `true` if `item` is contained in the range.
+    /// 如果 `item` 包含在该区间内,返回 `true`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// assert!( (..5).contains(&-1_000_000_000));
@@ -319,21 +315,21 @@ impl<Idx: PartialOrd<Idx>> RangeTo<Idx> {
     }
 }
 
-/// A range bounded inclusively below and above (`start..=end`).
+/// 一个下界与上界都包含的区间(`start..=end`)。
 ///
-/// The `RangeInclusive` `start..=end` contains all values with `x >= start`
-/// and `x <= end`. It is empty unless `start <= end`.
+/// `RangeInclusive`(即 `start..=end`)包含所有满足 `x >= start` 且 `x <= end`
+/// 的值。除非 `start <= end`,否则它为空。
 ///
-/// This iterator is [fused], but the specific values of `start` and `end` after
-/// iteration has finished are **unspecified** other than that [`.is_empty()`]
-/// will return `true` once no more values will be produced.
+/// 这个迭代器是 [fused(熔断)][fused] 的,但在迭代结束之后,`start` 和 `end` 的
+/// 具体取值是**未指定的**(unspecified);唯一能保证的是:一旦不再产出任何值,
+/// [`.is_empty()`] 就会返回 `true`。
 ///
 /// [fused]: crate::iter::FusedIterator
 /// [`.is_empty()`]: RangeInclusive::is_empty
 ///
-/// # Examples
+/// # 示例
 ///
-/// The `start..=end` syntax is a `RangeInclusive`:
+/// `start..=end` 语法就是一个 `RangeInclusive`:
 ///
 /// ```
 /// assert_eq!((3..=5), std::ops::RangeInclusive::new(3, 5));
@@ -347,35 +343,34 @@ impl<Idx: PartialOrd<Idx>> RangeTo<Idx> {
 /// assert_eq!(arr[ ..=3], [0, 1, 2, 3   ]);
 /// assert_eq!(arr[1..  ], [   1, 2, 3, 4]);
 /// assert_eq!(arr[1.. 3], [   1, 2      ]);
-/// assert_eq!(arr[1..=3], [   1, 2, 3   ]); // This is a `RangeInclusive`
+/// assert_eq!(arr[1..=3], [   1, 2, 3   ]); // 这就是一个 `RangeInclusive`
 /// ```
 #[lang = "RangeInclusive"]
 #[doc(alias = "..=")]
 #[derive(Clone, Hash)]
-#[derive_const(Eq, PartialEq)] // not Copy -- see #27186
+#[derive_const(Eq, PartialEq)] // 不是 Copy —— 见 #27186
 #[stable(feature = "inclusive_range", since = "1.26.0")]
 pub struct RangeInclusive<Idx> {
-    // Note that the fields here are not public to allow changing the
-    // representation in the future; in particular, while we could plausibly
-    // expose start/end, modifying them without changing (future/current)
-    // private fields may lead to incorrect behavior, so we don't want to
-    // support that mode.
+    // 注意这里的字段不是公开的,这是为了将来能够修改其表示(representation);
+    // 特别是,虽然我们大可以暴露 start/end,但在不改动(将来/现有)私有字段的
+    // 情况下修改它们可能导致错误行为,所以我们不想支持那种用法。
     pub(crate) start: Idx,
     pub(crate) end: Idx,
 
-    // This field is:
-    //  - `false` upon construction
-    //  - `false` when iteration has yielded an element and the iterator is not exhausted
-    //  - `true` when iteration has been used to exhaust the iterator
+    // 这个字段:
+    //  - 在构造时为 `false`
+    //  - 当迭代已产出一个元素、且迭代器尚未耗尽时为 `false`
+    //  - 当迭代已被用来耗尽该迭代器时为 `true`
     //
-    // This is required to support PartialEq and Hash without a PartialOrd bound or specialization.
+    // 这是为了在不引入 PartialOrd 约束、也不使用特化(specialization)的前提下,
+    // 支持 PartialEq 和 Hash 所必需的。
     pub(crate) exhausted: bool,
 }
 
 impl<Idx> RangeInclusive<Idx> {
-    /// Creates a new inclusive range. Equivalent to writing `start..=end`.
+    /// 创建一个新的闭区间(inclusive range)。等价于写 `start..=end`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::ops::RangeInclusive;
@@ -391,20 +386,18 @@ impl<Idx> RangeInclusive<Idx> {
         Self { start, end, exhausted: false }
     }
 
-    /// Returns the lower bound of the range (inclusive).
+    /// 返回区间的下界(包含)。
     ///
-    /// When using an inclusive range for iteration, the values of `start()` and
-    /// [`end()`] are unspecified after the iteration ended. To determine
-    /// whether the inclusive range is empty, use the [`is_empty()`] method
-    /// instead of comparing `start() > end()`.
+    /// 当把闭区间用于迭代时,在迭代结束之后 `start()` 与 [`end()`] 的取值都是未
+    /// 指定的。要判断闭区间是否为空,请使用 [`is_empty()`] 方法,而不要去比较
+    /// `start() > end()`。
     ///
-    /// Note: the value returned by this method is unspecified after the range
-    /// has been iterated to exhaustion.
+    /// 注意:在该区间被迭代至耗尽之后,本方法返回的值是未指定的。
     ///
     /// [`end()`]: RangeInclusive::end
     /// [`is_empty()`]: RangeInclusive::is_empty
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// assert_eq!((3..=5).start(), &3);
@@ -416,20 +409,18 @@ impl<Idx> RangeInclusive<Idx> {
         &self.start
     }
 
-    /// Returns the upper bound of the range (inclusive).
+    /// 返回区间的上界(包含)。
     ///
-    /// When using an inclusive range for iteration, the values of [`start()`]
-    /// and `end()` are unspecified after the iteration ended. To determine
-    /// whether the inclusive range is empty, use the [`is_empty()`] method
-    /// instead of comparing `start() > end()`.
+    /// 当把闭区间用于迭代时,在迭代结束之后 [`start()`] 与 `end()` 的取值都是未
+    /// 指定的。要判断闭区间是否为空,请使用 [`is_empty()`] 方法,而不要去比较
+    /// `start() > end()`。
     ///
-    /// Note: the value returned by this method is unspecified after the range
-    /// has been iterated to exhaustion.
+    /// 注意:在该区间被迭代至耗尽之后,本方法返回的值是未指定的。
     ///
     /// [`start()`]: RangeInclusive::start
     /// [`is_empty()`]: RangeInclusive::is_empty
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// assert_eq!((3..=5).end(), &5);
@@ -441,12 +432,11 @@ impl<Idx> RangeInclusive<Idx> {
         &self.end
     }
 
-    /// Destructures the `RangeInclusive` into (lower bound, upper (inclusive) bound).
+    /// 把 `RangeInclusive` 解构为(下界,上界(包含))。
     ///
-    /// Note: the value returned by this method is unspecified after the range
-    /// has been iterated to exhaustion.
+    /// 注意:在该区间被迭代至耗尽之后,本方法返回的值是未指定的。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// assert_eq!((3..=5).into_inner(), (3, 5));
@@ -460,13 +450,13 @@ impl<Idx> RangeInclusive<Idx> {
 }
 
 impl RangeInclusive<usize> {
-    /// Converts to an exclusive `Range` for `SliceIndex` implementations.
-    /// The caller is responsible for dealing with `end == usize::MAX`.
+    /// 为 `SliceIndex` 实现转换为一个开区间(exclusive)`Range`。调用者需要自行
+    /// 处理 `end == usize::MAX` 的情况。
     #[inline]
     pub(crate) const fn into_slice_range(self) -> Range<usize> {
-        // If we're not exhausted, we want to simply slice `start..end + 1`.
-        // If we are exhausted, then slicing with `end + 1..end + 1` gives us an
-        // empty range that is still subject to bounds-checks for that endpoint.
+        // 如果尚未耗尽,我们只是想切片 `start..end + 1`。
+        // 如果已经耗尽,那么用 `end + 1..end + 1` 切片会得到一个空区间,但它对那个
+        // 端点仍然要接受边界检查(bounds-check)。
         let exclusive_end = self.end + 1;
         let start = if self.exhausted { exclusive_end } else { self.start };
         start..exclusive_end
@@ -487,9 +477,9 @@ impl<Idx: fmt::Debug> fmt::Debug for RangeInclusive<Idx> {
 }
 
 impl<Idx: PartialOrd<Idx>> RangeInclusive<Idx> {
-    /// Returns `true` if `item` is contained in the range.
+    /// 如果 `item` 包含在该区间内,返回 `true`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// assert!(!(3..=5).contains(&2));
@@ -507,13 +497,13 @@ impl<Idx: PartialOrd<Idx>> RangeInclusive<Idx> {
     /// assert!(!(f32::NAN..=1.0).contains(&1.0));
     /// ```
     ///
-    /// This method always returns `false` after iteration has finished:
+    /// 在迭代结束之后,本方法总是返回 `false`:
     ///
     /// ```
     /// let mut r = 3..=5;
     /// assert!(r.contains(&3) && r.contains(&5));
     /// for _ in r.by_ref() {}
-    /// // Precise field values are unspecified here
+    /// // 此处各字段的精确取值是未指定的
     /// assert!(!r.contains(&3) && !r.contains(&5));
     /// ```
     #[inline]
@@ -527,9 +517,9 @@ impl<Idx: PartialOrd<Idx>> RangeInclusive<Idx> {
         <Self as RangeBounds<Idx>>::contains(self, item)
     }
 
-    /// Returns `true` if the range contains no items.
+    /// 如果该区间不含任何元素,返回 `true`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// assert!(!(3..=5).is_empty());
@@ -537,7 +527,7 @@ impl<Idx: PartialOrd<Idx>> RangeInclusive<Idx> {
     /// assert!( (3..=2).is_empty());
     /// ```
     ///
-    /// The range is empty if either side is incomparable:
+    /// 如果两端中的任意一端不可比较(incomparable),该区间即为空:
     ///
     /// ```
     /// assert!(!(3.0..=5.0).is_empty());
@@ -545,12 +535,12 @@ impl<Idx: PartialOrd<Idx>> RangeInclusive<Idx> {
     /// assert!( (f32::NAN..=5.0).is_empty());
     /// ```
     ///
-    /// This method returns `true` after iteration has finished:
+    /// 在迭代结束之后,本方法返回 `true`:
     ///
     /// ```
     /// let mut r = 3..=5;
     /// for _ in r.by_ref() {}
-    /// // Precise field values are unspecified here
+    /// // 此处各字段的精确取值是未指定的
     /// assert!(r.is_empty());
     /// ```
     #[stable(feature = "range_is_empty", since = "1.47.0")]
@@ -564,21 +554,21 @@ impl<Idx: PartialOrd<Idx>> RangeInclusive<Idx> {
     }
 }
 
-/// A range only bounded inclusively above (`..=end`).
+/// 一个仅上界包含的区间(`..=end`)。
 ///
-/// The `RangeToInclusive` `..=end` contains all values with `x <= end`.
-/// It cannot serve as an [`Iterator`] because it doesn't have a starting point.
+/// `RangeToInclusive`(即 `..=end`)包含所有满足 `x <= end` 的值。它不能充当
+/// [`Iterator`],因为它没有起点。
 ///
-/// # Examples
+/// # 示例
 ///
-/// The `..=end` syntax is a `RangeToInclusive`:
+/// `..=end` 语法就是一个 `RangeToInclusive`:
 ///
 /// ```
 /// assert_eq!((..=5), std::ops::RangeToInclusive{ end: 5 });
 /// ```
 ///
-/// It does not have an [`IntoIterator`] implementation, so you can't use it in a
-/// `for` loop directly. This won't compile:
+/// 它没有 [`IntoIterator`] 实现,所以你不能直接在 `for` 循环里使用它。下面这段
+/// 不会通过编译:
 ///
 /// ```compile_fail,E0277
 /// // error[E0277]: the trait bound `std::ops::RangeToInclusive<{integer}>:
@@ -588,14 +578,14 @@ impl<Idx: PartialOrd<Idx>> RangeInclusive<Idx> {
 /// }
 /// ```
 ///
-/// When used as a [slicing index], `RangeToInclusive` produces a slice of all
-/// array elements up to and including the index indicated by `end`.
+/// 用作[切片索引][slicing index]时,`RangeToInclusive` 会产出由 `end` 所指位置
+/// 及其之前的所有数组元素构成的切片。
 ///
 /// ```
 /// let arr = [0, 1, 2, 3, 4];
 /// assert_eq!(arr[ ..  ], [0, 1, 2, 3, 4]);
 /// assert_eq!(arr[ .. 3], [0, 1, 2      ]);
-/// assert_eq!(arr[ ..=3], [0, 1, 2, 3   ]); // This is a `RangeToInclusive`
+/// assert_eq!(arr[ ..=3], [0, 1, 2, 3   ]); // 这就是一个 `RangeToInclusive`
 /// assert_eq!(arr[1..  ], [   1, 2, 3, 4]);
 /// assert_eq!(arr[1.. 3], [   1, 2      ]);
 /// assert_eq!(arr[1..=3], [   1, 2, 3   ]);
@@ -608,7 +598,7 @@ impl<Idx: PartialOrd<Idx>> RangeInclusive<Idx> {
 #[derive(Clone, PartialEq, Eq)]
 #[stable(feature = "inclusive_range", since = "1.26.0")]
 pub struct RangeToInclusive<Idx> {
-    /// The upper bound of the range (inclusive)
+    /// 区间的上界(包含)
     #[stable(feature = "inclusive_range", since = "1.26.0")]
     pub end: Idx,
 }
@@ -623,9 +613,9 @@ impl<Idx: fmt::Debug> fmt::Debug for RangeToInclusive<Idx> {
 }
 
 impl<Idx: PartialOrd<Idx>> RangeToInclusive<Idx> {
-    /// Returns `true` if `item` is contained in the range.
+    /// 如果 `item` 包含在该区间内,返回 `true`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// assert!( (..=5).contains(&-1_000_000_000));
@@ -648,14 +638,14 @@ impl<Idx: PartialOrd<Idx>> RangeToInclusive<Idx> {
     }
 }
 
-// RangeToInclusive<Idx> cannot impl From<RangeTo<Idx>>
-// because underflow would be possible with (..0).into()
+// RangeToInclusive<Idx> 不能实现 From<RangeTo<Idx>>,
+// 因为 (..0).into() 可能导致下溢(underflow)
 
-/// An endpoint of a range of keys.
+/// 键区间(range of keys)的一个端点。
 ///
-/// # Examples
+/// # 示例
 ///
-/// `Bound`s are range endpoints:
+/// `Bound` 就是区间的端点:
 ///
 /// ```
 /// use std::ops::Bound::*;
@@ -666,8 +656,8 @@ impl<Idx: PartialOrd<Idx>> RangeToInclusive<Idx> {
 /// assert_eq!((1..12).end_bound(), Excluded(&12));
 /// ```
 ///
-/// Using a tuple of `Bound`s as an argument to [`BTreeMap::range`].
-/// Note that in most cases, it's better to use range syntax (`1..5`) instead.
+/// 把一个由 `Bound` 组成的元组用作 [`BTreeMap::range`] 的参数。注意在大多数情况下,
+/// 改用区间语法(`1..5`)会更好。
 ///
 /// ```
 /// use std::collections::BTreeMap;
@@ -690,19 +680,19 @@ impl<Idx: PartialOrd<Idx>> RangeToInclusive<Idx> {
 #[derive(Copy, Debug, Hash)]
 #[derive_const(Clone, Eq, PartialEq)]
 pub enum Bound<T> {
-    /// An inclusive bound.
+    /// 一个包含端点(inclusive bound)。
     #[stable(feature = "collections_bound", since = "1.17.0")]
     Included(#[stable(feature = "collections_bound", since = "1.17.0")] T),
-    /// An exclusive bound.
+    /// 一个不包含端点(exclusive bound)。
     #[stable(feature = "collections_bound", since = "1.17.0")]
     Excluded(#[stable(feature = "collections_bound", since = "1.17.0")] T),
-    /// An infinite endpoint. Indicates that there is no bound in this direction.
+    /// 一个无限端点。表示在这个方向上没有边界。
     #[stable(feature = "collections_bound", since = "1.17.0")]
     Unbounded,
 }
 
 impl<T> Bound<T> {
-    /// Converts from `&Bound<T>` to `Bound<&T>`.
+    /// 从 `&Bound<T>` 转换为 `Bound<&T>`。
     #[inline]
     #[stable(feature = "bound_as_ref_shared", since = "1.65.0")]
     #[rustc_const_unstable(feature = "const_range", issue = "none")]
@@ -714,7 +704,7 @@ impl<T> Bound<T> {
         }
     }
 
-    /// Converts from `&mut Bound<T>` to `Bound<&mut T>`.
+    /// 从 `&mut Bound<T>` 转换为 `Bound<&mut T>`。
     #[inline]
     #[unstable(feature = "bound_as_ref", issue = "80996")]
     pub const fn as_mut(&mut self) -> Bound<&mut T> {
@@ -725,10 +715,10 @@ impl<T> Bound<T> {
         }
     }
 
-    /// Maps a `Bound<T>` to a `Bound<U>` by applying a function to the contained value (including
-    /// both `Included` and `Excluded`), returning a `Bound` of the same kind.
+    /// 通过对所含的值(`Included` 和 `Excluded` 两种情形都包括在内)应用一个函数,
+    /// 把 `Bound<T>` 映射为 `Bound<U>`,并返回一个同种类的 `Bound`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::ops::Bound::*;
@@ -758,9 +748,9 @@ impl<T> Bound<T> {
 }
 
 impl<T: Copy> Bound<&T> {
-    /// Map a `Bound<&T>` to a `Bound<T>` by copying the contents of the bound.
+    /// 通过复制(copy)端点的内容,把 `Bound<&T>` 映射为 `Bound<T>`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(bound_copied)]
@@ -783,9 +773,9 @@ impl<T: Copy> Bound<&T> {
 }
 
 impl<T: Clone> Bound<&T> {
-    /// Map a `Bound<&T>` to a `Bound<T>` by cloning the contents of the bound.
+    /// 通过克隆(clone)端点的内容,把 `Bound<&T>` 映射为 `Bound<T>`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::ops::Bound::*;
@@ -812,17 +802,17 @@ impl<T: Clone> Bound<&T> {
     }
 }
 
-/// `RangeBounds` is implemented by Rust's built-in range types, produced
-/// by range syntax like `..`, `a..`, `..b`, `..=c`, `d..e`, or `f..=g`.
+/// `RangeBounds` 由 Rust 内建的各种区间类型实现,这些类型由形如 `..`、`a..`、
+/// `..b`、`..=c`、`d..e` 或 `f..=g` 的区间语法产生。
 #[stable(feature = "collections_range", since = "1.28.0")]
 #[rustc_diagnostic_item = "RangeBounds"]
 #[rustc_const_unstable(feature = "const_range", issue = "none")]
 pub const trait RangeBounds<T: ?Sized> {
-    /// Start index bound.
+    /// 起始索引端点。
     ///
-    /// Returns the start value as a `Bound`.
+    /// 以 `Bound` 的形式返回起始值。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::ops::Bound::*;
@@ -834,11 +824,11 @@ pub const trait RangeBounds<T: ?Sized> {
     #[stable(feature = "collections_range", since = "1.28.0")]
     fn start_bound(&self) -> Bound<&T>;
 
-    /// End index bound.
+    /// 末尾索引端点。
     ///
-    /// Returns the end value as a `Bound`.
+    /// 以 `Bound` 的形式返回末尾值。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::ops::Bound::*;
@@ -850,9 +840,9 @@ pub const trait RangeBounds<T: ?Sized> {
     #[stable(feature = "collections_range", since = "1.28.0")]
     fn end_bound(&self) -> Bound<&T>;
 
-    /// Returns `true` if `item` is contained in the range.
+    /// 如果 `item` 包含在该区间内,返回 `true`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// assert!( (3..5).contains(&4));
@@ -881,10 +871,10 @@ pub const trait RangeBounds<T: ?Sized> {
         })
     }
 
-    /// Returns `true` if the range contains no items.
-    /// One-sided ranges (`RangeFrom`, etc) always return `false`.
+    /// 如果该区间不含任何元素,返回 `true`。单侧区间(`RangeFrom` 等)总是返回
+    /// `false`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(range_bounds_is_empty)]
@@ -897,7 +887,7 @@ pub const trait RangeBounds<T: ?Sized> {
     /// assert!( RangeBounds::is_empty(&(3..2)));
     /// ```
     ///
-    /// The range is empty if either side is incomparable:
+    /// 如果两端中的任意一端不可比较(incomparable),该区间即为空:
     ///
     /// ```
     /// #![feature(range_bounds_is_empty)]
@@ -908,7 +898,7 @@ pub const trait RangeBounds<T: ?Sized> {
     /// assert!( RangeBounds::is_empty(&(f32::NAN..5.0)));
     /// ```
     ///
-    /// But never empty if either side is unbounded:
+    /// 但只要任意一端无界,它就绝不会为空:
     ///
     /// ```
     /// #![feature(range_bounds_is_empty)]
@@ -919,7 +909,7 @@ pub const trait RangeBounds<T: ?Sized> {
     /// assert!(!RangeBounds::<u8>::is_empty(&(..)));
     /// ```
     ///
-    /// `(Excluded(a), Excluded(b))` is only empty if `a >= b`:
+    /// `(Excluded(a), Excluded(b))` 仅当 `a >= b` 时才为空:
     ///
     /// ```
     /// #![feature(range_bounds_is_empty)]
@@ -947,18 +937,16 @@ pub const trait RangeBounds<T: ?Sized> {
     }
 }
 
-/// Used to convert a range into start and end bounds, consuming the
-/// range by value.
+/// 用于把一个区间转换成起始端点和末尾端点,并按值消耗该区间。
 ///
-/// `IntoBounds` is implemented by Rust’s built-in range types, produced
-/// by range syntax like `..`, `a..`, `..b`, `..=c`, `d..e`, or `f..=g`.
+/// `IntoBounds` 由 Rust 内建的各种区间类型实现,这些类型由形如 `..`、`a..`、
+/// `..b`、`..=c`、`d..e` 或 `f..=g` 的区间语法产生。
 #[unstable(feature = "range_into_bounds", issue = "136903")]
 #[rustc_const_unstable(feature = "const_range", issue = "none")]
 pub const trait IntoBounds<T>: [const] RangeBounds<T> {
-    /// Convert this range into the start and end bounds.
-    /// Returns `(start_bound, end_bound)`.
+    /// 把这个区间转换成起始端点和末尾端点。返回 `(start_bound, end_bound)`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(range_into_bounds)]
@@ -970,9 +958,9 @@ pub const trait IntoBounds<T>: [const] RangeBounds<T> {
     /// ```
     fn into_bounds(self) -> (Bound<T>, Bound<T>);
 
-    /// Compute the intersection of  `self` and `other`.
+    /// 计算 `self` 与 `other` 的交集(intersection)。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(range_into_bounds)]
@@ -986,7 +974,7 @@ pub const trait IntoBounds<T>: [const] RangeBounds<T> {
     /// assert_eq!((7..=13).intersect(8..13), (Included(8), Excluded(13)));
     /// ```
     ///
-    /// Combine with `is_empty` to determine if two ranges overlap.
+    /// 结合 `is_empty` 使用,即可判断两个区间是否重叠(overlap)。
     ///
     /// ```
     /// #![feature(range_into_bounds)]
@@ -1127,8 +1115,8 @@ impl<T> const RangeBounds<T> for RangeInclusive<T> {
     }
     fn end_bound(&self) -> Bound<&T> {
         if self.exhausted {
-            // When the iterator is exhausted, we usually have start == end,
-            // but we want the range to appear empty, containing nothing.
+            // 当迭代器耗尽时,我们通常有 start == end,
+            // 但我们希望该区间表现为空,即不含任何元素。
             Excluded(&self.end)
         } else {
             Included(&self.end)
@@ -1143,8 +1131,8 @@ impl<T> const IntoBounds<T> for RangeInclusive<T> {
         (
             Included(self.start),
             if self.exhausted {
-                // When the iterator is exhausted, we usually have start == end,
-                // but we want the range to appear empty, containing nothing.
+                // 当迭代器耗尽时,我们通常有 start == end,
+                // 但我们希望该区间表现为空,即不含任何元素。
                 Excluded(self.end)
             } else {
                 Included(self.end)
@@ -1212,12 +1200,12 @@ impl<'a, T: ?Sized + 'a> const RangeBounds<T> for (Bound<&'a T>, Bound<&'a T>) {
     }
 }
 
-// This impl intentionally does not have `T: ?Sized`;
-// see https://github.com/rust-lang/rust/pull/61584 for discussion of why.
+// 这个 impl 故意不带 `T: ?Sized`;
+// 关于原因的讨论,见 https://github.com/rust-lang/rust/pull/61584。
 //
-/// If you need to use this implementation where `T` is unsized,
-/// consider using the `RangeBounds` impl for a 2-tuple of [`Bound<&T>`][Bound],
-/// i.e. replace `start..` with `(Bound::Included(start), Bound::Unbounded)`.
+/// 如果你需要在 `T` 为非定长(unsized)的场景下使用这个实现,可以考虑改用
+/// 针对由 [`Bound<&T>`][Bound] 组成的二元组的 `RangeBounds` 实现,
+/// 也就是把 `start..` 替换为 `(Bound::Included(start), Bound::Unbounded)`。
 #[stable(feature = "collections_range", since = "1.28.0")]
 #[rustc_const_unstable(feature = "const_range", issue = "none")]
 impl<T> const RangeBounds<T> for RangeFrom<&T> {
@@ -1229,12 +1217,12 @@ impl<T> const RangeBounds<T> for RangeFrom<&T> {
     }
 }
 
-// This impl intentionally does not have `T: ?Sized`;
-// see https://github.com/rust-lang/rust/pull/61584 for discussion of why.
+// 这个 impl 故意不带 `T: ?Sized`;
+// 关于原因的讨论,见 https://github.com/rust-lang/rust/pull/61584。
 //
-/// If you need to use this implementation where `T` is unsized,
-/// consider using the `RangeBounds` impl for a 2-tuple of [`Bound<&T>`][Bound],
-/// i.e. replace `..end` with `(Bound::Unbounded, Bound::Excluded(end))`.
+/// 如果你需要在 `T` 为非定长(unsized)的场景下使用这个实现,可以考虑改用
+/// 针对由 [`Bound<&T>`][Bound] 组成的二元组的 `RangeBounds` 实现,
+/// 也就是把 `..end` 替换为 `(Bound::Unbounded, Bound::Excluded(end))`。
 #[stable(feature = "collections_range", since = "1.28.0")]
 #[rustc_const_unstable(feature = "const_range", issue = "none")]
 impl<T> const RangeBounds<T> for RangeTo<&T> {
@@ -1246,12 +1234,12 @@ impl<T> const RangeBounds<T> for RangeTo<&T> {
     }
 }
 
-// This impl intentionally does not have `T: ?Sized`;
-// see https://github.com/rust-lang/rust/pull/61584 for discussion of why.
+// 这个 impl 故意不带 `T: ?Sized`;
+// 关于原因的讨论,见 https://github.com/rust-lang/rust/pull/61584。
 //
-/// If you need to use this implementation where `T` is unsized,
-/// consider using the `RangeBounds` impl for a 2-tuple of [`Bound<&T>`][Bound],
-/// i.e. replace `start..end` with `(Bound::Included(start), Bound::Excluded(end))`.
+/// 如果你需要在 `T` 为非定长(unsized)的场景下使用这个实现,可以考虑改用
+/// 针对由 [`Bound<&T>`][Bound] 组成的二元组的 `RangeBounds` 实现,
+/// 也就是把 `start..end` 替换为 `(Bound::Included(start), Bound::Excluded(end))`。
 #[stable(feature = "collections_range", since = "1.28.0")]
 #[rustc_const_unstable(feature = "const_range", issue = "none")]
 impl<T> const RangeBounds<T> for Range<&T> {
@@ -1263,12 +1251,12 @@ impl<T> const RangeBounds<T> for Range<&T> {
     }
 }
 
-// This impl intentionally does not have `T: ?Sized`;
-// see https://github.com/rust-lang/rust/pull/61584 for discussion of why.
+// 这个 impl 故意不带 `T: ?Sized`;
+// 关于原因的讨论,见 https://github.com/rust-lang/rust/pull/61584。
 //
-/// If you need to use this implementation where `T` is unsized,
-/// consider using the `RangeBounds` impl for a 2-tuple of [`Bound<&T>`][Bound],
-/// i.e. replace `start..=end` with `(Bound::Included(start), Bound::Included(end))`.
+/// 如果你需要在 `T` 为非定长(unsized)的场景下使用这个实现,可以考虑改用
+/// 针对由 [`Bound<&T>`][Bound] 组成的二元组的 `RangeBounds` 实现,
+/// 也就是把 `start..=end` 替换为 `(Bound::Included(start), Bound::Included(end))`。
 #[stable(feature = "collections_range", since = "1.28.0")]
 #[rustc_const_unstable(feature = "const_range", issue = "none")]
 impl<T> const RangeBounds<T> for RangeInclusive<&T> {
@@ -1280,12 +1268,12 @@ impl<T> const RangeBounds<T> for RangeInclusive<&T> {
     }
 }
 
-// This impl intentionally does not have `T: ?Sized`;
-// see https://github.com/rust-lang/rust/pull/61584 for discussion of why.
+// 这个 impl 故意不带 `T: ?Sized`;
+// 关于原因的讨论,见 https://github.com/rust-lang/rust/pull/61584。
 //
-/// If you need to use this implementation where `T` is unsized,
-/// consider using the `RangeBounds` impl for a 2-tuple of [`Bound<&T>`][Bound],
-/// i.e. replace `..=end` with `(Bound::Unbounded, Bound::Included(end))`.
+/// 如果你需要在 `T` 为非定长(unsized)的场景下使用这个实现,可以考虑改用
+/// 针对由 [`Bound<&T>`][Bound] 组成的二元组的 `RangeBounds` 实现,
+/// 也就是把 `..=end` 替换为 `(Bound::Unbounded, Bound::Included(end))`。
 #[stable(feature = "collections_range", since = "1.28.0")]
 #[rustc_const_unstable(feature = "const_range", issue = "none")]
 impl<T> const RangeBounds<T> for RangeToInclusive<&T> {
@@ -1297,30 +1285,29 @@ impl<T> const RangeBounds<T> for RangeToInclusive<&T> {
     }
 }
 
-/// An internal helper for `split_off` functions indicating
-/// which end a `OneSidedRange` is bounded on.
+/// 一个供 `split_off` 系列函数内部使用的辅助类型,用来指明一个 `OneSidedRange`
+/// (单侧区间)在哪一端是有界的。
 #[unstable(feature = "one_sided_range", issue = "69780")]
 #[allow(missing_debug_implementations)]
 pub enum OneSidedRangeBound {
-    /// The range is bounded inclusively from below and is unbounded above.
+    /// 该区间下界包含、上界无界。
     StartInclusive,
-    /// The range is bounded exclusively from above and is unbounded below.
+    /// 该区间上界不包含、下界无界。
     End,
-    /// The range is bounded inclusively from above and is unbounded below.
+    /// 该区间上界包含、下界无界。
     EndInclusive,
 }
 
-/// `OneSidedRange` is implemented for built-in range types that are unbounded
-/// on one side. For example, `a..`, `..b` and `..=c` implement `OneSidedRange`,
-/// but `..`, `d..e`, and `f..=g` do not.
+/// `OneSidedRange` 为那些在某一侧无界的内建区间类型而实现。例如,`a..`、`..b`
+/// 和 `..=c` 都实现了 `OneSidedRange`,而 `..`、`d..e` 和 `f..=g` 则没有。
 ///
-/// Types that implement `OneSidedRange<T>` must return `Bound::Unbounded`
-/// from one of `RangeBounds::start_bound` or `RangeBounds::end_bound`.
+/// 实现 `OneSidedRange<T>` 的类型,必须从 `RangeBounds::start_bound` 或
+/// `RangeBounds::end_bound` 二者之一返回 `Bound::Unbounded`。
 #[unstable(feature = "one_sided_range", issue = "69780")]
 #[rustc_const_unstable(feature = "const_range", issue = "none")]
 pub const trait OneSidedRange<T>: RangeBounds<T> {
-    /// An internal-only helper function for `split_off` and
-    /// `split_off_mut` that returns the bound of the one-sided range.
+    /// 一个仅供 `split_off` 和 `split_off_mut` 内部使用的辅助函数,返回该单侧
+    /// 区间的端点。
     fn bound(self) -> (OneSidedRangeBound, T);
 }
 

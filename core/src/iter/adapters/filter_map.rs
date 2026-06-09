@@ -5,10 +5,9 @@ use crate::num::NonZero;
 use crate::ops::{ControlFlow, Try};
 use crate::{array, fmt};
 
-/// An iterator that uses `f` to both filter and map elements from `iter`.
+/// 使用 `f` 对 `iter` 中元素同时执行过滤和映射的迭代器。
 ///
-/// This `struct` is created by the [`filter_map`] method on [`Iterator`]. See its
-/// documentation for more.
+/// 该 `struct` 由 [`Iterator`] 上的 [`filter_map`] 方法创建。更多信息见该方法文档。
 ///
 /// [`filter_map`]: Iterator::filter_map
 /// [`Iterator`]: trait.Iterator.html
@@ -79,7 +78,7 @@ where
             #[inline]
             fn drop(&mut self) {
                 if const { crate::mem::needs_drop::<T>() } {
-                    // SAFETY: self.initialized is always <= N, which also is the length of the array.
+                    // SAFETY: self.initialized 始终 <= N，而 N 也是数组长度。
                     unsafe {
                         self.array.get_unchecked_mut(..self.initialized).assume_init_drop();
                     }
@@ -94,7 +93,7 @@ where
             let val = (self.f)(element);
             guard.initialized = idx + val.is_some() as usize;
 
-            // SAFETY: Loop conditions ensure the index is in bounds.
+            // SAFETY: 循环条件保证索引在边界内。
 
             unsafe {
                 let opt_payload_at: *const MaybeUninit<B> =
@@ -111,12 +110,12 @@ where
 
         match result {
             ControlFlow::Break(()) => {
-                // SAFETY: The loop above is only explicitly broken when the array has been fully initialized
+                // SAFETY: 只有在数组已经完全初始化时，上面的循环才会显式 break。
                 Ok(unsafe { MaybeUninit::array_assume_init(array) })
             }
             ControlFlow::Continue(()) => {
                 let initialized = guard.initialized;
-                // SAFETY: The range is in bounds since the loop breaks when reaching N elements.
+                // SAFETY: 到达 N 个元素时循环会 break，因此该范围在边界内。
                 Err(unsafe { array::IntoIter::new_unchecked(array, 0..initialized) })
             }
         }
@@ -125,7 +124,7 @@ where
     #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         let (_, upper) = self.iter.size_hint();
-        (0, upper) // can't know a lower bound, due to the predicate
+        (0, upper) // 由于 predicate 的存在，无法知道下界。
     }
 
     #[inline]
@@ -201,7 +200,7 @@ where
 
     #[inline]
     unsafe fn as_inner(&mut self) -> &mut I::Source {
-        // SAFETY: unsafe function forwarding to unsafe function with the same requirements
+        // SAFETY: 将 unsafe 函数转发到具有相同要求的 unsafe 函数。
         unsafe { SourceIter::as_inner(&mut self.iter) }
     }
 }

@@ -1,4 +1,8 @@
-//! Indexing implementations for `[T]`.
+//! `[T]` 的索引实现。
+//!
+//! 这里把 `usize`、各种 `Range` 和边界对统一到 `SliceIndex`。安全索引路径会做边界检查
+//! 并在越界时 panic，`get`/`get_mut` 用 `Option` 表达失败，而 `get_unchecked` 系列把
+//! 边界不变量交给调用方；后者一旦越界，即使返回的指针没有被解引用，也会是 UB。
 
 use crate::intrinsics::slice_get_unchecked;
 use crate::marker::Destruct;
@@ -63,8 +67,8 @@ const fn slice_index_fail(start: usize, end: usize, len: usize) -> ! {
         )
     }
 
-    // Only reachable if the range was a `RangeInclusive` or a
-    // `RangeToInclusive`, with `end == len`.
+    // 只有 `RangeInclusive` 或 `RangeToInclusive` 且 `end == len` 时才会走到这里；
+    // 对闭区间来说，包含末尾索引等价于越过切片最后一个元素。
     const_panic!(
         "slice end index is out of range for slice",
         "range end index {end} out of range for slice of length {len}",
@@ -73,10 +77,9 @@ const fn slice_index_fail(start: usize, end: usize, len: usize) -> ! {
     )
 }
 
-// The UbChecks are great for catching bugs in the unsafe methods, but including
-// them in safe indexing is unnecessary and hurts inlining and debug runtime perf.
-// Both the safe and unsafe public methods share these helpers,
-// which use intrinsics directly to get *no* extra checks.
+// UbChecks 对捕捉 unsafe 方法里的调用方错误很有用，但安全索引本身已经完成边界检查，
+// 再把这些检查放进热路径会损害内联和 debug 运行时性能。安全与 unsafe 的公开方法共享
+// 这些 helper；helper 直接使用 intrinsics，确保这里不会额外插入检查。
 
 #[inline(always)]
 const unsafe fn get_offset_len_noubcheck<T>(
@@ -85,7 +88,7 @@ const unsafe fn get_offset_len_noubcheck<T>(
     len: usize,
 ) -> *const [T] {
     let ptr = ptr as *const T;
-    // SAFETY: The caller already checked these preconditions
+    // SAFETY: 调用方已经检查 `offset` 位于同一切片内，且得到的 `[ptr, ptr + len)` 范围有效。
     let ptr = unsafe { crate::intrinsics::offset(ptr, offset) };
     crate::intrinsics::aggregate_raw_ptr(ptr, len)
 }
@@ -97,7 +100,7 @@ const unsafe fn get_offset_len_mut_noubcheck<T>(
     len: usize,
 ) -> *mut [T] {
     let ptr = ptr as *mut T;
-    // SAFETY: The caller already checked these preconditions
+    // SAFETY: 调用方已经检查 `offset` 位于同一可变切片内，且得到的范围有效且唯一可访问。
     let ptr = unsafe { crate::intrinsics::offset(ptr, offset) };
     crate::intrinsics::aggregate_raw_ptr(ptr, len)
 }
@@ -142,10 +145,12 @@ mod private_slice_index {
     impl<T> Sealed for crate::index::Clamp<T> where T: Sealed {}
 }
 
-/// A helper trait used for indexing operations.
+/// 索引操作使用的辅助 trait。
 ///
-/// Implementations of this trait have to promise that if the argument
-/// to `get_unchecked(_mut)` is a safe reference, then so is the result.
+/// 实现者必须承诺：如果传给 `get_unchecked(_mut)` 的切片指针来自一个安全引用，
+/// 且索引值满足该实现声明的边界条件，那么返回的指针也能形成相同共享性或可变性的安全引用。
+/// 这个 trait 是 unsafe 的原因正在于此：实现错误会让安全的 `get`、`index` 或内部
+/// `get_unchecked` 路径产生越界、错长度或违反 aliasing 的引用。
 #[stable(feature = "slice_get_slice", since = "1.28.0")]
 #[rustc_diagnostic_item = "SliceIndex"]
 #[rustc_on_unimplemented(
@@ -161,54 +166,49 @@ mod private_slice_index {
 )]
 #[rustc_const_unstable(feature = "const_index", issue = "143775")]
 pub const unsafe trait SliceIndex<T: ?Sized>: private_slice_index::Sealed {
-    /// The output type returned by methods.
+    /// 各索引方法返回的输出类型。
     #[stable(feature = "slice_get_slice", since = "1.28.0")]
     type Output: ?Sized;
 
-    /// Returns a shared reference to the output at this location, if in
-    /// bounds.
+    /// 如果索引在边界内，返回该位置对应输出的共享引用。
     #[unstable(feature = "slice_index_methods", issue = "none")]
     fn get(self, slice: &T) -> Option<&Self::Output>;
 
-    /// Returns a mutable reference to the output at this location, if in
-    /// bounds.
+    /// 如果索引在边界内，返回该位置对应输出的可变引用。
     #[unstable(feature = "slice_index_methods", issue = "none")]
     fn get_mut(self, slice: &mut T) -> Option<&mut Self::Output>;
 
-    /// Returns a pointer to the output at this location, without
-    /// performing any bounds checking.
-    ///
-    /// Calling this method with an out-of-bounds index or a dangling `slice` pointer
-    /// is *[undefined behavior]* even if the resulting pointer is not used.
+    /// 不做边界检查，直接返回该位置对应输出的指针。
+///
+    /// 使用越界索引或悬垂的 `slice` 指针调用本方法是 *[undefined behavior]*，
+    /// 即使返回的指针之后没有被使用。原因是实现通常会把边界条件传给 `assume`、
+    /// `offset` 或引用构造，编译器可据此进行优化。
     ///
     /// [undefined behavior]: https://doc.rust-lang.org/reference/behavior-considered-undefined.html
     #[unstable(feature = "slice_index_methods", issue = "none")]
     unsafe fn get_unchecked(self, slice: *const T) -> *const Self::Output;
 
-    /// Returns a mutable pointer to the output at this location, without
-    /// performing any bounds checking.
-    ///
-    /// Calling this method with an out-of-bounds index or a dangling `slice` pointer
-    /// is *[undefined behavior]* even if the resulting pointer is not used.
+    /// 不做边界检查，直接返回该位置对应输出的可变指针。
+///
+    /// 使用越界索引或悬垂的 `slice` 指针调用本方法是 *[undefined behavior]*，
+    /// 即使返回的指针之后没有被使用；可变版本还必须保持最终引用的唯一访问权。
     ///
     /// [undefined behavior]: https://doc.rust-lang.org/reference/behavior-considered-undefined.html
     #[unstable(feature = "slice_index_methods", issue = "none")]
     unsafe fn get_unchecked_mut(self, slice: *mut T) -> *mut Self::Output;
 
-    /// Returns a shared reference to the output at this location, panicking
-    /// if out of bounds.
+    /// 返回该位置对应输出的共享引用；越界时 panic。
     #[unstable(feature = "slice_index_methods", issue = "none")]
     #[track_caller]
     fn index(self, slice: &T) -> &Self::Output;
 
-    /// Returns a mutable reference to the output at this location, panicking
-    /// if out of bounds.
+    /// 返回该位置对应输出的可变引用；越界时 panic。
     #[unstable(feature = "slice_index_methods", issue = "none")]
     #[track_caller]
     fn index_mut(self, slice: &mut T) -> &mut Self::Output;
 }
 
-/// The methods `index` and `index_mut` panic if the index is out of bounds.
+/// 如果索引越界，`index` 和 `index_mut` 会 panic。
 #[stable(feature = "slice_get_slice_impls", since = "1.15.0")]
 #[rustc_const_unstable(feature = "const_index", issue = "143775")]
 unsafe impl<T> const SliceIndex<[T]> for usize {
@@ -217,7 +217,7 @@ unsafe impl<T> const SliceIndex<[T]> for usize {
     #[inline]
     fn get(self, slice: &[T]) -> Option<&T> {
         if self < slice.len() {
-            // SAFETY: `self` is checked to be in bounds.
+            // SAFETY: 上面的 `self < slice.len()` 已证明单个元素索引在边界内。
             unsafe { Some(slice_get_unchecked(slice, self)) }
         } else {
             None
@@ -227,7 +227,7 @@ unsafe impl<T> const SliceIndex<[T]> for usize {
     #[inline]
     fn get_mut(self, slice: &mut [T]) -> Option<&mut T> {
         if self < slice.len() {
-            // SAFETY: `self` is checked to be in bounds.
+            // SAFETY: 上面的 `self < slice.len()` 已证明单个元素索引在边界内。
             unsafe { Some(slice_get_unchecked(slice, self)) }
         } else {
             None
@@ -238,17 +238,16 @@ unsafe impl<T> const SliceIndex<[T]> for usize {
     #[track_caller]
     unsafe fn get_unchecked(self, slice: *const [T]) -> *const T {
         assert_unsafe_precondition!(
-            check_language_ub, // okay because of the `assume` below
+            check_language_ub, // 因为下面有 `assume`，所以没问题
             "slice::get_unchecked requires that the index is within the slice",
             (this: usize = self, len: usize = slice.len()) => this < len
         );
-        // SAFETY: the caller guarantees that `slice` is not dangling, so it
-        // cannot be longer than `isize::MAX`. They also guarantee that
-        // `self` is in bounds of `slice` so `self` cannot overflow an `isize`,
-        // so the call to `add` is safe.
+        // SAFETY: 调用方保证 `slice` 不是悬垂指针，因此其长度不会超过 `isize::MAX`；
+        // 调用方还保证 `self` 位于 `slice` 边界内，所以 `self` 可表示为同一 allocation 内
+        // 的 `isize` 偏移，传给底层 unchecked 索引不会越界。
         unsafe {
-            // Use intrinsics::assume instead of hint::assert_unchecked so that we don't check the
-            // precondition of this function twice.
+            // 使用 intrinsics::assume 而不是 hint::assert_unchecked，避免把本函数的
+            // 前置条件检查两次；这也是越界调用会立即成为 UB 的原因之一。
             crate::intrinsics::assume(self < slice.len());
             slice_get_unchecked(slice, self)
         }
@@ -262,25 +261,25 @@ unsafe impl<T> const SliceIndex<[T]> for usize {
             "slice::get_unchecked_mut requires that the index is within the slice",
             (this: usize = self, len: usize = slice.len()) => this < len
         );
-        // SAFETY: see comments for `get_unchecked` above.
+        // SAFETY: 与上面的 `get_unchecked` 相同；调用方还必须维护可变访问的唯一性。
         unsafe { slice_get_unchecked(slice, self) }
     }
 
     #[inline]
     fn index(self, slice: &[T]) -> &T {
-        // N.B., use intrinsic indexing
+        // N.B. 使用 intrinsic indexing，让编译器生成标准的切片边界检查。
         &(*slice)[self]
     }
 
     #[inline]
     fn index_mut(self, slice: &mut [T]) -> &mut T {
-        // N.B., use intrinsic indexing
+        // N.B. 使用 intrinsic indexing，让编译器生成标准的切片边界检查。
         &mut (*slice)[self]
     }
 }
 
-/// Because `IndexRange` guarantees `start <= end`, fewer checks are needed here
-/// than there are for a general `Range<usize>` (which might be `100..3`).
+/// 因为 `IndexRange` 自身保证 `start <= end`，这里比普通 `Range<usize>` 需要更少检查；
+/// 普通范围可能是 `100..3` 这种反向范围。
 #[rustc_const_unstable(feature = "const_index", issue = "143775")]
 unsafe impl<T> const SliceIndex<[T]> for ops::IndexRange {
     type Output = [T];
@@ -288,7 +287,7 @@ unsafe impl<T> const SliceIndex<[T]> for ops::IndexRange {
     #[inline]
     fn get(self, slice: &[T]) -> Option<&[T]> {
         if self.end() <= slice.len() {
-            // SAFETY: `self` is checked to be valid and in bounds above.
+            // SAFETY: `self.end() <= slice.len()` 且 `IndexRange` 保证 `start <= end`。
             unsafe { Some(&*get_offset_len_noubcheck(slice, self.start(), self.len())) }
         } else {
             None
@@ -298,7 +297,7 @@ unsafe impl<T> const SliceIndex<[T]> for ops::IndexRange {
     #[inline]
     fn get_mut(self, slice: &mut [T]) -> Option<&mut [T]> {
         if self.end() <= slice.len() {
-            // SAFETY: `self` is checked to be valid and in bounds above.
+            // SAFETY: `self.end() <= slice.len()` 且 `IndexRange` 保证 `start <= end`。
             unsafe { Some(&mut *get_offset_len_mut_noubcheck(slice, self.start(), self.len())) }
         } else {
             None
@@ -313,10 +312,8 @@ unsafe impl<T> const SliceIndex<[T]> for ops::IndexRange {
             "slice::get_unchecked requires that the index is within the slice",
             (end: usize = self.end(), len: usize = slice.len()) => end <= len
         );
-        // SAFETY: the caller guarantees that `slice` is not dangling, so it
-        // cannot be longer than `isize::MAX`. They also guarantee that
-        // `self` is in bounds of `slice` so `self` cannot overflow an `isize`,
-        // so the call to `add` is safe.
+        // SAFETY: 调用方保证 `slice` 有效且 `self.end() <= slice.len()`；再加上
+        // `IndexRange` 的 `start <= end`，可构造位于同一切片内的子切片。
         unsafe { get_offset_len_noubcheck(slice, self.start(), self.len()) }
     }
 
@@ -329,14 +326,14 @@ unsafe impl<T> const SliceIndex<[T]> for ops::IndexRange {
             (end: usize = self.end(), len: usize = slice.len()) => end <= len
         );
 
-        // SAFETY: see comments for `get_unchecked` above.
+        // SAFETY: 与上面的 `get_unchecked` 相同；可变返回值的唯一访问权由调用方保证。
         unsafe { get_offset_len_mut_noubcheck(slice, self.start(), self.len()) }
     }
 
     #[inline]
     fn index(self, slice: &[T]) -> &[T] {
         if self.end() <= slice.len() {
-            // SAFETY: `self` is checked to be valid and in bounds above.
+            // SAFETY: `self.end() <= slice.len()` 且 `IndexRange` 保证 `start <= end`。
             unsafe { &*get_offset_len_noubcheck(slice, self.start(), self.len()) }
         } else {
             slice_index_fail(self.start(), self.end(), slice.len())
@@ -346,7 +343,7 @@ unsafe impl<T> const SliceIndex<[T]> for ops::IndexRange {
     #[inline]
     fn index_mut(self, slice: &mut [T]) -> &mut [T] {
         if self.end() <= slice.len() {
-            // SAFETY: `self` is checked to be valid and in bounds above.
+            // SAFETY: `self.end() <= slice.len()` 且 `IndexRange` 保证 `start <= end`。
             unsafe { &mut *get_offset_len_mut_noubcheck(slice, self.start(), self.len()) }
         } else {
             slice_index_fail(self.start(), self.end(), slice.len())
@@ -354,9 +351,9 @@ unsafe impl<T> const SliceIndex<[T]> for ops::IndexRange {
     }
 }
 
-/// The methods `index` and `index_mut` panic if:
-/// - the start of the range is greater than the end of the range or
-/// - the end of the range is out of bounds.
+/// 如果出现下列情况，`index` 和 `index_mut` 会 panic：
+/// - 范围起点大于终点；或
+/// - 范围终点越过切片边界。
 #[stable(feature = "slice_get_slice_impls", since = "1.15.0")]
 #[rustc_const_unstable(feature = "const_index", issue = "143775")]
 unsafe impl<T> const SliceIndex<[T]> for ops::Range<usize> {
@@ -364,11 +361,11 @@ unsafe impl<T> const SliceIndex<[T]> for ops::Range<usize> {
 
     #[inline]
     fn get(self, slice: &[T]) -> Option<&[T]> {
-        // Using checked_sub is a safe way to get `SubUnchecked` in MIR
+        // 使用 checked_sub 是在 MIR 中得到 `SubUnchecked` 优化信息的安全方式。
         if let Some(new_len) = usize::checked_sub(self.end, self.start)
             && self.end <= slice.len()
         {
-            // SAFETY: `self` is checked to be valid and in bounds above.
+            // SAFETY: `checked_sub` 证明 `end >= start`，同时 `end <= slice.len()`。
             unsafe { Some(&*get_offset_len_noubcheck(slice, self.start, new_len)) }
         } else {
             None
@@ -380,7 +377,7 @@ unsafe impl<T> const SliceIndex<[T]> for ops::Range<usize> {
         if let Some(new_len) = usize::checked_sub(self.end, self.start)
             && self.end <= slice.len()
         {
-            // SAFETY: `self` is checked to be valid and in bounds above.
+            // SAFETY: `checked_sub` 证明 `end >= start`，同时 `end <= slice.len()`。
             unsafe { Some(&mut *get_offset_len_mut_noubcheck(slice, self.start, new_len)) }
         } else {
             None
@@ -400,13 +397,11 @@ unsafe impl<T> const SliceIndex<[T]> for ops::Range<usize> {
             ) => end >= start && end <= len
         );
 
-        // SAFETY: the caller guarantees that `slice` is not dangling, so it
-        // cannot be longer than `isize::MAX`. They also guarantee that
-        // `self` is in bounds of `slice` so `self` cannot overflow an `isize`,
-        // so the call to `add` is safe and the length calculation cannot overflow.
+        // SAFETY: 调用方保证 `slice` 有效，且 `start <= end <= len`。因此起点和长度都在
+        // 同一切片内，`add` 不会越界，长度计算也不会下溢或溢出。
         unsafe {
-            // Using the intrinsic avoids a superfluous UB check,
-            // since the one on this method already checked `end >= start`.
+            // 使用 intrinsic 可避免多余的 UB 检查；本方法的前置条件已经检查了
+            // `end >= start`。
             let new_len = crate::intrinsics::unchecked_sub(self.end, self.start);
             get_offset_len_noubcheck(slice, self.start, new_len)
         }
@@ -424,7 +419,7 @@ unsafe impl<T> const SliceIndex<[T]> for ops::Range<usize> {
                 len: usize = slice.len()
             ) => end >= start && end <= len
         );
-        // SAFETY: see comments for `get_unchecked` above.
+        // SAFETY: 与上面的 `get_unchecked` 相同；调用方还必须维护可变访问的唯一性。
         unsafe {
             let new_len = crate::intrinsics::unchecked_sub(self.end, self.start);
             get_offset_len_mut_noubcheck(slice, self.start, new_len)
@@ -433,11 +428,11 @@ unsafe impl<T> const SliceIndex<[T]> for ops::Range<usize> {
 
     #[inline(always)]
     fn index(self, slice: &[T]) -> &[T] {
-        // Using checked_sub is a safe way to get `SubUnchecked` in MIR
+        // 使用 checked_sub 是在 MIR 中得到 `SubUnchecked` 优化信息的安全方式。
         if let Some(new_len) = usize::checked_sub(self.end, self.start)
             && self.end <= slice.len()
         {
-            // SAFETY: `self` is checked to be valid and in bounds above.
+            // SAFETY: `checked_sub` 证明 `end >= start`，同时 `end <= slice.len()`。
             unsafe { &*get_offset_len_noubcheck(slice, self.start, new_len) }
         } else {
             slice_index_fail(self.start, self.end, slice.len())
@@ -446,11 +441,11 @@ unsafe impl<T> const SliceIndex<[T]> for ops::Range<usize> {
 
     #[inline]
     fn index_mut(self, slice: &mut [T]) -> &mut [T] {
-        // Using checked_sub is a safe way to get `SubUnchecked` in MIR
+        // 使用 checked_sub 是在 MIR 中得到 `SubUnchecked` 优化信息的安全方式。
         if let Some(new_len) = usize::checked_sub(self.end, self.start)
             && self.end <= slice.len()
         {
-            // SAFETY: `self` is checked to be valid and in bounds above.
+            // SAFETY: `checked_sub` 证明 `end >= start`，同时 `end <= slice.len()`。
             unsafe { &mut *get_offset_len_mut_noubcheck(slice, self.start, new_len) }
         } else {
             slice_index_fail(self.start, self.end, slice.len())
@@ -475,13 +470,13 @@ unsafe impl<T> const SliceIndex<[T]> for range::Range<usize> {
 
     #[inline]
     unsafe fn get_unchecked(self, slice: *const [T]) -> *const [T] {
-        // SAFETY: the caller has to uphold the safety contract for `get_unchecked`.
+        // SAFETY: 调用方必须维护 `get_unchecked` 的边界契约；这里只转换范围类型。
         unsafe { ops::Range::from(self).get_unchecked(slice) }
     }
 
     #[inline]
     unsafe fn get_unchecked_mut(self, slice: *mut [T]) -> *mut [T] {
-        // SAFETY: the caller has to uphold the safety contract for `get_unchecked_mut`.
+        // SAFETY: 调用方必须维护 `get_unchecked_mut` 的边界和唯一访问契约。
         unsafe { ops::Range::from(self).get_unchecked_mut(slice) }
     }
 
@@ -496,7 +491,7 @@ unsafe impl<T> const SliceIndex<[T]> for range::Range<usize> {
     }
 }
 
-/// The methods `index` and `index_mut` panic if the end of the range is out of bounds.
+/// 如果范围终点越过切片边界，`index` 和 `index_mut` 会 panic。
 #[stable(feature = "slice_get_slice_impls", since = "1.15.0")]
 #[rustc_const_unstable(feature = "const_index", issue = "143775")]
 unsafe impl<T> const SliceIndex<[T]> for ops::RangeTo<usize> {
@@ -514,13 +509,13 @@ unsafe impl<T> const SliceIndex<[T]> for ops::RangeTo<usize> {
 
     #[inline]
     unsafe fn get_unchecked(self, slice: *const [T]) -> *const [T] {
-        // SAFETY: the caller has to uphold the safety contract for `get_unchecked`.
+        // SAFETY: 调用方必须保证 `0..self.end` 位于 `slice` 内。
         unsafe { (0..self.end).get_unchecked(slice) }
     }
 
     #[inline]
     unsafe fn get_unchecked_mut(self, slice: *mut [T]) -> *mut [T] {
-        // SAFETY: the caller has to uphold the safety contract for `get_unchecked_mut`.
+        // SAFETY: 调用方必须保证 `0..self.end` 位于 `slice` 内，并维护可变访问唯一性。
         unsafe { (0..self.end).get_unchecked_mut(slice) }
     }
 
@@ -535,7 +530,7 @@ unsafe impl<T> const SliceIndex<[T]> for ops::RangeTo<usize> {
     }
 }
 
-/// The methods `index` and `index_mut` panic if the start of the range is out of bounds.
+/// 如果范围起点越过切片边界，`index` 和 `index_mut` 会 panic。
 #[stable(feature = "slice_get_slice_impls", since = "1.15.0")]
 #[rustc_const_unstable(feature = "const_index", issue = "143775")]
 unsafe impl<T> const SliceIndex<[T]> for ops::RangeFrom<usize> {
@@ -553,13 +548,13 @@ unsafe impl<T> const SliceIndex<[T]> for ops::RangeFrom<usize> {
 
     #[inline]
     unsafe fn get_unchecked(self, slice: *const [T]) -> *const [T] {
-        // SAFETY: the caller has to uphold the safety contract for `get_unchecked`.
+        // SAFETY: 调用方必须保证 `self.start..slice.len()` 是有效子范围。
         unsafe { (self.start..slice.len()).get_unchecked(slice) }
     }
 
     #[inline]
     unsafe fn get_unchecked_mut(self, slice: *mut [T]) -> *mut [T] {
-        // SAFETY: the caller has to uphold the safety contract for `get_unchecked_mut`.
+        // SAFETY: 调用方必须保证范围有效，并维护返回可变子切片的唯一访问权。
         unsafe { (self.start..slice.len()).get_unchecked_mut(slice) }
     }
 
@@ -568,7 +563,7 @@ unsafe impl<T> const SliceIndex<[T]> for ops::RangeFrom<usize> {
         if self.start > slice.len() {
             slice_index_fail(self.start, slice.len(), slice.len())
         }
-        // SAFETY: `self` is checked to be valid and in bounds above.
+        // SAFETY: 上面已经排除 `self.start > slice.len()`，长度计算位于边界内。
         unsafe {
             let new_len = crate::intrinsics::unchecked_sub(slice.len(), self.start);
             &*get_offset_len_noubcheck(slice, self.start, new_len)
@@ -580,7 +575,7 @@ unsafe impl<T> const SliceIndex<[T]> for ops::RangeFrom<usize> {
         if self.start > slice.len() {
             slice_index_fail(self.start, slice.len(), slice.len())
         }
-        // SAFETY: `self` is checked to be valid and in bounds above.
+        // SAFETY: 上面已经排除 `self.start > slice.len()`，长度计算位于边界内。
         unsafe {
             let new_len = crate::intrinsics::unchecked_sub(slice.len(), self.start);
             &mut *get_offset_len_mut_noubcheck(slice, self.start, new_len)
@@ -605,13 +600,13 @@ unsafe impl<T> const SliceIndex<[T]> for range::RangeFrom<usize> {
 
     #[inline]
     unsafe fn get_unchecked(self, slice: *const [T]) -> *const [T] {
-        // SAFETY: the caller has to uphold the safety contract for `get_unchecked`.
+        // SAFETY: 调用方必须维护 `get_unchecked` 的边界契约；这里只转换范围类型。
         unsafe { ops::RangeFrom::from(self).get_unchecked(slice) }
     }
 
     #[inline]
     unsafe fn get_unchecked_mut(self, slice: *mut [T]) -> *mut [T] {
-        // SAFETY: the caller has to uphold the safety contract for `get_unchecked_mut`.
+        // SAFETY: 调用方必须维护 `get_unchecked_mut` 的边界和唯一访问契约。
         unsafe { ops::RangeFrom::from(self).get_unchecked_mut(slice) }
     }
 
@@ -662,10 +657,10 @@ unsafe impl<T> const SliceIndex<[T]> for ops::RangeFull {
     }
 }
 
-/// The methods `index` and `index_mut` panic if:
-/// - the end of the range is `usize::MAX` or
-/// - the start of the range is greater than the end of the range or
-/// - the end of the range is out of bounds.
+/// 如果出现下列情况，`index` 和 `index_mut` 会 panic：
+/// - 范围终点是 `usize::MAX`，闭区间无法转换成排他上界；
+/// - 范围起点大于终点；或
+/// - 范围终点越过切片边界。
 #[stable(feature = "inclusive_range", since = "1.26.0")]
 #[rustc_const_unstable(feature = "const_index", issue = "143775")]
 unsafe impl<T> const SliceIndex<[T]> for ops::RangeInclusive<usize> {
@@ -683,13 +678,13 @@ unsafe impl<T> const SliceIndex<[T]> for ops::RangeInclusive<usize> {
 
     #[inline]
     unsafe fn get_unchecked(self, slice: *const [T]) -> *const [T] {
-        // SAFETY: the caller has to uphold the safety contract for `get_unchecked`.
+        // SAFETY: 调用方必须保证闭区间转换后的排他范围位于 `slice` 内。
         unsafe { self.into_slice_range().get_unchecked(slice) }
     }
 
     #[inline]
     unsafe fn get_unchecked_mut(self, slice: *mut [T]) -> *mut [T] {
-        // SAFETY: the caller has to uphold the safety contract for `get_unchecked_mut`.
+        // SAFETY: 调用方必须保证闭区间转换后的排他范围有效，并维护唯一访问权。
         unsafe { self.into_slice_range().get_unchecked_mut(slice) }
     }
 
@@ -701,7 +696,7 @@ unsafe impl<T> const SliceIndex<[T]> for ops::RangeInclusive<usize> {
             end = end + 1;
             start = if exhausted { end } else { start };
             if let Some(new_len) = usize::checked_sub(end, start) {
-                // SAFETY: `self` is checked to be valid and in bounds above.
+                // SAFETY: `end < len` 允许闭区间上界加一，`checked_sub` 证明 `start <= end`。
                 unsafe { return &*get_offset_len_noubcheck(slice, start, new_len) }
             }
         }
@@ -716,7 +711,7 @@ unsafe impl<T> const SliceIndex<[T]> for ops::RangeInclusive<usize> {
             end = end + 1;
             start = if exhausted { end } else { start };
             if let Some(new_len) = usize::checked_sub(end, start) {
-                // SAFETY: `self` is checked to be valid and in bounds above.
+                // SAFETY: `end < len` 允许闭区间上界加一，`checked_sub` 证明 `start <= end`。
                 unsafe { return &mut *get_offset_len_mut_noubcheck(slice, start, new_len) }
             }
         }
@@ -741,13 +736,13 @@ unsafe impl<T> const SliceIndex<[T]> for range::RangeInclusive<usize> {
 
     #[inline]
     unsafe fn get_unchecked(self, slice: *const [T]) -> *const [T] {
-        // SAFETY: the caller has to uphold the safety contract for `get_unchecked`.
+        // SAFETY: 调用方必须维护 `get_unchecked` 的边界契约；这里只转换范围类型。
         unsafe { ops::RangeInclusive::from(self).get_unchecked(slice) }
     }
 
     #[inline]
     unsafe fn get_unchecked_mut(self, slice: *mut [T]) -> *mut [T] {
-        // SAFETY: the caller has to uphold the safety contract for `get_unchecked_mut`.
+        // SAFETY: 调用方必须维护 `get_unchecked_mut` 的边界和唯一访问契约。
         unsafe { ops::RangeInclusive::from(self).get_unchecked_mut(slice) }
     }
 
@@ -762,7 +757,7 @@ unsafe impl<T> const SliceIndex<[T]> for range::RangeInclusive<usize> {
     }
 }
 
-/// The methods `index` and `index_mut` panic if the end of the range is out of bounds.
+/// 如果范围终点越过切片边界，`index` 和 `index_mut` 会 panic。
 #[stable(feature = "inclusive_range", since = "1.26.0")]
 #[rustc_const_unstable(feature = "const_index", issue = "143775")]
 unsafe impl<T> const SliceIndex<[T]> for ops::RangeToInclusive<usize> {
@@ -780,13 +775,13 @@ unsafe impl<T> const SliceIndex<[T]> for ops::RangeToInclusive<usize> {
 
     #[inline]
     unsafe fn get_unchecked(self, slice: *const [T]) -> *const [T] {
-        // SAFETY: the caller has to uphold the safety contract for `get_unchecked`.
+        // SAFETY: 调用方必须保证 `0..=self.end` 位于 `slice` 内，且闭区间上界可加一。
         unsafe { (0..=self.end).get_unchecked(slice) }
     }
 
     #[inline]
     unsafe fn get_unchecked_mut(self, slice: *mut [T]) -> *mut [T] {
-        // SAFETY: the caller has to uphold the safety contract for `get_unchecked_mut`.
+        // SAFETY: 调用方必须保证 `0..=self.end` 有效，并维护返回可变子切片的唯一访问权。
         unsafe { (0..=self.end).get_unchecked_mut(slice) }
     }
 
@@ -801,7 +796,7 @@ unsafe impl<T> const SliceIndex<[T]> for ops::RangeToInclusive<usize> {
     }
 }
 
-/// The methods `index` and `index_mut` panic if the end of the range is out of bounds.
+/// 如果范围终点越过切片边界，`index` 和 `index_mut` 会 panic。
 #[stable(feature = "inclusive_range", since = "1.26.0")]
 #[rustc_const_unstable(feature = "const_index", issue = "143775")]
 unsafe impl<T> const SliceIndex<[T]> for range::RangeToInclusive<usize> {
@@ -819,13 +814,13 @@ unsafe impl<T> const SliceIndex<[T]> for range::RangeToInclusive<usize> {
 
     #[inline]
     unsafe fn get_unchecked(self, slice: *const [T]) -> *const [T] {
-        // SAFETY: the caller has to uphold the safety contract for `get_unchecked`.
+        // SAFETY: 调用方必须保证 `0..=self.last` 位于 `slice` 内，且闭区间上界可加一。
         unsafe { (0..=self.last).get_unchecked(slice) }
     }
 
     #[inline]
     unsafe fn get_unchecked_mut(self, slice: *mut [T]) -> *mut [T] {
-        // SAFETY: the caller has to uphold the safety contract for `get_unchecked_mut`.
+        // SAFETY: 调用方必须保证 `0..=self.last` 有效，并维护返回可变子切片的唯一访问权。
         unsafe { (0..=self.last).get_unchecked_mut(slice) }
     }
 
@@ -840,17 +835,15 @@ unsafe impl<T> const SliceIndex<[T]> for range::RangeToInclusive<usize> {
     }
 }
 
-/// Performs bounds checking of a range.
+/// 对范围执行边界检查。
 ///
-/// This method is similar to [`Index::index`] for slices, but it returns a
-/// [`Range`] equivalent to `range`. You can use this method to turn any range
-/// into `start` and `end` values.
+/// 这个方法类似切片上的 [`Index::index`]，但返回与 `range` 等价的 [`Range`]。
+/// 调用方可以用它把任意范围语法规范化为 `start` 与排他 `end`。
 ///
-/// `bounds` is the range of the slice to use for bounds checking. It should
-/// be a [`RangeTo`] range that ends at the length of the slice.
+/// `bounds` 是用于边界检查的切片范围；它应当是一个以切片长度为终点的 [`RangeTo`]。
 ///
-/// The returned [`Range`] is safe to pass to [`slice::get_unchecked`] and
-/// [`slice::get_unchecked_mut`] for slices with the given range.
+/// 对同一个长度的切片，返回的 [`Range`] 可以安全地传给 [`slice::get_unchecked`] 和
+/// [`slice::get_unchecked_mut`]；它已经排除了越界、反向范围和闭区间上界溢出。
 ///
 /// [`Range`]: ops::Range
 /// [`RangeTo`]: ops::RangeTo
@@ -859,9 +852,9 @@ unsafe impl<T> const SliceIndex<[T]> for range::RangeToInclusive<usize> {
 ///
 /// # Panics
 ///
-/// Panics if `range` would be out of bounds.
+/// 如果 `range` 会越过 `bounds` 表示的切片边界，本函数会 panic。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// #![feature(slice_range)]
@@ -874,7 +867,7 @@ unsafe impl<T> const SliceIndex<[T]> for range::RangeToInclusive<usize> {
 /// assert_eq!(1..3, slice::range(1.., ..v.len()));
 /// ```
 ///
-/// Panics when [`Index::index`] would panic:
+/// 当 [`Index::index`] 会 panic 时，本函数也会 panic：
 ///
 /// ```should_panic
 /// #![feature(slice_range)]
@@ -913,7 +906,7 @@ where
 
     let end = match range.end_bound() {
         ops::Bound::Included(&end) if end >= len => slice_index_fail(0, end, len),
-        // Cannot overflow because `end < len` implies `end < usize::MAX`.
+        // 因为 `end < len` 推出 `end < usize::MAX`，这里加一不会溢出。
         ops::Bound::Included(&end) => end + 1,
 
         ops::Bound::Excluded(&end) if end > len => slice_index_fail(0, end, len),
@@ -923,7 +916,7 @@ where
 
     let start = match range.start_bound() {
         ops::Bound::Excluded(&start) if start >= end => slice_index_fail(start, end, len),
-        // Cannot overflow because `start < end` implies `start < usize::MAX`.
+        // 因为 `start < end` 推出 `start < usize::MAX`，这里加一不会溢出。
         ops::Bound::Excluded(&start) => start + 1,
 
         ops::Bound::Included(&start) if start > end => slice_index_fail(start, end, len),
@@ -935,11 +928,11 @@ where
     ops::Range { start, end }
 }
 
-/// Performs bounds checking of a range without panicking.
+/// 对范围执行边界检查，但不 panic。
 ///
-/// This is a version of [`range()`] that returns [`None`] instead of panicking.
+/// 这是 [`range()`] 的非 panic 版本；范围非法时返回 [`None`]。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// #![feature(slice_range)]
@@ -952,7 +945,7 @@ where
 /// assert_eq!(Some(1..3), slice::try_range(1.., ..v.len()));
 /// ```
 ///
-/// Returns [`None`] when [`Index::index`] would panic:
+/// 当 [`Index::index`] 会 panic 时返回 [`None`]：
 ///
 /// ```
 /// #![feature(slice_range)]
@@ -988,8 +981,10 @@ where
     if start > end || end > len { None } else { Some(ops::Range { start, end }) }
 }
 
-/// Converts a pair of `ops::Bound`s into `ops::Range` without performing any
-/// bounds checking or (in debug) overflow checking.
+/// 将一对 `ops::Bound` 转换成 `ops::Range`，不做任何边界检查，也不做 debug 溢出检查。
+///
+/// 调用方必须保证排除上界加一和下界加一不会溢出，并且后续会用相应的 `SliceIndex`
+/// 实现检查范围是否合法；否则转换出的范围可能在 unsafe 路径中造成 UB。
 pub(crate) const fn into_range_unchecked(
     len: usize,
     (start, end): (ops::Bound<usize>, ops::Bound<usize>),
@@ -1008,8 +1003,8 @@ pub(crate) const fn into_range_unchecked(
     start..end
 }
 
-/// Converts pair of `ops::Bound`s into `ops::Range`.
-/// Returns `None` on overflowing indices.
+/// 将一对 `ops::Bound` 转换成 `ops::Range`。
+/// 如果包含上界或排除下界加一时发生溢出，返回 `None`。
 #[rustc_const_unstable(feature = "const_range", issue = "none")]
 pub(crate) const fn into_range(
     len: usize,
@@ -1028,21 +1023,21 @@ pub(crate) const fn into_range(
         Bound::Unbounded => len,
     };
 
-    // Don't bother with checking `start < end` and `end <= len`
-    // since these checks are handled by `Range` impls
+    // 不在这里检查 `start < end` 和 `end <= len`，因为这些检查由 `Range` 的
+    // `SliceIndex` 实现统一处理。
 
     Some(start..end)
 }
 
-/// Converts pair of `ops::Bound`s into `ops::Range`.
-/// Panics on overflowing indices.
+/// 将一对 `ops::Bound` 转换成 `ops::Range`。
+/// 如果索引溢出或越过给定切片长度，直接 panic。
 pub(crate) fn into_slice_range(
     len: usize,
     (start, end): (ops::Bound<usize>, ops::Bound<usize>),
 ) -> ops::Range<usize> {
     let end = match end {
         ops::Bound::Included(end) if end >= len => slice_index_fail(0, end, len),
-        // Cannot overflow because `end < len` implies `end < usize::MAX`.
+        // 因为 `end < len` 推出 `end < usize::MAX`，这里加一不会溢出。
         ops::Bound::Included(end) => end + 1,
 
         ops::Bound::Excluded(end) if end > len => slice_index_fail(0, end, len),
@@ -1053,7 +1048,7 @@ pub(crate) fn into_slice_range(
 
     let start = match start {
         ops::Bound::Excluded(start) if start >= end => slice_index_fail(start, end, len),
-        // Cannot overflow because `start < end` implies `start < usize::MAX`.
+        // 因为 `start < end` 推出 `start < usize::MAX`，这里加一不会溢出。
         ops::Bound::Excluded(start) => start + 1,
 
         ops::Bound::Included(start) if start > end => slice_index_fail(start, end, len),
@@ -1081,13 +1076,13 @@ unsafe impl<T> SliceIndex<[T]> for (ops::Bound<usize>, ops::Bound<usize>) {
 
     #[inline]
     unsafe fn get_unchecked(self, slice: *const [T]) -> *const Self::Output {
-        // SAFETY: the caller has to uphold the safety contract for `get_unchecked`.
+        // SAFETY: 调用方必须保证边界对转换后的范围位于 `slice` 内。
         unsafe { into_range_unchecked(slice.len(), self).get_unchecked(slice) }
     }
 
     #[inline]
     unsafe fn get_unchecked_mut(self, slice: *mut [T]) -> *mut Self::Output {
-        // SAFETY: the caller has to uphold the safety contract for `get_unchecked_mut`.
+        // SAFETY: 调用方必须保证范围有效，并维护返回可变子切片的唯一访问权。
         unsafe { into_range_unchecked(slice.len(), self).get_unchecked_mut(slice) }
     }
 

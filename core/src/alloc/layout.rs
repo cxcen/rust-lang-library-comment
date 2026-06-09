@@ -1,8 +1,6 @@
-// Seemingly inconsequential code changes to this file can lead to measurable
-// performance impact on compilation times, due at least in part to the fact
-// that the layout code gets called from many instantiations of the various
-// collections, resulting in having to optimize down excess IR multiple times.
-// Your performance intuition is useless. Run perf.
+// 对此文件看似无关紧要的代码改动也可能对编译时间产生可测量的性能影响；
+// 至少部分原因是 layout 代码会被各种集合类型的许多实例化调用，导致必须多次优化掉多余 IR。
+// 仅凭性能直觉不可靠。请运行 perf。
 
 use crate::error::Error;
 use crate::intrinsics::{unchecked_add, unchecked_mul, unchecked_sub};
@@ -10,55 +8,49 @@ use crate::mem::SizedTypeProperties;
 use crate::ptr::{Alignment, NonNull};
 use crate::{assert_unsafe_precondition, fmt, mem};
 
-/// Layout of a block of memory.
+/// 一块内存的 Layout。
 ///
-/// An instance of `Layout` describes a particular layout of memory.
-/// You build a `Layout` up as an input to give to an allocator.
+/// `Layout` 实例描述某种特定内存布局。
+/// 构造 `Layout` 后可将其作为输入传给 allocator。
 ///
-/// All layouts have an associated size and a power-of-two alignment. The size, when rounded up to
-/// the nearest multiple of `align`, does not overflow `isize` (i.e., the rounded value will always be
-/// less than or equal to `isize::MAX`).
+/// 所有 layout 都有关联的大小和二的幂对齐值。大小向上取整到最接近的 `align`
+/// 倍数时不会溢出 `isize`（也就是说，取整后的值始终小于或等于 `isize::MAX`）。
 ///
-/// (Note that layouts are *not* required to have non-zero size,
-/// even though `GlobalAlloc` requires that all memory requests
-/// be non-zero in size. A caller must either ensure that conditions
-/// like this are met, use specific allocators with looser
-/// requirements, or use the more lenient `Allocator` interface.)
+/// （注意，layout *不*要求大小非零，尽管 `GlobalAlloc` 要求所有内存请求的大小都非零。
+/// 调用者必须自行确保满足这类条件，或使用要求更宽松的特定 allocator，
+/// 或使用更宽松的 `Allocator` 接口。）
 #[stable(feature = "alloc_layout", since = "1.28.0")]
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 #[lang = "alloc_layout"]
 pub struct Layout {
-    // size of the requested block of memory, measured in bytes.
+    // 请求的内存块大小，以字节为单位。
     size: usize,
 
-    // alignment of the requested block of memory, measured in bytes.
-    // we ensure that this is always a power-of-two, because API's
-    // like `posix_memalign` require it and it is a reasonable
-    // constraint to impose on Layout constructors.
+    // 请求的内存块对齐值，以字节为单位。
+    // 保证它始终是二的幂，因为 `posix_memalign` 等 API 要求如此，
+    // 这也是对 Layout 构造器施加的合理约束。
     //
-    // (However, we do not analogously require `align >= sizeof(void*)`,
-    //  even though that is *also* a requirement of `posix_memalign`.)
+    // （不过，虽然 `posix_memalign` 同样要求 `align >= sizeof(void*)`，
+    //  这里不会类比地施加该要求。）
     align: Alignment,
 }
 
 impl Layout {
-    /// Constructs a `Layout` from a given `size` and `align`,
-    /// or returns `LayoutError` if any of the following conditions
-    /// are not met:
+    /// 根据给定的 `size` 和 `align` 构造 `Layout`；如果不满足以下任一条件，
+    /// 则返回 `LayoutError`：
     ///
-    /// * `align` must not be zero,
+    /// * `align` 不能为零，
     ///
-    /// * `align` must be a power of two,
+    /// * `align` 必须是二的幂，
     ///
-    /// * `size`, when rounded up to the nearest multiple of `align`,
-    ///   must not overflow `isize` (i.e., the rounded value must be
-    ///   less than or equal to `isize::MAX`).
+    /// * `size` 向上取整到最接近的 `align` 倍数时不能溢出 `isize`
+    ///   （也就是说，取整后的值必须小于或等于 `isize::MAX`）。
     #[stable(feature = "alloc_layout", since = "1.28.0")]
     #[rustc_const_stable(feature = "const_alloc_layout_size_align", since = "1.50.0")]
     #[inline]
     pub const fn from_size_align(size: usize, align: usize) -> Result<Self, LayoutError> {
         if Layout::is_size_align_valid(size, align) {
-            // SAFETY: Layout::is_size_align_valid checks the preconditions for this call.
+            // SAFETY: Layout::is_size_align_valid 已检查此调用所需的前置条件。
             unsafe { Ok(Layout { size, align: mem::transmute(align) }) }
         } else {
             Err(LayoutError)
@@ -76,43 +68,41 @@ impl Layout {
 
     #[inline(always)]
     const fn max_size_for_align(align: Alignment) -> usize {
-        // (power-of-two implies align != 0.)
+        // （二的幂意味着 align != 0。）
 
-        // Rounded up size is:
+        // 向上取整后的大小为：
         //   size_rounded_up = (size + align - 1) & !(align - 1);
         //
-        // We know from above that align != 0. If adding (align - 1)
-        // does not overflow, then rounding up will be fine.
+        // 从上面可知 align != 0。如果加上 (align - 1) 不溢出，
+        // 则向上取整也没问题。
         //
-        // Conversely, &-masking with !(align - 1) will subtract off
-        // only low-order-bits. Thus if overflow occurs with the sum,
-        // the &-mask cannot subtract enough to undo that overflow.
+        // 反过来，用 !(align - 1) 做 & 掩码只会减去低位 bit。
+        // 因此如果求和已经溢出，该 & 掩码不可能减去足够多的值来撤销该溢出。
         //
-        // Above implies that checking for summation overflow is both
-        // necessary and sufficient.
+        // 由此可知，检查求和是否溢出既是必要条件也是充分条件。
 
-        // SAFETY: the maximum possible alignment is `isize::MAX + 1`,
-        // so the subtraction cannot overflow.
+        // SAFETY: 最大可能对齐值是 `isize::MAX + 1`，因此该减法不会溢出。
         unsafe { unchecked_sub(isize::MAX as usize + 1, align.as_usize()) }
     }
 
-    /// Internal helper constructor to skip revalidating alignment validity.
+    /// 内部辅助构造器，用于跳过对齐有效性的重复校验。
     #[inline]
     const fn from_size_alignment(size: usize, align: Alignment) -> Result<Self, LayoutError> {
         if size > Self::max_size_for_align(align) {
             return Err(LayoutError);
         }
 
-        // SAFETY: Layout::size invariants checked above.
+        // SAFETY: 上面已检查 Layout::size 的不变量。
         Ok(Layout { size, align })
     }
 
-    /// Creates a layout, bypassing all checks.
+    /// 创建 layout，绕过所有检查。
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// This function is unsafe as it does not verify the preconditions from
-    /// [`Layout::from_size_align`].
+    /// 此函数不会验证 [`Layout::from_size_align`] 的前置条件，因此是不安全的。
+    /// 调用者必须保证 `align` 非零且为二的幂，并且 `size` 按 `align` 向上取整后
+    /// 不超过 `isize::MAX`。
     #[stable(feature = "alloc_layout", since = "1.28.0")]
     #[rustc_const_stable(feature = "const_alloc_layout_unchecked", since = "1.36.0")]
     #[must_use]
@@ -128,11 +118,11 @@ impl Layout {
                 align: usize = align,
             ) => Layout::is_size_align_valid(size, align)
         );
-        // SAFETY: the caller is required to uphold the preconditions.
+        // SAFETY: 调用者必须保证这些前置条件成立。
         unsafe { Layout { size, align: mem::transmute(align) } }
     }
 
-    /// The minimum size in bytes for a memory block of this layout.
+    /// 此 layout 的内存块所需的最小字节数。
     #[stable(feature = "alloc_layout", since = "1.28.0")]
     #[rustc_const_stable(feature = "const_alloc_layout_size_align", since = "1.50.0")]
     #[must_use]
@@ -141,9 +131,9 @@ impl Layout {
         self.size
     }
 
-    /// The minimum byte alignment for a memory block of this layout.
+    /// 此 layout 的内存块所需的最小字节对齐值。
     ///
-    /// The returned alignment is guaranteed to be a power of two.
+    /// 返回的对齐值保证是二的幂。
     #[stable(feature = "alloc_layout", since = "1.28.0")]
     #[rustc_const_stable(feature = "const_alloc_layout_size_align", since = "1.50.0")]
     #[must_use = "this returns the minimum alignment, \
@@ -153,7 +143,7 @@ impl Layout {
         self.align.as_usize()
     }
 
-    /// Constructs a `Layout` suitable for holding a value of type `T`.
+    /// 构造适合容纳 `T` 类型值的 `Layout`。
     #[stable(feature = "alloc_layout", since = "1.28.0")]
     #[rustc_const_stable(feature = "alloc_layout_const_new", since = "1.42.0")]
     #[must_use]
@@ -162,61 +152,53 @@ impl Layout {
         <T as SizedTypeProperties>::LAYOUT
     }
 
-    /// Produces layout describing a record that could be used to
-    /// allocate backing structure for `T` (which could be a trait
-    /// or other unsized type like a slice).
+    /// 生成描述某条记录的 layout，可用于为 `T` 分配后备结构
+    /// （`T` 可以是 trait 或 slice 等其他 unsized 类型）。
     #[stable(feature = "alloc_layout", since = "1.28.0")]
     #[rustc_const_stable(feature = "const_alloc_layout", since = "1.85.0")]
     #[must_use]
     #[inline]
     pub const fn for_value<T: ?Sized>(t: &T) -> Self {
         let (size, align) = (size_of_val(t), align_of_val(t));
-        // SAFETY: see rationale in `new` for why this is using the unsafe variant
+        // SAFETY: 这里使用 unsafe 变体的理由见 `new` 中的说明。
         unsafe { Layout::from_size_align_unchecked(size, align) }
     }
 
-    /// Produces layout describing a record that could be used to
-    /// allocate backing structure for `T` (which could be a trait
-    /// or other unsized type like a slice).
+    /// 生成描述某条记录的 layout，可用于为 `T` 分配后备结构
+    /// （`T` 可以是 trait 或 slice 等其他 unsized 类型）。
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// This function is only safe to call if the following conditions hold:
+    /// 只有满足以下条件时，调用此函数才是安全的：
     ///
-    /// - If `T` is `Sized`, this function is always safe to call.
-    /// - If the unsized tail of `T` is:
-    ///     - a [slice], then the length of the slice tail must be an initialized
-    ///       integer, and the size of the *entire value*
-    ///       (dynamic tail length + statically sized prefix) must fit in `isize`.
-    ///       For the special case where the dynamic tail length is 0, this function
-    ///       is safe to call.
-    ///     - a [trait object], then the vtable part of the pointer must point
-    ///       to a valid vtable for the type `T` acquired by an unsizing coercion,
-    ///       and the size of the *entire value*
-    ///       (dynamic tail length + statically sized prefix) must fit in `isize`.
-    ///     - an (unstable) [extern type], then this function is always safe to
-    ///       call, but may panic or otherwise return the wrong value, as the
-    ///       extern type's layout is not known. This is the same behavior as
-    ///       [`Layout::for_value`] on a reference to an extern type tail.
-    ///     - otherwise, it is conservatively not allowed to call this function.
+    /// - 如果 `T` 是 `Sized`，此函数始终可以安全调用。
+    /// - 如果 `T` 的 unsized 尾部是：
+    ///     - [slice]，则 slice 尾部长度必须是已初始化的整数，且*整个值*的大小
+    ///       （动态尾部长度 + 静态大小前缀）必须能放入 `isize`。
+    ///       在动态尾部长度为 0 的特殊情况下，此函数可以安全调用。
+    ///     - [trait object]，则指针的 vtable 部分必须指向通过 unsizing coercion
+    ///       为类型 `T` 取得的有效 vtable，且*整个值*的大小
+    ///       （动态尾部长度 + 静态大小前缀）必须能放入 `isize`。
+    ///     - （不稳定的）[extern type]，则此函数始终可以安全调用，但由于 extern type
+    ///       的 layout 未知，它可能 panic 或以其他方式返回错误值。这与
+    ///       [`Layout::for_value`] 作用于带 extern type 尾部的引用时的行为相同。
+    ///     - 其他情况，则保守地不允许调用此函数。
     ///
     /// [trait object]: ../../book/ch17-02-trait-objects.html
     /// [extern type]: ../../unstable-book/language-features/extern-types.html
     #[unstable(feature = "layout_for_ptr", issue = "69835")]
     #[must_use]
     pub const unsafe fn for_value_raw<T: ?Sized>(t: *const T) -> Self {
-        // SAFETY: we pass along the prerequisites of these functions to the caller
+        // SAFETY: 这些函数的前置条件已作为本函数的安全前置条件转交给调用者。
         let (size, align) = unsafe { (mem::size_of_val_raw(t), mem::align_of_val_raw(t)) };
-        // SAFETY: see rationale in `new` for why this is using the unsafe variant
+        // SAFETY: 这里使用 unsafe 变体的理由见 `new` 中的说明。
         unsafe { Layout::from_size_align_unchecked(size, align) }
     }
 
-    /// Creates a `NonNull` that is dangling, but well-aligned for this Layout.
+    /// 创建一个 dangling 但对此 Layout 对齐良好的 `NonNull`。
     ///
-    /// Note that the address of the returned pointer may potentially
-    /// be that of a valid pointer, which means this must not be used
-    /// as a "not yet initialized" sentinel value.
-    /// Types that lazily allocate must track initialization by some other means.
+    /// 注意，返回指针的地址可能恰好也是某个有效指针的地址，因此不能把它用作
+    /// “尚未初始化”的哨兵值。惰性分配的类型必须用其他方式跟踪初始化状态。
     #[unstable(feature = "alloc_layout_extra", issue = "55724")]
     #[must_use]
     #[inline]
@@ -224,20 +206,16 @@ impl Layout {
         NonNull::without_provenance(self.align.as_nonzero())
     }
 
-    /// Creates a layout describing the record that can hold a value
-    /// of the same layout as `self`, but that also is aligned to
-    /// alignment `align` (measured in bytes).
+    /// 创建一个描述记录的 layout：它能容纳与 `self` 相同 layout 的值，
+    /// 同时还满足 `align`（以字节为单位）的对齐要求。
     ///
-    /// If `self` already meets the prescribed alignment, then returns
-    /// `self`.
+    /// 如果 `self` 已经满足指定对齐，则返回 `self`。
     ///
-    /// Note that this method does not add any padding to the overall
-    /// size, regardless of whether the returned layout has a different
-    /// alignment. In other words, if `K` has size 16, `K.align_to(32)`
-    /// will *still* have size 16.
+    /// 注意，无论返回的 layout 是否具有不同的对齐值，此方法都不会给总大小添加任何 padding。
+    /// 换言之，如果 `K` 的大小为 16，`K.align_to(32)` 的大小*仍然*是 16。
     ///
-    /// Returns an error if the combination of `self.size()` and the given
-    /// `align` violates the conditions listed in [`Layout::from_size_align`].
+    /// 如果 `self.size()` 与给定 `align` 的组合违反 [`Layout::from_size_align`]
+    /// 中列出的条件，则返回错误。
     #[stable(feature = "alloc_layout_manipulation", since = "1.44.0")]
     #[rustc_const_stable(feature = "const_alloc_layout", since = "1.85.0")]
     #[inline]
@@ -249,108 +227,95 @@ impl Layout {
         }
     }
 
-    /// Returns the amount of padding we must insert after `self`
-    /// to ensure that the following address will satisfy `align`
-    /// (measured in bytes).
+    /// 返回必须在 `self` 之后插入多少 padding，才能确保后续地址满足 `align`
+    ///（以字节为单位）。
     ///
-    /// e.g., if `self.size()` is 9, then `self.padding_needed_for(4)`
-    /// returns 3, because that is the minimum number of bytes of
-    /// padding required to get a 4-aligned address (assuming that the
-    /// corresponding memory block starts at a 4-aligned address).
+    /// 例如，如果 `self.size()` 为 9，则 `self.padding_needed_for(4)` 返回 3，
+    /// 因为这是取得 4 对齐地址所需的最少 padding 字节数
+    /// （假设对应内存块从 4 对齐地址开始）。
     ///
-    /// The return value of this function has no meaning if `align` is
-    /// not a power-of-two.
+    /// 如果 `align` 不是二的幂，此函数的返回值没有意义。
     ///
-    /// Note that the utility of the returned value requires `align`
-    /// to be less than or equal to the alignment of the starting
-    /// address for the whole allocated block of memory. One way to
-    /// satisfy this constraint is to ensure `align <= self.align()`.
+    /// 注意，若要让返回值有用，`align` 必须小于或等于整个已分配内存块起始地址的对齐值。
+    /// 满足此约束的一种方式是确保 `align <= self.align()`。
     #[unstable(feature = "alloc_layout_extra", issue = "55724")]
     #[must_use = "this returns the padding needed, \
                   without modifying the `Layout`"]
     #[inline]
     pub const fn padding_needed_for(&self, align: usize) -> usize {
-        // FIXME: Can we just change the type on this to `Alignment`?
+        // FIXME: 这里能否直接把类型改成 `Alignment`？
         let Some(align) = Alignment::new(align) else { return usize::MAX };
         let len_rounded_up = self.size_rounded_up_to_custom_align(align);
-        // SAFETY: Cannot overflow because the rounded-up value is never less
+        // SAFETY: 不会溢出，因为向上取整后的值永远不会小于原大小。
         unsafe { unchecked_sub(len_rounded_up, self.size) }
     }
 
-    /// Returns the smallest multiple of `align` greater than or equal to `self.size()`.
+    /// 返回大于或等于 `self.size()` 的最小 `align` 倍数。
     ///
-    /// This can return at most `Alignment::MAX` (aka `isize::MAX + 1`)
-    /// because the original size is at most `isize::MAX`.
+    /// 因为原始大小至多为 `isize::MAX`，所以此函数返回值至多为
+    /// `Alignment::MAX`（也就是 `isize::MAX + 1`）。
     #[inline]
     const fn size_rounded_up_to_custom_align(&self, align: Alignment) -> usize {
         // SAFETY:
-        // Rounded up value is:
+        // 向上取整后的值为：
         //   size_rounded_up = (size + align - 1) & !(align - 1);
         //
-        // The arithmetic we do here can never overflow:
+        // 这里执行的算术永远不会溢出：
         //
-        // 1. align is guaranteed to be > 0, so align - 1 is always
-        //    valid.
+        // 1. align 保证 > 0，因此 align - 1 始终有效。
         //
-        // 2. size is at most `isize::MAX`, so adding `align - 1` (which is at
-        //    most `isize::MAX`) can never overflow a `usize`.
+        // 2. size 至多为 `isize::MAX`，因此加上 `align - 1`
+        //    （最大为 `isize::MAX`）永远不会溢出 `usize`。
         //
-        // 3. masking by the alignment can remove at most `align - 1`,
-        //    which is what we just added, thus the value we return is never
-        //    less than the original `size`.
+        // 3. 按对齐值做掩码最多移除 `align - 1`，也就是刚刚加上的值，
+        //    因此返回值永远不会小于原始 `size`。
         //
-        // (Size 0 Align MAX is already aligned, so stays the same, but things like
-        // Size 1 Align MAX or Size isize::MAX Align 2 round up to `isize::MAX + 1`.)
+        // （Size 0 Align MAX 已经对齐，所以保持不变；但 Size 1 Align MAX 或
+        // Size isize::MAX Align 2 这类情况会向上取整到 `isize::MAX + 1`。）
         unsafe {
             let align_m1 = unchecked_sub(align.as_usize(), 1);
             unchecked_add(self.size, align_m1) & !align_m1
         }
     }
 
-    /// Creates a layout by rounding the size of this layout up to a multiple
-    /// of the layout's alignment.
+    /// 通过将此 layout 的大小向上取整到其对齐值的倍数来创建 layout。
     ///
-    /// This is equivalent to adding the result of `padding_needed_for`
-    /// to the layout's current size.
+    /// 这等价于把 `padding_needed_for` 的结果加到 layout 的当前大小上。
     #[stable(feature = "alloc_layout_manipulation", since = "1.44.0")]
     #[rustc_const_stable(feature = "const_alloc_layout", since = "1.85.0")]
     #[must_use = "this returns a new `Layout`, \
                   without modifying the original"]
     #[inline]
     pub const fn pad_to_align(&self) -> Layout {
-        // This cannot overflow. Quoting from the invariant of Layout:
-        // > `size`, when rounded up to the nearest multiple of `align`,
-        // > must not overflow isize (i.e., the rounded value must be
-        // > less than or equal to `isize::MAX`)
+        // 这不会溢出。引用 Layout 的不变量：
+        // > `size` 向上取整到最接近的 `align` 倍数时不能溢出 isize
+        // >（也就是说，取整后的值必须小于或等于 `isize::MAX`）
         let new_size = self.size_rounded_up_to_custom_align(self.align);
 
-        // SAFETY: padded size is guaranteed to not exceed `isize::MAX`.
+        // SAFETY: padding 后的大小保证不会超过 `isize::MAX`。
         unsafe { Layout::from_size_align_unchecked(new_size, self.align()) }
     }
 
-    /// Creates a layout describing the record for `n` instances of
-    /// `self`, with a suitable amount of padding between each to
-    /// ensure that each instance is given its requested size and
-    /// alignment. On success, returns `(k, offs)` where `k` is the
-    /// layout of the array and `offs` is the distance between the start
-    /// of each element in the array.
+    /// 创建一个描述 `self` 的 `n` 个实例的记录 layout，并在实例之间加入合适数量的
+    /// padding，以确保每个实例都有请求的大小和对齐。成功时返回 `(k, offs)`，
+    /// 其中 `k` 是数组的 layout，`offs` 是数组中每个元素起始位置之间的距离。
     ///
-    /// (That distance between elements is sometimes known as "stride".)
+    /// （元素之间的这个距离有时称为 “stride”。）
     ///
-    /// On arithmetic overflow, returns `LayoutError`.
+    /// 算术溢出时返回 `LayoutError`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(alloc_layout_extra)]
     /// use std::alloc::Layout;
     ///
-    /// // All rust types have a size that's a multiple of their alignment.
+    /// // 所有 Rust 类型的大小都是其对齐值的倍数。
     /// let normal = Layout::from_size_align(12, 4).unwrap();
     /// let repeated = normal.repeat(3).unwrap();
     /// assert_eq!(repeated, (Layout::from_size_align(36, 4).unwrap(), 12));
     ///
-    /// // But you can manually make layouts which don't meet that rule.
+    /// // 但你可以手动构造不满足该规则的 layout。
     /// let padding_needed = Layout::from_size_align(6, 4).unwrap();
     /// let repeated = padding_needed.repeat(3).unwrap();
     /// assert_eq!(repeated, (Layout::from_size_align(24, 4).unwrap(), 8));
@@ -366,29 +331,24 @@ impl Layout {
         }
     }
 
-    /// Creates a layout describing the record for `self` followed by
-    /// `next`, including any necessary padding to ensure that `next`
-    /// will be properly aligned, but *no trailing padding*.
+    /// 创建一个描述 `self` 后跟 `next` 的记录 layout，其中包含必要 padding
+    /// 以确保 `next` 正确对齐，但*不包含尾部 padding*。
     ///
-    /// In order to match C representation layout `repr(C)`, you should
-    /// call `pad_to_align` after extending the layout with all fields.
-    /// (There is no way to match the default Rust representation
-    /// layout `repr(Rust)`, as it is unspecified.)
+    /// 为了匹配 C 表示 layout `repr(C)`，应在用所有字段扩展 layout 后调用
+    /// `pad_to_align`。（无法匹配默认 Rust 表示 layout `repr(Rust)`，
+    /// 因为它未被指定。）
     ///
-    /// Note that the alignment of the resulting layout will be the maximum of
-    /// those of `self` and `next`, in order to ensure alignment of both parts.
+    /// 注意，为了确保两部分都对齐，结果 layout 的对齐值将是 `self` 和 `next`
+    /// 对齐值中的较大者。
     ///
-    /// Returns `Ok((k, offset))`, where `k` is layout of the concatenated
-    /// record and `offset` is the relative location, in bytes, of the
-    /// start of the `next` embedded within the concatenated record
-    /// (assuming that the record itself starts at offset 0).
+    /// 返回 `Ok((k, offset))`，其中 `k` 是拼接后记录的 layout，`offset` 是嵌入在拼接
+    /// 记录中的 `next` 起始位置的相对字节位置（假设记录本身从偏移 0 开始）。
     ///
-    /// On arithmetic overflow, returns `LayoutError`.
+    /// 算术溢出时返回 `LayoutError`。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// To calculate the layout of a `#[repr(C)]` structure and the offsets of
-    /// the fields from its fields' layouts:
+    /// 根据字段 layout 计算 `#[repr(C)]` 结构体的 layout 和字段偏移：
     ///
     /// ```rust
     /// # use std::alloc::{Layout, LayoutError};
@@ -400,10 +360,10 @@ impl Layout {
     ///         layout = new_layout;
     ///         offsets.push(offset);
     ///     }
-    ///     // Remember to finalize with `pad_to_align`!
+    ///     // 记得最后用 `pad_to_align` 收尾！
     ///     Ok((layout.pad_to_align(), offsets))
     /// }
-    /// # // test that it works
+    /// # // 测试它能工作
     /// # #[repr(C)] struct S { a: u64, b: u32, c: u16, d: u32 }
     /// # let s = Layout::new::<S>();
     /// # let u16 = Layout::new::<u16>();
@@ -418,10 +378,10 @@ impl Layout {
         let new_align = Alignment::max(self.align, next.align);
         let offset = self.size_rounded_up_to_custom_align(next.align);
 
-        // SAFETY: `offset` is at most `isize::MAX + 1` (such as from aligning
-        // to `Alignment::MAX`) and `next.size` is at most `isize::MAX` (from the
-        // `Layout` type invariant).  Thus the largest possible `new_size` is
-        // `isize::MAX + 1 + isize::MAX`, which is `usize::MAX`, and cannot overflow.
+        // SAFETY: `offset` 至多为 `isize::MAX + 1`（例如对齐到 `Alignment::MAX`），
+        // 而 `next.size` 根据 `Layout` 类型不变量至多为 `isize::MAX`。
+        // 因此最大的可能 `new_size` 是 `isize::MAX + 1 + isize::MAX`，
+        // 即 `usize::MAX`，不会溢出。
         let new_size = unsafe { unchecked_add(offset, next.size) };
 
         if let Ok(layout) = Layout::from_size_alignment(new_size, new_align) {
@@ -431,84 +391,73 @@ impl Layout {
         }
     }
 
-    /// Creates a layout describing the record for `n` instances of
-    /// `self`, with no padding between each instance.
+    /// 创建一个描述 `self` 的 `n` 个实例的记录 layout，实例之间没有 padding。
     ///
-    /// Note that, unlike `repeat`, `repeat_packed` does not guarantee
-    /// that the repeated instances of `self` will be properly
-    /// aligned, even if a given instance of `self` is properly
-    /// aligned. In other words, if the layout returned by
-    /// `repeat_packed` is used to allocate an array, it is not
-    /// guaranteed that all elements in the array will be properly
-    /// aligned.
+    /// 注意，不同于 `repeat`，`repeat_packed` 不保证重复的 `self` 实例会正确对齐，
+    /// 即使某一个 `self` 实例本身是正确对齐的。换言之，如果使用 `repeat_packed`
+    /// 返回的 layout 分配数组，不保证数组中的所有元素都正确对齐。
     ///
-    /// On arithmetic overflow, returns `LayoutError`.
+    /// 算术溢出时返回 `LayoutError`。
     #[unstable(feature = "alloc_layout_extra", issue = "55724")]
     #[inline]
     pub const fn repeat_packed(&self, n: usize) -> Result<Self, LayoutError> {
         if let Some(size) = self.size.checked_mul(n) {
-            // The safe constructor is called here to enforce the isize size limit.
+            // 这里调用安全构造器以强制执行 isize 大小限制。
             Layout::from_size_alignment(size, self.align)
         } else {
             Err(LayoutError)
         }
     }
 
-    /// Creates a layout describing the record for `self` followed by
-    /// `next` with no additional padding between the two. Since no
-    /// padding is inserted, the alignment of `next` is irrelevant,
-    /// and is not incorporated *at all* into the resulting layout.
+    /// 创建一个描述 `self` 后跟 `next` 的记录 layout，两者之间没有额外 padding。
+    /// 由于没有插入 padding，`next` 的对齐值无关紧要，并且*完全不会*纳入结果 layout。
     ///
-    /// On arithmetic overflow, returns `LayoutError`.
+    /// 算术溢出时返回 `LayoutError`。
     #[unstable(feature = "alloc_layout_extra", issue = "55724")]
     #[inline]
     pub const fn extend_packed(&self, next: Self) -> Result<Self, LayoutError> {
-        // SAFETY: each `size` is at most `isize::MAX == usize::MAX/2`, so the
-        // sum is at most `usize::MAX/2*2 == usize::MAX - 1`, and cannot overflow.
+        // SAFETY: 每个 `size` 至多为 `isize::MAX == usize::MAX/2`，
+        // 因此和至多为 `usize::MAX/2*2 == usize::MAX - 1`，不会溢出。
         let new_size = unsafe { unchecked_add(self.size, next.size) };
-        // The safe constructor enforces that the new size isn't too big for the alignment
+        // 安全构造器会强制新大小相对于该对齐值不会过大。
         Layout::from_size_alignment(new_size, self.align)
     }
 
-    /// Creates a layout describing the record for a `[T; n]`.
+    /// 创建描述 `[T; n]` 记录的 layout。
     ///
-    /// On arithmetic overflow or when the total size would exceed
-    /// `isize::MAX`, returns `LayoutError`.
+    /// 算术溢出或总大小会超过 `isize::MAX` 时，返回 `LayoutError`。
     #[stable(feature = "alloc_layout_manipulation", since = "1.44.0")]
     #[rustc_const_stable(feature = "const_alloc_layout", since = "1.85.0")]
     #[inline]
     pub const fn array<T>(n: usize) -> Result<Self, LayoutError> {
-        // Reduce the amount of code we need to monomorphize per `T`.
+        // 减少每个 `T` 需要单态化的代码量。
         return inner(T::LAYOUT, n);
 
         #[inline]
         const fn inner(element_layout: Layout, n: usize) -> Result<Layout, LayoutError> {
             let Layout { size: element_size, align } = element_layout;
 
-            // We need to check two things about the size:
-            //  - That the total size won't overflow a `usize`, and
-            //  - That the total size still fits in an `isize`.
-            // By using division we can check them both with a single threshold.
-            // That'd usually be a bad idea, but thankfully here the element size
-            // and alignment are constants, so the compiler will fold all of it.
+            // 需要检查关于大小的两件事：
+            //  - 总大小不会溢出 `usize`，
+            //  - 总大小仍能放入 `isize`。
+            // 使用除法可以用单个阈值同时检查二者。这通常不是好主意，
+            // 但这里元素大小和对齐值都是常量，编译器会把它们全部折叠掉。
             if element_size != 0 && n > Layout::max_size_for_align(align) / element_size {
                 return Err(LayoutError);
             }
 
-            // SAFETY: We just checked that we won't overflow `usize` when we multiply.
-            // This is a useless hint inside this function, but after inlining this helps
-            // deduplicate checks for whether the overall capacity is zero (e.g., in RawVec's
-            // allocation path) before/after this multiplication.
+            // SAFETY: 刚刚已经检查过，乘法不会溢出 `usize`。
+            // 在此函数内部这是无用提示，但内联后，它有助于在该乘法前后去重
+            // “总体容量是否为零”的检查（例如 RawVec 的分配路径中）。
             let array_size = unsafe { unchecked_mul(element_size, n) };
 
-            // SAFETY: We just checked above that the `array_size` will not
-            // exceed `isize::MAX` even when rounded up to the alignment.
-            // And `Alignment` guarantees it's a power of two.
+            // SAFETY: 上面已经检查过，即使按对齐值向上取整，`array_size`
+            // 也不会超过 `isize::MAX`。并且 `Alignment` 保证它是二的幂。
             unsafe { Ok(Layout::from_size_align_unchecked(array_size, align.as_usize())) }
         }
     }
 
-    /// Perma-unstable access to `align` as `Alignment` type.
+    /// 永久不稳定接口：以 `Alignment` 类型访问 `align`。
     #[unstable(issue = "none", feature = "std_internals")]
     #[doc(hidden)]
     #[inline]
@@ -525,10 +474,8 @@ impl Layout {
 )]
 pub type LayoutErr = LayoutError;
 
-/// The `LayoutError` is returned when the parameters given
-/// to `Layout::from_size_align`
-/// or some other `Layout` constructor
-/// do not satisfy its documented constraints.
+/// 当传给 `Layout::from_size_align` 或其他 `Layout` 构造器的参数不满足其文档约束时，
+/// 会返回 `LayoutError`。
 #[stable(feature = "alloc_layout_error", since = "1.50.0")]
 #[non_exhaustive]
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -537,7 +484,7 @@ pub struct LayoutError;
 #[stable(feature = "alloc_layout", since = "1.28.0")]
 impl Error for LayoutError {}
 
-// (we need this for downstream impl of trait Error)
+// （下游的 trait Error impl 需要这个）
 #[stable(feature = "alloc_layout", since = "1.28.0")]
 impl fmt::Display for LayoutError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

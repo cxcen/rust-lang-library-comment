@@ -1,5 +1,5 @@
-Equivalent to C's `signed long long` (`long long`) type.
+等价于 C 的 `signed long long`(`long long`)类型。
 
-This type will almost always be [`i64`], but may differ on some systems. The C standard technically only requires that this type be a signed integer that is at least 64 bits and at least the size of a [`long`], although in practice, no system would have a `long long` that is not an `i64`, as most systems do not have a standardised [`i128`] type.
+本类型几乎总是 [`i64`],但在某些系统上可能不同。C 标准技术上只要求它是至少 64 位、且大小至少等于 [`long`] 的有符号整数;实践中几乎没有系统会让 `long long` 不是 `i64`,因为大多数系统没有标准化的 [`i128`] 类型。
 
 [`long`]: c_long

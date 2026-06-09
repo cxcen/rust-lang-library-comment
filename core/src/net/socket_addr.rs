@@ -2,22 +2,21 @@ use super::display_buffer::DisplayBuffer;
 use crate::fmt::{self, Write};
 use crate::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
-/// An internet socket address, either IPv4 or IPv6.
+/// 一个互联网 socket 地址，可以是 IPv4 或 IPv6。
 ///
-/// Internet socket addresses consist of an [IP address], a 16-bit port number, as well
-/// as possibly some version-dependent additional information. See [`SocketAddrV4`]'s and
-/// [`SocketAddrV6`]'s respective documentation for more details.
+/// 互联网 socket 地址由一个 [IP address]、一个 16 位端口号组成；对某些 IP
+/// 版本来说，还会携带额外的版本相关信息。IPv4 与 IPv6 的具体字段语义分别见
+/// [`SocketAddrV4`] 和 [`SocketAddrV6`] 的文档。
 ///
 /// [IP address]: IpAddr
 ///
-/// # Portability
+/// # 可移植性
 ///
-/// `SocketAddr` is intended to be a portable representation of socket addresses and is likely not
-/// the same as the internal socket address type used by the target operating system's API. Like all
-/// `repr(Rust)` structs, however, its exact layout remains undefined and should not be relied upon
-/// between builds.
+/// `SocketAddr` 旨在作为 socket 地址的可移植表示；它通常不同于目标操作系统 API
+/// 内部使用的 socket 地址类型。不过，和所有 `repr(Rust)` 结构一样，它的精确布局
+/// 仍未定义，不能在不同构建之间依赖该布局。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -31,41 +30,39 @@ use crate::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[stable(feature = "rust1", since = "1.0.0")]
 pub enum SocketAddr {
-    /// An IPv4 socket address.
+    /// IPv4 socket 地址。
     #[stable(feature = "rust1", since = "1.0.0")]
     V4(#[stable(feature = "rust1", since = "1.0.0")] SocketAddrV4),
-    /// An IPv6 socket address.
+    /// IPv6 socket 地址。
     #[stable(feature = "rust1", since = "1.0.0")]
     V6(#[stable(feature = "rust1", since = "1.0.0")] SocketAddrV6),
 }
 
-/// An IPv4 socket address.
+/// 一个 IPv4 socket 地址。
 ///
-/// IPv4 socket addresses consist of an [`IPv4` address] and a 16-bit port number, as
-/// stated in [IETF RFC 793].
+/// IPv4 socket 地址由一个 [`IPv4` address] 和一个 16 位端口号组成，
+/// 如 [IETF RFC 793] 所述。
 ///
-/// See [`SocketAddr`] for a type encompassing both IPv4 and IPv6 socket addresses.
+/// 需要同时覆盖 IPv4 和 IPv6 socket 地址的类型时，请参见 [`SocketAddr`]。
 ///
 /// [IETF RFC 793]: https://tools.ietf.org/html/rfc793
 /// [`IPv4` address]: Ipv4Addr
 ///
-/// # Portability
+/// # 可移植性
 ///
-/// `SocketAddrV4` is intended to be a portable representation of socket addresses and is likely not
-/// the same as the internal socket address type used by the target operating system's API. Like all
-/// `repr(Rust)` structs, however, its exact layout remains undefined and should not be relied upon
-/// between builds.
+/// `SocketAddrV4` 旨在作为 IPv4 socket 地址的可移植表示；它通常不同于目标操作系统
+/// API 内部使用的 IPv4 socket 地址结构。不过，和所有 `repr(Rust)` 结构一样，
+/// 它的精确布局仍未定义，不能在不同构建之间依赖该布局。
 ///
-/// # Textual representation
+/// # 文本表示
 ///
-/// `SocketAddrV4` provides a [`FromStr`](crate::str::FromStr) implementation.
-/// It accepts an IPv4 address in its [textual representation], followed by a
-/// single `:`, followed by the port encoded as a decimal integer.  Other
-/// formats are not accepted.
+/// `SocketAddrV4` 提供 [`FromStr`](crate::str::FromStr) 实现。它接受一个采用
+/// [textual representation] 的 IPv4 地址，后接一个 `:`，再后接以十进制整数编码的端口号。
+/// 其他格式不会被接受。
 ///
 /// [textual representation]: Ipv4Addr#textual-representation
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use std::net::{Ipv4Addr, SocketAddrV4};
@@ -83,51 +80,47 @@ pub struct SocketAddrV4 {
     port: u16,
 }
 
-/// An IPv6 socket address.
+/// 一个 IPv6 socket 地址。
 ///
-/// IPv6 socket addresses consist of an [`IPv6` address], a 16-bit port number, as well
-/// as fields containing the traffic class, the flow label, and a scope identifier
-/// (see [IETF RFC 2553, Section 3.3] for more details).
+/// IPv6 socket 地址由一个 [`IPv6` address]、一个 16 位端口号，以及包含 traffic class、
+/// flow label 和 scope identifier 的字段组成（详情见 [IETF RFC 2553, Section 3.3]）。
 ///
-/// See [`SocketAddr`] for a type encompassing both IPv4 and IPv6 socket addresses.
+/// 需要同时覆盖 IPv4 和 IPv6 socket 地址的类型时，请参见 [`SocketAddr`]。
 ///
 /// [IETF RFC 2553, Section 3.3]: https://tools.ietf.org/html/rfc2553#section-3.3
 /// [`IPv6` address]: Ipv6Addr
 ///
-/// # Portability
+/// # 可移植性
 ///
-/// `SocketAddrV6` is intended to be a portable representation of socket addresses and is likely not
-/// the same as the internal socket address type used by the target operating system's API. Like all
-/// `repr(Rust)` structs, however, its exact layout remains undefined and should not be relied upon
-/// between builds.
+/// `SocketAddrV6` 旨在作为 IPv6 socket 地址的可移植表示；它通常不同于目标操作系统
+/// API 内部使用的 IPv6 socket 地址结构。不过，和所有 `repr(Rust)` 结构一样，
+/// 它的精确布局仍未定义，不能在不同构建之间依赖该布局。
 ///
-/// # Textual representation
+/// # 文本表示
 ///
-/// `SocketAddrV6` provides a [`FromStr`](crate::str::FromStr) implementation,
-/// based on the bracketed format recommended by [IETF RFC 5952],
-/// with scope identifiers based on those specified in [IETF RFC 4007].
+/// `SocketAddrV6` 提供 [`FromStr`](crate::str::FromStr) 实现。该实现基于
+/// [IETF RFC 5952] 推荐的方括号格式，并按 [IETF RFC 4007] 中的规则处理
+/// scope identifier。
 ///
-/// It accepts addresses consisting of the following elements, in order:
-///   - A left square bracket (`[`)
-///   - The [textual representation] of an IPv6 address
-///   - _Optionally_, a percent sign (`%`) followed by the scope identifier
-///     encoded as a decimal integer
-///   - A right square bracket (`]`)
-///   - A colon (`:`)
-///   - The port, encoded as a decimal integer.
+/// 它接受按以下顺序组成的地址：
+///   - 左方括号（`[`）
+///   - IPv6 地址的 [textual representation]
+///   - _可选地_，一个百分号（`%`），后接以十进制整数编码的 scope identifier
+///   - 右方括号（`]`）
+///   - 冒号（`:`）
+///   - 以十进制整数编码的端口号。
 ///
-/// For example, the string `[2001:db8::413]:443` represents a `SocketAddrV6`
-/// with the address `2001:db8::413` and port `443`.  The string
-/// `[2001:db8::413%612]:443` represents the same address and port, with a
-/// scope identifier of `612`.
+/// 例如，字符串 `[2001:db8::413]:443` 表示地址为 `2001:db8::413`、端口为 `443`
+/// 的 `SocketAddrV6`。字符串 `[2001:db8::413%612]:443` 表示相同的地址和端口，
+/// 但额外带有值为 `612` 的 scope identifier。
 ///
-/// Other formats are not accepted.
+/// 其他格式不会被接受。
 ///
 /// [IETF RFC 5952]: https://tools.ietf.org/html/rfc5952#section-6
 /// [IETF RFC 4007]: https://tools.ietf.org/html/rfc4007#section-11
 /// [textual representation]: Ipv6Addr#textual-representation
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use std::net::{Ipv6Addr, SocketAddrV6};
@@ -152,11 +145,11 @@ pub struct SocketAddrV6 {
 }
 
 impl SocketAddr {
-    /// Creates a new socket address from an [IP address] and a port number.
+    /// 根据 [IP address] 和端口号创建新的 socket 地址。
     ///
     /// [IP address]: IpAddr
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -176,9 +169,9 @@ impl SocketAddr {
         }
     }
 
-    /// Returns the IP address associated with this socket address.
+    /// 返回与此 socket 地址关联的 IP 地址。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -197,9 +190,9 @@ impl SocketAddr {
         }
     }
 
-    /// Changes the IP address associated with this socket address.
+    /// 修改与此 socket 地址关联的 IP 地址。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -212,7 +205,7 @@ impl SocketAddr {
     #[stable(feature = "sockaddr_setters", since = "1.9.0")]
     #[rustc_const_stable(feature = "const_sockaddr_setters", since = "1.87.0")]
     pub const fn set_ip(&mut self, new_ip: IpAddr) {
-        // `match (*self, new_ip)` would have us mutate a copy of self only to throw it away.
+        // `match (*self, new_ip)` 只会修改 `self` 的副本，随后又丢弃该副本。
         match (self, new_ip) {
             (&mut SocketAddr::V4(ref mut a), IpAddr::V4(new_ip)) => a.set_ip(new_ip),
             (&mut SocketAddr::V6(ref mut a), IpAddr::V6(new_ip)) => a.set_ip(new_ip),
@@ -220,9 +213,9 @@ impl SocketAddr {
         }
     }
 
-    /// Returns the port number associated with this socket address.
+    /// 返回与此 socket 地址关联的端口号。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -241,9 +234,9 @@ impl SocketAddr {
         }
     }
 
-    /// Changes the port number associated with this socket address.
+    /// 修改与此 socket 地址关联的端口号。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -262,13 +255,13 @@ impl SocketAddr {
         }
     }
 
-    /// Returns [`true`] if the [IP address] in this `SocketAddr` is an
-    /// [`IPv4` address], and [`false`] otherwise.
+    /// 如果此 `SocketAddr` 中的 [IP address] 是 [`IPv4` address]，则返回 [`true`]；
+    /// 否则返回 [`false`]。
     ///
     /// [IP address]: IpAddr
     /// [`IPv4` address]: IpAddr::V4
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -285,13 +278,13 @@ impl SocketAddr {
         matches!(*self, SocketAddr::V4(_))
     }
 
-    /// Returns [`true`] if the [IP address] in this `SocketAddr` is an
-    /// [`IPv6` address], and [`false`] otherwise.
+    /// 如果此 `SocketAddr` 中的 [IP address] 是 [`IPv6` address]，则返回 [`true`]；
+    /// 否则返回 [`false`]。
     ///
     /// [IP address]: IpAddr
     /// [`IPv6` address]: IpAddr::V6
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::{IpAddr, Ipv6Addr, SocketAddr};
@@ -310,11 +303,11 @@ impl SocketAddr {
 }
 
 impl SocketAddrV4 {
-    /// Creates a new socket address from an [`IPv4` address] and a port number.
+    /// 根据 [`IPv4` address] 和端口号创建新的 socket 地址。
     ///
     /// [`IPv4` address]: Ipv4Addr
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::{SocketAddrV4, Ipv4Addr};
@@ -329,9 +322,9 @@ impl SocketAddrV4 {
         SocketAddrV4 { ip, port }
     }
 
-    /// Returns the IP address associated with this socket address.
+    /// 返回与此 socket 地址关联的 IP 地址。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::{SocketAddrV4, Ipv4Addr};
@@ -347,9 +340,9 @@ impl SocketAddrV4 {
         &self.ip
     }
 
-    /// Changes the IP address associated with this socket address.
+    /// 修改与此 socket 地址关联的 IP 地址。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::{SocketAddrV4, Ipv4Addr};
@@ -365,9 +358,9 @@ impl SocketAddrV4 {
         self.ip = new_ip;
     }
 
-    /// Returns the port number associated with this socket address.
+    /// 返回与此 socket 地址关联的端口号。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::{SocketAddrV4, Ipv4Addr};
@@ -383,9 +376,9 @@ impl SocketAddrV4 {
         self.port
     }
 
-    /// Changes the port number associated with this socket address.
+    /// 修改与此 socket 地址关联的端口号。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::{SocketAddrV4, Ipv4Addr};
@@ -403,16 +396,15 @@ impl SocketAddrV4 {
 }
 
 impl SocketAddrV6 {
-    /// Creates a new socket address from an [`IPv6` address], a 16-bit port number,
-    /// and the `flowinfo` and `scope_id` fields.
+    /// 根据 [`IPv6` address]、16 位端口号以及 `flowinfo` 和 `scope_id` 字段
+    /// 创建新的 socket 地址。
     ///
-    /// For more information on the meaning and layout of the `flowinfo` and `scope_id`
-    /// parameters, see [IETF RFC 2553, Section 3.3].
+    /// `flowinfo` 和 `scope_id` 参数的含义与布局见 [IETF RFC 2553, Section 3.3]。
     ///
     /// [IETF RFC 2553, Section 3.3]: https://tools.ietf.org/html/rfc2553#section-3.3
     /// [`IPv6` address]: Ipv6Addr
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::{SocketAddrV6, Ipv6Addr};
@@ -427,9 +419,9 @@ impl SocketAddrV6 {
         SocketAddrV6 { ip, port, flowinfo, scope_id }
     }
 
-    /// Returns the IP address associated with this socket address.
+    /// 返回与此 socket 地址关联的 IP 地址。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::{SocketAddrV6, Ipv6Addr};
@@ -445,9 +437,9 @@ impl SocketAddrV6 {
         &self.ip
     }
 
-    /// Changes the IP address associated with this socket address.
+    /// 修改与此 socket 地址关联的 IP 地址。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::{SocketAddrV6, Ipv6Addr};
@@ -463,9 +455,9 @@ impl SocketAddrV6 {
         self.ip = new_ip;
     }
 
-    /// Returns the port number associated with this socket address.
+    /// 返回与此 socket 地址关联的端口号。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::{SocketAddrV6, Ipv6Addr};
@@ -481,9 +473,9 @@ impl SocketAddrV6 {
         self.port
     }
 
-    /// Changes the port number associated with this socket address.
+    /// 修改与此 socket 地址关联的端口号。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::{SocketAddrV6, Ipv6Addr};
@@ -499,19 +491,18 @@ impl SocketAddrV6 {
         self.port = new_port;
     }
 
-    /// Returns the flow information associated with this address.
-    ///
-    /// This information corresponds to the `sin6_flowinfo` field in C's `netinet/in.h`,
-    /// as specified in [IETF RFC 2553, Section 3.3].
-    /// It combines information about the flow label and the traffic class as specified
-    /// in [IETF RFC 2460], respectively [Section 6] and [Section 7].
+    /// 返回与此地址关联的 flow information。
+///
+    /// 该信息对应 C 的 `netinet/in.h` 中的 `sin6_flowinfo` 字段，如
+    /// [IETF RFC 2553, Section 3.3] 所述。它组合了 flow label 和 traffic class
+    /// 信息；两者分别由 [IETF RFC 2460] 的 [Section 6] 和 [Section 7] 规定。
     ///
     /// [IETF RFC 2553, Section 3.3]: https://tools.ietf.org/html/rfc2553#section-3.3
     /// [IETF RFC 2460]: https://tools.ietf.org/html/rfc2460
     /// [Section 6]: https://tools.ietf.org/html/rfc2460#section-6
     /// [Section 7]: https://tools.ietf.org/html/rfc2460#section-7
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::{SocketAddrV6, Ipv6Addr};
@@ -527,11 +518,11 @@ impl SocketAddrV6 {
         self.flowinfo
     }
 
-    /// Changes the flow information associated with this socket address.
+    /// 修改与此 socket 地址关联的 flow information。
+///
+    /// 更多细节请参见 [`SocketAddrV6::flowinfo`] 的文档。
     ///
-    /// See [`SocketAddrV6::flowinfo`]'s documentation for more details.
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::{SocketAddrV6, Ipv6Addr};
@@ -547,14 +538,14 @@ impl SocketAddrV6 {
         self.flowinfo = new_flowinfo;
     }
 
-    /// Returns the scope ID associated with this address.
-    ///
-    /// This information corresponds to the `sin6_scope_id` field in C's `netinet/in.h`,
-    /// as specified in [IETF RFC 2553, Section 3.3].
+    /// 返回与此地址关联的 scope ID。
+///
+    /// 该信息对应 C 的 `netinet/in.h` 中的 `sin6_scope_id` 字段，如
+    /// [IETF RFC 2553, Section 3.3] 所述。
     ///
     /// [IETF RFC 2553, Section 3.3]: https://tools.ietf.org/html/rfc2553#section-3.3
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::{SocketAddrV6, Ipv6Addr};
@@ -570,11 +561,11 @@ impl SocketAddrV6 {
         self.scope_id
     }
 
-    /// Changes the scope ID associated with this socket address.
+    /// 修改与此 socket 地址关联的 scope ID。
+///
+    /// 更多细节请参见 [`SocketAddrV6::scope_id`] 的文档。
     ///
-    /// See [`SocketAddrV6::scope_id`]'s documentation for more details.
-    ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::net::{SocketAddrV6, Ipv6Addr};
@@ -594,7 +585,7 @@ impl SocketAddrV6 {
 #[stable(feature = "ip_from_ip", since = "1.16.0")]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
 impl const From<SocketAddrV4> for SocketAddr {
-    /// Converts a [`SocketAddrV4`] into a [`SocketAddr::V4`].
+    /// 将 [`SocketAddrV4`] 转换为 [`SocketAddr::V4`]。
     #[inline]
     fn from(sock4: SocketAddrV4) -> SocketAddr {
         SocketAddr::V4(sock4)
@@ -604,7 +595,7 @@ impl const From<SocketAddrV4> for SocketAddr {
 #[stable(feature = "ip_from_ip", since = "1.16.0")]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
 impl const From<SocketAddrV6> for SocketAddr {
-    /// Converts a [`SocketAddrV6`] into a [`SocketAddr::V6`].
+    /// 将 [`SocketAddrV6`] 转换为 [`SocketAddr::V6`]。
     #[inline]
     fn from(sock6: SocketAddrV6) -> SocketAddr {
         SocketAddr::V6(sock6)
@@ -614,12 +605,12 @@ impl const From<SocketAddrV6> for SocketAddr {
 #[stable(feature = "addr_from_into_ip", since = "1.17.0")]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
 impl<I: [const] Into<IpAddr>> const From<(I, u16)> for SocketAddr {
-    /// Converts a tuple struct (Into<[`IpAddr`]>, `u16`) into a [`SocketAddr`].
-    ///
-    /// This conversion creates a [`SocketAddr::V4`] for an [`IpAddr::V4`]
-    /// and creates a [`SocketAddr::V6`] for an [`IpAddr::V6`].
-    ///
-    /// `u16` is treated as port of the newly created [`SocketAddr`].
+    /// 将元组结构（Into<[`IpAddr`]>, `u16`）转换为 [`SocketAddr`]。
+///
+    /// 该转换会为 [`IpAddr::V4`] 创建 [`SocketAddr::V4`]，为 [`IpAddr::V6`]
+    /// 创建 [`SocketAddr::V6`]。
+///
+    /// `u16` 会被视为新建 [`SocketAddr`] 的端口号。
     fn from(pieces: (I, u16)) -> SocketAddr {
         SocketAddr::new(pieces.0.into(), pieces.1)
     }
@@ -645,15 +636,15 @@ impl fmt::Debug for SocketAddr {
 #[stable(feature = "rust1", since = "1.0.0")]
 impl fmt::Display for SocketAddrV4 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // If there are no alignment requirements, write the socket address directly to `f`.
-        // Otherwise, write it to a local buffer and then use `f.pad`.
+        // 如果没有对齐要求，则直接把 socket 地址写入 `f`。
+        // 否则先写入本地缓冲区，再调用 `f.pad`。
         if f.precision().is_none() && f.width().is_none() {
             write!(f, "{}:{}", self.ip(), self.port())
         } else {
             const LONGEST_IPV4_SOCKET_ADDR: &str = "255.255.255.255:65535";
 
             let mut buf = DisplayBuffer::<{ LONGEST_IPV4_SOCKET_ADDR.len() }>::new();
-            // Buffer is long enough for the longest possible IPv4 socket address, so this should never fail.
+            // 缓冲区足以容纳最长的 IPv4 socket 地址，因此这里不应失败。
             write!(buf, "{}:{}", self.ip(), self.port()).unwrap();
 
             f.pad(buf.as_str())
@@ -671,8 +662,8 @@ impl fmt::Debug for SocketAddrV4 {
 #[stable(feature = "rust1", since = "1.0.0")]
 impl fmt::Display for SocketAddrV6 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // If there are no alignment requirements, write the socket address directly to `f`.
-        // Otherwise, write it to a local buffer and then use `f.pad`.
+        // 如果没有对齐要求，则直接把 socket 地址写入 `f`。
+        // 否则先写入本地缓冲区，再调用 `f.pad`。
         if f.precision().is_none() && f.width().is_none() {
             match self.scope_id() {
                 0 => write!(f, "[{}]:{}", self.ip(), self.port()),
@@ -687,7 +678,7 @@ impl fmt::Display for SocketAddrV6 {
                 0 => write!(buf, "[{}]:{}", self.ip(), self.port()),
                 scope_id => write!(buf, "[{}%{}]:{}", self.ip(), scope_id, self.port()),
             }
-            // Buffer is long enough for the longest possible IPv6 socket address, so this should never fail.
+            // 缓冲区足以容纳最长的 IPv6 socket 地址，因此这里不应失败。
             .unwrap();
 
             f.pad(buf.as_str())

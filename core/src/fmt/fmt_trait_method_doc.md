@@ -1,8 +1,12 @@
-Formats the value using the given formatter.
+使用给定的 `Formatter` 格式化当前值。
 
-# Errors
+# 错误
 
-This function should return [`Err`] if, and only if, the provided [`Formatter`] returns [`Err`].
-String formatting is considered an infallible operation; this function only
-returns a [`Result`] because writing to the underlying stream might fail and it must
-provide a way to propagate the fact that an error has occurred back up the stack.
+当且仅当传入的 [`Formatter`] 返回 [`Err`] 时,此函数才应返回 [`Err`]。
+字符串格式化本身被视为不可失败的操作;此函数之所以返回 [`Result`],
+是因为底层输出流在接收文本时可能失败,而格式化协议必须提供一条路径,
+把“写入已经失败”这一事实向上传回调用栈。
+
+实现 `Display`、`Debug` 以及其他格式化 trait 时,不要把 [`Err`] 当作业务错误
+通道使用。它只表示 `Formatter` 背后的 `fmt::Write` 目标拒绝继续写入,
+例如 panic 消息、日志或 `write!` 链路中的最终输出目标已经失败。

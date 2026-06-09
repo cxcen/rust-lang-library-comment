@@ -1,8 +1,12 @@
-//! Unicode internals used in liballoc and libstd. Not public API.
+//! 供 liballoc 和 libstd 使用的 Unicode 内部表与查询函数，不是公开 API。
+//!
+//! 这里集中保存 `char` 和 `str` 方法依赖的 Unicode 属性、大小写转换和可打印性数据。
+//! 这些数据由 Unicode 标准版本驱动，会随标准升级而变化；调用方只应依赖标准库公开 API，
+//! 不应把本模块的表布局或压缩方式当作稳定契约。
 #![unstable(feature = "unicode_internals", issue = "none")]
 #![doc(hidden)]
 
-// for use in alloc, not re-exported in std.
+// 供 alloc 使用，但不会在 std 中重新导出。
 #[rustfmt::skip]
 pub use unicode_data::case_ignorable::lookup as Case_Ignorable;
 pub use unicode_data::cased::lookup as Cased;
@@ -21,14 +25,13 @@ pub(crate) mod printable;
 #[allow(unreachable_pub)]
 mod unicode_data;
 
-/// The version of [Unicode](https://www.unicode.org/) that the Unicode parts of
-/// `char` and `str` methods are based on.
+/// `char` 和 `str` 中 Unicode 相关方法所依据的
+/// [Unicode](https://www.unicode.org/) 版本。
 ///
-/// New versions of Unicode are released regularly and subsequently all methods
-/// in the standard library depending on Unicode are updated. Therefore the
-/// behavior of some `char` and `str` methods and the value of this constant
-/// changes over time. This is *not* considered to be a breaking change.
+/// Unicode 会定期发布新版本，标准库中依赖 Unicode 数据的方法也会随之更新。
+/// 因此，部分 `char` 和 `str` 方法的行为以及该常量的值会随时间变化；
+/// 这种随 Unicode 标准演进而发生的变化不视为破坏性变更。
 ///
-/// The version numbering scheme is explained in
-/// [Unicode 11.0 or later, Section 3.1 Versions of the Unicode Standard](https://www.unicode.org/versions/Unicode11.0.0/ch03.pdf#page=4).
+/// 版本号规则见
+/// [Unicode 11.0 或更高版本，3.1 节 Versions of the Unicode Standard](https://www.unicode.org/versions/Unicode11.0.0/ch03.pdf#page=4)。
 pub const UNICODE_VERSION: (u8, u8, u8) = unicode_data::UNICODE_VERSION;

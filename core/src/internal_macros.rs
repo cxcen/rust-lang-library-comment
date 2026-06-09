@@ -1,5 +1,5 @@
-// implements the unary operator "op &T"
-// based on "op T" where T is expected to be `Copy`able
+// 基于 "op T" 实现一元运算符 "op &T"，
+// 其中 T 预期可 `Copy`。
 macro_rules! forward_ref_unop {
     (impl $imp:ident, $method:ident for $t:ty, $(#[$attr:meta])+) => {
         $(#[$attr])+
@@ -14,8 +14,8 @@ macro_rules! forward_ref_unop {
     }
 }
 
-// implements binary operators "&T op U", "T op &U", "&T op &U"
-// based on "T op U" where T and U are expected to be `Copy`able
+// 基于 "T op U" 实现二元运算符 "&T op U"、"T op &U"、"&T op &U"，
+// 其中 T 和 U 预期可 `Copy`。
 macro_rules! forward_ref_binop {
     (impl $imp:ident, $method:ident for $t:ty, $u:ty, $(#[$attr:meta])+) => {
         $(#[$attr])+
@@ -53,8 +53,8 @@ macro_rules! forward_ref_binop {
     }
 }
 
-// implements "T op= &U", based on "T op= U"
-// where U is expected to be `Copy`able
+// 基于 "T op= U" 实现 "T op= &U"，
+// 其中 U 预期可 `Copy`。
 macro_rules! forward_ref_op_assign {
     (impl $imp:ident, $method:ident for $t:ty, $u:ty, $(#[$attr:meta])+) => {
         $(#[$attr])+
@@ -68,7 +68,7 @@ macro_rules! forward_ref_op_assign {
     }
 }
 
-/// Creates a zero-size type similar to a closure type, but named.
+/// 创建一个类似闭包类型但带有名称的零大小类型。
 macro_rules! impl_fn_for_zst {
     ($(
         $( #[$attr: meta] )*

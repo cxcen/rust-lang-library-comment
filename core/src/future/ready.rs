@@ -2,10 +2,9 @@ use crate::future::Future;
 use crate::pin::Pin;
 use crate::task::{Context, Poll};
 
-/// A future that is immediately ready with a value.
+/// 一个立即就绪、携带一个值的 future。
 ///
-/// This `struct` is created by [`ready()`]. See its
-/// documentation for more.
+/// 该 `struct` 由 [`ready()`] 创建。更多信息请参阅其文档。
 #[stable(feature = "future_readiness_fns", since = "1.48.0")]
 #[derive(Debug, Clone)]
 #[must_use = "futures do nothing unless you `.await` or poll them"]
@@ -25,13 +24,13 @@ impl<T> Future for Ready<T> {
 }
 
 impl<T> Ready<T> {
-    /// Consumes the `Ready`, returning the wrapped value.
+    /// 消耗这个 `Ready`,返回其中被包裹的值。
     ///
     /// # Panics
     ///
-    /// Will panic if this [`Ready`] was already polled to completion.
+    /// 如果该 [`Ready`] 已经被 poll 至完成,则会 panic。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::future;
@@ -47,13 +46,16 @@ impl<T> Ready<T> {
     }
 }
 
-/// Creates a future that is immediately ready with a value.
+/// 创建一个立即就绪、携带一个值的 future。
 ///
-/// Futures created through this function are functionally similar to those
-/// created through `async {}`. The main difference is that futures created
-/// through this function are named and implement `Unpin`.
+/// 通过本函数创建的 future,在功能上与通过 `async {}` 创建的 future 相似。主要区别在于:本函数
+/// 创建的 future 是具名的,并且实现了 `Unpin`。
 ///
-/// # Examples
+/// 它第一次被 `poll` 时会立即返回 `Poll::Ready(t)`。按照 [`Future`](crate::future::Future)
+/// 的完成契约,调用方在收到 `Ready` 后不得再次 poll 它;本类型内部会把值取走,因此完成后再次
+/// poll 会触发 panic。
+///
+/// # 示例
 ///
 /// ```
 /// use std::future;

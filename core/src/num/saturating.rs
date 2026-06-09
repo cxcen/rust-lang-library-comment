@@ -1,4 +1,8 @@
-//! Definitions of `Saturating<T>`.
+//! `Saturating<T>` 的定义。
+//!
+//! `Saturating` 把整数运算显式解释为饱和算术：当数学结果超出类型范围时，不回绕也不
+//! panic，而是夹到该类型的 `MIN` 或 `MAX`。这适合计数器、音频采样、像素通道等需要
+//! “到边界为止”的场景。
 
 use crate::fmt;
 use crate::ops::{
@@ -6,22 +10,17 @@ use crate::ops::{
     Mul, MulAssign, Neg, Not, Rem, RemAssign, Sub, SubAssign,
 };
 
-/// Provides intentionally-saturating arithmetic on `T`.
+/// 为 `T` 提供有意的 saturating 算术。
 ///
-/// Operations like `+` on `u32` values are intended to never overflow,
-/// and in some debug configurations overflow is detected and results
-/// in a panic. While most arithmetic falls into this category, some
-/// code explicitly expects and relies upon saturating arithmetic.
+/// 对 `u32` 这样的普通整数执行 `+` 时，通常认为溢出不是业务语义；某些 debug 配置会检测
+/// 溢出并 panic。但有些代码明确需要并依赖饱和语义，即结果超出范围时停在边界值。
 ///
-/// Saturating arithmetic can be achieved either through methods like
-/// `saturating_add`, or through the `Saturating<T>` type, which says that
-/// all standard arithmetic operations on the underlying value are
-/// intended to have saturating semantics.
+/// saturating 算术既可以通过 `saturating_add` 这类方法逐次表达，也可以通过
+/// `Saturating<T>` 类型表达。后者表示底层值上的标准算术操作整体都采用 saturating 语义。
 ///
-/// The underlying value can be retrieved through the `.0` index of the
-/// `Saturating` tuple.
+/// 可以通过 `Saturating` 元组的 `.0` 字段取回底层值。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use std::num::Saturating;
@@ -79,12 +78,12 @@ impl<T: fmt::UpperHex> fmt::UpperHex for Saturating<T> {
     }
 }
 
-// FIXME the correct implementation is not clear. Waiting for a real world use case at https://github.com/rust-lang/libs-team/issues/230
+// FIXME 正确实现尚不明确。等待真实用例，见 https://github.com/rust-lang/libs-team/issues/230
 //
 // #[allow(unused_macros)]
 // macro_rules! sh_impl_signed {
 //     ($t:ident, $f:ident) => {
-//         // FIXME what is the correct implementation here? see discussion https://github.com/rust-lang/rust/pull/87921#discussion_r695870065
+//         // FIXME 这里正确实现尚不清楚，见讨论 https://github.com/rust-lang/rust/pull/87921#discussion_r695870065
 //         //
 //         // #[unstable(feature = "saturating_int_impl", issue = "87920")]
 //         // impl Shl<$f> for Saturating<$t> {
@@ -188,7 +187,7 @@ impl<T: fmt::UpperHex> fmt::UpperHex for Saturating<T> {
 //     };
 // }
 //
-// // FIXME (#23545): uncomment the remaining impls
+// // FIXME (#23545): 取消注释剩余 impl。
 // macro_rules! sh_impl_all {
 //     ($($t:ident)*) => ($(
 //         //sh_impl_unsigned! { $t, u8 }
@@ -209,7 +208,7 @@ impl<T: fmt::UpperHex> fmt::UpperHex for Saturating<T> {
 //
 // sh_impl_all! { u8 u16 u32 u64 u128 usize i8 i16 i32 i64 i128 isize }
 
-// FIXME(30524): impl Op<T> for Saturating<T>, impl OpAssign<T> for Saturating<T>
+// FIXME(30524): 为 Saturating<T> 实现 Op<T> 和 OpAssign<T>。
 macro_rules! saturating_impl {
     ($($t:ty)*) => ($(
         #[stable(feature = "saturating_int_impl", since = "1.74.0")]
@@ -326,7 +325,7 @@ macro_rules! saturating_impl {
         #[stable(feature = "saturating_int_impl", since = "1.74.0")]
         #[rustc_const_unstable(feature = "const_ops", issue = "143802")] }
 
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         /// use std::num::Saturating;
@@ -553,9 +552,9 @@ saturating_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 }
 macro_rules! saturating_int_impl {
     ($($t:ty)*) => ($(
         impl Saturating<$t> {
-            /// Returns the smallest value that can be represented by this integer type.
+            /// 返回该整数类型能够表示的最小值。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             /// use std::num::Saturating;
@@ -565,9 +564,9 @@ macro_rules! saturating_int_impl {
             #[stable(feature = "saturating_int_impl", since = "1.74.0")]
             pub const MIN: Self = Self(<$t>::MIN);
 
-            /// Returns the largest value that can be represented by this integer type.
+            /// 返回该整数类型能够表示的最大值。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             /// use std::num::Saturating;
@@ -577,9 +576,9 @@ macro_rules! saturating_int_impl {
             #[stable(feature = "saturating_int_impl", since = "1.74.0")]
             pub const MAX: Self = Self(<$t>::MAX);
 
-            /// Returns the size of this integer type in bits.
+            /// 返回该整数类型的位宽。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             /// use std::num::Saturating;
@@ -589,9 +588,9 @@ macro_rules! saturating_int_impl {
             #[stable(feature = "saturating_int_impl", since = "1.74.0")]
             pub const BITS: u32 = <$t>::BITS;
 
-            /// Returns the number of ones in the binary representation of `self`.
+            /// 返回 `self` 的二进制表示中 1 的数量。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             /// use std::num::Saturating;
@@ -611,9 +610,9 @@ macro_rules! saturating_int_impl {
                 self.0.count_ones()
             }
 
-            /// Returns the number of zeros in the binary representation of `self`.
+            /// 返回 `self` 的二进制表示中 0 的数量。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             /// use std::num::Saturating;
@@ -629,9 +628,9 @@ macro_rules! saturating_int_impl {
                 self.0.count_zeros()
             }
 
-            /// Returns the number of trailing zeros in the binary representation of `self`.
+            /// 返回 `self` 的二进制表示中尾随 0 的数量。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             /// use std::num::Saturating;
@@ -649,14 +648,11 @@ macro_rules! saturating_int_impl {
                 self.0.trailing_zeros()
             }
 
-            /// Shifts the bits to the left by a specified amount, `n`,
-            /// saturating the truncated bits to the end of the resulting
-            /// integer.
+            /// 将位模式向左旋转指定数量 `n`，并把被截掉的高位绕回结果的低位。
             ///
-            /// Please note this isn't the same operation as the `<<` shifting
-            /// operator!
+            /// 注意这不是 `<<` 移位运算符；旋转不会丢弃位，只会改变位的位置。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             /// use std::num::Saturating;
@@ -675,14 +671,11 @@ macro_rules! saturating_int_impl {
                 Saturating(self.0.rotate_left(n))
             }
 
-            /// Shifts the bits to the right by a specified amount, `n`,
-            /// saturating the truncated bits to the beginning of the resulting
-            /// integer.
+            /// 将位模式向右旋转指定数量 `n`，并把被截掉的低位绕回结果的高位。
             ///
-            /// Please note this isn't the same operation as the `>>` shifting
-            /// operator!
+            /// 注意这不是 `>>` 移位运算符；旋转不会丢弃位，只会改变位的位置。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             /// use std::num::Saturating;
@@ -701,9 +694,9 @@ macro_rules! saturating_int_impl {
                 Saturating(self.0.rotate_right(n))
             }
 
-            /// Reverses the byte order of the integer.
+            /// 反转该整数的字节顺序。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             /// use std::num::Saturating;
@@ -725,12 +718,11 @@ macro_rules! saturating_int_impl {
                 Saturating(self.0.swap_bytes())
             }
 
-            /// Reverses the bit pattern of the integer.
+            /// 反转该整数的位模式。
             ///
-            /// # Examples
+            /// # 示例
             ///
-            /// Please note that this example is shared among integer types, which is why `i16`
-            /// is used.
+            /// 注意该示例在多个整数类型之间共享，因此使用 `i16`。
             ///
             /// ```
             /// use std::num::Saturating;
@@ -752,12 +744,11 @@ macro_rules! saturating_int_impl {
                 Saturating(self.0.reverse_bits())
             }
 
-            /// Converts an integer from big endian to the target's endianness.
+            /// 把一个 big endian 整数转换为目标平台字节序。
             ///
-            /// On big endian this is a no-op. On little endian the bytes are
-            /// swapped.
+            /// 在 big endian 平台上这是 no-op；在 little endian 平台上会交换字节。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             /// use std::num::Saturating;
@@ -778,12 +769,11 @@ macro_rules! saturating_int_impl {
                 Saturating(<$t>::from_be(x.0))
             }
 
-            /// Converts an integer from little endian to the target's endianness.
+            /// 把一个 little endian 整数转换为目标平台字节序。
             ///
-            /// On little endian this is a no-op. On big endian the bytes are
-            /// swapped.
+            /// 在 little endian 平台上这是 no-op；在 big endian 平台上会交换字节。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             /// use std::num::Saturating;
@@ -804,12 +794,11 @@ macro_rules! saturating_int_impl {
                 Saturating(<$t>::from_le(x.0))
             }
 
-            /// Converts `self` to big endian from the target's endianness.
+            /// 把 `self` 从目标平台字节序转换为 big endian。
             ///
-            /// On big endian this is a no-op. On little endian the bytes are
-            /// swapped.
+            /// 在 big endian 平台上这是 no-op；在 little endian 平台上会交换字节。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             /// use std::num::Saturating;
@@ -831,12 +820,11 @@ macro_rules! saturating_int_impl {
                 Saturating(self.0.to_be())
             }
 
-            /// Converts `self` to little endian from the target's endianness.
+            /// 把 `self` 从目标平台字节序转换为 little endian。
             ///
-            /// On little endian this is a no-op. On big endian the bytes are
-            /// swapped.
+            /// 在 little endian 平台上这是 no-op；在 big endian 平台上会交换字节。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             /// use std::num::Saturating;
@@ -858,9 +846,9 @@ macro_rules! saturating_int_impl {
                 Saturating(self.0.to_le())
             }
 
-            /// Raises self to the power of `exp`, using exponentiation by squaring.
+            /// 使用平方求幂计算 `self` 的 `exp` 次幂。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             /// use std::num::Saturating;
@@ -868,7 +856,7 @@ macro_rules! saturating_int_impl {
             #[doc = concat!("assert_eq!(Saturating(3", stringify!($t), ").pow(4), Saturating(81));")]
             /// ```
             ///
-            /// Results that are too large are saturated:
+            /// 过大的结果会按 saturating 语义夹到边界：
             ///
             /// ```
             /// use std::num::Saturating;
@@ -893,9 +881,9 @@ saturating_int_impl! { usize u8 u16 u32 u64 u128 isize i8 i16 i32 i64 i128 }
 macro_rules! saturating_int_impl_signed {
     ($($t:ty)*) => ($(
         impl Saturating<$t> {
-            /// Returns the number of leading zeros in the binary representation of `self`.
+            /// 返回 `self` 的二进制表示中前导 0 的数量。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             /// use std::num::Saturating;
@@ -913,10 +901,12 @@ macro_rules! saturating_int_impl_signed {
                 self.0.leading_zeros()
             }
 
-            /// Saturating absolute value. Computes `self.abs()`, returning `MAX` if `self == MIN`
-            /// instead of overflowing.
+            /// saturating 绝对值。
             ///
-            /// # Examples
+            /// 计算 `self.abs()`；若 `self == MIN`，数学结果无法由该有符号类型表示，
+            /// 因此返回 `MAX` 而不是溢出。
+            ///
+            /// # 示例
             ///
             /// ```
             /// use std::num::Saturating;
@@ -936,13 +926,13 @@ macro_rules! saturating_int_impl_signed {
                 Saturating(self.0.saturating_abs())
             }
 
-            /// Returns a number representing sign of `self`.
+            /// 返回表示 `self` 符号的数。
             ///
-            ///  - `0` if the number is zero
-            ///  - `1` if the number is positive
-            ///  - `-1` if the number is negative
+            ///  - 数值为零时返回 `0`
+            ///  - 数值为正时返回 `1`
+            ///  - 数值为负时返回 `-1`
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             /// use std::num::Saturating;
@@ -960,10 +950,9 @@ macro_rules! saturating_int_impl_signed {
                 Saturating(self.0.signum())
             }
 
-            /// Returns `true` if `self` is positive and `false` if the number is zero or
-            /// negative.
+            /// 当 `self` 为正数时返回 `true`；为零或负数时返回 `false`。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             /// use std::num::Saturating;
@@ -979,10 +968,9 @@ macro_rules! saturating_int_impl_signed {
                 self.0.is_positive()
             }
 
-            /// Returns `true` if `self` is negative and `false` if the number is zero or
-            /// positive.
+            /// 当 `self` 为负数时返回 `true`；为零或正数时返回 `false`。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             /// use std::num::Saturating;
@@ -1019,9 +1007,9 @@ saturating_int_impl_signed! { isize i8 i16 i32 i64 i128 }
 macro_rules! saturating_int_impl_unsigned {
     ($($t:ty)*) => ($(
         impl Saturating<$t> {
-            /// Returns the number of leading zeros in the binary representation of `self`.
+            /// 返回 `self` 的二进制表示中前导 0 的数量。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             /// use std::num::Saturating;
@@ -1039,9 +1027,9 @@ macro_rules! saturating_int_impl_unsigned {
                 self.0.leading_zeros()
             }
 
-            /// Returns `true` if and only if `self == 2^k` for some `k`.
+            /// 当且仅当存在某个 `k` 使 `self == 2^k` 时返回 `true`。
             ///
-            /// # Examples
+            /// # 示例
             ///
             /// ```
             /// use std::num::Saturating;
@@ -1063,7 +1051,7 @@ macro_rules! saturating_int_impl_unsigned {
 
 saturating_int_impl_unsigned! { usize u8 u16 u32 u64 u128 }
 
-// Related to potential Shl and ShlAssign implementation
+// 与未来可能的 Shl 和 ShlAssign 实现有关。
 //
 // mod shift_max {
 //     #![allow(non_upper_case_globals)]

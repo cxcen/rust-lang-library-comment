@@ -4,10 +4,9 @@ use crate::iter::adapters::SourceIter;
 use crate::num::NonZero;
 use crate::ops::{ControlFlow, Try};
 
-/// An iterator that only accepts elements while `predicate` returns `Some(_)`.
+/// 只在 `predicate` 返回 `Some(_)` 时接受元素的迭代器。
 ///
-/// This `struct` is created by the [`map_while`] method on [`Iterator`]. See its
-/// documentation for more.
+/// 该 `struct` 由 [`Iterator`] 上的 [`map_while`] 方法创建。更多信息见该方法文档。
 ///
 /// [`map_while`]: Iterator::map_while
 /// [`Iterator`]: trait.Iterator.html
@@ -48,7 +47,7 @@ where
     #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         let (_, upper) = self.iter.size_hint();
-        (0, upper) // can't know a lower bound, due to the predicate
+        (0, upper) // 由于 predicate 的存在，无法知道下界。
     }
 
     #[inline]
@@ -78,7 +77,7 @@ where
 
     #[inline]
     unsafe fn as_inner(&mut self) -> &mut I::Source {
-        // SAFETY: unsafe function forwarding to unsafe function with the same requirements
+        // SAFETY: 转发到具有相同要求的 unsafe 函数。
         unsafe { SourceIter::as_inner(&mut self.iter) }
     }
 }

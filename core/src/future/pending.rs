@@ -4,21 +4,23 @@ use crate::marker;
 use crate::pin::Pin;
 use crate::task::{Context, Poll};
 
-/// Creates a future which never resolves, representing a computation that never
-/// finishes.
+/// 创建一个永远不会完成的 future,代表一个故意永久挂起的计算。
 ///
-/// This `struct` is created by [`pending()`]. See its
-/// documentation for more.
+/// 该 `struct` 由 [`pending()`] 创建。更多信息请参阅其文档。
 #[stable(feature = "future_readiness_fns", since = "1.48.0")]
 #[must_use = "futures do nothing unless you `.await` or poll them"]
 pub struct Pending<T> {
     _data: marker::PhantomData<fn() -> T>,
 }
 
-/// Creates a future which never resolves, representing a computation that never
-/// finishes.
+/// 创建一个永远不会完成的 future,代表一个故意永久挂起的计算。
 ///
-/// # Examples
+/// 这个 future 的 `poll` 总是返回 [`Poll::Pending`](crate::task::Poll::Pending),并且不会登记
+/// 当前 [`Waker`](crate::task::Waker)。这与普通 future 的“返回 `Pending` 前安排 wake”契约并不
+/// 冲突,因为它从来没有“能够继续推进”的时刻:除非外层任务被其它 future 唤醒并主动丢弃它,否则
+/// 等待它会无限期挂起。
+///
+/// # 示例
 ///
 /// ```no_run
 /// use std::future;

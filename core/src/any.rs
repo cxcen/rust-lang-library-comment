@@ -1,63 +1,60 @@
-//! Utilities for dynamic typing or type reflection.
+//! 用于动态类型识别(dynamic typing)或类型反射(type reflection)的工具。
 //!
-//! # `Any` and `TypeId`
+//! # `Any` 与 `TypeId`
 //!
-//! `Any` itself can be used to get a `TypeId`, and has more features when used
-//! as a trait object. As `&dyn Any` (a borrowed trait object), it has the `is`
-//! and `downcast_ref` methods, to test if the contained value is of a given type,
-//! and to get a reference to the inner value as a type. As `&mut dyn Any`, there
-//! is also the `downcast_mut` method, for getting a mutable reference to the
-//! inner value. `Box<dyn Any>` adds the `downcast` method, which attempts to
-//! convert to a `Box<T>`. See the [`Box`] documentation for the full details.
+//! `Any` 本身可以用来获取一个 `TypeId`,而当它作为 trait 对象使用时还有
+//! 更多功能。作为 `&dyn Any`(一个借用的 trait 对象),它具有 `is` 和
+//! `downcast_ref` 方法,用来检验所包含的值是否为给定类型,以及把内部值当作
+//! 某个类型来获取它的引用。作为 `&mut dyn Any`,还有 `downcast_mut` 方法,
+//! 用来获取内部值的可变引用。`Box<dyn Any>` 增加了 `downcast` 方法,它尝试
+//! 转换成 `Box<T>`。完整细节参见 [`Box`] 文档。
 //!
-//! Note that `&dyn Any` is limited to testing whether a value is of a specified
-//! concrete type, and cannot be used to test whether a type implements a trait.
+//! 注意,`&dyn Any` 仅限于检验一个值是否为某个指定的 *具体* 类型,而不能
+//! 用来检验一个类型是否实现了某个 trait。这正是基于 `TypeId` 的运行期类型
+//! 识别的局限之一:它只能反映精确的具体类型,无法反映 trait 实现关系或泛型
+//! 之间的关系。
 //!
 //! [`Box`]: ../../std/boxed/struct.Box.html
 //!
-//! # Smart pointers and `dyn Any`
+//! # 智能指针与 `dyn Any`
 //!
-//! One piece of behavior to keep in mind when using `Any` as a trait object,
-//! especially with types like `Box<dyn Any>` or `Arc<dyn Any>`, is that simply
-//! calling `.type_id()` on the value will produce the `TypeId` of the
-//! *container*, not the underlying trait object. This can be avoided by
-//! converting the smart pointer into a `&dyn Any` instead, which will return
-//! the object's `TypeId`. For example:
+//! 当把 `Any` 当作 trait 对象使用时(尤其是与 `Box<dyn Any>` 或
+//! `Arc<dyn Any>` 这类类型一起),有一点行为需要牢记:对值简单地调用
+//! `.type_id()`,得到的是 *容器* 的 `TypeId`,而不是底层 trait 对象的。
+//! 要避免这一点,可以改为把智能指针转换成 `&dyn Any`,这样就会返回该对象
+//! 的 `TypeId`。例如:
 //!
 //! ```
 //! use std::any::{Any, TypeId};
 //!
 //! let boxed: Box<dyn Any> = Box::new(3_i32);
 //!
-//! // You're more likely to want this:
+//! // 你更可能想要的是这个:
 //! let actual_id = (&*boxed).type_id();
-//! // ... than this:
+//! // ……而不是这个:
 //! let boxed_id = boxed.type_id();
 //!
 //! assert_eq!(actual_id, TypeId::of::<i32>());
 //! assert_eq!(boxed_id, TypeId::of::<Box<dyn Any>>());
 //! ```
 //!
-//! ## Examples
+//! ## 示例
 //!
-//! Consider a situation where we want to log a value passed to a function.
-//! We know the value we're working on implements `Debug`, but we don't know its
-//! concrete type. We want to give special treatment to certain types: in this
-//! case printing out the length of `String` values prior to their value.
-//! We don't know the concrete type of our value at compile time, so we need to
-//! use runtime reflection instead.
+//! 设想这样一种情形:我们想把传给某个函数的值记录到日志中。我们知道正在
+//! 处理的值实现了 `Debug`,但不知道它的具体类型。我们想对某些类型给予特殊
+//! 处理:在本例中,对 `String` 值,在打印其值之前先打印它的长度。我们在
+//! 编译期并不知道值的具体类型,因此需要改用运行期反射。
 //!
 //! ```rust
 //! use std::fmt::Debug;
 //! use std::any::Any;
 //!
-//! // Logger function for any type that implements `Debug`.
+//! // 面向任何实现了 `Debug` 的类型的日志函数。
 //! fn log<T: Any + Debug>(value: &T) {
 //!     let value_any = value as &dyn Any;
 //!
-//!     // Try to convert our value to a `String`. If successful, we want to
-//!     // output the `String`'s length as well as its value. If not, it's a
-//!     // different type: just print it out unadorned.
+//!     // 尝试把我们的值转换成 `String`。如果成功,我们想把 `String` 的长度
+//!     // 连同它的值一起输出。如果失败,说明它是另一种类型:直接原样打印出来。
 //!     match value_any.downcast_ref::<String>() {
 //!         Some(as_string) => {
 //!             println!("String ({}): {}", as_string.len(), as_string);
@@ -68,10 +65,10 @@
 //!     }
 //! }
 //!
-//! // This function wants to log its parameter out prior to doing work with it.
+//! // 这个函数想在对其参数做处理之前,先把参数记录到日志。
 //! fn do_work<T: Any + Debug>(value: &T) {
 //!     log(value);
-//!     // ...do some other work
+//!     // ……做些别的工作
 //! }
 //!
 //! fn main() {
@@ -89,36 +86,34 @@
 use crate::{fmt, hash, intrinsics, ptr};
 
 ///////////////////////////////////////////////////////////////////////////////
-// Any trait
+// Any trait(Any trait 定义)
 ///////////////////////////////////////////////////////////////////////////////
 
-/// A trait to emulate dynamic typing.
+/// 一个用来模拟动态类型识别的 trait。
 ///
-/// Most types implement `Any`. However, any type which contains a non-`'static` reference does not.
-/// See the [module-level documentation][mod] for more details.
+/// 大多数类型都实现了 `Any`。然而,任何含有非 `'static` 引用的类型都不实现它。
+/// 更多细节参见[模块级文档][mod]。这也是 `Any` 的一大局限:只有 `'static`
+/// 类型(即不借用任何短于 `'static` 生命周期的数据的类型)才能实现 `Any`。
 ///
 /// [mod]: crate::any
-// This trait is not unsafe, though we rely on the specifics of it's sole impl's
-// `type_id` function in unsafe code (e.g., `downcast`). Normally, that would be
-// a problem, but because the only impl of `Any` is a blanket implementation, no
-// other code can implement `Any`.
+// 本 trait 不是 unsafe 的,尽管我们在 unsafe 代码中(例如 `downcast`)依赖了
+// 它唯一那个 impl 的 `type_id` 函数的具体行为。通常这会是个问题,但由于 `Any`
+// 的唯一 impl 是一个覆盖性(blanket)实现,所以没有别的代码能实现 `Any`。
 //
-// We could plausibly make this trait unsafe -- it would not cause breakage,
-// since we control all the implementations -- but we choose not to as that's
-// both not really necessary and may confuse users about the distinction of
-// unsafe traits and unsafe methods (i.e., `type_id` would still be safe to call,
-// but we would likely want to indicate as such in documentation).
+// 我们其实大可以把本 trait 做成 unsafe 的——这不会造成破坏,因为我们掌控着
+// 所有实现——但我们选择不这么做,因为这既无甚必要,又可能让用户对 unsafe
+// trait 与 unsafe 方法之间的区别产生混淆(也就是说,`type_id` 调用起来仍然
+// 是安全的,但我们大概会想在文档中标明这一点)。
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_diagnostic_item = "Any"]
 pub trait Any: 'static {
-    /// Gets the `TypeId` of `self`.
+    /// 获取 `self` 的 `TypeId`。
     ///
-    /// If called on a `dyn Any` trait object
-    /// (or a trait object of a subtrait of `Any`),
-    /// this returns the `TypeId` of the underlying
-    /// concrete type, not that of `dyn Any` itself.
+    /// 如果在一个 `dyn Any` trait 对象(或 `Any` 的某个子 trait 的 trait
+    /// 对象)上调用,它返回的是底层 *具体* 类型的 `TypeId`,而不是
+    /// `dyn Any` 本身的。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::any::{Any, TypeId};
@@ -142,7 +137,7 @@ impl<T: 'static + ?Sized> Any for T {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// Extension methods for Any trait objects.
+// Any trait 对象的扩展方法。
 ///////////////////////////////////////////////////////////////////////////////
 
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -152,9 +147,8 @@ impl fmt::Debug for dyn Any {
     }
 }
 
-// Ensure that the result of e.g., joining a thread can be printed and
-// hence used with `unwrap`. May eventually no longer be needed if
-// dispatch works with upcasting.
+// 确保比如 join 一个线程所得的结果可以被打印,从而能配合 `unwrap` 使用。
+// 如果将来分发(dispatch)能配合 upcasting 工作,这最终也许就不再需要了。
 #[stable(feature = "rust1", since = "1.0.0")]
 impl fmt::Debug for dyn Any + Send {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -170,9 +164,9 @@ impl fmt::Debug for dyn Any + Send + Sync {
 }
 
 impl dyn Any {
-    /// Returns `true` if the inner type is the same as `T`.
+    /// 如果内部类型与 `T` 相同,返回 `true`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::any::Any;
@@ -191,20 +185,19 @@ impl dyn Any {
     #[stable(feature = "rust1", since = "1.0.0")]
     #[inline]
     pub fn is<T: Any>(&self) -> bool {
-        // Get `TypeId` of the type this function is instantiated with.
+        // 取得本函数被实例化时所用类型的 `TypeId`。
         let t = TypeId::of::<T>();
 
-        // Get `TypeId` of the type in the trait object (`self`).
+        // 取得 trait 对象(`self`)中所含类型的 `TypeId`。
         let concrete = self.type_id();
 
-        // Compare both `TypeId`s on equality.
+        // 比较两个 `TypeId` 是否相等。
         t == concrete
     }
 
-    /// Returns some reference to the inner value if it is of type `T`, or
-    /// `None` if it isn't.
+    /// 如果内部值的类型是 `T`,返回指向它的某个引用;否则返回 `None`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::any::Any;
@@ -224,19 +217,18 @@ impl dyn Any {
     #[inline]
     pub fn downcast_ref<T: Any>(&self) -> Option<&T> {
         if self.is::<T>() {
-            // SAFETY: just checked whether we are pointing to the correct type, and we can rely on
-            // that check for memory safety because we have implemented Any for all types; no other
-            // impls can exist as they would conflict with our impl.
+            // SAFETY:我们刚刚检查过自己指向的是否是正确的类型,而且为内存
+            // 安全起见,我们可以依赖这一检查,因为我们已经为所有类型实现了
+            // Any;不可能存在别的 impl,否则它们会与我们的 impl 冲突。
             unsafe { Some(self.downcast_unchecked_ref()) }
         } else {
             None
         }
     }
 
-    /// Returns some mutable reference to the inner value if it is of type `T`, or
-    /// `None` if it isn't.
+    /// 如果内部值的类型是 `T`,返回指向它的某个可变引用;否则返回 `None`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::any::Any;
@@ -260,18 +252,18 @@ impl dyn Any {
     #[inline]
     pub fn downcast_mut<T: Any>(&mut self) -> Option<&mut T> {
         if self.is::<T>() {
-            // SAFETY: just checked whether we are pointing to the correct type, and we can rely on
-            // that check for memory safety because we have implemented Any for all types; no other
-            // impls can exist as they would conflict with our impl.
+            // SAFETY:我们刚刚检查过自己指向的是否是正确的类型,而且为内存
+            // 安全起见,我们可以依赖这一检查,因为我们已经为所有类型实现了
+            // Any;不可能存在别的 impl,否则它们会与我们的 impl 冲突。
             unsafe { Some(self.downcast_unchecked_mut()) }
         } else {
             None
         }
     }
 
-    /// Returns a reference to the inner value as type `dyn T`.
+    /// 返回内部值作为类型 `dyn T` 的引用。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(downcast_unchecked)]
@@ -285,21 +277,20 @@ impl dyn Any {
     /// }
     /// ```
     ///
-    /// # Safety
+    /// # 安全性(Safety)
     ///
-    /// The contained value must be of type `T`. Calling this method
-    /// with the incorrect type is *undefined behavior*.
+    /// 所含的值必须是 `T` 类型。以错误的类型调用本方法属于 *未定义行为*。
     #[unstable(feature = "downcast_unchecked", issue = "90850")]
     #[inline]
     pub unsafe fn downcast_unchecked_ref<T: Any>(&self) -> &T {
         debug_assert!(self.is::<T>());
-        // SAFETY: caller guarantees that T is the correct type
+        // SAFETY:调用者保证 T 是正确的类型
         unsafe { &*(self as *const dyn Any as *const T) }
     }
 
-    /// Returns a mutable reference to the inner value as type `dyn T`.
+    /// 返回内部值作为类型 `dyn T` 的可变引用。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(downcast_unchecked)]
@@ -315,23 +306,22 @@ impl dyn Any {
     /// assert_eq!(*x.downcast_ref::<usize>().unwrap(), 2);
     /// ```
     ///
-    /// # Safety
+    /// # 安全性(Safety)
     ///
-    /// The contained value must be of type `T`. Calling this method
-    /// with the incorrect type is *undefined behavior*.
+    /// 所含的值必须是 `T` 类型。以错误的类型调用本方法属于 *未定义行为*。
     #[unstable(feature = "downcast_unchecked", issue = "90850")]
     #[inline]
     pub unsafe fn downcast_unchecked_mut<T: Any>(&mut self) -> &mut T {
         debug_assert!(self.is::<T>());
-        // SAFETY: caller guarantees that T is the correct type
+        // SAFETY:调用者保证 T 是正确的类型
         unsafe { &mut *(self as *mut dyn Any as *mut T) }
     }
 }
 
 impl dyn Any + Send {
-    /// Forwards to the method defined on the type `dyn Any`.
+    /// 转发到类型 `dyn Any` 上定义的同名方法。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::any::Any;
@@ -353,9 +343,9 @@ impl dyn Any + Send {
         <dyn Any>::is::<T>(self)
     }
 
-    /// Forwards to the method defined on the type `dyn Any`.
+    /// 转发到类型 `dyn Any` 上定义的同名方法。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::any::Any;
@@ -377,9 +367,9 @@ impl dyn Any + Send {
         <dyn Any>::downcast_ref::<T>(self)
     }
 
-    /// Forwards to the method defined on the type `dyn Any`.
+    /// 转发到类型 `dyn Any` 上定义的同名方法。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::any::Any;
@@ -405,9 +395,9 @@ impl dyn Any + Send {
         <dyn Any>::downcast_mut::<T>(self)
     }
 
-    /// Forwards to the method defined on the type `dyn Any`.
+    /// 转发到类型 `dyn Any` 上定义的同名方法。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(downcast_unchecked)]
@@ -421,20 +411,19 @@ impl dyn Any + Send {
     /// }
     /// ```
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// The contained value must be of type `T`. Calling this method
-    /// with the incorrect type is *undefined behavior*.
+    /// 所含的值必须是 `T` 类型。以错误的类型调用本方法属于 *未定义行为*。
     #[unstable(feature = "downcast_unchecked", issue = "90850")]
     #[inline]
     pub unsafe fn downcast_unchecked_ref<T: Any>(&self) -> &T {
-        // SAFETY: guaranteed by caller
+        // SAFETY: 调用方保证内部值确实是 `T` 类型。
         unsafe { <dyn Any>::downcast_unchecked_ref::<T>(self) }
     }
 
-    /// Forwards to the method defined on the type `dyn Any`.
+    /// 转发到类型 `dyn Any` 上定义的同名方法。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(downcast_unchecked)]
@@ -450,22 +439,21 @@ impl dyn Any + Send {
     /// assert_eq!(*x.downcast_ref::<usize>().unwrap(), 2);
     /// ```
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// The contained value must be of type `T`. Calling this method
-    /// with the incorrect type is *undefined behavior*.
+    /// 所含的值必须是 `T` 类型。以错误的类型调用本方法属于 *未定义行为*。
     #[unstable(feature = "downcast_unchecked", issue = "90850")]
     #[inline]
     pub unsafe fn downcast_unchecked_mut<T: Any>(&mut self) -> &mut T {
-        // SAFETY: guaranteed by caller
+        // SAFETY: 调用方保证内部值确实是 `T` 类型。
         unsafe { <dyn Any>::downcast_unchecked_mut::<T>(self) }
     }
 }
 
 impl dyn Any + Send + Sync {
-    /// Forwards to the method defined on the type `Any`.
+    /// 转发到类型 `Any` 上定义的同名方法。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::any::Any;
@@ -487,9 +475,9 @@ impl dyn Any + Send + Sync {
         <dyn Any>::is::<T>(self)
     }
 
-    /// Forwards to the method defined on the type `Any`.
+    /// 转发到类型 `Any` 上定义的同名方法。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::any::Any;
@@ -511,9 +499,9 @@ impl dyn Any + Send + Sync {
         <dyn Any>::downcast_ref::<T>(self)
     }
 
-    /// Forwards to the method defined on the type `Any`.
+    /// 转发到类型 `Any` 上定义的同名方法。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::any::Any;
@@ -539,9 +527,9 @@ impl dyn Any + Send + Sync {
         <dyn Any>::downcast_mut::<T>(self)
     }
 
-    /// Forwards to the method defined on the type `Any`.
+    /// 转发到类型 `Any` 上定义的同名方法。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(downcast_unchecked)]
@@ -554,20 +542,19 @@ impl dyn Any + Send + Sync {
     ///     assert_eq!(*x.downcast_unchecked_ref::<usize>(), 1);
     /// }
     /// ```
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// The contained value must be of type `T`. Calling this method
-    /// with the incorrect type is *undefined behavior*.
+    /// 所含的值必须是 `T` 类型。以错误的类型调用本方法属于 *未定义行为*。
     #[unstable(feature = "downcast_unchecked", issue = "90850")]
     #[inline]
     pub unsafe fn downcast_unchecked_ref<T: Any>(&self) -> &T {
-        // SAFETY: guaranteed by caller
+        // SAFETY: 调用方保证内部值确实是 `T` 类型。
         unsafe { <dyn Any>::downcast_unchecked_ref::<T>(self) }
     }
 
-    /// Forwards to the method defined on the type `Any`.
+    /// 转发到类型 `Any` 上定义的同名方法。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(downcast_unchecked)]
@@ -582,88 +569,80 @@ impl dyn Any + Send + Sync {
     ///
     /// assert_eq!(*x.downcast_ref::<usize>().unwrap(), 2);
     /// ```
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// The contained value must be of type `T`. Calling this method
-    /// with the incorrect type is *undefined behavior*.
+    /// 所含的值必须是 `T` 类型。以错误的类型调用本方法属于 *未定义行为*。
     #[unstable(feature = "downcast_unchecked", issue = "90850")]
     #[inline]
     pub unsafe fn downcast_unchecked_mut<T: Any>(&mut self) -> &mut T {
-        // SAFETY: guaranteed by caller
+        // SAFETY: 调用方保证内部值确实是 `T` 类型。
         unsafe { <dyn Any>::downcast_unchecked_mut::<T>(self) }
     }
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// TypeID and its methods
+// TypeId 及其方法
 ///////////////////////////////////////////////////////////////////////////////
 
-/// A `TypeId` represents a globally unique identifier for a type.
+/// `TypeId` 代表某个类型的全局唯一标识符。
 ///
-/// Each `TypeId` is an opaque object which does not allow inspection of what's
-/// inside but does allow basic operations such as cloning, comparison,
-/// printing, and showing.
+/// 每个 `TypeId` 都是一个不透明对象,不允许窥探其内部,但允许诸如克隆、
+/// 比较、打印、展示之类的基本操作。
 ///
-/// A `TypeId` is currently only available for types which ascribe to `'static`,
-/// but this limitation may be removed in the future.
+/// 目前 `TypeId` 仅对满足 `'static` 的类型可用,不过这一限制将来可能会
+/// 被移除。这也是基于 `TypeId` 的运行期类型识别的根本局限:它只能用于
+/// 不借用任何短于 `'static` 数据的类型。
 ///
-/// While `TypeId` implements `Hash`, `PartialOrd`, and `Ord`, it is worth
-/// noting that the hashes and ordering will vary between Rust releases. Beware
-/// of relying on them inside of your code!
+/// 虽然 `TypeId` 实现了 `Hash`、`PartialOrd` 和 `Ord`,但值得注意的是:
+/// 其哈希值和次序在不同 Rust 发行版之间会有所不同。切勿在你的代码中依赖它们!
 ///
-/// # Layout
+/// # 布局(Layout)
 ///
-/// Like other [`Rust`-representation][repr-rust] types, `TypeId`'s size and layout are unstable.
-/// In particular, this means that you cannot rely on the size and layout of `TypeId` remaining the
-/// same between Rust releases; they are subject to change without prior notice between Rust
-/// releases.
+/// 与其他[采用 `Rust` 表示][repr-rust]的类型一样,`TypeId` 的大小和布局是
+/// 不稳定的。特别地,这意味着你不能依赖 `TypeId` 的大小和布局在不同 Rust
+/// 发行版之间保持不变;它们在 Rust 发行版之间可能不经预先通知就发生改变。
 ///
 /// [repr-rust]: https://doc.rust-lang.org/reference/type-layout.html#r-layout.repr.rust.unspecified
 ///
-/// # Danger of Improper Variance
+/// # 不当变型(Variance）的危险
 ///
-/// You might think that subtyping is impossible between two static types,
-/// but this is false; there exists a static type with a static subtype.
-/// To wit, `fn(&str)`, which is short for `for<'any> fn(&'any str)`, and
-/// `fn(&'static str)`, are two distinct, static types, and yet,
-/// `fn(&str)` is a subtype of `fn(&'static str)`, since any value of type
-/// `fn(&str)` can be used where a value of type `fn(&'static str)` is needed.
+/// 你也许会以为两个静态类型之间不可能存在子类型关系,但这是错误的;确实存在
+/// 一个拥有静态子类型的静态类型。具体来说,`fn(&str)`(它是
+/// `for<'any> fn(&'any str)` 的简写)与 `fn(&'static str)` 是两个不同的静态
+/// 类型,然而 `fn(&str)` 却是 `fn(&'static str)` 的子类型,因为任何
+/// `fn(&str)` 类型的值都可以用在需要 `fn(&'static str)` 类型值的地方。
 ///
-/// This means that abstractions around `TypeId`, despite its
-/// `'static` bound on arguments, still need to worry about unnecessary
-/// and improper variance: it is advisable to strive for invariance
-/// first. The usability impact will be negligible, while the reduction
-/// in the risk of unsoundness will be most welcome.
+/// 这意味着,围绕 `TypeId` 构建的抽象,尽管其参数带有 `'static` 约束,仍然
+/// 需要提防不必要且不当的变型:建议优先力求做到不变(invariance)。这对可用性
+/// 的影响微乎其微,而它对降低不可靠(unsoundness)风险的助益则非常可贵。
 ///
-/// ## Examples
+/// ## 示例
 ///
-/// Suppose `SubType` is a subtype of `SuperType`, that is,
-/// a value of type `SubType` can be used wherever
-/// a value of type `SuperType` is expected.
-/// Suppose also that `CoVar<T>` is a generic type, which is covariant over `T`
-/// (like many other types, including `PhantomData<T>` and `Vec<T>`).
+/// 假设 `SubType` 是 `SuperType` 的子类型,也就是说,`SubType` 类型的值可以
+/// 用在任何期望 `SuperType` 类型值的地方。再假设 `CoVar<T>` 是一个泛型类型,
+/// 它对 `T` 协变(像许多其他类型一样,包括 `PhantomData<T>` 和 `Vec<T>`)。
 ///
-/// Then, by covariance, `CoVar<SubType>` is a subtype of `CoVar<SuperType>`,
-/// that is, a value of type `CoVar<SubType>` can be used wherever
-/// a value of type `CoVar<SuperType>` is expected.
+/// 那么,由协变性可知,`CoVar<SubType>` 是 `CoVar<SuperType>` 的子类型,
+/// 也就是说,`CoVar<SubType>` 类型的值可以用在任何期望 `CoVar<SuperType>`
+/// 类型值的地方。
 ///
-/// Then if `CoVar<SuperType>` relies on `TypeId::of::<SuperType>()` to uphold any invariants,
-/// those invariants may be broken because a value of type `CoVar<SuperType>` can be created
-/// without going through any of its methods, like so:
+/// 这样一来,如果 `CoVar<SuperType>` 依赖 `TypeId::of::<SuperType>()` 来维持
+/// 某些不变量,那么这些不变量可能会被破坏——因为一个 `CoVar<SuperType>` 类型
+/// 的值可以不经由它的任何方法就被创建出来,就像这样:
 /// ```
 /// type SubType = fn(&());
 /// type SuperType = fn(&'static ());
-/// type CoVar<T> = Vec<T>; // imagine something more complicated
+/// type CoVar<T> = Vec<T>; // 想象成某种更复杂的东西
 ///
 /// let sub: CoVar<SubType> = CoVar::new();
-/// // we have a `CoVar<SuperType>` instance without
-/// // *ever* having called `CoVar::<SuperType>::new()`!
+/// // 我们 *从未* 调用过 `CoVar::<SuperType>::new()`,
+/// // 却得到了一个 `CoVar<SuperType>` 实例!
 /// let fake_super: CoVar<SuperType> = sub;
 /// ```
 ///
-/// The following is an example program that tries to use `TypeId::of` to
-/// implement a generic type `Unique<T>` that guarantees unique instances for each `Unique<T>`,
-/// that is, and for each type `T` there can be at most one value of type `Unique<T>` at any time.
+/// 下面是一个示例程序,它试图用 `TypeId::of` 来实现一个泛型类型 `Unique<T>`,
+/// 以保证每个 `Unique<T>` 的实例都唯一,也就是说,对每一个类型 `T`,在任意
+/// 时刻最多只能存在一个 `Unique<T>` 类型的值。
 ///
 /// ```
 /// mod unique {
@@ -674,10 +653,10 @@ impl dyn Any + Send + Sync {
 ///
 ///     static ID_SET: Mutex<BTreeSet<TypeId>> = Mutex::new(BTreeSet::new());
 ///
-///     // TypeId has only covariant uses, which makes Unique covariant over TypeAsId 🚨
+///     // TypeId 只有协变的用途,这使得 Unique 对 TypeAsId 协变 🚨
 ///     #[derive(Debug, PartialEq)]
 ///     pub struct Unique<TypeAsId: 'static>(
-///         // private field prevents creation without `new` outside this module
+///         // 私有字段阻止了在本模块之外不经由 `new` 就创建实例
 ///         PhantomData<TypeAsId>,
 ///     );
 ///
@@ -698,7 +677,7 @@ impl dyn Any + Send + Sync {
 ///
 /// use unique::Unique;
 ///
-/// // `OtherRing` is a subtype of `TheOneRing`. Both are 'static, and thus have a TypeId.
+/// // `OtherRing` 是 `TheOneRing` 的子类型。两者都是 'static,因此都有 TypeId。
 /// type TheOneRing = fn(&'static ());
 /// type OtherRing = fn(&());
 ///
@@ -707,7 +686,7 @@ impl dyn Any + Send + Sync {
 ///     assert_eq!(Unique::<TheOneRing>::new(), None);
 ///
 ///     let other_ring: Unique<OtherRing> = Unique::new().unwrap();
-///     // Use that `Unique<OtherRing>` is a subtype of `Unique<TheOneRing>` 🚨
+///     // 利用 `Unique<OtherRing>` 是 `Unique<TheOneRing>` 的子类型这一点 🚨
 ///     let fake_one_ring: Unique<TheOneRing> = other_ring;
 ///     assert_eq!(fake_one_ring, the_one_ring);
 ///
@@ -719,18 +698,17 @@ impl dyn Any + Send + Sync {
 #[stable(feature = "rust1", since = "1.0.0")]
 #[lang = "type_id"]
 pub struct TypeId {
-    /// This needs to be an array of pointers, since there is provenance
-    /// in the first array field. This provenance knows exactly which type
-    /// the TypeId actually is, allowing CTFE and miri to operate based off it.
-    /// At runtime all the pointers in the array contain bits of the hash, making
-    /// the entire `TypeId` actually just be a `u128` hash of the type.
+    /// 它必须是一个指针数组,因为第一个数组字段里带有 provenance。这份
+    /// provenance 精确地知道该 TypeId 实际上对应哪个类型,从而让 CTFE 和
+    /// miri 能够基于它进行运算。在运行期,数组中所有指针都装着哈希值的若干
+    /// 比特,使得整个 `TypeId` 实际上就是该类型的一个 `u128` 哈希。
     pub(crate) data: [*const (); 16 / size_of::<*const ()>()],
 }
 
-// SAFETY: the raw pointer is always an integer
+// SAFETY:这个裸指针始终是一个整数
 #[stable(feature = "rust1", since = "1.0.0")]
 unsafe impl Send for TypeId {}
-// SAFETY: the raw pointer is always an integer
+// SAFETY:这个裸指针始终是一个整数
 #[stable(feature = "rust1", since = "1.0.0")]
 unsafe impl Sync for TypeId {}
 
@@ -749,14 +727,14 @@ impl const PartialEq for TypeId {
                 if const {
                     crate::intrinsics::type_id_eq(*this, *other)
                 } else {
-                    // Ideally we would just invoke `type_id_eq` unconditionally here,
-                    // but since we do not MIR inline intrinsics, because backends
-                    // may want to override them (and miri does!), MIR opts do not
-                    // clean up this call sufficiently for LLVM to turn repeated calls
-                    // of `TypeId` comparisons against one specific `TypeId` into
-                    // a lookup table.
-                    // SAFETY: We know that at runtime none of the bits have provenance and all bits
-                    // are initialized. So we can just convert the whole thing to a `u128` and compare that.
+                    // 理想情况下,我们在这里会无条件地调用 `type_id_eq`,但由于
+                    // 我们不对 intrinsic 做 MIR 内联(因为后端可能想要覆盖它们
+                    // ——miri 就是这么做的!),MIR 优化无法把这次调用清理得足够
+                    // 干净,以致 LLVM 无法把“针对某个特定 `TypeId` 反复进行
+                    // `TypeId` 比较”优化成一张查找表。
+                    // SAFETY:我们知道在运行期所有比特都不带 provenance,而且所有
+                    // 比特都已被初始化。因此我们可以直接把整个东西转换成 `u128`
+                    // 再比较。
                     unsafe {
                         crate::mem::transmute::<_, u128>(*this) == crate::mem::transmute::<_, u128>(*other)
                     }
@@ -767,9 +745,9 @@ impl const PartialEq for TypeId {
 }
 
 impl TypeId {
-    /// Returns the `TypeId` of the generic type parameter.
+    /// 返回泛型类型参数的 `TypeId`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::any::{Any, TypeId};
@@ -791,7 +769,7 @@ impl TypeId {
     fn as_u128(self) -> u128 {
         let mut bytes = [0; 16];
 
-        // This is a provenance-stripping memcpy.
+        // 这是一次会剥离 provenance 的 memcpy。
         for (i, chunk) in self.data.iter().copied().enumerate() {
             let chunk = chunk.addr().to_ne_bytes();
             let start = i * chunk.len();
@@ -805,22 +783,17 @@ impl TypeId {
 impl hash::Hash for TypeId {
     #[inline]
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
-        // We only hash the lower 64 bits of our (128 bit) internal numeric ID,
-        // because:
-        // - The hashing algorithm which backs `TypeId` is expected to be
-        //   unbiased and high quality, meaning further mixing would be somewhat
-        //   redundant compared to choosing (the lower) 64 bits arbitrarily.
-        // - `Hasher::finish` returns a u64 anyway, so the extra entropy we'd
-        //   get from hashing the full value would probably not be useful
-        //   (especially given the previous point about the lower 64 bits being
-        //   high quality on their own).
-        // - It is correct to do so -- only hashing a subset of `self` is still
-        //   compatible with an `Eq` implementation that considers the entire
-        //   value, as ours does.
+        // 我们只对(128 位的)内部数值 ID 的低 64 位做哈希,因为:
+        // - `TypeId` 背后的哈希算法预期是无偏且高质量的,这意味着相比于
+        //   任意选取(低)64 位,进一步的混合(mixing)多少有些多余。
+        // - `Hasher::finish` 反正返回的是 u64,所以对整个值做哈希所多得的那点
+        //   熵很可能没什么用(尤其考虑到上一点——低 64 位本身就已经是高质量的)。
+        // - 这样做是正确的——只对 `self` 的一个子集做哈希,仍然与一个考虑整个
+        //   值的 `Eq` 实现(我们的实现正是如此)相容。
         let data =
-        // SAFETY: The `offset` stays in-bounds, it just moves the pointer to the 2nd half of the `TypeId`.
-        // Only the first ptr-sized chunk ever has provenance, so that second half is always
-        // fine to read at integer type.
+        // SAFETY:这个 `offset` 仍然在界内,它只是把指针挪到 `TypeId` 的后半部分。
+        // 只有第一个 ptr 大小的 chunk 带有 provenance,所以后半部分总是可以安全地
+        // 当作整数类型来读取。
             unsafe { crate::ptr::read_unaligned(self.data.as_ptr().cast::<u64>().offset(1)) };
         data.hash(state);
     }
@@ -833,26 +806,23 @@ impl fmt::Debug for TypeId {
     }
 }
 
-/// Returns the name of a type as a string slice.
+/// 以字符串切片的形式返回某个类型的名字。
 ///
-/// # Note
+/// # 注意
 ///
-/// This is intended for diagnostic use. The exact contents and format of the
-/// string returned are not specified, other than being a best-effort
-/// description of the type. For example, amongst the strings
-/// that `type_name::<Option<String>>()` might return are `"Option<String>"` and
-/// `"std::option::Option<std::string::String>"`.
+/// 它用于诊断目的。返回字符串的确切内容和格式并未被规定,仅保证是对该类型的
+/// 尽力(best-effort)描述。例如,`type_name::<Option<String>>()` 可能返回的
+/// 字符串中,既有 `"Option<String>"`,也有
+/// `"std::option::Option<std::string::String>"`。
 ///
-/// The returned string must not be considered to be a unique identifier of a
-/// type as multiple types may map to the same type name. Similarly, there is no
-/// guarantee that all parts of a type will appear in the returned string. In
-/// addition, the output may change between versions of the compiler. For
-/// example, lifetime specifiers were omitted in some earlier versions.
+/// 返回的字符串绝不能被当作类型的唯一标识符,因为多个类型可能映射到相同的
+/// 类型名。同样地,也不保证类型的所有部分都会出现在返回的字符串中。此外,
+/// 输出在不同版本的编译器之间可能会改变。例如,在某些较早的版本中,生命周期
+/// 标注被省略了。
 ///
-/// The current implementation uses the same infrastructure as compiler
-/// diagnostics and debuginfo, but this is not guaranteed.
+/// 当前的实现使用了与编译器诊断和调试信息相同的基础设施,但这并不被保证。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```rust
 /// assert_eq!(
@@ -867,27 +837,25 @@ pub const fn type_name<T: ?Sized>() -> &'static str {
     const { intrinsics::type_name::<T>() }
 }
 
-/// Returns the type name of the pointed-to value as a string slice.
+/// 以字符串切片的形式返回被指向值的类型名。
 ///
-/// This is the same as `type_name::<T>()`, but can be used where the type of a
-/// variable is not easily available.
+/// 它与 `type_name::<T>()` 相同,但可以用在变量的类型不容易直接写出的场合。
 ///
-/// # Note
+/// # 注意
 ///
-/// Like [`type_name`], this is intended for diagnostic use and the exact output is not
-/// guaranteed. It provides a best-effort description, but the output may change between
-/// versions of the compiler.
+/// 与 [`type_name`] 一样,它用于诊断目的,确切的输出并不被保证。它提供的是
+/// 尽力而为的描述,但输出在不同版本的编译器之间可能会改变。
 ///
-/// In short: use this for debugging, avoid using the output to affect program behavior. More
-/// information is available at [`type_name`].
+/// 一言以蔽之:把它用于调试,避免用其输出去影响程序的行为。更多信息见
+/// [`type_name`]。
 ///
-/// Additionally, this function does not resolve trait objects. This means that
-/// `type_name_of_val(&7u32 as &dyn Debug)` may return `"dyn Debug"`, but will not return `"u32"`
-/// at this time.
+/// 此外,本函数并不解析 trait 对象。这意味着目前
+/// `type_name_of_val(&7u32 as &dyn Debug)` 可能返回 `"dyn Debug"`,而不会返回
+/// `"u32"`。
 ///
-/// # Examples
+/// # 示例
 ///
-/// Prints the default integer and float types.
+/// 打印默认的整数和浮点类型。
 ///
 /// ```rust
 /// use std::any::type_name_of_val;
@@ -907,13 +875,13 @@ pub const fn type_name_of_val<T: ?Sized>(_val: &T) -> &'static str {
     type_name::<T>()
 }
 
-/// Returns `Some(&U)` if `T` can be coerced to the trait object type `U`. Otherwise, it returns `None`.
+/// 如果 `T` 能被强转成 trait 对象类型 `U`,返回 `Some(&U)`;否则返回 `None`。
 ///
-/// # Compile-time failures
-/// Determining whether `T` can be coerced to the trait object type `U` requires compiler trait resolution.
-/// In some cases, that resolution can exceed the recursion limit,
-/// and compilation will fail instead of this function returning `None`.
-/// # Examples
+/// # 编译期失败
+/// 判定 `T` 能否被强转成 trait 对象类型 `U` 需要编译器进行 trait 解析。
+/// 在某些情况下,该解析可能超出递归上限,届时编译会失败,而不是让本函数
+/// 返回 `None`。
+/// # 示例
 ///
 /// ```rust
 /// #![feature(try_as_dyn)]
@@ -929,7 +897,7 @@ pub const fn type_name_of_val<T: ?Sized>(_val: &T) -> &'static str {
 ///     fn speak(&self) -> &'static str { "woof" }
 /// }
 ///
-/// struct Rock; // does not implement Animal
+/// struct Rock; // 没有实现 Animal
 ///
 /// let dog = Dog;
 /// let rock = Rock;
@@ -952,21 +920,21 @@ pub const fn try_as_dyn<
     match vtable {
         Some(dyn_metadata) => {
             let pointer = ptr::from_raw_parts(t, dyn_metadata);
-            // SAFETY: `t` is a reference to a type, so we know it is valid.
-            // `dyn_metadata` is a vtable for T, implementing the trait of `U`.
+            // SAFETY:`t` 是指向某个类型的引用,所以我们知道它是有效的。
+            // `dyn_metadata` 是 T 的一份虚表,实现了 `U` 所代表的 trait。
             Some(unsafe { &*pointer })
         }
         None => None,
     }
 }
 
-/// Returns `Some(&mut U)` if `T` can be coerced to the trait object type `U`. Otherwise, it returns `None`.
+/// 如果 `T` 能被强转成 trait 对象类型 `U`,返回 `Some(&mut U)`;否则返回 `None`。
 ///
-/// # Compile-time failures
-/// Determining whether `T` can be coerced to the trait object type `U` requires compiler trait resolution.
-/// In some cases, that resolution can exceed the recursion limit,
-/// and compilation will fail instead of this function returning `None`.
-/// # Examples
+/// # 编译期失败
+/// 判定 `T` 能否被强转成 trait 对象类型 `U` 需要编译器进行 trait 解析。
+/// 在某些情况下,该解析可能超出递归上限,届时编译会失败,而不是让本函数
+/// 返回 `None`。
+/// # 示例
 ///
 /// ```rust
 /// #![feature(try_as_dyn)]
@@ -982,7 +950,7 @@ pub const fn try_as_dyn<
 ///     fn speak(&self) -> &'static str { "woof" }
 /// }
 ///
-/// struct Rock; // does not implement Animal
+/// struct Rock; // 没有实现 Animal
 ///
 /// let mut dog = Dog;
 /// let mut rock = Rock;
@@ -1005,8 +973,8 @@ pub const fn try_as_dyn_mut<
     match vtable {
         Some(dyn_metadata) => {
             let pointer = ptr::from_raw_parts_mut(t, dyn_metadata);
-            // SAFETY: `t` is a reference to a type, so we know it is valid.
-            // `dyn_metadata` is a vtable for T, implementing the trait of `U`.
+            // SAFETY:`t` 是指向某个类型的引用,所以我们知道它是有效的。
+            // `dyn_metadata` 是 T 的一份虚表,实现了 `U` 所代表的 trait。
             Some(unsafe { &mut *pointer })
         }
         None => None,

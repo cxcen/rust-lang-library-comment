@@ -20,8 +20,7 @@ impl<T: Clone> SpecFill<T> for [T] {
 impl<T: TrivialClone> SpecFill<T> for [T] {
     default fn spec_fill(&mut self, value: T) {
         for item in self.iter_mut() {
-            // SAFETY: `TrivialClone` indicates that this is equivalent to
-            // calling `Clone::clone`
+            // SAFETY: `TrivialClone` 表示按位读取等价于调用 `Clone::clone`。
             *item = unsafe { ptr::read(&value) };
         }
     }
@@ -29,7 +28,7 @@ impl<T: TrivialClone> SpecFill<T> for [T] {
 
 impl SpecFill<u8> for [u8] {
     fn spec_fill(&mut self, value: u8) {
-        // SAFETY: The pointer is derived from a reference, so it's writable.
+        // SAFETY: 指针来自可变引用，因此可写。
         unsafe {
             crate::intrinsics::write_bytes(self.as_mut_ptr(), value, self.len());
         }
@@ -38,7 +37,7 @@ impl SpecFill<u8> for [u8] {
 
 impl SpecFill<i8> for [i8] {
     fn spec_fill(&mut self, value: i8) {
-        // SAFETY: The pointer is derived from a reference, so it's writable.
+        // SAFETY: 指针来自可变引用，因此可写。
         unsafe {
             crate::intrinsics::write_bytes(self.as_mut_ptr(), value.cast_unsigned(), self.len());
         }
@@ -50,12 +49,11 @@ macro spec_fill_int {
         impl SpecFill<$type> for [$type] {
             #[inline]
             fn spec_fill(&mut self, value: $type) {
-                // We always take this fastpath in Miri for long slices as the manual `for`
-                // loop can be prohibitively slow.
+                // 在 Miri 中处理长切片时始终走这条 fastpath，因为手写 `for` 循环可能慢到不可接受。
                 if (cfg!(miri) && self.len() > 32) || crate::intrinsics::is_val_statically_known(value) {
                     let bytes = value.to_ne_bytes();
                     if value == <$type>::from_ne_bytes([bytes[0]; size_of::<$type>()]) {
-                        // SAFETY: The pointer is derived from a reference, so it's writable.
+                        // SAFETY: 指针来自可变引用，因此可写。
                         unsafe {
                             crate::intrinsics::write_bytes(self.as_mut_ptr(), bytes[0], self.len());
                         }

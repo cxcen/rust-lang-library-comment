@@ -1,15 +1,13 @@
-Returns `None` if the pointer is null, or else returns a shared reference to
-the value wrapped in `Some`. In contrast to [`as_ref`], this does not require
-that the value has to be initialized.
+如果指针为空(null),返回 `None`;否则返回一个包裹在 `Some` 中、指向该值的共享
+引用(shared reference)。与 [`as_ref`] 不同,本方法**不**要求该值必须已初始化。
 
-# Safety
+# 安全性(Safety）
 
-When calling this method, you have to ensure that *either* the pointer is null *or*
-the pointer is [convertible to a reference](crate::ptr#pointer-to-reference-conversion).
-Note that because the created reference is to `MaybeUninit<T>`, the
-source pointer can point to uninitialized memory.
+调用此方法时,你必须确保:**要么**指针为空,**要么**该指针
+[可转换为引用](crate::ptr#pointer-to-reference-conversion)。注意,由于所创建的
+引用指向的是 `MaybeUninit<T>`,源指针可以指向未初始化(uninitialized)的内存。
 
-# Panics during const evaluation
+# Panics
 
-This method will panic during const evaluation if the pointer cannot be
-determined to be null or not. See [`is_null`] for more information.
+如果在 const 求值(const evaluation)期间无法确定指针是否为空,本方法将在该期间
+panic。更多信息见 [`is_null`]。

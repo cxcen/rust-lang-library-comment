@@ -8,10 +8,9 @@ use crate::iter::{FusedIterator, InPlaceIterable, TrustedFused, TrustedLen};
 use crate::num::NonZero;
 use crate::ops::Try;
 
-/// An iterator that filters the elements of `iter` with `predicate`.
+/// 使用 `predicate` 过滤 `iter` 元素的迭代器。
 ///
-/// This `struct` is created by the [`filter`] method on [`Iterator`]. See its
-/// documentation for more.
+/// 该 `struct` 由 [`Iterator`] 上的 [`filter`] 方法创建。更多信息见该方法文档。
 ///
 /// [`filter`]: Iterator::filter
 /// [`Iterator`]: trait.Iterator.html
@@ -19,7 +18,7 @@ use crate::ops::Try;
 #[stable(feature = "rust1", since = "1.0.0")]
 #[derive(Clone)]
 pub struct Filter<I, P> {
-    // Used for `SplitWhitespace` and `SplitAsciiWhitespace` `as_str` methods
+    // 供 `SplitWhitespace` 和 `SplitAsciiWhitespace` 的 `as_str` 方法使用。
     pub(crate) iter: I,
     predicate: P,
 }
@@ -43,10 +42,10 @@ where
 
         let result = self.iter.try_for_each(|element| {
             let idx = initialized;
-            // branchless index update combined with unconditionally copying the value even when
-            // it is filtered reduces branching and dependencies in the loop.
+            // 无分支索引更新配合“即使元素被过滤也无条件复制值”，可以减少循环中的
+            // 分支和依赖。
             initialized = idx + (self.predicate)(&element) as usize;
-            // SAFETY: Loop conditions ensure the index is in bounds.
+            // SAFETY: 循环条件保证索引在边界内。
             unsafe { array.get_unchecked_mut(idx) }.write(element);
 
             if initialized < N { ControlFlow::Continue(()) } else { ControlFlow::Break(()) }
@@ -54,11 +53,11 @@ where
 
         match result {
             ControlFlow::Break(()) => {
-                // SAFETY: The loop above is only explicitly broken when the array has been fully initialized
+                // SAFETY: 只有在数组已经完全初始化时，上面的循环才会显式 break。
                 Ok(unsafe { MaybeUninit::array_assume_init(array) })
             }
             ControlFlow::Continue(()) => {
-                // SAFETY: The range is in bounds since the loop breaks when reaching N elements.
+                // SAFETY: 到达 N 个元素时循环会 break，因此该范围在边界内。
                 Err(unsafe { array::IntoIter::new_unchecked(array, 0..initialized) })
             }
         }
@@ -102,7 +101,7 @@ where
     fn next_chunk<const N: usize>(
         &mut self,
     ) -> Result<[Self::Item; N], array::IntoIter<Self::Item, N>> {
-        // avoid codegen for the dead branch
+        // 避免为死分支生成代码。
         let fun = const {
             if crate::mem::needs_drop::<I::Item>() {
                 array::iter_next_chunk::<I::Item, N>
@@ -117,20 +116,17 @@ where
     #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         let (_, upper) = self.iter.size_hint();
-        (0, upper) // can't know a lower bound, due to the predicate
+        (0, upper) // 由于 predicate 的存在，无法知道下界。
     }
 
-    // this special case allows the compiler to make `.filter(_).count()`
-    // branchless. Barring perfect branch prediction (which is unattainable in
-    // the general case), this will be much faster in >90% of cases (containing
-    // virtually all real workloads) and only a tiny bit slower in the rest.
+    // 这个特殊情况允许编译器把 `.filter(_).count()` 做成无分支实现。除非分支预测完美
+    // (一般情况下不可达到)，否则它在超过 90% 的情况中会快得多(几乎覆盖所有真实工作负载)，
+    // 在其余情况中也只会慢一点点。
     //
-    // Having this specialization thus allows us to write `.filter(p).count()`
-    // where we would otherwise write `.map(|x| p(x) as usize).sum()`, which is
-    // less readable and also less backwards-compatible to Rust before 1.10.
+    // 因此，该 specialization 允许我们写 `.filter(p).count()`；否则可能会写成
+    // `.map(|x| p(x) as usize).sum()`，后者可读性更差，也更不兼容 Rust 1.10 之前版本。
     //
-    // Using the branchless version will also simplify the LLVM byte code, thus
-    // leaving more budget for LLVM optimizations.
+    // 使用无分支版本也会简化 LLVM 字节码，从而给 LLVM 优化留下更多空间。
     #[inline]
     fn count(self) -> usize {
         #[inline]
@@ -140,7 +136,7 @@ where
 
         let before = self.iter.size_hint().1.unwrap_or(usize::MAX);
         let total = self.iter.map(to_usize(self.predicate)).sum();
-        // SAFETY: `total` and `before` came from the same iterator of type `I`
+        // SAFETY: `total` 和 `before` 来自同一个 `I` 类型迭代器。
         unsafe {
             <I as SpecAssumeCount>::assume_count_le_upper_bound(total, before);
         }
@@ -210,7 +206,7 @@ where
 
     #[inline]
     unsafe fn as_inner(&mut self) -> &mut I::Source {
-        // SAFETY: unsafe function forwarding to unsafe function with the same requirements
+        // SAFETY: 转发到具有相同要求的 unsafe 函数。
         unsafe { SourceIter::as_inner(&mut self.iter) }
     }
 }
@@ -222,13 +218,13 @@ unsafe impl<I: InPlaceIterable, P> InPlaceIterable for Filter<I, P> {
 }
 
 trait SpecAssumeCount {
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// `count` must be an number of items actually read from the iterator.
+    /// `count` 必须是从迭代器中实际读取的项数。
     ///
-    /// `upper` must either:
-    /// - have come from `size_hint().1` on the iterator, or
-    /// - be `usize::MAX` which will vacuously do nothing.
+    /// `upper` 必须满足以下之一:
+    /// - 来自该迭代器的 `size_hint().1`；
+    /// - 是 `usize::MAX`，这种情况下断言退化为空操作。
     unsafe fn assume_count_le_upper_bound(count: usize, upper: usize);
 }
 
@@ -236,10 +232,10 @@ impl<I: Iterator> SpecAssumeCount for I {
     #[inline]
     #[rustc_inherit_overflow_checks]
     default unsafe fn assume_count_le_upper_bound(count: usize, upper: usize) {
-        // In the default we can't trust the `upper` for soundness
-        // because it came from an untrusted `size_hint`.
+        // 默认实现中不能为了 soundness 信任 `upper`，
+        // 因为它来自不可信的 `size_hint`。
 
-        // In debug mode we might as well check that the size_hint wasn't too small
+        // debug 模式下顺便检查 size_hint 没有过小。
         let _ = upper - count;
     }
 }
@@ -247,7 +243,7 @@ impl<I: Iterator> SpecAssumeCount for I {
 impl<I: TrustedLen> SpecAssumeCount for I {
     #[inline]
     unsafe fn assume_count_le_upper_bound(count: usize, upper: usize) {
-        // SAFETY: The `upper` is trusted because it came from a `TrustedLen` iterator.
+        // SAFETY: `upper` 可信，因为它来自 `TrustedLen` 迭代器。
         unsafe { crate::hint::assert_unchecked(count <= upper) }
     }
 }

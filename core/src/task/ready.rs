@@ -1,11 +1,11 @@
-/// Extracts the successful type of a [`Poll<T>`].
+/// 从 [`Poll<T>`] 中提取出成功(就绪)的那个值。
 ///
-/// This macro bakes in propagation of [`Pending`] signals by returning early.
+/// 该宏内建了对 [`Pending`] 信号的传播:一旦遇到 `Pending` 就提前 `return`。
 ///
 /// [`Poll<T>`]: crate::task::Poll
 /// [`Pending`]: crate::task::Poll::Pending
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use std::task::{ready, Context, Poll};
@@ -18,13 +18,13 @@
 ///
 ///     let num = ready!(fut.poll(cx));
 ///     # let _ = num;
-///     // ... use num
+///     // ... 使用 num
 ///
 ///     Poll::Ready(())
 /// }
 /// ```
 ///
-/// The `ready!` call expands to:
+/// 这一句 `ready!` 调用会展开为:
 ///
 /// ```
 /// # use std::task::{Context, Poll};
@@ -39,8 +39,8 @@
 ///     Poll::Ready(t) => t,
 ///     Poll::Pending => return Poll::Pending,
 /// };
-///     # let _ = num; // to silence unused warning
-///     # // ... use num
+///     # let _ = num; // 消除“未使用”警告
+///     # // ... 使用 num
 ///     #
 ///     # Poll::Ready(())
 /// # }

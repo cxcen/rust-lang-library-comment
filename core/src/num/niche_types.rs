@@ -4,6 +4,15 @@
     reason = "for core, alloc, and std internals until pattern types are further along"
 )]
 
+//! 标准库内部使用的“有效范围”整数包装类型。
+//!
+//! 这些类型通过 `#[rustc_layout_scalar_valid_range_start]` 和
+//! `#[rustc_layout_scalar_valid_range_end]` 告诉编译器：底层标量只有某个闭区间内的
+//! 位模式是有效值。这个契约与 `NonZero` 的核心设计相同：如果某个位模式永远不会作为
+//! 正常值出现，编译器就能把它当作 niche 存放枚举判别信息，例如让
+//! `Option<NonZeroU32>` 与 `u32` 同样大小。违反这些有效范围不变量会直接破坏编译器
+//! 的布局和优化假设，因此 unchecked 构造函数都是 `unsafe`。
+
 use crate::cmp::Ordering;
 use crate::fmt;
 use crate::hash::{Hash, Hasher};
@@ -22,7 +31,8 @@ macro_rules! define_valid_range_type {
         $vis struct $name($int);
 
         const _: () = {
-            // With the `valid_range` attributes, it's always specified as unsigned
+            // `valid_range` 属性按无符号数解释范围，因此这里确认无符号版本从 0 开始，
+            // 并且底层有符号/无符号类型大小一致，避免属性区间和实际存储宽度脱节。
             assert!(<$uint>::MIN == 0);
             let ulow: $uint = $low;
             let uhigh: $uint = $high;
@@ -35,36 +45,37 @@ macro_rules! define_valid_range_type {
             #[inline]
             pub const fn new(val: $int) -> Option<Self> {
                 if (val as $uint) >= ($low as $uint) && (val as $uint) <= ($high as $uint) {
-                    // SAFETY: just checked the inclusive range
+                    // SAFETY: 上面的条件刚刚检查过 `val` 落在声明的闭区间内。
                     Some(unsafe { $name(val) })
                 } else {
                     None
                 }
             }
 
-            /// Constructs an instance of this type from the underlying integer
-            /// primitive without checking whether its zero.
+            /// 从底层整数原语构造该有效范围类型，不执行运行时检查。
             ///
-            /// # Safety
-            /// Immediate language UB if `val` is not within the valid range for this
-            /// type, as it violates the validity invariant.
+            /// # 安全性(Safety）
+            ///
+            /// `val` 必须落在该类型声明的有效范围内。若传入范围外位模式，会立刻违反
+            /// 类型有效性不变量；编译器可能已经基于这些位模式“不可能出现”的假设做布局
+            /// 或分支优化，因此这种违规属于语言层面的 UB。
             #[inline]
             pub const unsafe fn new_unchecked(val: $int) -> Self {
-                // SAFETY: Caller promised that `val` is within the valid range.
+                // SAFETY: 调用方已经承诺 `val` 位于有效范围内。
                 unsafe { $name(val) }
             }
 
             #[inline]
             pub const fn as_inner(self) -> $int {
-                // SAFETY: This is a transparent wrapper, so unwrapping it is sound
-                // (Not using `.0` due to MCP#807.)
+                // SAFETY: 该类型是透明包装，取回底层整数不会改变位模式或有效性。
+                // 这里不使用 `.0`，是为了避开 MCP#807 对字段投影的限制。
                 unsafe { crate::mem::transmute(self) }
             }
         }
 
-        // This is required to allow matching a constant.  We don't get it from a derive
-        // because the derived `PartialEq` would do a field projection, which is banned
-        // by <https://github.com/rust-lang/compiler-team/issues/807>.
+        // 为了允许匹配常量，需要显式实现 `StructuralPartialEq`。不能依赖 derive，
+        // 因为派生出的 `PartialEq` 会做字段投影，而字段投影被
+        // <https://github.com/rust-lang/compiler-team/issues/807> 禁止。
         impl StructuralPartialEq for $name {}
 
         impl PartialEq for $name {
@@ -89,7 +100,7 @@ macro_rules! define_valid_range_type {
         }
 
         impl Hash for $name {
-            // Required method
+            // 必需方法
             fn hash<H: Hasher>(&self, state: &mut H) {
                 Hash::hash(&self.as_inner(), state);
             }
@@ -108,7 +119,7 @@ define_valid_range_type! {
 }
 
 impl Nanoseconds {
-    // SAFETY: 0 is within the valid range
+    // SAFETY: 0 位于 `Nanoseconds` 声明的有效范围内。
     pub const ZERO: Self = unsafe { Nanoseconds::new_unchecked(0) };
 }
 

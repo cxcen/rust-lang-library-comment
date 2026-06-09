@@ -2,8 +2,8 @@ use super::TrivialClone;
 use crate::mem::{self, MaybeUninit};
 use crate::ptr;
 
-/// Private specialization trait used by CloneToUninit, as per
-/// [the dev guide](https://std-dev-guide.rust-lang.org/policy/specialization.html).
+/// 由 CloneToUninit 使用的私有特化(specialization)trait,做法依据
+/// [开发指南](https://std-dev-guide.rust-lang.org/policy/specialization.html)。
 pub(super) unsafe trait CopySpec: Clone {
     unsafe fn clone_one(src: &Self, dst: *mut Self);
     unsafe fn clone_slice(src: &[Self], dst: *mut [Self]);
@@ -12,11 +12,10 @@ pub(super) unsafe trait CopySpec: Clone {
 unsafe impl<T: Clone> CopySpec for T {
     #[inline]
     default unsafe fn clone_one(src: &Self, dst: *mut Self) {
-        // SAFETY: The safety conditions of clone_to_uninit() are a superset of those of
-        // ptr::write().
+        // SAFETY:clone_to_uninit() 的安全条件是 ptr::write() 安全条件的超集。
         unsafe {
-            // We hope the optimizer will figure out to create the cloned value in-place,
-            // skipping ever storing it on the stack and the copy to the destination.
+            // 我们希望优化器能想办法原地(in-place)创建克隆出来的值,从而
+            // 完全省去把它存到栈上、再复制到目标处这两步。
             ptr::write(dst, src.clone());
         }
     }
@@ -25,38 +24,38 @@ unsafe impl<T: Clone> CopySpec for T {
     #[cfg_attr(debug_assertions, track_caller)]
     default unsafe fn clone_slice(src: &[Self], dst: *mut [Self]) {
         let len = src.len();
-        // This is the most likely mistake to make, so check it as a debug assertion.
+        // 这是最容易犯的错误,所以用一个 debug assertion 检查它。
         debug_assert_eq!(
             len,
             dst.len(),
             "clone_to_uninit() source and destination must have equal lengths",
         );
 
-        // SAFETY: The produced `&mut` is valid because:
-        // * The caller is obligated to provide a pointer which is valid for writes.
-        // * All bytes pointed to are in MaybeUninit, so we don't care about the memory's
-        //   initialization status.
+        // SAFETY:产生的 `&mut` 是有效的,因为:
+        // * 调用者有义务提供一个对写入有效的指针。
+        // * 被指向的所有字节都在 MaybeUninit 中,所以我们不关心这块内存的
+        //   初始化状态。
         let uninit_ref = unsafe { &mut *(dst as *mut [MaybeUninit<T>]) };
 
-        // Copy the elements
+        // 复制各个元素
         let mut initializing = InitializingSlice::from_fully_uninit(uninit_ref);
         for element_ref in src {
-            // If the clone() panics, `initializing` will take care of the cleanup.
+            // 如果 clone() 发生 panic,`initializing` 会负责清理。
             initializing.push(element_ref.clone());
         }
-        // If we reach here, then the entire slice is initialized, and we've satisfied our
-        // responsibilities to the caller. Disarm the cleanup guard by forgetting it.
+        // 如果执行到这里,说明整个切片都已被初始化,我们也就履行了对调用者的
+        // 责任。通过 forget 掉它来解除清理守卫(cleanup guard)。
         mem::forget(initializing);
     }
 }
 
-// Specialized implementation for types that are [`TrivialClone`], not just [`Clone`],
-// and can therefore be copied bitwise.
+// 针对那些不只是 [`Clone`]、而且是 [`TrivialClone`] 的类型的特化实现,
+// 这些类型因此可以被按位复制。
 unsafe impl<T: TrivialClone> CopySpec for T {
     #[inline]
     unsafe fn clone_one(src: &Self, dst: *mut Self) {
-        // SAFETY: The safety conditions of clone_to_uninit() are a superset of those of
-        // ptr::copy_nonoverlapping().
+        // SAFETY:clone_to_uninit() 的安全条件是 ptr::copy_nonoverlapping()
+        // 安全条件的超集。
         unsafe {
             ptr::copy_nonoverlapping(src, dst, 1);
         }
@@ -66,30 +65,30 @@ unsafe impl<T: TrivialClone> CopySpec for T {
     #[cfg_attr(debug_assertions, track_caller)]
     unsafe fn clone_slice(src: &[Self], dst: *mut [Self]) {
         let len = src.len();
-        // This is the most likely mistake to make, so check it as a debug assertion.
+        // 这是最容易犯的错误,所以用一个 debug assertion 检查它。
         debug_assert_eq!(
             len,
             dst.len(),
             "clone_to_uninit() source and destination must have equal lengths",
         );
 
-        // SAFETY: The safety conditions of clone_to_uninit() are a superset of those of
-        // ptr::copy_nonoverlapping().
+        // SAFETY:clone_to_uninit() 的安全条件是 ptr::copy_nonoverlapping()
+        // 安全条件的超集。
         unsafe {
             ptr::copy_nonoverlapping(src.as_ptr(), dst.as_mut_ptr(), len);
         }
     }
 }
 
-/// Ownership of a collection of values stored in a non-owned `[MaybeUninit<T>]`, some of which
-/// are not yet initialized. This is sort of like a `Vec` that doesn't own its allocation.
-/// Its responsibility is to provide cleanup on unwind by dropping the values that *are*
-/// initialized, unless disarmed by forgetting.
+/// 对一组存放在非自有的 `[MaybeUninit<T>]` 中的值的所有权,其中部分元素
+/// 尚未被初始化。它有点像一个不拥有自身内存分配的 `Vec`。它的职责是:在
+/// 栈展开(unwind)时通过 drop 掉那些 *已被* 初始化的值来进行清理——除非
+/// 被 forget 掉而解除武装(disarmed)。
 ///
-/// This is a helper for `impl<T: Clone> CloneToUninit for [T]`.
+/// 这是 `impl<T: Clone> CloneToUninit for [T]` 的一个辅助工具。
 struct InitializingSlice<'a, T> {
     data: &'a mut [MaybeUninit<T>],
-    /// Number of elements of `*self.data` that are initialized.
+    /// `*self.data` 中已被初始化的元素个数。
     initialized_len: usize,
 }
 
@@ -99,11 +98,11 @@ impl<'a, T> InitializingSlice<'a, T> {
         Self { data, initialized_len: 0 }
     }
 
-    /// Push a value onto the end of the initialized part of the slice.
+    /// 向切片已初始化部分的末尾压入一个值。
     ///
     /// # Panics
     ///
-    /// Panics if the slice is already fully initialized.
+    /// 如果切片已经完全初始化,则会 panic。
     #[inline]
     fn push(&mut self, value: T) {
         MaybeUninit::write(&mut self.data[self.initialized_len], value);
@@ -112,12 +111,12 @@ impl<'a, T> InitializingSlice<'a, T> {
 }
 
 impl<'a, T> Drop for InitializingSlice<'a, T> {
-    #[cold] // will only be invoked on unwind
+    #[cold] // 只会在栈展开时被调用
     fn drop(&mut self) {
         // SAFETY:
-        // * the pointer is valid because it was made from a mutable reference
-        // * `initialized_len` counts the initialized elements as an invariant of this type,
-        //   so each of the pointed-to elements is initialized and may be dropped.
+        // * 该指针是有效的,因为它是从一个可变引用得来的
+        // * 作为本类型的一个不变量,`initialized_len` 统计的是已初始化的元素
+        //   个数,因此被指向的每一个元素都已被初始化,可以被 drop。
         unsafe { self.data[..self.initialized_len].assume_init_drop() };
     }
 }

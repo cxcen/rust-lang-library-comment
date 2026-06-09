@@ -1,31 +1,31 @@
-//! Common utilities, for internal use only.
+//! dec2flt 内部共用工具。
 
-/// Helper methods to process immutable bytes.
+/// 处理不可变字节切片的辅助方法。
 pub(crate) trait ByteSlice {
-    /// Reads 8 bytes as a 64-bit integer in little-endian order.
+    /// 按小端序把 8 个字节读取为 64 位整数。
     fn read_u64(&self) -> u64;
 
-    /// Writes a 64-bit integer as 8 bytes in little-endian order.
+    /// 按小端序把 64 位整数写成 8 个字节。
     fn write_u64(&mut self, value: u64);
 
-    /// Calculate the difference in length between two slices.
+    /// 计算两个切片之间的长度差。
     fn offset_from(&self, other: &Self) -> isize;
 
-    /// Iteratively parse and consume digits from bytes.
+    /// 从字节切片中迭代解析并消费十进制数字。
     ///
-    /// Returns the same bytes with consumed digits being elided. Breaks on invalid digits.
+    /// 返回去掉已消费数字后的剩余切片；遇到非数字字节时停止。
     fn parse_digits(&self, func: impl FnMut(u8)) -> &Self;
 }
 
 impl ByteSlice for [u8] {
-    #[inline(always)] // inlining this is crucial to remove bound checks
+    #[inline(always)] // 内联对消除边界检查很关键。
     fn read_u64(&self) -> u64 {
         let mut tmp = [0; 8];
         tmp.copy_from_slice(&self[..8]);
         u64::from_le_bytes(tmp)
     }
 
-    #[inline(always)] // inlining this is crucial to remove bound checks
+    #[inline(always)] // 内联对消除边界检查很关键。
     fn write_u64(&mut self, value: u64) {
         self[..8].copy_from_slice(&value.to_le_bytes())
     }
@@ -53,28 +53,28 @@ impl ByteSlice for [u8] {
     }
 }
 
-/// Determine if all characters in an 8-byte byte string (represented as a `u64`) are all decimal
-/// digits.
+/// 判断一个以 `u64` 表示的 8 字节字符串是否全由十进制数字组成。
 ///
-/// This does not care about the order in which the bytes were loaded.
+/// 该检查不依赖字节被加载时的顺序；它只关心每个字节是否落在 ASCII `'0'..='9'`。
 pub(crate) fn is_8digits(v: u64) -> bool {
     let a = v.wrapping_add(0x4646_4646_4646_4646);
     let b = v.wrapping_sub(0x3030_3030_3030_3030);
     (a | b) & 0x8080_8080_8080_8080 == 0
 }
 
-/// A custom 64-bit floating point type, representing `m * 2^p`.
-/// p is biased, so it be directly shifted into the exponent bits.
+/// 自定义 64 位浮点中间表示，数值形态为 `m * 2^p`。
+///
+/// `p_biased` 已经带有目标格式的指数偏置，因此可以直接移入 IEEE 754 exponent 位。
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
 pub struct BiasedFp {
-    /// The significant digits.
+    /// 有效数字，也就是二进制 mantissa。
     pub m: u64,
-    /// The biased, binary exponent.
+    /// 带偏置的二进制 exponent。
     pub p_biased: i32,
 }
 
 impl BiasedFp {
-    /// Represent `0 ^ p`
+    /// 表示 `0 * 2^p`。
     #[inline]
     pub const fn zero_pow2(p_biased: i32) -> Self {
         Self { m: 0, p_biased }

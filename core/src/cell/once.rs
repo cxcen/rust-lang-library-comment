@@ -1,23 +1,24 @@
 use crate::cell::UnsafeCell;
 use crate::{fmt, mem};
 
-/// A cell which can nominally be written to only once.
+/// 一种名义上只能被写入一次的 cell。
 ///
-/// This allows obtaining a shared `&T` reference to its inner value without copying or replacing
-/// it (unlike [`Cell`]), and without runtime borrow checks (unlike [`RefCell`]). However,
-/// only immutable references can be obtained unless one has a mutable reference to the cell
-/// itself. In the same vein, the cell can only be re-initialized with such a mutable reference.
+/// 它允许在不复制、不替换内部值的情况下取得指向其内部值的共享引用 `&T`(不同于 [`Cell`]),
+/// 而且无需运行时借用检查(不同于 [`RefCell`])。不过,除非你持有指向该 cell 本身的可变引用,
+/// 否则只能取得不可变引用。同理,也只有持有这样的可变引用,才能对该 cell 进行重新初始化。
 ///
-/// A `OnceCell` can be thought of as a safe abstraction over uninitialized data that becomes
-/// initialized once written.
+/// 可以把 `OnceCell` 看作是对未初始化数据的一层安全抽象:数据一旦被写入,就变为已初始化状态。
+/// 这个“一次写入”不变量让它能够在只持有 `&OnceCell<T>` 的情况下初始化内部 `UnsafeCell<Option<T>>`,
+/// 之后再稳定地交出 `&T`。如果初始化闭包失败或 panic,该 cell 仍保持未初始化;如果初始化过程中
+/// 又重入式地尝试初始化同一个 cell,实现会选择 panic,避免悄悄沿用旧值或破坏只写一次的不变量。
 ///
-/// For a thread-safe version of this struct, see [`std::sync::OnceLock`].
+/// 本结构体的线程安全版本,参见 [`std::sync::OnceLock`]。
 ///
 /// [`RefCell`]: crate::cell::RefCell
 /// [`Cell`]: crate::cell::Cell
 /// [`std::sync::OnceLock`]: ../../std/sync/struct.OnceLock.html
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use std::cell::OnceCell;
@@ -33,12 +34,12 @@ use crate::{fmt, mem};
 /// ```
 #[stable(feature = "once_cell", since = "1.70.0")]
 pub struct OnceCell<T> {
-    // Invariant: written to at most once.
+    // 不变量:至多被写入一次。
     inner: UnsafeCell<Option<T>>,
 }
 
 impl<T> OnceCell<T> {
-    /// Creates a new uninitialized cell.
+    /// 创建一个新的、未初始化的 cell。
     #[inline]
     #[must_use]
     #[stable(feature = "once_cell", since = "1.70.0")]
@@ -47,33 +48,32 @@ impl<T> OnceCell<T> {
         OnceCell { inner: UnsafeCell::new(None) }
     }
 
-    /// Gets the reference to the underlying value.
+    /// 取得指向内部值的引用。
     ///
-    /// Returns `None` if the cell is uninitialized.
+    /// 如果该 cell 尚未初始化,则返回 `None`。
     #[inline]
     #[stable(feature = "once_cell", since = "1.70.0")]
     pub fn get(&self) -> Option<&T> {
-        // SAFETY: Safe due to `inner`'s invariant
+        // SAFETY:借助 `inner` 的不变量,此操作是安全的
         unsafe { &*self.inner.get() }.as_ref()
     }
 
-    /// Gets the mutable reference to the underlying value.
+    /// 取得指向内部值的可变引用。
     ///
-    /// Returns `None` if the cell is uninitialized.
+    /// 如果该 cell 尚未初始化,则返回 `None`。
     #[inline]
     #[stable(feature = "once_cell", since = "1.70.0")]
     pub fn get_mut(&mut self) -> Option<&mut T> {
         self.inner.get_mut().as_mut()
     }
 
-    /// Initializes the contents of the cell to `value`.
+    /// 把该 cell 的内容初始化为 `value`。
     ///
-    /// # Errors
+    /// # 错误
     ///
-    /// This method returns `Ok(())` if the cell was uninitialized
-    /// and `Err(value)` if it was already initialized.
+    /// 如果该 cell 此前尚未初始化,本方法返回 `Ok(())`;如果它已被初始化,则返回 `Err(value)`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::cell::OnceCell;
@@ -96,15 +96,14 @@ impl<T> OnceCell<T> {
         }
     }
 
-    /// Initializes the contents of the cell to `value` if the cell was
-    /// uninitialized, then returns a reference to it.
+    /// 如果该 cell 此前尚未初始化,则把其内容初始化为 `value`,然后返回一个指向它的引用。
     ///
-    /// # Errors
+    /// # 错误
     ///
-    /// This method returns `Ok(&value)` if the cell was uninitialized
-    /// and `Err((&current_value, value))` if it was already initialized.
+    /// 如果该 cell 此前尚未初始化,本方法返回 `Ok(&value)`;如果它已被初始化,则返回
+    /// `Err((&current_value, value))`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(once_cell_try_insert)]
@@ -127,26 +126,23 @@ impl<T> OnceCell<T> {
             return Err((old, value));
         }
 
-        // SAFETY: This is the only place where we set the slot, no races
-        // due to reentrancy/concurrency are possible, and we've
-        // checked that slot is currently `None`, so this write
-        // maintains the `inner`'s invariant.
+        // SAFETY:这里是我们唯一会设置这个槽位的地方,不可能因重入/并发而产生竞争;并且我们
+        // 已经检查过该槽位当前是 `None`,所以这次写入维持了 `inner` 的不变量。
         let slot = unsafe { &mut *self.inner.get() };
         Ok(slot.insert(value))
     }
 
-    /// Gets the contents of the cell, initializing it to `f()`
-    /// if the cell was uninitialized.
+    /// 取得该 cell 的内容;如果该 cell 此前尚未初始化,则用 `f()` 将其初始化。
     ///
     /// # Panics
     ///
-    /// If `f()` panics, the panic is propagated to the caller, and the cell
-    /// remains uninitialized.
+    /// 如果 `f()` panic,该 panic 会被传播给调用者,而该 cell 仍保持未初始化状态,下一次调用仍会
+    /// 重新尝试初始化。
     ///
-    /// It is an error to reentrantly initialize the cell from `f`. Doing
-    /// so results in a panic.
+    /// 在 `f` 中重入式地初始化该 cell 是一个错误。这样做会导致 panic,因为第二次写入会与
+    /// 外层初始化竞争同一个“只能从 `None` 变成 `Some` 一次”的槽位。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::cell::OnceCell;
@@ -169,15 +165,14 @@ impl<T> OnceCell<T> {
         }
     }
 
-    /// Gets the mutable reference of the contents of the cell,
-    /// initializing it to `f()` if the cell was uninitialized.
+    /// 取得指向该 cell 内容的可变引用;如果该 cell 此前尚未初始化,则用 `f()` 将其初始化。
     ///
     /// # Panics
     ///
-    /// If `f()` panics, the panic is propagated to the caller, and the cell
-    /// remains uninitialized.
+    /// 如果 `f()` panic,该 panic 会被传播给调用者,而该 cell 仍保持未初始化状态,下一次调用仍会
+    /// 重新尝试初始化。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(once_cell_get_mut)]
@@ -205,19 +200,18 @@ impl<T> OnceCell<T> {
         }
     }
 
-    /// Gets the contents of the cell, initializing it to `f()` if
-    /// the cell was uninitialized. If the cell was uninitialized
-    /// and `f()` failed, an error is returned.
+    /// 取得该 cell 的内容;如果该 cell 此前尚未初始化,则用 `f()` 将其初始化。如果该 cell 此前
+    /// 尚未初始化且 `f()` 失败,则返回一个错误。
     ///
     /// # Panics
     ///
-    /// If `f()` panics, the panic is propagated to the caller, and the cell
-    /// remains uninitialized.
+    /// 如果 `f()` panic,该 panic 会被传播给调用者,而该 cell 仍保持未初始化状态,下一次调用仍会
+    /// 重新尝试初始化。
     ///
-    /// It is an error to reentrantly initialize the cell from `f`. Doing
-    /// so results in a panic.
+    /// 在 `f` 中重入式地初始化该 cell 是一个错误。这样做会导致 panic,因为第二次写入会与
+    /// 外层初始化竞争同一个“只能从 `None` 变成 `Some` 一次”的槽位。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(once_cell_try)]
@@ -245,16 +239,15 @@ impl<T> OnceCell<T> {
         self.try_init(f)
     }
 
-    /// Gets the mutable reference of the contents of the cell, initializing
-    /// it to `f()` if the cell was uninitialized. If the cell was uninitialized
-    /// and `f()` failed, an error is returned.
+    /// 取得指向该 cell 内容的可变引用;如果该 cell 此前尚未初始化,则用 `f()` 将其初始化。如果
+    /// 该 cell 此前尚未初始化且 `f()` 失败,则返回一个错误。
     ///
     /// # Panics
     ///
-    /// If `f()` panics, the panic is propagated to the caller, and the cell
-    /// remains uninitialized.
+    /// 如果 `f()` panic,该 panic 会被传播给调用者,而该 cell 仍保持未初始化状态,下一次调用仍会
+    /// 重新尝试初始化。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(once_cell_get_mut)]
@@ -263,7 +256,7 @@ impl<T> OnceCell<T> {
     ///
     /// let mut cell: OnceCell<u32> = OnceCell::new();
     ///
-    /// // Failed attempts to initialize the cell do not change its contents
+    /// // 初始化该 cell 的失败尝试不会改变它的内容
     /// assert!(cell.get_mut_or_try_init(|| "not a number!".parse()).is_err());
     /// assert!(cell.get().is_none());
     ///
@@ -285,26 +278,24 @@ impl<T> OnceCell<T> {
         Ok(self.get_mut().unwrap())
     }
 
-    // Avoid inlining the initialization closure into the common path that fetches
-    // the already initialized value
+    // 避免把初始化闭包内联进“取出已初始化值”这条公共路径中
     #[cold]
     fn try_init<F, E>(&self, f: F) -> Result<&T, E>
     where
         F: FnOnce() -> Result<T, E>,
     {
         let val = f()?;
-        // Note that *some* forms of reentrant initialization might lead to
-        // UB (see `reentrant_init` test). I believe that just removing this
-        // `panic`, while keeping `try_insert` would be sound, but it seems
-        // better to panic, rather than to silently use an old value.
+        // 注意:*某些*形式的重入式初始化有可能导致 UB(参见 `reentrant_init` 测试)。我认为,
+        // 仅仅去掉这里的 `panic`、同时保留 `try_insert`,在健全性上是没问题的;但相比悄无声息地
+        // 沿用一个旧值,在此 panic 似乎是更好的选择。
         if let Ok(val) = self.try_insert(val) { Ok(val) } else { panic!("reentrant init") }
     }
 
-    /// Consumes the cell, returning the wrapped value.
+    /// 消耗该 cell,返回其所包裹的值。
     ///
-    /// Returns `None` if the cell was uninitialized.
+    /// 如果该 cell 此前尚未初始化,则返回 `None`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::cell::OnceCell;
@@ -321,18 +312,18 @@ impl<T> OnceCell<T> {
     #[rustc_const_stable(feature = "const_cell_into_inner", since = "1.83.0")]
     #[rustc_allow_const_fn_unstable(const_precise_live_drops)]
     pub const fn into_inner(self) -> Option<T> {
-        // Because `into_inner` takes `self` by value, the compiler statically verifies
-        // that it is not currently borrowed. So it is safe to move out `Option<T>`.
+        // 因为 `into_inner` 按值接收 `self`,编译器会静态地验证它当前未被借用。所以把 `Option<T>`
+        // move 出来是安全的。
         self.inner.into_inner()
     }
 
-    /// Takes the value out of this `OnceCell`, moving it back to an uninitialized state.
+    /// 把值从该 `OnceCell` 中取出,使其重新回到未初始化状态。
     ///
-    /// Has no effect and returns `None` if the `OnceCell` is uninitialized.
+    /// 如果该 `OnceCell` 尚未初始化,则不产生任何效果并返回 `None`。
     ///
-    /// Safety is guaranteed by requiring a mutable reference.
+    /// 其安全性是通过要求一个可变引用来保证的。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::cell::OnceCell;
@@ -398,13 +389,13 @@ impl<T: Eq> Eq for OnceCell<T> {}
 #[stable(feature = "once_cell", since = "1.70.0")]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
 impl<T> const From<T> for OnceCell<T> {
-    /// Creates a new `OnceCell<T>` which already contains the given `value`.
+    /// 创建一个已经内含给定 `value` 的新 `OnceCell<T>`。
     #[inline]
     fn from(value: T) -> Self {
         OnceCell { inner: UnsafeCell::new(Some(value)) }
     }
 }
 
-// Just like for `Cell<T>` this isn't needed, but results in nicer error messages.
+// 与 `Cell<T>` 一样,这个 impl 并非必需,但能让错误信息更友好。
 #[stable(feature = "once_cell", since = "1.70.0")]
 impl<T> !Sync for OnceCell<T> {}

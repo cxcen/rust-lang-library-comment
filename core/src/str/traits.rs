@@ -1,4 +1,4 @@
-//! Trait implementations for `str`.
+//! `str` 的 trait 实现。
 
 use super::ParseBoolError;
 use crate::cmp::Ordering;
@@ -7,13 +7,12 @@ use crate::slice::SliceIndex;
 use crate::ub_checks::assert_unsafe_precondition;
 use crate::{ops, ptr, range};
 
-/// Implements ordering of strings.
+/// 实现字符串排序。
 ///
-/// Strings are ordered  [lexicographically](Ord#lexicographical-comparison) by their byte values. This orders Unicode code
-/// points based on their positions in the code charts. This is not necessarily the same as
-/// "alphabetical" order, which varies by language and locale. Sorting strings according to
-/// culturally-accepted standards requires locale-specific data that is outside the scope of
-/// the `str` type.
+/// 字符串按字节值进行[字典序](Ord#lexicographical-comparison)排序。这等价于按 UTF-8
+/// 编码后的字节序比较，通常会反映 Unicode code point 在码表中的位置，但不等同于自然语言中的
+/// “字母顺序”。字母顺序会随语言和区域设置变化；按文化习惯排序需要 locale 特定数据，
+/// 超出 `str` 类型的职责范围。
 #[stable(feature = "rust1", since = "1.0.0")]
 impl Ord for str {
     #[inline]
@@ -35,13 +34,10 @@ impl const PartialEq for str {
 #[rustc_const_unstable(feature = "const_cmp", issue = "143800")]
 impl const Eq for str {}
 
-/// Implements comparison operations on strings.
+/// 实现字符串比较操作。
 ///
-/// Strings are compared [lexicographically](Ord#lexicographical-comparison) by their byte values. This compares Unicode code
-/// points based on their positions in the code charts. This is not necessarily the same as
-/// "alphabetical" order, which varies by language and locale. Comparing strings according to
-/// culturally-accepted standards requires locale-specific data that is outside the scope of
-/// the `str` type.
+/// 字符串按字节值进行[字典序](Ord#lexicographical-comparison)比较。这是稳定、与 locale
+/// 无关的二进制顺序；它不尝试实现自然语言中的大小写折叠、规范化或排序规则。
 #[stable(feature = "rust1", since = "1.0.0")]
 impl PartialOrd for str {
     #[inline]
@@ -83,18 +79,17 @@ const fn str_index_overflow_fail() -> ! {
     panic!("attempted to index str up to maximum usize");
 }
 
-/// Implements substring slicing with syntax `&self[..]` or `&mut self[..]`.
+/// 实现 `&self[..]` 或 `&mut self[..]` 语法的子串切片。
 ///
-/// Returns a slice of the whole string, i.e., returns `&self` or `&mut
-/// self`. Equivalent to `&self[0 .. len]` or `&mut self[0 .. len]`. Unlike
-/// other indexing operations, this can never panic.
+/// 返回整个字符串切片，也就是返回 `&self` 或 `&mut self`。
+/// 它等价于 `&self[0 .. len]` 或 `&mut self[0 .. len]`。
+/// 与其他索引操作不同，该操作永远不会 panic。
 ///
-/// This operation is *O*(1).
+/// 该操作是 *O*(1)。
 ///
-/// Prior to 1.20.0, these indexing operations were still supported by
-/// direct implementation of `Index` and `IndexMut`.
+/// 在 1.20.0 之前，这些索引操作仍通过直接实现 `Index` 和 `IndexMut` 支持。
 ///
-/// Equivalent to `&self[0 .. len]` or `&mut self[0 .. len]`.
+/// 等价于 `&self[0 .. len]` 或 `&mut self[0 .. len]`。
 #[stable(feature = "str_checked_slicing", since = "1.20.0")]
 #[rustc_const_unstable(feature = "const_index", issue = "143775")]
 unsafe impl const SliceIndex<str> for ops::RangeFull {
@@ -125,24 +120,21 @@ unsafe impl const SliceIndex<str> for ops::RangeFull {
     }
 }
 
-/// Implements substring slicing with syntax `&self[begin .. end]` or `&mut
-/// self[begin .. end]`.
+/// 实现 `&self[begin .. end]` 或 `&mut self[begin .. end]` 语法的子串切片。
 ///
-/// Returns a slice of the given string from the byte range
-/// [`begin`, `end`).
+/// 返回给定字符串中字节范围 [`begin`, `end`) 对应的切片。
+/// 注意这里的索引是字节索引，不是 `char` 序号；两端必须位于 UTF-8 字符边界。
 ///
-/// This operation is *O*(1).
+/// 该操作是 *O*(1)。
 ///
-/// Prior to 1.20.0, these indexing operations were still supported by
-/// direct implementation of `Index` and `IndexMut`.
+/// 在 1.20.0 之前，这些索引操作仍通过直接实现 `Index` 和 `IndexMut` 支持。
 ///
 /// # Panics
 ///
-/// Panics if `begin` or `end` does not point to the starting byte offset of
-/// a character (as defined by `is_char_boundary`), if `begin > end`, or if
-/// `end > len`.
+/// 当 `begin` 或 `end` 未指向字符起始字节偏移（由 `is_char_boundary` 定义）、
+/// `begin > end`，或 `end > len` 时 panic。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// let s = "Löwe 老虎 Léopard";
@@ -150,14 +142,14 @@ unsafe impl const SliceIndex<str> for ops::RangeFull {
 ///
 /// assert_eq!(&s[1 .. 9], "öwe 老");
 ///
-/// // these will panic:
-/// // byte 2 lies within `ö`:
+/// // 这些写法会 panic：
+/// // 字节 2 位于 `ö` 的编码内部：
 /// // &s[2 ..3];
 ///
-/// // byte 8 lies within `老`
+/// // 字节 8 位于 `老` 的编码内部：
 /// // &s[1 .. 8];
 ///
-/// // byte 100 is outside the string
+/// // 字节 100 超出字符串范围：
 /// // &s[3 .. 100];
 /// ```
 #[stable(feature = "str_checked_slicing", since = "1.20.0")]
@@ -170,9 +162,8 @@ unsafe impl const SliceIndex<str> for ops::Range<usize> {
             && slice.is_char_boundary(self.start)
             && slice.is_char_boundary(self.end)
         {
-            // SAFETY: just checked that `start` and `end` are on a char boundary,
-            // and we are passing in a safe reference, so the return value will also be one.
-            // We also checked char boundaries, so this is valid UTF-8.
+            // SAFETY: 已检查 `start` 和 `end` 位于 UTF-8 字符边界上；
+            // 输入是安全引用，返回的子切片仍在同一合法 `str` 内，因此也是合法 UTF-8。
             Some(unsafe { &*self.get_unchecked(slice) })
         } else {
             None
@@ -184,8 +175,8 @@ unsafe impl const SliceIndex<str> for ops::Range<usize> {
             && slice.is_char_boundary(self.start)
             && slice.is_char_boundary(self.end)
         {
-            // SAFETY: just checked that `start` and `end` are on a char boundary.
-            // We know the pointer is unique because we got it from `slice`.
+            // SAFETY: 已检查 `start` 和 `end` 位于 UTF-8 字符边界上；
+            // 指针来自 `&mut str`，因此具有独占访问权。
             Some(unsafe { &mut *self.get_unchecked_mut(slice) })
         } else {
             None
@@ -197,12 +188,9 @@ unsafe impl const SliceIndex<str> for ops::Range<usize> {
         let slice = slice as *const [u8];
 
         assert_unsafe_precondition!(
-            // We'd like to check that the bounds are on char boundaries,
-            // but there's not really a way to do so without reading
-            // behind the pointer, which has aliasing implications.
-            // It's also not possible to move this check up to
-            // `str::get_unchecked` without adding a special function
-            // to `SliceIndex` just for this.
+            // 理想情况下还应检查范围端点是否位于字符边界；但在这里只拿到原始指针，
+            // 若为了检查去读取指针背后的字节，会引入 aliasing 影响。
+            // 若不专门给 `SliceIndex` 增加特殊函数，也无法把该检查上移到 `str::get_unchecked`。
             check_library_ub,
             "str::get_unchecked requires that the range is within the string slice",
             (
@@ -212,8 +200,7 @@ unsafe impl const SliceIndex<str> for ops::Range<usize> {
             ) => end >= start && end <= len,
         );
 
-        // SAFETY: the caller guarantees that `self` is in bounds of `slice`
-        // which satisfies all the conditions for `add`.
+        // SAFETY: 调用方保证 `self` 在 `slice` 边界内，满足 `add` 的全部条件。
         unsafe {
             let new_len = unchecked_sub(self.end, self.start);
             ptr::slice_from_raw_parts(slice.as_ptr().add(self.start), new_len) as *const str
@@ -234,7 +221,7 @@ unsafe impl const SliceIndex<str> for ops::Range<usize> {
             ) => end >= start && end <= len,
         );
 
-        // SAFETY: see comments for `get_unchecked`.
+        // SAFETY: 见 `get_unchecked` 中的说明。
         unsafe {
             let new_len = unchecked_sub(self.end, self.start);
             ptr::slice_from_raw_parts_mut(slice.as_mut_ptr().add(self.start), new_len) as *mut str
@@ -250,14 +237,14 @@ unsafe impl const SliceIndex<str> for ops::Range<usize> {
     }
     #[inline]
     fn index_mut(self, slice: &mut str) -> &mut Self::Output {
-        // is_char_boundary checks that the index is in [0, .len()]
-        // cannot reuse `get` as above, because of NLL trouble
+        // `is_char_boundary` 会检查索引位于 [0, .len()] 内。
+        // 由于 NLL 限制，不能像上面那样复用 `get`。
         if self.start <= self.end
             && slice.is_char_boundary(self.start)
             && slice.is_char_boundary(self.end)
         {
-            // SAFETY: just checked that `start` and `end` are on a char boundary,
-            // and we are passing in a safe reference, so the return value will also be one.
+            // SAFETY: 已检查 `start` 和 `end` 位于 UTF-8 字符边界上；
+            // 输入是安全的独占引用，返回的子切片也保持有效。
             unsafe { &mut *self.get_unchecked_mut(slice) }
         } else {
             super::slice_error_fail(slice, self.start, self.end)
@@ -275,9 +262,8 @@ unsafe impl const SliceIndex<str> for range::Range<usize> {
             && slice.is_char_boundary(self.start)
             && slice.is_char_boundary(self.end)
         {
-            // SAFETY: just checked that `start` and `end` are on a char boundary,
-            // and we are passing in a safe reference, so the return value will also be one.
-            // We also checked char boundaries, so this is valid UTF-8.
+            // SAFETY: 已检查 `start` 和 `end` 位于 UTF-8 字符边界上；
+            // 输入是安全引用，返回的子切片仍是合法 UTF-8。
             Some(unsafe { &*self.get_unchecked(slice) })
         } else {
             None
@@ -289,8 +275,8 @@ unsafe impl const SliceIndex<str> for range::Range<usize> {
             && slice.is_char_boundary(self.start)
             && slice.is_char_boundary(self.end)
         {
-            // SAFETY: just checked that `start` and `end` are on a char boundary.
-            // We know the pointer is unique because we got it from `slice`.
+            // SAFETY: 已检查 `start` 和 `end` 位于 UTF-8 字符边界上；
+            // 指针来自 `&mut str`，因此具有独占访问权。
             Some(unsafe { &mut *self.get_unchecked_mut(slice) })
         } else {
             None
@@ -302,12 +288,9 @@ unsafe impl const SliceIndex<str> for range::Range<usize> {
         let slice = slice as *const [u8];
 
         assert_unsafe_precondition!(
-            // We'd like to check that the bounds are on char boundaries,
-            // but there's not really a way to do so without reading
-            // behind the pointer, which has aliasing implications.
-            // It's also not possible to move this check up to
-            // `str::get_unchecked` without adding a special function
-            // to `SliceIndex` just for this.
+            // 理想情况下还应检查范围端点是否位于字符边界；但在这里只拿到原始指针，
+            // 若为了检查去读取指针背后的字节，会引入 aliasing 影响。
+            // 若不专门给 `SliceIndex` 增加特殊函数，也无法把该检查上移到 `str::get_unchecked`。
             check_library_ub,
             "str::get_unchecked requires that the range is within the string slice",
             (
@@ -317,8 +300,7 @@ unsafe impl const SliceIndex<str> for range::Range<usize> {
             ) => end >= start && end <= len,
         );
 
-        // SAFETY: the caller guarantees that `self` is in bounds of `slice`
-        // which satisfies all the conditions for `add`.
+        // SAFETY: 调用方保证 `self` 在 `slice` 边界内，满足 `add` 的全部条件。
         unsafe {
             let new_len = unchecked_sub(self.end, self.start);
             ptr::slice_from_raw_parts(slice.as_ptr().add(self.start), new_len) as *const str
@@ -339,7 +321,7 @@ unsafe impl const SliceIndex<str> for range::Range<usize> {
             ) => end >= start && end <= len,
         );
 
-        // SAFETY: see comments for `get_unchecked`.
+        // SAFETY: 见 `get_unchecked` 中的说明。
         unsafe {
             let new_len = unchecked_sub(self.end, self.start);
             ptr::slice_from_raw_parts_mut(slice.as_mut_ptr().add(self.start), new_len) as *mut str
@@ -355,14 +337,14 @@ unsafe impl const SliceIndex<str> for range::Range<usize> {
     }
     #[inline]
     fn index_mut(self, slice: &mut str) -> &mut Self::Output {
-        // is_char_boundary checks that the index is in [0, .len()]
-        // cannot reuse `get` as above, because of NLL trouble
+        // `is_char_boundary` 会检查索引位于 [0, .len()] 内。
+        // 由于 NLL 限制，不能像上面那样复用 `get`。
         if self.start <= self.end
             && slice.is_char_boundary(self.start)
             && slice.is_char_boundary(self.end)
         {
-            // SAFETY: just checked that `start` and `end` are on a char boundary,
-            // and we are passing in a safe reference, so the return value will also be one.
+            // SAFETY: 已检查 `start` 和 `end` 位于 UTF-8 字符边界上；
+            // 输入是安全的独占引用，返回的子切片也保持有效。
             unsafe { &mut *self.get_unchecked_mut(slice) }
         } else {
             super::slice_error_fail(slice, self.start, self.end)
@@ -370,19 +352,16 @@ unsafe impl const SliceIndex<str> for range::Range<usize> {
     }
 }
 
-/// Implements substring slicing for arbitrary bounds.
+/// 为任意边界组合实现子串切片。
 ///
-/// Returns a slice of the given string bounded by the byte indices
-/// provided by each bound.
+/// 返回由各边界提供的字节索引限定的字符串切片。最终范围仍必须位于 UTF-8 字符边界上。
 ///
-/// This operation is *O*(1).
+/// 该操作是 *O*(1)。
 ///
 /// # Panics
 ///
-/// Panics if `begin` or `end` (if it exists and once adjusted for
-/// inclusion/exclusion) does not point to the starting byte offset of
-/// a character (as defined by `is_char_boundary`), if `begin > end`, or if
-/// `end > len`.
+/// 当 `begin` 或 `end`（若存在，并在处理包含/排除边界后）未指向字符起始字节偏移
+///（由 `is_char_boundary` 定义）、`begin > end`，或 `end > len` 时 panic。
 #[stable(feature = "slice_index_str_with_ops_bound_pair", since = "1.73.0")]
 unsafe impl SliceIndex<str> for (ops::Bound<usize>, ops::Bound<usize>) {
     type Output = str;
@@ -400,14 +379,14 @@ unsafe impl SliceIndex<str> for (ops::Bound<usize>, ops::Bound<usize>) {
     #[inline]
     unsafe fn get_unchecked(self, slice: *const str) -> *const str {
         let len = (slice as *const [u8]).len();
-        // SAFETY: the caller has to uphold the safety contract for `get_unchecked`.
+        // SAFETY: 调用方必须维护 `get_unchecked` 的安全契约，包括范围在界内且边界适合 `str`。
         unsafe { crate::slice::index::into_range_unchecked(len, self).get_unchecked(slice) }
     }
 
     #[inline]
     unsafe fn get_unchecked_mut(self, slice: *mut str) -> *mut str {
         let len = (slice as *mut [u8]).len();
-        // SAFETY: the caller has to uphold the safety contract for `get_unchecked_mut`.
+        // SAFETY: 调用方必须维护 `get_unchecked_mut` 的安全契约，包括范围在界内且边界适合 `str`。
         unsafe { crate::slice::index::into_range_unchecked(len, self).get_unchecked_mut(slice) }
     }
 
@@ -422,21 +401,18 @@ unsafe impl SliceIndex<str> for (ops::Bound<usize>, ops::Bound<usize>) {
     }
 }
 
-/// Implements substring slicing with syntax `&self[.. end]` or `&mut
-/// self[.. end]`.
+/// 实现 `&self[.. end]` 或 `&mut self[.. end]` 语法的子串切片。
 ///
-/// Returns a slice of the given string from the byte range \[0, `end`).
-/// Equivalent to `&self[0 .. end]` or `&mut self[0 .. end]`.
+/// 返回给定字符串中字节范围 \[0, `end`) 对应的切片。
+/// 等价于 `&self[0 .. end]` 或 `&mut self[0 .. end]`。
 ///
-/// This operation is *O*(1).
+/// 该操作是 *O*(1)。
 ///
-/// Prior to 1.20.0, these indexing operations were still supported by
-/// direct implementation of `Index` and `IndexMut`.
+/// 在 1.20.0 之前，这些索引操作仍通过直接实现 `Index` 和 `IndexMut` 支持。
 ///
 /// # Panics
 ///
-/// Panics if `end` does not point to the starting byte offset of a
-/// character (as defined by `is_char_boundary`), or if `end > len`.
+/// 当 `end` 未指向字符起始字节偏移（由 `is_char_boundary` 定义），或 `end > len` 时 panic。
 #[stable(feature = "str_checked_slicing", since = "1.20.0")]
 #[rustc_const_unstable(feature = "const_index", issue = "143775")]
 unsafe impl const SliceIndex<str> for ops::RangeTo<usize> {
@@ -444,8 +420,8 @@ unsafe impl const SliceIndex<str> for ops::RangeTo<usize> {
     #[inline]
     fn get(self, slice: &str) -> Option<&Self::Output> {
         if slice.is_char_boundary(self.end) {
-            // SAFETY: just checked that `end` is on a char boundary,
-            // and we are passing in a safe reference, so the return value will also be one.
+            // SAFETY: 已检查 `end` 位于 UTF-8 字符边界上；
+            // 输入是安全引用，返回的子切片仍是合法 `str`。
             Some(unsafe { &*self.get_unchecked(slice) })
         } else {
             None
@@ -454,8 +430,8 @@ unsafe impl const SliceIndex<str> for ops::RangeTo<usize> {
     #[inline]
     fn get_mut(self, slice: &mut str) -> Option<&mut Self::Output> {
         if slice.is_char_boundary(self.end) {
-            // SAFETY: just checked that `end` is on a char boundary,
-            // and we are passing in a safe reference, so the return value will also be one.
+            // SAFETY: 已检查 `end` 位于 UTF-8 字符边界上；
+            // 输入是安全的独占引用，返回的子切片仍是合法 `str`。
             Some(unsafe { &mut *self.get_unchecked_mut(slice) })
         } else {
             None
@@ -463,12 +439,12 @@ unsafe impl const SliceIndex<str> for ops::RangeTo<usize> {
     }
     #[inline]
     unsafe fn get_unchecked(self, slice: *const str) -> *const Self::Output {
-        // SAFETY: the caller has to uphold the safety contract for `get_unchecked`.
+        // SAFETY: 调用方必须维护 `get_unchecked` 的安全契约。
         unsafe { (0..self.end).get_unchecked(slice) }
     }
     #[inline]
     unsafe fn get_unchecked_mut(self, slice: *mut str) -> *mut Self::Output {
-        // SAFETY: the caller has to uphold the safety contract for `get_unchecked_mut`.
+        // SAFETY: 调用方必须维护 `get_unchecked_mut` 的安全契约。
         unsafe { (0..self.end).get_unchecked_mut(slice) }
     }
     #[inline]
@@ -482,8 +458,8 @@ unsafe impl const SliceIndex<str> for ops::RangeTo<usize> {
     #[inline]
     fn index_mut(self, slice: &mut str) -> &mut Self::Output {
         if slice.is_char_boundary(self.end) {
-            // SAFETY: just checked that `end` is on a char boundary,
-            // and we are passing in a safe reference, so the return value will also be one.
+            // SAFETY: 已检查 `end` 位于 UTF-8 字符边界上；
+            // 输入是安全的独占引用，返回的子切片仍是合法 `str`。
             unsafe { &mut *self.get_unchecked_mut(slice) }
         } else {
             super::slice_error_fail(slice, 0, self.end)
@@ -491,21 +467,18 @@ unsafe impl const SliceIndex<str> for ops::RangeTo<usize> {
     }
 }
 
-/// Implements substring slicing with syntax `&self[begin ..]` or `&mut
-/// self[begin ..]`.
+/// 实现 `&self[begin ..]` 或 `&mut self[begin ..]` 语法的子串切片。
 ///
-/// Returns a slice of the given string from the byte range \[`begin`, `len`).
-/// Equivalent to `&self[begin .. len]` or `&mut self[begin .. len]`.
+/// 返回给定字符串中字节范围 \[`begin`, `len`) 对应的切片。
+/// 等价于 `&self[begin .. len]` 或 `&mut self[begin .. len]`。
 ///
-/// This operation is *O*(1).
+/// 该操作是 *O*(1)。
 ///
-/// Prior to 1.20.0, these indexing operations were still supported by
-/// direct implementation of `Index` and `IndexMut`.
+/// 在 1.20.0 之前，这些索引操作仍通过直接实现 `Index` 和 `IndexMut` 支持。
 ///
 /// # Panics
 ///
-/// Panics if `begin` does not point to the starting byte offset of
-/// a character (as defined by `is_char_boundary`), or if `begin > len`.
+/// 当 `begin` 未指向字符起始字节偏移（由 `is_char_boundary` 定义），或 `begin > len` 时 panic。
 #[stable(feature = "str_checked_slicing", since = "1.20.0")]
 #[rustc_const_unstable(feature = "const_index", issue = "143775")]
 unsafe impl const SliceIndex<str> for ops::RangeFrom<usize> {
@@ -513,8 +486,8 @@ unsafe impl const SliceIndex<str> for ops::RangeFrom<usize> {
     #[inline]
     fn get(self, slice: &str) -> Option<&Self::Output> {
         if slice.is_char_boundary(self.start) {
-            // SAFETY: just checked that `start` is on a char boundary,
-            // and we are passing in a safe reference, so the return value will also be one.
+            // SAFETY: 已检查 `start` 位于 UTF-8 字符边界上；
+            // 输入是安全引用，返回的子切片仍是合法 `str`。
             Some(unsafe { &*self.get_unchecked(slice) })
         } else {
             None
@@ -523,8 +496,8 @@ unsafe impl const SliceIndex<str> for ops::RangeFrom<usize> {
     #[inline]
     fn get_mut(self, slice: &mut str) -> Option<&mut Self::Output> {
         if slice.is_char_boundary(self.start) {
-            // SAFETY: just checked that `start` is on a char boundary,
-            // and we are passing in a safe reference, so the return value will also be one.
+            // SAFETY: 已检查 `start` 位于 UTF-8 字符边界上；
+            // 输入是安全的独占引用，返回的子切片仍是合法 `str`。
             Some(unsafe { &mut *self.get_unchecked_mut(slice) })
         } else {
             None
@@ -533,13 +506,13 @@ unsafe impl const SliceIndex<str> for ops::RangeFrom<usize> {
     #[inline]
     unsafe fn get_unchecked(self, slice: *const str) -> *const Self::Output {
         let len = (slice as *const [u8]).len();
-        // SAFETY: the caller has to uphold the safety contract for `get_unchecked`.
+        // SAFETY: 调用方必须维护 `get_unchecked` 的安全契约。
         unsafe { (self.start..len).get_unchecked(slice) }
     }
     #[inline]
     unsafe fn get_unchecked_mut(self, slice: *mut str) -> *mut Self::Output {
         let len = (slice as *mut [u8]).len();
-        // SAFETY: the caller has to uphold the safety contract for `get_unchecked_mut`.
+        // SAFETY: 调用方必须维护 `get_unchecked_mut` 的安全契约。
         unsafe { (self.start..len).get_unchecked_mut(slice) }
     }
     #[inline]
@@ -553,8 +526,8 @@ unsafe impl const SliceIndex<str> for ops::RangeFrom<usize> {
     #[inline]
     fn index_mut(self, slice: &mut str) -> &mut Self::Output {
         if slice.is_char_boundary(self.start) {
-            // SAFETY: just checked that `start` is on a char boundary,
-            // and we are passing in a safe reference, so the return value will also be one.
+            // SAFETY: 已检查 `start` 位于 UTF-8 字符边界上；
+            // 输入是安全的独占引用，返回的子切片仍是合法 `str`。
             unsafe { &mut *self.get_unchecked_mut(slice) }
         } else {
             super::slice_error_fail(slice, self.start, slice.len())
@@ -569,8 +542,8 @@ unsafe impl const SliceIndex<str> for range::RangeFrom<usize> {
     #[inline]
     fn get(self, slice: &str) -> Option<&Self::Output> {
         if slice.is_char_boundary(self.start) {
-            // SAFETY: just checked that `start` is on a char boundary,
-            // and we are passing in a safe reference, so the return value will also be one.
+            // SAFETY: 已检查 `start` 位于 UTF-8 字符边界上；
+            // 输入是安全引用，返回的子切片仍是合法 `str`。
             Some(unsafe { &*self.get_unchecked(slice) })
         } else {
             None
@@ -579,8 +552,8 @@ unsafe impl const SliceIndex<str> for range::RangeFrom<usize> {
     #[inline]
     fn get_mut(self, slice: &mut str) -> Option<&mut Self::Output> {
         if slice.is_char_boundary(self.start) {
-            // SAFETY: just checked that `start` is on a char boundary,
-            // and we are passing in a safe reference, so the return value will also be one.
+            // SAFETY: 已检查 `start` 位于 UTF-8 字符边界上；
+            // 输入是安全的独占引用，返回的子切片仍是合法 `str`。
             Some(unsafe { &mut *self.get_unchecked_mut(slice) })
         } else {
             None
@@ -589,13 +562,13 @@ unsafe impl const SliceIndex<str> for range::RangeFrom<usize> {
     #[inline]
     unsafe fn get_unchecked(self, slice: *const str) -> *const Self::Output {
         let len = (slice as *const [u8]).len();
-        // SAFETY: the caller has to uphold the safety contract for `get_unchecked`.
+        // SAFETY: 调用方必须维护 `get_unchecked` 的安全契约。
         unsafe { (self.start..len).get_unchecked(slice) }
     }
     #[inline]
     unsafe fn get_unchecked_mut(self, slice: *mut str) -> *mut Self::Output {
         let len = (slice as *mut [u8]).len();
-        // SAFETY: the caller has to uphold the safety contract for `get_unchecked_mut`.
+        // SAFETY: 调用方必须维护 `get_unchecked_mut` 的安全契约。
         unsafe { (self.start..len).get_unchecked_mut(slice) }
     }
     #[inline]
@@ -609,8 +582,8 @@ unsafe impl const SliceIndex<str> for range::RangeFrom<usize> {
     #[inline]
     fn index_mut(self, slice: &mut str) -> &mut Self::Output {
         if slice.is_char_boundary(self.start) {
-            // SAFETY: just checked that `start` is on a char boundary,
-            // and we are passing in a safe reference, so the return value will also be one.
+            // SAFETY: 已检查 `start` 位于 UTF-8 字符边界上；
+            // 输入是安全的独占引用，返回的子切片仍是合法 `str`。
             unsafe { &mut *self.get_unchecked_mut(slice) }
         } else {
             super::slice_error_fail(slice, self.start, slice.len())
@@ -618,22 +591,19 @@ unsafe impl const SliceIndex<str> for range::RangeFrom<usize> {
     }
 }
 
-/// Implements substring slicing with syntax `&self[begin ..= end]` or `&mut
-/// self[begin ..= end]`.
+/// 实现 `&self[begin ..= end]` 或 `&mut self[begin ..= end]` 语法的子串切片。
 ///
-/// Returns a slice of the given string from the byte range
-/// [`begin`, `end`]. Equivalent to `&self [begin .. end + 1]` or `&mut
-/// self[begin .. end + 1]`, except if `end` has the maximum value for
-/// `usize`.
+/// 返回给定字符串中字节范围 [`begin`, `end`] 对应的切片。
+/// 等价于 `&self[begin .. end + 1]` 或 `&mut self[begin .. end + 1]`，
+/// 但 `end` 为 `usize` 最大值时除外。
 ///
-/// This operation is *O*(1).
+/// 该操作是 *O*(1)。
 ///
 /// # Panics
 ///
-/// Panics if `begin` does not point to the starting byte offset of
-/// a character (as defined by `is_char_boundary`), if `end` does not point
-/// to the ending byte offset of a character (`end + 1` is either a starting
-/// byte offset or equal to `len`), if `begin > end`, or if `end >= len`.
+/// 当 `begin` 未指向字符起始字节偏移（由 `is_char_boundary` 定义）、
+/// `end` 未指向字符结束字节偏移（`end + 1` 要么是字符起始字节偏移，要么等于 `len`）、
+/// `begin > end`，或 `end >= len` 时 panic。
 #[stable(feature = "inclusive_range", since = "1.26.0")]
 #[rustc_const_unstable(feature = "const_index", issue = "143775")]
 unsafe impl const SliceIndex<str> for ops::RangeInclusive<usize> {
@@ -648,12 +618,12 @@ unsafe impl const SliceIndex<str> for ops::RangeInclusive<usize> {
     }
     #[inline]
     unsafe fn get_unchecked(self, slice: *const str) -> *const Self::Output {
-        // SAFETY: the caller must uphold the safety contract for `get_unchecked`.
+        // SAFETY: 调用方必须维护 `get_unchecked` 的安全契约。
         unsafe { self.into_slice_range().get_unchecked(slice) }
     }
     #[inline]
     unsafe fn get_unchecked_mut(self, slice: *mut str) -> *mut Self::Output {
-        // SAFETY: the caller must uphold the safety contract for `get_unchecked_mut`.
+        // SAFETY: 调用方必须维护 `get_unchecked_mut` 的安全契约。
         unsafe { self.into_slice_range().get_unchecked_mut(slice) }
     }
     #[inline]
@@ -686,12 +656,12 @@ unsafe impl const SliceIndex<str> for range::RangeInclusive<usize> {
     }
     #[inline]
     unsafe fn get_unchecked(self, slice: *const str) -> *const Self::Output {
-        // SAFETY: the caller must uphold the safety contract for `get_unchecked`.
+        // SAFETY: 调用方必须维护 `get_unchecked` 的安全契约。
         unsafe { self.into_slice_range().get_unchecked(slice) }
     }
     #[inline]
     unsafe fn get_unchecked_mut(self, slice: *mut str) -> *mut Self::Output {
-        // SAFETY: the caller must uphold the safety contract for `get_unchecked_mut`.
+        // SAFETY: 调用方必须维护 `get_unchecked_mut` 的安全契约。
         unsafe { self.into_slice_range().get_unchecked_mut(slice) }
     }
     #[inline]
@@ -710,20 +680,17 @@ unsafe impl const SliceIndex<str> for range::RangeInclusive<usize> {
     }
 }
 
-/// Implements substring slicing with syntax `&self[..= end]` or `&mut
-/// self[..= end]`.
+/// 实现 `&self[..= end]` 或 `&mut self[..= end]` 语法的子串切片。
 ///
-/// Returns a slice of the given string from the byte range \[0, `end`\].
-/// Equivalent to `&self [0 .. end + 1]`, except if `end` has the maximum
-/// value for `usize`.
+/// 返回给定字符串中字节范围 \[0, `end`] 对应的切片。
+/// 等价于 `&self[0 .. end + 1]`，但 `end` 为 `usize` 最大值时除外。
 ///
-/// This operation is *O*(1).
+/// 该操作是 *O*(1)。
 ///
 /// # Panics
 ///
-/// Panics if `end` does not point to the ending byte offset of a character
-/// (`end + 1` is either a starting byte offset as defined by
-/// `is_char_boundary`, or equal to `len`), or if `end >= len`.
+/// 当 `end` 未指向字符结束字节偏移（`end + 1` 要么是 `is_char_boundary`
+/// 定义的字符起始字节偏移，要么等于 `len`），或 `end >= len` 时 panic。
 #[stable(feature = "inclusive_range", since = "1.26.0")]
 #[rustc_const_unstable(feature = "const_index", issue = "143775")]
 unsafe impl const SliceIndex<str> for ops::RangeToInclusive<usize> {
@@ -738,12 +705,12 @@ unsafe impl const SliceIndex<str> for ops::RangeToInclusive<usize> {
     }
     #[inline]
     unsafe fn get_unchecked(self, slice: *const str) -> *const Self::Output {
-        // SAFETY: the caller must uphold the safety contract for `get_unchecked`.
+        // SAFETY: 调用方必须维护 `get_unchecked` 的安全契约。
         unsafe { (0..=self.end).get_unchecked(slice) }
     }
     #[inline]
     unsafe fn get_unchecked_mut(self, slice: *mut str) -> *mut Self::Output {
-        // SAFETY: the caller must uphold the safety contract for `get_unchecked_mut`.
+        // SAFETY: 调用方必须维护 `get_unchecked_mut` 的安全契约。
         unsafe { (0..=self.end).get_unchecked_mut(slice) }
     }
     #[inline]
@@ -756,36 +723,31 @@ unsafe impl const SliceIndex<str> for ops::RangeToInclusive<usize> {
     }
 }
 
-/// Parse a value from a string
+/// 从字符串解析出一个值。
 ///
-/// `FromStr`'s [`from_str`] method is often used implicitly, through
-/// [`str`]'s [`parse`] method. See [`parse`]'s documentation for examples.
+/// `FromStr` 的 [`from_str`] 方法经常通过 [`str`] 的 [`parse`] 方法隐式使用。
+/// 示例见 [`parse`] 文档。
 ///
 /// [`from_str`]: FromStr::from_str
 /// [`parse`]: str::parse
 ///
-/// `FromStr` does not have a lifetime parameter, and so you can only parse types
-/// that do not contain a lifetime parameter themselves. In other words, you can
-/// parse an `i32` with `FromStr`, but not a `&i32`. You can parse a struct that
-/// contains an `i32`, but not one that contains an `&i32`.
+/// `FromStr` 没有生命周期参数，因此只能解析自身不包含生命周期参数的类型。
+/// 换句话说，可以用 `FromStr` 解析 `i32`，但不能解析 `&i32`；
+/// 可以解析包含 `i32` 的结构体，但不能解析包含 `&i32` 的结构体。
 ///
-/// # Input format and round-tripping
+/// # 输入格式与往返转换
 ///
-/// The input format expected by a type's `FromStr` implementation depends on the type. Check the
-/// type's documentation for the input formats it knows how to parse. Note that the input format of
-/// a type's `FromStr` implementation might not necessarily accept the output format of its
-/// `Display` implementation, and even if it does, the `Display` implementation may not be lossless
-/// so the round-trip may lose information.
+/// 某个类型的 `FromStr` 实现期望什么输入格式取决于该类型。请查看具体类型文档，
+/// 了解它能解析哪些格式。注意，类型的 `FromStr` 输入格式不一定接受其 `Display`
+/// 实现的输出格式；即使接受，`Display` 也不一定无损，往返转换仍可能丢失信息。
 ///
-/// However, if a type has a lossless `Display` implementation whose output is meant to be
-/// conveniently machine-parseable and not just meant for human consumption, then the type may wish
-/// to accept the same format in `FromStr`, and document that usage. Having both `Display` and
-/// `FromStr` implementations where the result of `Display` cannot be parsed with `FromStr` may
-/// surprise users.
+/// 不过，如果某个类型具有无损 `Display` 实现，且输出本来就设计为便于机器解析而不只是给人阅读，
+/// 那么该类型可以在 `FromStr` 中接受相同格式，并把这种用法写入文档。
+/// 同时实现 `Display` 与 `FromStr`，但 `Display` 结果无法被 `FromStr` 解析，可能会让用户意外。
 ///
-/// # Examples
+/// # 示例
 ///
-/// Basic implementation of `FromStr` on an example `Point` type:
+/// 在示例 `Point` 类型上实现 `FromStr`：
 ///
 /// ```
 /// use std::str::FromStr;
@@ -817,30 +779,29 @@ unsafe impl const SliceIndex<str> for ops::RangeToInclusive<usize> {
 /// }
 ///
 /// let expected = Ok(Point { x: 1, y: 2 });
-/// // Explicit call
+/// // 显式调用。
 /// assert_eq!(Point::from_str("(1,2)"), expected);
-/// // Implicit calls, through parse
+/// // 通过 parse 隐式调用。
 /// assert_eq!("(1,2)".parse(), expected);
 /// assert_eq!("(1,2)".parse::<Point>(), expected);
-/// // Invalid input string
+/// // 非法输入字符串。
 /// assert!(Point::from_str("(1 2)").is_err());
 /// ```
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
 pub const trait FromStr: Sized {
-    /// The associated error which can be returned from parsing.
+    /// 解析失败时可返回的关联错误类型。
     #[stable(feature = "rust1", since = "1.0.0")]
     type Err;
 
-    /// Parses a string `s` to return a value of this type.
+    /// 解析字符串 `s`，返回该类型的值。
     ///
-    /// If parsing succeeds, return the value inside [`Ok`], otherwise
-    /// when the string is ill-formatted return an error specific to the
-    /// inside [`Err`]. The error type is specific to the implementation of the trait.
+    /// 解析成功时返回包在 [`Ok`] 中的值；如果字符串格式不正确，则返回该实现特定的
+    /// [`Err`] 错误类型。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage with [`i32`], a type that implements `FromStr`:
+    /// 使用实现了 `FromStr` 的 [`i32`]：
     ///
     /// ```
     /// use std::str::FromStr;
@@ -859,12 +820,11 @@ pub const trait FromStr: Sized {
 impl FromStr for bool {
     type Err = ParseBoolError;
 
-    /// Parse a `bool` from a string.
+    /// 从字符串解析 `bool`。
     ///
-    /// The only accepted values are `"true"` and `"false"`. Any other input
-    /// will return an error.
+    /// 唯一接受的值是 `"true"` 和 `"false"`；其他任何输入都会返回错误。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::str::FromStr;
@@ -874,7 +834,7 @@ impl FromStr for bool {
     /// assert!(<bool as FromStr>::from_str("not even a boolean").is_err());
     /// ```
     ///
-    /// Note, in many cases, the `.parse()` method on `str` is more proper.
+    /// 注意，很多情况下在 `str` 上调用 `.parse()` 更合适。
     ///
     /// ```
     /// assert_eq!("true".parse(), Ok(true));

@@ -5,17 +5,16 @@ use crate::iter::{
 };
 use crate::num::NonZero;
 
-/// An iterator that iterates two other iterators simultaneously.
+/// 同时迭代另外两个 iterator 的 iterator。
 ///
-/// This `struct` is created by [`zip`] or [`Iterator::zip`].
-/// See their documentation for more.
+/// 该 `struct` 由 [`zip`] 或 [`Iterator::zip`] 创建。更多信息见它们的文档。
 #[derive(Clone)]
 #[must_use = "iterators are lazy and do nothing unless consumed"]
 #[stable(feature = "rust1", since = "1.0.0")]
 pub struct Zip<A, B> {
     a: A,
     b: B,
-    // index, len and a_len are only used by the specialized version of zip
+    // index、len 和 a_len 只被 zip 的特化版本使用。
     index: usize,
     len: usize,
 }
@@ -34,11 +33,11 @@ impl<A: Iterator, B: Iterator> Zip<A, B> {
     }
 }
 
-/// Converts the arguments to iterators and zips them.
+/// 将参数转换为 iterator，并把它们 zip 在一起。
 ///
-/// See the documentation of [`Iterator::zip`] for more.
+/// 更多信息见 [`Iterator::zip`] 的文档。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use std::iter::zip;
@@ -53,7 +52,7 @@ impl<A: Iterator, B: Iterator> Zip<A, B> {
 /// assert_eq!(iter.next().unwrap(), (3, 6));
 /// assert!(iter.next().is_none());
 ///
-/// // Nested zips are also possible:
+/// // 也可以嵌套 zip:
 /// let zs = [7, 8, 9];
 ///
 /// let mut iter = zip(zip(xs, ys), zs);
@@ -108,8 +107,8 @@ where
     where
         Self: TrustedRandomAccessNoCoerce,
     {
-        // SAFETY: `ZipImpl::__iterator_get_unchecked` has same safety
-        // requirements as `Iterator::__iterator_get_unchecked`.
+        // SAFETY: `ZipImpl::__iterator_get_unchecked` 与
+        // `Iterator::__iterator_get_unchecked` 具有相同安全要求。
         unsafe { ZipImpl::get_unchecked(self, idx) }
     }
 }
@@ -126,7 +125,7 @@ where
     }
 }
 
-// Zip specialization trait
+// Zip 的特化 trait。
 #[doc(hidden)]
 trait ZipImpl<A, B> {
     type Item;
@@ -141,14 +140,13 @@ trait ZipImpl<A, B> {
     fn fold<Acc, F>(self, init: Acc, f: F) -> Acc
     where
         F: FnMut(Acc, Self::Item) -> Acc;
-    // This has the same safety requirements as `Iterator::__iterator_get_unchecked`
+    // 这与 `Iterator::__iterator_get_unchecked` 具有相同安全要求。
     unsafe fn get_unchecked(&mut self, idx: usize) -> <Self as Iterator>::Item
     where
         Self: Iterator + TrustedRandomAccessNoCoerce;
 }
 
-// Work around limitations of specialization, requiring `default` impls to be repeated
-// in intermediary impls.
+// 绕过 specialization 的限制: `default` impl 必须在中间 impl 中重复写出。
 macro_rules! zip_impl_general_defaults {
     () => {
         default fn new(a: A, b: B) -> Self {
@@ -178,14 +176,14 @@ macro_rules! zip_impl_general_defaults {
             A: DoubleEndedIterator + ExactSizeIterator,
             B: DoubleEndedIterator + ExactSizeIterator,
         {
-            // The function body below only uses `self.a/b.len()` and `self.a/b.next_back()`
-            // and doesn’t call `next_back` too often, so this implementation is safe in
-            // the `TrustedRandomAccessNoCoerce` specialization
+            // 下面的函数体只使用 `self.a/b.len()` 和 `self.a/b.next_back()`，
+            // 并且不会过多调用 `next_back`，因此该实现在
+            // `TrustedRandomAccessNoCoerce` specialization 中是安全的。
 
             let a_sz = self.a.len();
             let b_sz = self.b.len();
             if a_sz != b_sz {
-                // Adjust a, b to equal length
+                // 调整 a、b，使二者长度相等。
                 if a_sz > b_sz {
                     for _ in 0..a_sz - b_sz {
                         self.a.next_back();
@@ -205,7 +203,7 @@ macro_rules! zip_impl_general_defaults {
     };
 }
 
-// General Zip impl
+// 通用 Zip 实现。
 #[doc(hidden)]
 impl<A, B> ZipImpl<A, B> for Zip<A, B>
 where
@@ -266,8 +264,7 @@ where
     #[inline]
     unsafe fn get_unchecked(&mut self, idx: usize) -> <Self as Iterator>::Item {
         let idx = self.index + idx;
-        // SAFETY: the caller must uphold the contract for
-        // `Iterator::__iterator_get_unchecked`.
+        // SAFETY: 调用方必须维护 `Iterator::__iterator_get_unchecked` 的契约。
         unsafe { (self.a.__iterator_get_unchecked(idx), self.b.__iterator_get_unchecked(idx)) }
     }
 
@@ -279,9 +276,8 @@ where
         let mut accum = init;
         let len = ZipImpl::size_hint(&self).0;
         for i in 0..len {
-            // SAFETY: since Self: TrustedRandomAccessNoCoerce we can trust the size-hint to
-            // calculate the length and then use that to do unchecked iteration.
-            // fold consumes the iterator so we don't need to fixup any state.
+            // SAFETY: 由于 Self: TrustedRandomAccessNoCoerce，可以信任 size-hint 来计算
+            // 长度，并据此执行 unchecked 迭代。fold 会消耗 iterator，因此不需要修复任何状态。
             unsafe {
                 accum = f(accum, self.get_unchecked(i));
             }
@@ -305,10 +301,10 @@ where
     fn next(&mut self) -> Option<(A::Item, B::Item)> {
         if self.index < self.len {
             let i = self.index;
-            // since get_unchecked executes code which can panic we increment the counters beforehand
-            // so that the same index won't be accessed twice, as required by TrustedRandomAccess
+            // 由于 get_unchecked 会执行可能 panic 的代码，我们先递增计数器，
+            // 以满足 TrustedRandomAccess 要求: 同一索引不会被访问两次。
             self.index += 1;
-            // SAFETY: `i` is smaller than `self.len`, thus smaller than `self.a.len()` and `self.b.len()`
+            // SAFETY: `i` 小于 `self.len`，因此也小于 `self.a.len()` 和 `self.b.len()`。
             unsafe {
                 Some((self.a.__iterator_get_unchecked(i), self.b.__iterator_get_unchecked(i)))
             }
@@ -329,19 +325,18 @@ where
         let end = self.index + delta;
         while self.index < end {
             let i = self.index;
-            // since get_unchecked executes code which can panic we increment the counters beforehand
-            // so that the same index won't be accessed twice, as required by TrustedRandomAccess
+            // 由于 get_unchecked 会执行可能 panic 的代码，我们先递增计数器，
+            // 以满足 TrustedRandomAccess 要求: 同一索引不会被访问两次。
             self.index += 1;
             if A::MAY_HAVE_SIDE_EFFECT {
-                // SAFETY: the usage of `cmp::min` to calculate `delta`
-                // ensures that `end` is smaller than or equal to `self.len`,
-                // so `i` is also smaller than `self.len`.
+                // SAFETY: 使用 `cmp::min` 计算 `delta` 可确保 `end` 小于等于 `self.len`，
+                // 因此 `i` 也小于 `self.len`。
                 unsafe {
                     self.a.__iterator_get_unchecked(i);
                 }
             }
             if B::MAY_HAVE_SIDE_EFFECT {
-                // SAFETY: same as above.
+                // SAFETY: 同上。
                 unsafe {
                     self.b.__iterator_get_unchecked(i);
                 }
@@ -357,28 +352,24 @@ where
         A: DoubleEndedIterator + ExactSizeIterator,
         B: DoubleEndedIterator + ExactSizeIterator,
     {
-        // No effects when the iterator is exhausted, to reduce the number of
-        // cases the unsafe code has to handle.
-        // See #137255 for a case where where too many epicycles lead to unsoundness.
+        // iterator 耗尽后不再产生副作用，以减少 unsafe 代码必须处理的情况数量。
+        // #137255 展示了过度复杂的情况如何导致 unsoundness。
         if self.index < self.len {
             let old_len = self.len;
 
-            // since get_unchecked and the side-effecting code can execute user code
-            // which can panic we decrement the counter beforehand
-            // so that the same index won't be accessed twice, as required by TrustedRandomAccess.
-            // Additionally this will ensure that the side-effects code won't run a second time.
+            // 由于 get_unchecked 和带副作用的代码可能执行会 panic 的用户代码，
+            // 我们先递减计数器，以满足 TrustedRandomAccess 要求: 同一索引不会被访问两次。
+            // 此外，这也确保带副作用的代码不会第二次运行。
             self.len -= 1;
 
-            // Adjust a, b to equal length if we're iterating backwards.
+            // 如果正在反向迭代，则调整 a、b，使二者长度相等。
             if A::MAY_HAVE_SIDE_EFFECT || B::MAY_HAVE_SIDE_EFFECT {
-                // note if some forward-iteration already happened then these aren't the real
-                // remaining lengths of the inner iterators, so we have to relate them to
-                // Zip's internal length-tracking.
+                // 注意，如果已经发生过一些前向迭代，这些并不是内部 iterator 的真实剩余
+                // 长度，因此必须把它们与 Zip 的内部长度跟踪关联起来。
                 let sz_a = self.a.size();
                 let sz_b = self.b.size();
-                // This condition can and must only be true on the first `next_back` call,
-                // otherwise we will break the restriction on calls to `self.next_back()`
-                // after calling `get_unchecked()`.
+                // 这个条件只能、也必须只在第一次 `next_back` 调用时为真；否则会破坏
+                // 调用 `get_unchecked()` 后对 `self.next_back()` 调用次数的限制。
                 if sz_a != sz_b && (old_len == sz_a || old_len == sz_b) {
                     if A::MAY_HAVE_SIDE_EFFECT && sz_a > old_len {
                         for _ in 0..sz_a - old_len {
@@ -394,8 +385,8 @@ where
                 }
             }
             let i = self.len;
-            // SAFETY: `i` is smaller than the previous value of `self.len`,
-            // which is also smaller than or equal to `self.a.len()` and `self.b.len()`
+            // SAFETY: `i` 小于 `self.len` 之前的值，而该值也小于等于 `self.a.len()`
+            // 和 `self.b.len()`。
             unsafe {
                 Some((self.a.__iterator_get_unchecked(i), self.b.__iterator_get_unchecked(i)))
             }
@@ -463,8 +454,7 @@ where
 {
 }
 
-// Arbitrarily selects the left side of the zip iteration as extractable "source"
-// it would require negative trait bounds to be able to try both
+// 任意选择 zip 迭代的左侧作为可提取的 "source"；若要两边都尝试，需要 negative trait bound。
 #[unstable(issue = "none", feature = "inplace_iteration")]
 unsafe impl<A, B> SourceIter for Zip<A, B>
 where
@@ -474,12 +464,12 @@ where
 
     #[inline]
     unsafe fn as_inner(&mut self) -> &mut A::Source {
-        // SAFETY: unsafe function forwarding to unsafe function with the same requirements
+        // SAFETY: 将 unsafe 函数转发到具有相同要求的 unsafe 函数。
         unsafe { SourceIter::as_inner(&mut self.a) }
     }
 }
 
-// Since SourceIter forwards the left hand side we do the same here
+// 由于 SourceIter 转发左侧，这里也采用同样做法。
 #[unstable(issue = "none", feature = "inplace_iteration")]
 unsafe impl<A: InPlaceIterable, B> InPlaceIterable for Zip<A, B> {
     const EXPAND_BY: Option<NonZero<usize>> = A::EXPAND_BY;
@@ -507,114 +497,110 @@ impl<A: Debug + TrustedRandomAccessNoCoerce, B: Debug + TrustedRandomAccessNoCoe
     for Zip<A, B>
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // It's *not safe* to call fmt on the contained iterators, since once
-        // we start iterating they're in strange, potentially unsafe, states.
+        // 对内部迭代器调用 fmt 并不安全: 一旦开始迭代，它们可能处于特殊的、
+        // 甚至对普通方法调用不安全的中间状态。
         f.debug_struct("Zip").finish()
     }
 }
 
-/// An iterator whose items are random-accessible efficiently
+/// 可以高效随机访问元素的迭代器。
 ///
-/// # Safety
+/// # 安全性(Safety）
 ///
-/// The iterator's `size_hint` must be exact and cheap to call.
+/// 迭代器的 `size_hint` 必须精确，并且调用开销低。
 ///
-/// `TrustedRandomAccessNoCoerce::size` may not be overridden.
+/// 不允许覆盖 `TrustedRandomAccessNoCoerce::size`。
 ///
-/// All subtypes and all supertypes of `Self` must also implement `TrustedRandomAccess`.
-/// In particular, this means that types with non-invariant parameters usually can not have
-/// an impl for `TrustedRandomAccess` that depends on any trait bounds on such parameters, except
-/// for bounds that come from the respective struct/enum definition itself, or bounds involving
-/// traits that themselves come with a guarantee similar to this one.
+/// `Self` 的所有子类型和所有父类型也必须实现 `TrustedRandomAccess`。这尤其意味着，
+/// 带有非 invariant 参数的类型通常不能让 `TrustedRandomAccess` 实现依赖这些参数上
+/// 的 trait bound；例外是来自对应 struct/enum 定义本身的 bound，或来自具备类似保证
+/// 的 trait 的 bound。
 ///
-/// If `Self: ExactSizeIterator` then `self.len()` must always produce results consistent
-/// with `self.size()`.
+/// 如果 `Self: ExactSizeIterator`，则 `self.len()` 必须始终产生与 `self.size()` 一致的结果。
 ///
-/// If `Self: Iterator`, then `<Self as Iterator>::__iterator_get_unchecked(&mut self, idx)`
-/// must be safe to call provided the following conditions are met.
+/// 如果 `Self: Iterator`，并且满足下面条件，则调用
+/// `<Self as Iterator>::__iterator_get_unchecked(&mut self, idx)` 必须是安全的。
 ///
-/// 1. `0 <= idx` and `idx < self.size()`.
-/// 2. If `Self: !Clone`, then `self.__iterator_get_unchecked(idx)` is never called with the same
-///    index on `self` more than once.
-/// 3. After `self.__iterator_get_unchecked(idx)` has been called, then `self.next_back()` will
-///    only be called at most `self.size() - idx - 1` times. If `Self: Clone` and `self` is cloned,
-///    then this number is calculated for `self` and its clone individually,
-///    but `self.next_back()` calls that happened before the cloning count for both `self` and the clone.
-/// 4. After `self.__iterator_get_unchecked(idx)` has been called, then only the following methods
-///    will be called on `self` or on any new clones of `self`:
+/// 1. `0 <= idx` 且 `idx < self.size()`。
+/// 2. 如果 `Self: !Clone`，则不会在同一个 `self` 上用同一个索引重复调用
+///    `self.__iterator_get_unchecked(idx)`。
+/// 3. 调用 `self.__iterator_get_unchecked(idx)` 后，`self.next_back()` 最多只会再被调用
+///    `self.size() - idx - 1` 次。如果 `Self: Clone` 且 `self` 被克隆，该次数会分别为
+///    `self` 和它的 clone 计算；但 clone 之前已经发生的 `self.next_back()` 调用同时计入
+///    `self` 和 clone。
+/// 4. 调用 `self.__iterator_get_unchecked(idx)` 后，只会在 `self` 或 `self` 的新 clone 上
+///    调用以下方法:
 ///     * `std::clone::Clone::clone`
 ///     * `std::iter::Iterator::size_hint`
 ///     * `std::iter::DoubleEndedIterator::next_back`
 ///     * `std::iter::ExactSizeIterator::len`
 ///     * `std::iter::Iterator::__iterator_get_unchecked`
 ///     * `std::iter::TrustedRandomAccessNoCoerce::size`
-/// 5. If `Self` is a subtype of `T`, then `self` is allowed to be coerced
-///    to `T`. If `self` is coerced to `T` after `self.__iterator_get_unchecked(idx)` has already
-///    been called, then no methods except for the ones listed under 4. are allowed to be called
-///    on the resulting value of type `T`, either. Multiple such coercion steps are allowed.
-///    Regarding 2. and 3., the number of times `__iterator_get_unchecked(idx)` or `next_back()` is
-///    called on `self` and the resulting value of type `T` (and on further coercion results with
-///    super-supertypes) are added together and their sums must not exceed the specified bounds.
+/// 5. 如果 `Self` 是 `T` 的子类型，则允许把 `self` coercion 到 `T`。如果在已经调用
+///    `self.__iterator_get_unchecked(idx)` 后把 `self` coercion 到 `T`，那么得到的 `T`
+///    类型值也只能调用第 4 条列出的方法。允许多次这样的 coercion。对于第 2 条和第
+///    3 条，`self`、得到的 `T` 值以及进一步父类型 coercion 结果上的
+///    `__iterator_get_unchecked(idx)` 或 `next_back()` 调用次数要合并计算，总和不能
+///    超过规定边界。
 ///
-/// Further, given that these conditions are met, it must guarantee that:
+/// 此外，在这些条件满足时，实现还必须保证:
 ///
-/// * It does not change the value returned from `size_hint`
-/// * It must be safe to call the methods listed above on `self` after calling
-///   `self.__iterator_get_unchecked(idx)`, assuming that the required traits are implemented.
-/// * It must also be safe to drop `self` after calling `self.__iterator_get_unchecked(idx)`.
-/// * If `Self` is a subtype of `T`, then it must be safe to coerce `self` to `T`.
+/// * 不改变 `size_hint` 返回的值。
+/// * 调用 `self.__iterator_get_unchecked(idx)` 后，在所需 trait 已实现的前提下，
+///   继续调用上面列出的方法仍然安全。
+/// * 调用 `self.__iterator_get_unchecked(idx)` 后，drop `self` 仍然安全。
+/// * 如果 `Self` 是 `T` 的子类型，把 `self` coercion 到 `T` 仍然安全。
 //
-// FIXME: Clarify interaction with SourceIter/InPlaceIterable. Calling `SourceIter::as_inner`
-// after `__iterator_get_unchecked` is supposed to be allowed.
+// FIXME: 需要澄清与 SourceIter/InPlaceIterable 的交互。按预期，
+// `__iterator_get_unchecked` 之后应允许调用 `SourceIter::as_inner`。
 #[doc(hidden)]
 #[unstable(feature = "trusted_random_access", issue = "none")]
 #[rustc_specialization_trait]
 pub unsafe trait TrustedRandomAccess: TrustedRandomAccessNoCoerce {}
 
-/// Like [`TrustedRandomAccess`] but without any of the requirements / guarantees around
-/// coercions to supertypes after `__iterator_get_unchecked` (they aren’t allowed here!), and
-/// without the requirement that subtypes / supertypes implement `TrustedRandomAccessNoCoerce`.
+/// 类似 [`TrustedRandomAccess`]，但不包含
+/// `__iterator_get_unchecked` 之后 coercion 到父类型的要求或保证(这里不允许这种
+/// coercion)，也不要求子类型或父类型实现 `TrustedRandomAccessNoCoerce`。
 ///
-/// This trait was created in PR #85874 to fix soundness issue #85873 without performance regressions.
-/// It is subject to change as we might want to build a more generally useful (for performance
-/// optimizations) and more sophisticated trait or trait hierarchy that replaces or extends
-/// [`TrustedRandomAccess`] and `TrustedRandomAccessNoCoerce`.
+/// 该 trait 创建于 PR #85874，用于在不引入性能回退的情况下修复 soundness issue
+/// #85873。它仍可能变化，因为之后可能会构建一个更通用、更适合性能优化且更精细的
+/// trait 或 trait 层级，用来替代或扩展 [`TrustedRandomAccess`] 和
+/// `TrustedRandomAccessNoCoerce`。
 #[doc(hidden)]
 #[unstable(feature = "trusted_random_access", issue = "none")]
 #[rustc_specialization_trait]
 pub unsafe trait TrustedRandomAccessNoCoerce: Sized {
-    // Convenience method.
+    // 便捷方法。
     fn size(&self) -> usize
     where
         Self: Iterator,
     {
         self.size_hint().0
     }
-    /// `true` if getting an iterator element may have side effects.
-    /// Remember to take inner iterators into account.
+    /// 如果取得迭代器元素可能有副作用，则为 `true`。
+    /// 记得把内部迭代器也纳入考虑。
     const MAY_HAVE_SIDE_EFFECT: bool;
 }
 
-/// Like `Iterator::__iterator_get_unchecked`, but doesn't require the compiler to
-/// know that `U: TrustedRandomAccess`.
+/// 类似 `Iterator::__iterator_get_unchecked`，但不要求编译器知道
+/// `U: TrustedRandomAccess`。
 ///
-/// ## Safety
+/// ## 安全性(Safety）
 ///
-/// Same requirements calling `get_unchecked` directly.
+/// 要求与直接调用 `get_unchecked` 相同。
 #[doc(hidden)]
 #[inline]
 pub(in crate::iter::adapters) unsafe fn try_get_unchecked<I>(it: &mut I, idx: usize) -> I::Item
 where
     I: Iterator,
 {
-    // SAFETY: the caller must uphold the contract for
-    // `Iterator::__iterator_get_unchecked`.
+    // SAFETY: 调用方必须维护 `Iterator::__iterator_get_unchecked` 的契约。
     unsafe { it.try_get_unchecked(idx) }
 }
 
 unsafe trait SpecTrustedRandomAccess: Iterator {
-    /// If `Self: TrustedRandomAccess`, it must be safe to call
-    /// `Iterator::__iterator_get_unchecked(self, index)`.
+    /// 如果 `Self: TrustedRandomAccess`，则调用
+    /// `Iterator::__iterator_get_unchecked(self, index)` 必须是安全的。
     unsafe fn try_get_unchecked(&mut self, index: usize) -> Self::Item;
 }
 
@@ -627,8 +613,7 @@ unsafe impl<I: Iterator> SpecTrustedRandomAccess for I {
 unsafe impl<I: Iterator + TrustedRandomAccessNoCoerce> SpecTrustedRandomAccess for I {
     #[inline]
     unsafe fn try_get_unchecked(&mut self, index: usize) -> Self::Item {
-        // SAFETY: the caller must uphold the contract for
-        // `Iterator::__iterator_get_unchecked`.
+        // SAFETY: 调用方必须维护 `Iterator::__iterator_get_unchecked` 的契约。
         unsafe { self.__iterator_get_unchecked(index) }
     }
 }
@@ -641,7 +626,7 @@ trait SpecFold: Iterator {
 }
 
 impl<A: Iterator, B: Iterator> SpecFold for Zip<A, B> {
-    // Adapted from default impl from the Iterator trait
+    // 改编自 Iterator trait 的默认实现。
     #[inline]
     default fn spec_fold<Acc, F>(mut self, init: Acc, mut f: F) -> Acc
     where
@@ -666,14 +651,14 @@ impl<A: TrustedLen, B: TrustedLen> SpecFold for Zip<A, B> {
             let (upper, more) = if let Some(upper) = ZipImpl::size_hint(&self).1 {
                 (upper, false)
             } else {
-                // Per TrustedLen contract a None upper bound means more than usize::MAX items
+                // 根据 TrustedLen 契约，None 上界表示元素数超过 usize::MAX。
                 (usize::MAX, true)
             };
 
             for _ in 0..upper {
                 let pair =
-                    // SAFETY: TrustedLen guarantees that at least `upper` many items are available
-                    // therefore we know they can't be None
+                    // SAFETY: TrustedLen 保证至少有 `upper` 个元素可用，
+                    // 因此这里知道它们不会是 None。
                     unsafe { (self.a.next().unwrap_unchecked(), self.b.next().unwrap_unchecked()) };
                 accum = f(accum, pair);
             }

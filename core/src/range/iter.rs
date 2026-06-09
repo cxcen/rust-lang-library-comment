@@ -5,20 +5,20 @@ use crate::num::NonZero;
 use crate::range::{Range, RangeFrom, RangeInclusive, legacy};
 use crate::{intrinsics, mem};
 
-/// By-value [`Range`] iterator.
+/// 按值持有的 [`Range`] 迭代器。
 #[unstable(feature = "new_range_api", issue = "125687")]
 #[derive(Debug, Clone)]
 pub struct RangeIter<A>(legacy::Range<A>);
 
 impl<A> RangeIter<A> {
-    /// Returns the remainder of the range being iterated over.
+    /// 返回当前正在迭代的区间中尚未产出的剩余部分。
     pub fn remainder(self) -> Range<A> {
         Range { start: self.0.start, end: self.0.end }
     }
 }
 
-/// Safety: This macro must only be used on types that are `Copy` and result in ranges
-/// which have an exact `size_hint()` where the upper bound must not be `None`.
+/// 安全性:这个宏只能用于 `Copy` 类型,并且对应区间必须拥有精确的 `size_hint()`,
+/// 其中上界不能是 `None`。
 macro_rules! unsafe_range_trusted_random_access_impl {
     ($($t:ty)*) => ($(
         #[doc(hidden)]
@@ -109,10 +109,9 @@ impl<A: Step> Iterator for RangeIter<A> {
     where
         Self: TrustedRandomAccessNoCoerce,
     {
-        // SAFETY: The TrustedRandomAccess contract requires that callers only pass an index
-        // that is in bounds.
-        // Additionally Self: TrustedRandomAccess is only implemented for Copy types
-        // which means even repeated reads of the same index would be safe.
+        // SAFETY: TrustedRandomAccess 契约要求调用者只传入边界内的索引。
+        // 此外,Self: TrustedRandomAccess 只为 Copy 类型实现,
+        // 因而即使重复读取同一索引也是安全的。
         unsafe { Step::forward_unchecked(self.0.start.clone(), idx) }
     }
 }
@@ -151,15 +150,15 @@ impl<A: Step> IntoIterator for Range<A> {
     }
 }
 
-/// By-value [`RangeInclusive`] iterator.
+/// 按值持有的 [`RangeInclusive`] 迭代器。
 #[unstable(feature = "new_range_api", issue = "125687")]
 #[derive(Debug, Clone)]
 pub struct RangeInclusiveIter<A>(legacy::RangeInclusive<A>);
 
 impl<A: Step> RangeInclusiveIter<A> {
-    /// Returns the remainder of the range being iterated over.
+    /// 返回当前正在迭代的区间中尚未产出的剩余部分。
     ///
-    /// If the iterator is exhausted or empty, returns `None`.
+    /// 如果迭代器已经耗尽或原本为空,则返回 `None`。
     pub fn remainder(self) -> Option<RangeInclusive<A>> {
         if self.0.is_empty() {
             return None;
@@ -259,14 +258,14 @@ impl<A: Step> IntoIterator for RangeInclusive<A> {
     }
 }
 
-// These macros generate `ExactSizeIterator` impls for various range types.
+// 这些宏为不同的 range 类型生成 `ExactSizeIterator` impl。
 //
-// * `ExactSizeIterator::len` is required to always return an exact `usize`,
-//   so no range can be longer than `usize::MAX`.
-// * For integer types in `Range<_>` this is the case for types narrower than or as wide as `usize`.
-//   For integer types in `RangeInclusive<_>`
-//   this is the case for types *strictly narrower* than `usize`
-//   since e.g. `(0..=u64::MAX).len()` would be `u64::MAX + 1`.
+// * `ExactSizeIterator::len` 被要求始终返回精确的 `usize`,
+//   因此任何区间的长度都不能超过 `usize::MAX`。
+// * 对 `Range<_>` 中的整数类型而言,宽度小于或等于 `usize` 的类型满足这一点。
+//   对 `RangeInclusive<_>` 中的整数类型而言,
+//   只有宽度*严格小于* `usize` 的类型满足这一点,
+//   因为例如 `(0..=u64::MAX).len()` 会是 `u64::MAX + 1`。
 macro_rules! range_exact_iter_impl {
     ($($t:ty)*) => ($(
         #[unstable(feature = "new_range_api", issue = "125687")]
@@ -291,18 +290,18 @@ range_incl_exact_iter_impl! {
     i8
 }
 
-/// By-value [`RangeFrom`] iterator.
+/// 按值持有的 [`RangeFrom`] 迭代器。
 #[unstable(feature = "new_range_api", issue = "125687")]
 #[derive(Debug, Clone)]
 pub struct RangeFromIter<A> {
     start: A,
-    /// Whether the first element of the iterator has yielded.
-    /// Only used when overflow checks are enabled.
+    /// 迭代器的第一个元素是否已经产出。
+    /// 仅在启用溢出检查时使用。
     first: bool,
 }
 
 impl<A: Step> RangeFromIter<A> {
-    /// Returns the remainder of the range being iterated over.
+    /// 返回当前正在迭代的区间中尚未产出的剩余部分。
     #[inline]
     #[rustc_inherit_overflow_checks]
     pub fn remainder(self) -> RangeFrom<A> {

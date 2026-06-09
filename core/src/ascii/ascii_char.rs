@@ -1,53 +1,45 @@
-//! This uses the name `AsciiChar`, even though it's not exposed that way right now,
-//! because it avoids a whole bunch of "are you sure you didn't mean `char`?"
-//! suggestions from rustc if you get anything slightly wrong in here, and overall
-//! helps with clarity as we're also referring to `char` intentionally in here.
+//! 本文件内部使用 `AsciiChar` 这个名字,即使当前对外并不以该名称暴露。这样做可以避免
+//! 这里稍有拼写差错时 rustc 给出大量“你是不是想写 `char`?”的建议;同时,文件中也确实会
+//! 有意提到普通 `char`,区分两个名字能让语义更清楚。
 
 use crate::mem::transmute;
 use crate::{assert_unsafe_precondition, fmt};
 
-/// One of the 128 Unicode characters from U+0000 through U+007F,
-/// often known as the [ASCII] subset.
+/// U+0000 到 U+007F 这 128 个 Unicode 字符之一,通常称为 [ASCII] 子集。
 ///
-/// Officially, this is the first [block] in Unicode, _Basic Latin_.
-/// For details, see the [*C0 Controls and Basic Latin*][chart] code chart.
+/// 严格来说,这是 Unicode 的第一个[区块][block]:_Basic Latin_。详见
+/// [*C0 Controls and Basic Latin*][chart] 码表。
 ///
-/// This block was based on older 7-bit character code standards such as
-/// ANSI X3.4-1977, ISO 646-1973, and [NIST FIPS 1-2].
+/// 该区块源自更早的 7-bit 字符编码标准,例如 ANSI X3.4-1977、ISO 646-1973
+/// 以及 [NIST FIPS 1-2]。
 ///
-/// # When to use this
+/// # 何时使用
 ///
-/// The main advantage of this subset is that it's always valid UTF-8.  As such,
-/// the `&[ascii::Char]` -> `&str` conversion function (as well as other related
-/// ones) are O(1): *no* runtime checks are needed.
+/// 这个子集的主要优势是:它始终是合法 UTF-8。因此 `&[ascii::Char]` -> `&str`
+/// 以及相关转换都是 O(1):完全不需要运行时检查。
 ///
-/// If you're consuming strings, you should usually handle Unicode and thus
-/// accept `str`s, not limit yourself to `ascii::Char`s.
+/// 如果代码是在消费字符串,通常应处理完整 Unicode,也就是接受 `str`,而不是把输入限制为
+/// `ascii::Char`。
 ///
-/// However, certain formats are intentionally designed to produce ASCII-only
-/// output in order to be 8-bit-clean.  In those cases, it can be simpler and
-/// faster to generate `ascii::Char`s instead of dealing with the variable width
-/// properties of general UTF-8 encoded strings, while still allowing the result
-/// to be used freely with other Rust things that deal in general `str`s.
+/// 不过,某些格式为了保持 8-bit-clean,会有意只产生 ASCII 输出。在这些场景下,
+/// 生成 `ascii::Char` 往往比处理通用 UTF-8 字符串的变长性质更简单、更快;同时结果仍可
+/// 通过 `str` 相关 API 与 Rust 的普通字符串生态配合使用。
 ///
-/// For example, a UUID library might offer a way to produce the string
-/// representation of a UUID as an `[ascii::Char; 36]` to avoid memory
-/// allocation yet still allow it to be used as UTF-8 via `as_str` without
-/// paying for validation (or needing `unsafe` code) the way it would if it
-/// were provided as a `[u8; 36]`.
+/// 例如,UUID 库可以把 UUID 的字符串表示生成为 `[ascii::Char; 36]`,从而避免内存分配;
+/// 调用方仍能通过 `as_str` 把它当作 UTF-8 使用,无需像 `[u8; 36]` 那样为校验付费,
+/// 也不需要写 `unsafe` 代码。
 ///
-/// # Layout
+/// # 布局
 ///
-/// This type is guaranteed to have a size and alignment of 1 byte.
+/// 本类型保证大小与对齐均为 1 字节。
 ///
-/// # Names
+/// # 名称
 ///
-/// The variants on this type are [Unicode names][NamesList] of the characters
-/// in upper camel case, with a few tweaks:
-/// - For `<control>` characters, the primary alias name is used.
-/// - `LATIN` is dropped, as this block has no non-latin letters.
-/// - `LETTER` is dropped, as `CAPITAL`/`SMALL` suffices in this block.
-/// - `DIGIT`s use a single digit rather than writing out `ZERO`, `ONE`, etc.
+/// 本类型的变体名来自字符的 [Unicode 名称][NamesList],转为大驼峰后做了少量调整:
+/// - 对 `<control>` 字符,使用其主要别名。
+/// - 去掉 `LATIN`,因为该区块没有非拉丁字母。
+/// - 去掉 `LETTER`,因为本区块中 `CAPITAL`/`SMALL` 已足以区分。
+/// - `DIGIT` 使用单个数字,而不是写成 `ZERO`、`ONE` 等。
 ///
 /// [ASCII]: https://www.unicode.org/glossary/index.html#ASCII
 /// [block]: https://www.unicode.org/glossary/index.html#block
@@ -59,7 +51,7 @@ use crate::{assert_unsafe_precondition, fmt};
 #[unstable(feature = "ascii_char", issue = "110998")]
 #[repr(u8)]
 pub enum AsciiChar {
-    /// U+0000 (The default variant)
+    /// U+0000(默认变体)
     #[unstable(feature = "ascii_char_variants", issue = "110998")]
     Null = 0,
     /// U+0001
@@ -446,70 +438,65 @@ pub enum AsciiChar {
 }
 
 impl AsciiChar {
-    /// The character with the lowest ASCII code.
+    /// ASCII 码位最小的字符。
     #[unstable(feature = "ascii_char", issue = "110998")]
     pub const MIN: Self = Self::Null;
 
-    /// The character with the highest ASCII code.
+    /// ASCII 码位最大的字符。
     #[unstable(feature = "ascii_char", issue = "110998")]
     pub const MAX: Self = Self::Delete;
 
-    /// Creates an ASCII character from the byte `b`,
-    /// or returns `None` if it's too large.
+    /// 由字节 `b` 创建 ASCII 字符;若 `b` 超出 ASCII 范围则返回 `None`。
     #[unstable(feature = "ascii_char", issue = "110998")]
     #[inline]
     pub const fn from_u8(b: u8) -> Option<Self> {
         if b <= 127 {
-            // SAFETY: Just checked that `b` is in-range
+            // SAFETY: 上面刚检查过 `b` 位于 ASCII 范围内。
             Some(unsafe { Self::from_u8_unchecked(b) })
         } else {
             None
         }
     }
 
-    /// Creates an ASCII character from the byte `b`,
-    /// without checking whether it's valid.
+    /// 由字节 `b` 创建 ASCII 字符,但不检查它是否有效。
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// `b` must be in `0..=127`, or else this is UB.
+    /// `b` 必须位于 `0..=127`;否则 `transmute` 会产生不属于 `AsciiChar` 枚举的值,
+    /// 立即导致未定义行为。
     #[unstable(feature = "ascii_char", issue = "110998")]
     #[inline]
     pub const unsafe fn from_u8_unchecked(b: u8) -> Self {
-        // SAFETY: Our safety precondition is that `b` is in-range.
+        // SAFETY: 本函数的安全前置条件保证 `b` 位于 ASCII 范围内。
         unsafe { transmute(b) }
     }
 
-    /// When passed the *number* `0`, `1`, …, `9`, returns the *character*
-    /// `'0'`, `'1'`, …, `'9'` respectively.
+    /// 传入*数字* `0`、`1`、…、`9` 时,分别返回*字符* `'0'`、`'1'`、…、`'9'`。
     ///
-    /// If `d >= 10`, returns `None`.
+    /// 若 `d >= 10`,返回 `None`。
     #[unstable(feature = "ascii_char", issue = "110998")]
     #[inline]
     pub const fn digit(d: u8) -> Option<Self> {
         if d < 10 {
-            // SAFETY: Just checked it's in-range.
+            // SAFETY: 上面刚检查过它位于十进制数字范围内。
             Some(unsafe { Self::digit_unchecked(d) })
         } else {
             None
         }
     }
 
-    /// When passed the *number* `0`, `1`, …, `9`, returns the *character*
-    /// `'0'`, `'1'`, …, `'9'` respectively, without checking that it's in-range.
+    /// 传入*数字* `0`、`1`、…、`9` 时,分别返回*字符* `'0'`、`'1'`、…、`'9'`,
+    /// 但不检查参数是否在范围内。
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// This is immediate UB if called with `d > 64`.
+    /// 若以 `d > 64` 调用,本函数会立即导致 UB。
     ///
-    /// If `d >= 10` and `d <= 64`, this is allowed to return any value or panic.
-    /// Notably, it should not be expected to return hex digits, or any other
-    /// reasonable extension of the decimal digits.
+    /// 若 `d >= 10` 且 `d <= 64`,本函数允许返回任意值或 panic。尤其不能期望它返回
+    /// 十六进制数字,也不能把它当作十进制数字的某种合理扩展。
     ///
-    /// (This loose safety condition is intended to simplify soundness proofs
-    /// when writing code using this method, since the implementation doesn't
-    /// need something really specific, not to make those other arguments do
-    /// something useful. It might be tightened before stabilization.)
+    /// (这个较宽松的安全条件是为了让使用本方法的代码更容易证明健全性:实现并不需要更精确的
+    /// 条件。它不是为了让其他参数产生有用结果。稳定化前该条件可能会收紧。)
     #[unstable(feature = "ascii_char", issue = "110998")]
     #[inline]
     #[track_caller]
@@ -520,43 +507,42 @@ impl AsciiChar {
             (d: u8 = d) => d < 10
         );
 
-        // SAFETY: `'0'` through `'9'` are U+00030 through U+0039,
-        // so because `d` must be 64 or less the addition can return at most
-        // 112 (0x70), which doesn't overflow and is within the ASCII range.
+        // SAFETY: `'0'` 到 `'9'` 是 U+0030 到 U+0039。由于 `d` 必须不超过 64,
+        // 加法结果最大为 112(0x70),既不会溢出,也仍位于 ASCII 范围内。
         unsafe {
             let byte = b'0'.unchecked_add(d);
             Self::from_u8_unchecked(byte)
         }
     }
 
-    /// Gets this ASCII character as a byte.
+    /// 以字节形式取得这个 ASCII 字符。
     #[unstable(feature = "ascii_char", issue = "110998")]
     #[inline]
     pub const fn to_u8(self) -> u8 {
         self as u8
     }
 
-    /// Gets this ASCII character as a `char` Unicode Scalar Value.
+    /// 以 `char` Unicode 标量值形式取得这个 ASCII 字符。
     #[unstable(feature = "ascii_char", issue = "110998")]
     #[inline]
     pub const fn to_char(self) -> char {
         self as u8 as char
     }
 
-    /// Views this ASCII character as a one-code-unit UTF-8 `str`.
+    /// 把这个 ASCII 字符视为只含一个 UTF-8 code unit 的 `str`。
     #[unstable(feature = "ascii_char", issue = "110998")]
     #[inline]
     pub const fn as_str(&self) -> &str {
         crate::slice::from_ref(self).as_str()
     }
 
-    /// Makes a copy of the value in its upper case equivalent.
+    /// 返回本值的大写等价字符副本。
     ///
-    /// Letters 'a' to 'z' are mapped to 'A' to 'Z'.
+    /// 字母 'a' 到 'z' 会映射到 'A' 到 'Z'。
     ///
-    /// To uppercase the value in-place, use [`make_uppercase`].
+    /// 若要原地转为大写,使用 [`make_uppercase`]。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(ascii_char, ascii_char_variants)]
@@ -576,17 +562,17 @@ impl AsciiChar {
     #[inline]
     pub const fn to_uppercase(self) -> Self {
         let uppercase_byte = self.to_u8().to_ascii_uppercase();
-        // SAFETY: Toggling the 6th bit won't convert ASCII to non-ASCII.
+        // SAFETY: 翻转第 6 位不会把 ASCII 转成非 ASCII。
         unsafe { Self::from_u8_unchecked(uppercase_byte) }
     }
 
-    /// Makes a copy of the value in its lower case equivalent.
+    /// 返回本值的小写等价字符副本。
     ///
-    /// Letters 'A' to 'Z' are mapped to 'a' to 'z'.
+    /// 字母 'A' 到 'Z' 会映射到 'a' 到 'z'。
     ///
-    /// To lowercase the value in-place, use [`make_lowercase`].
+    /// 若要原地转为小写,使用 [`make_lowercase`]。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(ascii_char, ascii_char_variants)]
@@ -606,15 +592,15 @@ impl AsciiChar {
     #[inline]
     pub const fn to_lowercase(self) -> Self {
         let lowercase_byte = self.to_u8().to_ascii_lowercase();
-        // SAFETY: Setting the 6th bit won't convert ASCII to non-ASCII.
+        // SAFETY: 设置第 6 位不会把 ASCII 转成非 ASCII。
         unsafe { Self::from_u8_unchecked(lowercase_byte) }
     }
 
-    /// Checks that two values are a case-insensitive match.
+    /// 检查两个值在忽略 ASCII 大小写后是否匹配。
     ///
-    /// This is equivalent to `to_lowercase(a) == to_lowercase(b)`.
+    /// 等价于 `to_lowercase(a) == to_lowercase(b)`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(ascii_char, ascii_char_variants)]
@@ -628,19 +614,18 @@ impl AsciiChar {
     #[unstable(feature = "ascii_char", issue = "110998")]
     #[inline]
     pub const fn eq_ignore_case(self, other: Self) -> bool {
-        // FIXME(const-hack) `arg.to_u8().to_ascii_lowercase()` -> `arg.to_lowercase()`
-        // once `PartialEq` is const for `Self`.
+        // FIXME(const-hack): 一旦 `Self` 的 `PartialEq` 可在 const 中使用,
+        // 就把 `arg.to_u8().to_ascii_lowercase()` 改成 `arg.to_lowercase()`。
         self.to_u8().to_ascii_lowercase() == other.to_u8().to_ascii_lowercase()
     }
 
-    /// Converts this value to its upper case equivalent in-place.
+    /// 将本值原地转换为其大写等价字符。
     ///
-    /// Letters 'a' to 'z' are mapped to 'A' to 'Z'.
+    /// 字母 'a' 到 'z' 会映射到 'A' 到 'Z'。
     ///
-    /// To return a new uppercased value without modifying the existing one, use
-    /// [`to_uppercase`].
+    /// 若要返回新的大写值而不修改现有值,使用 [`to_uppercase`]。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(ascii_char, ascii_char_variants)]
@@ -660,14 +645,13 @@ impl AsciiChar {
         *self = self.to_uppercase();
     }
 
-    /// Converts this value to its lower case equivalent in-place.
+    /// 将本值原地转换为其小写等价字符。
     ///
-    /// Letters 'A' to 'Z' are mapped to 'a' to 'z'.
+    /// 字母 'A' 到 'Z' 会映射到 'a' 到 'z'。
     ///
-    /// To return a new lowercased value without modifying the existing one, use
-    /// [`to_lowercase`].
+    /// 若要返回新的小写值而不修改现有值,使用 [`to_lowercase`]。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(ascii_char, ascii_char_variants)]
@@ -687,12 +671,12 @@ impl AsciiChar {
         *self = self.to_lowercase();
     }
 
-    /// Checks if the value is an alphabetic character:
+    /// 检查本值是否是 ASCII 字母:
     ///
     /// - 0x41 'A' ..= 0x5A 'Z', or
     /// - 0x61 'a' ..= 0x7A 'z'.
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(ascii_char, ascii_char_variants)]
@@ -725,10 +709,10 @@ impl AsciiChar {
         self.to_u8().is_ascii_alphabetic()
     }
 
-    /// Checks if the value is an uppercase character:
+    /// 检查本值是否是 ASCII 大写字母:
     /// 0x41 'A' ..= 0x5A 'Z'.
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(ascii_char, ascii_char_variants)]
@@ -761,10 +745,10 @@ impl AsciiChar {
         self.to_u8().is_ascii_uppercase()
     }
 
-    /// Checks if the value is a lowercase character:
+    /// 检查本值是否是 ASCII 小写字母:
     /// 0x61 'a' ..= 0x7A 'z'.
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(ascii_char, ascii_char_variants)]
@@ -797,13 +781,13 @@ impl AsciiChar {
         self.to_u8().is_ascii_lowercase()
     }
 
-    /// Checks if the value is an alphanumeric character:
+    /// 检查本值是否是 ASCII 字母或数字:
     ///
     /// - 0x41 'A' ..= 0x5A 'Z', or
     /// - 0x61 'a' ..= 0x7A 'z', or
     /// - 0x30 '0' ..= 0x39 '9'.
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(ascii_char, ascii_char_variants)]
@@ -836,10 +820,10 @@ impl AsciiChar {
         self.to_u8().is_ascii_alphanumeric()
     }
 
-    /// Checks if the value is a decimal digit:
+    /// 检查本值是否是 ASCII 十进制数字:
     /// 0x30 '0' ..= 0x39 '9'.
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(ascii_char, ascii_char_variants)]
@@ -872,10 +856,10 @@ impl AsciiChar {
         self.to_u8().is_ascii_digit()
     }
 
-    /// Checks if the value is an octal digit:
+    /// 检查本值是否是 ASCII 八进制数字:
     /// 0x30 '0' ..= 0x37 '7'.
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(ascii_char, ascii_char_variants, is_ascii_octdigit)]
@@ -901,8 +885,7 @@ impl AsciiChar {
     /// assert!(!esc.is_octdigit());
     /// ```
     #[must_use]
-    // This is blocked on two unstable features. Please ensure both are
-    // stabilized before marking this method as stable.
+    // 这受两个 unstable feature 阻塞。标记本方法为 stable 前,请确认二者都已稳定。
     #[unstable(feature = "ascii_char", issue = "110998")]
     // #[unstable(feature = "is_ascii_octdigit", issue = "101288")]
     #[inline]
@@ -910,13 +893,13 @@ impl AsciiChar {
         self.to_u8().is_ascii_octdigit()
     }
 
-    /// Checks if the value is a hexadecimal digit:
+    /// 检查本值是否是 ASCII 十六进制数字:
     ///
     /// - 0x30 '0' ..= 0x39 '9', or
     /// - 0x41 'A' ..= 0x46 'F', or
     /// - 0x61 'a' ..= 0x66 'f'.
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(ascii_char, ascii_char_variants)]
@@ -949,14 +932,14 @@ impl AsciiChar {
         self.to_u8().is_ascii_hexdigit()
     }
 
-    /// Checks if the value is a punctuation character:
+    /// 检查本值是否是 ASCII 标点字符:
     ///
     /// - 0x21 ..= 0x2F `! " # $ % & ' ( ) * + , - . /`, or
     /// - 0x3A ..= 0x40 `: ; < = > ? @`, or
     /// - 0x5B ..= 0x60 `` [ \ ] ^ _ ` ``, or
     /// - 0x7B ..= 0x7E `{ | } ~`
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(ascii_char, ascii_char_variants)]
@@ -989,10 +972,10 @@ impl AsciiChar {
         self.to_u8().is_ascii_punctuation()
     }
 
-    /// Checks if the value is a graphic character:
+    /// 检查本值是否是 ASCII 图形字符:
     /// 0x21 '!' ..= 0x7E '~'.
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(ascii_char, ascii_char_variants)]
@@ -1025,27 +1008,22 @@ impl AsciiChar {
         self.to_u8().is_ascii_graphic()
     }
 
-    /// Checks if the value is a whitespace character:
+    /// 检查本值是否是 ASCII 空白字符:
     /// 0x20 SPACE, 0x09 HORIZONTAL TAB, 0x0A LINE FEED,
-    /// 0x0C FORM FEED, or 0x0D CARRIAGE RETURN.
+    /// 0x0C FORM FEED,或 0x0D CARRIAGE RETURN。
     ///
-    /// Rust uses the WhatWG Infra Standard's [definition of ASCII
-    /// whitespace][infra-aw]. There are several other definitions in
-    /// wide use. For instance, [the POSIX locale][pct] includes
-    /// 0x0B VERTICAL TAB as well as all the above characters,
-    /// but—from the very same specification—[the default rule for
-    /// "field splitting" in the Bourne shell][bfs] considers *only*
-    /// SPACE, HORIZONTAL TAB, and LINE FEED as whitespace.
+    /// Rust 使用 WhatWG Infra Standard 中对 [ASCII whitespace][infra-aw] 的定义。
+    /// 现实中还有多种广泛使用的定义。例如 [POSIX locale][pct] 除上述字符外还包含
+    /// 0x0B VERTICAL TAB;但同一规范下,[Bourne shell 的默认 "field splitting" 规则][bfs]
+    /// 又*只*把 SPACE、HORIZONTAL TAB 和 LINE FEED 视为空白。
     ///
-    /// If you are writing a program that will process an existing
-    /// file format, check what that format's definition of whitespace is
-    /// before using this function.
+    /// 如果程序要处理既有文件格式,在使用本函数前应先确认该格式如何定义空白字符。
     ///
     /// [infra-aw]: https://infra.spec.whatwg.org/#ascii-whitespace
     /// [pct]: https://pubs.opengroup.org/onlinepubs/9699919799/basedefs/V1_chap07.html#tag_07_03_01
     /// [bfs]: https://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html#tag_18_06_05
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(ascii_char, ascii_char_variants)]
@@ -1078,12 +1056,11 @@ impl AsciiChar {
         self.to_u8().is_ascii_whitespace()
     }
 
-    /// Checks if the value is a control character:
-    /// 0x00 NUL ..= 0x1F UNIT SEPARATOR, or 0x7F DELETE.
-    /// Note that most whitespace characters are control
-    /// characters, but SPACE is not.
+    /// 检查本值是否是 ASCII 控制字符:
+    /// 0x00 NUL ..= 0x1F UNIT SEPARATOR,或 0x7F DELETE。
+    /// 注意:大多数空白字符也是控制字符,但 SPACE 不是。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(ascii_char, ascii_char_variants)]
@@ -1116,13 +1093,11 @@ impl AsciiChar {
         self.to_u8().is_ascii_control()
     }
 
-    /// Returns an iterator that produces an escaped version of a
-    /// character.
+    /// 返回一个迭代器,逐字节产出该字符的转义表示。
     ///
-    /// The behavior is identical to
-    /// [`ascii::escape_default`](crate::ascii::escape_default).
+    /// 行为与 [`ascii::escape_default`](crate::ascii::escape_default) 相同。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(ascii_char, ascii_char_variants)]
@@ -1171,18 +1146,17 @@ macro_rules! into_int_impl {
 into_int_impl!(u8 u16 u32 u64 u128 char);
 
 impl [AsciiChar] {
-    /// Views this slice of ASCII characters as a UTF-8 `str`.
+    /// 把这个 ASCII 字符切片视为 UTF-8 `str`。
     #[unstable(feature = "ascii_char", issue = "110998")]
     #[inline]
     pub const fn as_str(&self) -> &str {
         let ascii_ptr: *const Self = self;
         let str_ptr = ascii_ptr as *const str;
-        // SAFETY: Each ASCII codepoint in UTF-8 is encoded as one single-byte
-        // code unit having the same value as the ASCII byte.
+        // SAFETY: 每个 ASCII 码位在 UTF-8 中都编码为单个字节,且该字节值与 ASCII 值相同。
         unsafe { &*str_ptr }
     }
 
-    /// Views this slice of ASCII characters as a slice of `u8` bytes.
+    /// 把这个 ASCII 字符切片视为 `u8` 字节切片。
     #[unstable(feature = "ascii_char", issue = "110998")]
     #[inline]
     pub const fn as_bytes(&self) -> &[u8] {

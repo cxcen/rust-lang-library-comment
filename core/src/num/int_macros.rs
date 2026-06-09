@@ -4,10 +4,10 @@ macro_rules! int_impl {
         ActualT = $ActualT:ident,
         UnsignedT = $UnsignedT:ty,
 
-        // These are all for use *only* in doc comments.
-        // As such, they're all passed as literals -- passing them as a string
-        // literal is fine if they need to be multiple code tokens.
-        // In non-comments, use the associated constants rather than these.
+        // 这些只用于文档注释。
+        // 因此它们都会以字面量传入；如果需要表示多个代码 token，
+        // 传入字符串字面量也是可以的。
+        // 在非注释中，请使用关联常量而不是这些值。
         BITS = $BITS:literal,
         BITS_MINUS_ONE = $BITS_MINUS_ONE:literal,
         Min = $Min:literal,
@@ -24,10 +24,10 @@ macro_rules! int_impl {
         from_xe_bytes_doc = $from_xe_bytes_doc:expr,
         bound_condition = $bound_condition:literal,
     ) => {
-        /// The smallest value that can be represented by this integer type
+        /// 此整数类型能表示的最小值
         #[doc = concat!("(&minus;2<sup>", $BITS_MINUS_ONE, "</sup>", $bound_condition, ").")]
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(", stringify!($SelfT), "::MIN, ", stringify!($Min), ");")]
@@ -35,10 +35,10 @@ macro_rules! int_impl {
         #[stable(feature = "assoc_int_consts", since = "1.43.0")]
         pub const MIN: Self = !Self::MAX;
 
-        /// The largest value that can be represented by this integer type
+        /// 此整数类型能表示的最大值
         #[doc = concat!("(2<sup>", $BITS_MINUS_ONE, "</sup> &minus; 1", $bound_condition, ").")]
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(", stringify!($SelfT), "::MAX, ", stringify!($Max), ");")]
@@ -46,9 +46,9 @@ macro_rules! int_impl {
         #[stable(feature = "assoc_int_consts", since = "1.43.0")]
         pub const MAX: Self = (<$UnsignedT>::MAX >> 1) as Self;
 
-        /// The size of this integer type in bits.
+        /// 此整数类型的大小，以位为单位。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(", stringify!($SelfT), "::BITS, ", stringify!($BITS), ");")]
@@ -56,9 +56,9 @@ macro_rules! int_impl {
         #[stable(feature = "int_bits_const", since = "1.53.0")]
         pub const BITS: u32 = <$UnsignedT>::BITS;
 
-        /// Returns the number of ones in the binary representation of `self`.
+        /// 返回 `self` 的二进制表示中 1 的个数。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("let n = 0b100_0000", stringify!($SelfT), ";")]
@@ -75,9 +75,9 @@ macro_rules! int_impl {
         #[inline(always)]
         pub const fn count_ones(self) -> u32 { (self as $UnsignedT).count_ones() }
 
-        /// Returns the number of zeros in the binary representation of `self`.
+        /// 返回 `self` 的二进制表示中 0 的个数。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(", stringify!($SelfT), "::MAX.count_zeros(), 1);")]
@@ -91,12 +91,12 @@ macro_rules! int_impl {
             (!self).count_ones()
         }
 
-        /// Returns the number of leading zeros in the binary representation of `self`.
+        /// 返回 `self` 的二进制表示中前导 0 的个数。
         ///
-        /// Depending on what you're doing with the value, you might also be interested in the
-        /// [`ilog2`] function which returns a consistent number, even if the type widens.
+        /// 根据你对该值的用途，你可能也会需要 [`ilog2`] 函数；
+        /// 即使类型变宽，它也会返回一致的数值。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("let n = -1", stringify!($SelfT), ";")]
@@ -113,9 +113,9 @@ macro_rules! int_impl {
             (self as $UnsignedT).leading_zeros()
         }
 
-        /// Returns the number of trailing zeros in the binary representation of `self`.
+        /// 返回 `self` 的二进制表示中尾随 0 的个数。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("let n = -4", stringify!($SelfT), ";")]
@@ -131,9 +131,9 @@ macro_rules! int_impl {
             (self as $UnsignedT).trailing_zeros()
         }
 
-        /// Returns the number of leading ones in the binary representation of `self`.
+        /// 返回 `self` 的二进制表示中前导 1 的个数。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("let n = -1", stringify!($SelfT), ";")]
@@ -149,9 +149,9 @@ macro_rules! int_impl {
             (self as $UnsignedT).leading_ones()
         }
 
-        /// Returns the number of trailing ones in the binary representation of `self`.
+        /// 返回 `self` 的二进制表示中尾随 1 的个数。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("let n = 3", stringify!($SelfT), ";")]
@@ -167,10 +167,10 @@ macro_rules! int_impl {
             (self as $UnsignedT).trailing_ones()
         }
 
-        /// Returns `self` with only the most significant bit set, or `0` if
-        /// the input is `0`.
+        /// 返回只保留最高有效位为 1 的 `self`；如果输入为 `0`，
+        /// 则返回 `0`。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         /// #![feature(isolate_most_least_significant_one)]
@@ -188,10 +188,10 @@ macro_rules! int_impl {
             self & (((1 as $SelfT) << (<$SelfT>::BITS - 1)).wrapping_shr(self.leading_zeros()))
         }
 
-        /// Returns `self` with only the least significant bit set, or `0` if
-        /// the input is `0`.
+        /// 返回只保留最低有效位为 1 的 `self`；如果输入为 `0`，
+        /// 则返回 `0`。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         /// #![feature(isolate_most_least_significant_one)]
@@ -209,10 +209,10 @@ macro_rules! int_impl {
             self & self.wrapping_neg()
         }
 
-        /// Returns the index of the highest bit set to one in `self`, or `None`
-        /// if `self` is `0`.
+        /// 返回 `self` 中值为 1 的最高位索引；如果 `self` 为 `0`，
+        /// 则返回 `None`。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         /// #![feature(int_lowest_highest_one)]
@@ -230,10 +230,10 @@ macro_rules! int_impl {
             (self as $UnsignedT).highest_one()
         }
 
-        /// Returns the index of the lowest bit set to one in `self`, or `None`
-        /// if `self` is `0`.
+        /// 返回 `self` 中值为 1 的最低位索引；如果 `self` 为 `0`，
+        /// 则返回 `None`。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         /// #![feature(int_lowest_highest_one)]
@@ -251,12 +251,11 @@ macro_rules! int_impl {
             (self as $UnsignedT).lowest_one()
         }
 
-        /// Returns the bit pattern of `self` reinterpreted as an unsigned integer of the same size.
+        /// 返回将 `self` 的位模式重新解释为同大小无符号整数后的值。
         ///
-        /// This produces the same result as an `as` cast, but ensures that the bit-width remains
-        /// the same.
+        /// 这会产生与 `as` 转换相同的结果，但会确保位宽保持不变。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("let n = -1", stringify!($SelfT), ";")]
@@ -272,16 +271,14 @@ macro_rules! int_impl {
             self as $UnsignedT
         }
 
-        /// Shifts the bits to the left by a specified amount, `n`,
-        /// wrapping the truncated bits to the end of the resulting integer.
+        /// 将位向左旋转指定数量 `n`，被截断的位会回绕到结果整数的末端。
         ///
-        /// `rotate_left(n)` is equivalent to applying `rotate_left(1)` a total of `n` times. In
-        /// particular, a rotation by the number of bits in `self` returns the input value
-        /// unchanged.
+        /// `rotate_left(n)` 等价于总共应用 `n` 次 `rotate_left(1)`。
+        /// 特别是，当旋转量等于 `self` 的位数时，会原样返回输入值。
         ///
-        /// Please note this isn't the same operation as the `<<` shifting operator!
+        /// 请注意，这与 `<<` 移位运算符不是同一个操作！
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("let n = ", $rot_op, stringify!($SelfT), ";")]
@@ -299,17 +296,14 @@ macro_rules! int_impl {
             (self as $UnsignedT).rotate_left(n) as Self
         }
 
-        /// Shifts the bits to the right by a specified amount, `n`,
-        /// wrapping the truncated bits to the beginning of the resulting
-        /// integer.
+        /// 将位向右旋转指定数量 `n`，被截断的位会回绕到结果整数的开头。
         ///
-        /// `rotate_right(n)` is equivalent to applying `rotate_right(1)` a total of `n` times. In
-        /// particular, a rotation by the number of bits in `self` returns the input value
-        /// unchanged.
+        /// `rotate_right(n)` 等价于总共应用 `n` 次 `rotate_right(1)`。
+        /// 特别是，当旋转量等于 `self` 的位数时，会原样返回输入值。
         ///
-        /// Please note this isn't the same operation as the `>>` shifting operator!
+        /// 请注意，这与 `>>` 移位运算符不是同一个操作！
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("let n = ", $rot_result, stringify!($SelfT), ";")]
@@ -327,9 +321,9 @@ macro_rules! int_impl {
             (self as $UnsignedT).rotate_right(n) as Self
         }
 
-        /// Reverses the byte order of the integer.
+        /// 反转该整数的字节顺序。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("let n = ", $swap_op, stringify!($SelfT), ";")]
@@ -347,10 +341,10 @@ macro_rules! int_impl {
             (self as $UnsignedT).swap_bytes() as Self
         }
 
-        /// Reverses the order of bits in the integer. The least significant bit becomes the most significant bit,
-        ///                 second least-significant bit becomes second most-significant bit, etc.
+        /// 反转该整数中的位顺序。最低有效位会变为最高有效位，
+        /// 次低有效位会变为次高有效位，依此类推。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("let n = ", $swap_op, stringify!($SelfT), ";")]
@@ -368,13 +362,13 @@ macro_rules! int_impl {
             (self as $UnsignedT).reverse_bits() as Self
         }
 
-        /// Converts an integer from big endian to the target's endianness.
+        /// 将整数从大端字节序转换为目标平台的字节序。
         ///
-        /// On big endian this is a no-op. On little endian the bytes are swapped.
+        /// 在大端平台上这是空操作。在小端平台上会交换字节。
         ///
-        /// See also [from_be_bytes()](Self::from_be_bytes).
+        /// 另请参见 [from_be_bytes()](Self::from_be_bytes)。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("let n = 0x1A", stringify!($SelfT), ";")]
@@ -400,13 +394,13 @@ macro_rules! int_impl {
             }
         }
 
-        /// Converts an integer from little endian to the target's endianness.
+        /// 将整数从小端字节序转换为目标平台的字节序。
         ///
-        /// On little endian this is a no-op. On big endian the bytes are swapped.
+        /// 在小端平台上这是空操作。在大端平台上会交换字节。
         ///
-        /// See also [from_le_bytes()](Self::from_le_bytes).
+        /// 另请参见 [from_le_bytes()](Self::from_le_bytes)。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("let n = 0x1A", stringify!($SelfT), ";")]
@@ -432,17 +426,17 @@ macro_rules! int_impl {
             }
         }
 
-        /// Swaps bytes of `self` on little endian targets.
+        /// 在小端目标平台上交换 `self` 的字节。
         ///
-        /// On big endian this is a no-op.
+        /// 在大端平台上这是空操作。
         ///
-        /// The returned value has the same type as `self`, and will be interpreted
-        /// as (a potentially different) value of a native-endian
+        /// 返回值与 `self` 具有相同类型，并会被解释为一个
+        /// 本机字节序的（可能不同的）值：
         #[doc = concat!("`", stringify!($SelfT), "`.")]
         ///
-        /// See [`to_be_bytes()`](Self::to_be_bytes) for a type-safe alternative.
+        /// 如需类型安全的替代方案，请参见 [`to_be_bytes()`](Self::to_be_bytes)。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("let n = 0x1A", stringify!($SelfT), ";")]
@@ -458,7 +452,7 @@ macro_rules! int_impl {
         #[must_use = "this returns the result of the operation, \
                       without modifying the original"]
         #[inline]
-        pub const fn to_be(self) -> Self { // or not to be?
+        pub const fn to_be(self) -> Self { // 或者不转成大端？
             #[cfg(target_endian = "big")]
             {
                 self
@@ -469,17 +463,17 @@ macro_rules! int_impl {
             }
         }
 
-        /// Swaps bytes of `self` on big endian targets.
+        /// 在大端目标平台上交换 `self` 的字节。
         ///
-        /// On little endian this is a no-op.
+        /// 在小端平台上这是空操作。
         ///
-        /// The returned value has the same type as `self`, and will be interpreted
-        /// as (a potentially different) value of a native-endian
+        /// 返回值与 `self` 具有相同类型，并会被解释为一个
+        /// 本机字节序的（可能不同的）值：
         #[doc = concat!("`", stringify!($SelfT), "`.")]
         ///
-        /// See [`to_le_bytes()`](Self::to_le_bytes) for a type-safe alternative.
+        /// 如需类型安全的替代方案，请参见 [`to_le_bytes()`](Self::to_le_bytes)。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("let n = 0x1A", stringify!($SelfT), ";")]
@@ -506,10 +500,9 @@ macro_rules! int_impl {
             }
         }
 
-        /// Checked integer addition. Computes `self + rhs`, returning `None`
-        /// if overflow occurred.
+        /// 检查型整数加法。计算 `self + rhs`，如果发生溢出则返回 `None`。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!((", stringify!($SelfT), "::MAX - 2).checked_add(1), Some(", stringify!($SelfT), "::MAX - 1));")]
@@ -525,22 +518,21 @@ macro_rules! int_impl {
             if intrinsics::unlikely(b) { None } else { Some(a) }
         }
 
-        /// Strict integer addition. Computes `self + rhs`, panicking
-        /// if overflow occurred.
+        /// 严格整数加法。计算 `self + rhs`，如果发生溢出则 panic。
         ///
         /// # Panics
         ///
-        /// ## Overflow behavior
+        /// ## 溢出行为
         ///
-        /// This function will always panic on overflow, regardless of whether overflow checks are enabled.
+        /// 无论是否启用溢出检查，此函数都会在溢出时 panic。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!((", stringify!($SelfT), "::MAX - 2).strict_add(1), ", stringify!($SelfT), "::MAX - 1);")]
         /// ```
         ///
-        /// The following panics because of overflow:
+        /// 以下代码会因溢出而 panic：
         ///
         /// ```should_panic
         #[doc = concat!("let _ = (", stringify!($SelfT), "::MAX - 2).strict_add(3);")]
@@ -556,20 +548,19 @@ macro_rules! int_impl {
             if b { overflow_panic::add() } else { a }
         }
 
-        /// Unchecked integer addition. Computes `self + rhs`, assuming overflow
-        /// cannot occur.
+        /// 不检查的整数加法。计算 `self + rhs`，并假定不会发生溢出。
         ///
-        /// Calling `x.unchecked_add(y)` is semantically equivalent to calling
+        /// 调用 `x.unchecked_add(y)` 在语义上等价于调用
         /// `x.`[`checked_add`]`(y).`[`unwrap_unchecked`]`()`.
         ///
-        /// If you're just trying to avoid the panic in debug mode, then **do not**
-        /// use this.  Instead, you're looking for [`wrapping_add`].
+        /// 如果你只是想避免调试模式下的 panic，那么**不要**使用此函数。
+        /// 你需要的是 [`wrapping_add`]。
         ///
-        /// # Safety
+        /// # 安全性(Safety）
         ///
-        /// This results in undefined behavior when
+        /// 当出现以下情况时会导致未定义行为：
         #[doc = concat!("`self + rhs > ", stringify!($SelfT), "::MAX` or `self + rhs < ", stringify!($SelfT), "::MIN`,")]
-        /// i.e. when [`checked_add`] would return `None`.
+        /// 也就是 [`checked_add`] 会返回 `None` 的情况。
         ///
         /// [`unwrap_unchecked`]: option/enum.Option.html#method.unwrap_unchecked
         #[doc = concat!("[`checked_add`]: ", stringify!($SelfT), "::checked_add")]
@@ -590,16 +581,16 @@ macro_rules! int_impl {
                 ) => !lhs.overflowing_add(rhs).1,
             );
 
-            // SAFETY: this is guaranteed to be safe by the caller.
+            // SAFETY: 调用方必须保证加法不会溢出，这是 `unchecked_add` 的前置条件。
             unsafe {
                 intrinsics::unchecked_add(self, rhs)
             }
         }
 
-        /// Checked addition with an unsigned integer. Computes `self + rhs`,
-        /// returning `None` if overflow occurred.
+        /// 与无符号整数相加的检查型加法。计算 `self + rhs`，
+        /// 如果发生溢出则返回 `None`。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(1", stringify!($SelfT), ".checked_add_unsigned(2), Some(3));")]
@@ -615,22 +606,22 @@ macro_rules! int_impl {
             if intrinsics::unlikely(b) { None } else { Some(a) }
         }
 
-        /// Strict addition with an unsigned integer. Computes `self + rhs`,
-        /// panicking if overflow occurred.
+        /// 与无符号整数相加的严格加法。计算 `self + rhs`，
+        /// 如果发生溢出则 panic。
         ///
         /// # Panics
         ///
-        /// ## Overflow behavior
+        /// ## 溢出行为
         ///
-        /// This function will always panic on overflow, regardless of whether overflow checks are enabled.
+        /// 无论是否启用溢出检查，此函数都会在溢出时 panic。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(1", stringify!($SelfT), ".strict_add_unsigned(2), 3);")]
         /// ```
         ///
-        /// The following panics because of overflow:
+        /// 以下代码会因溢出而 panic：
         ///
         /// ```should_panic
         #[doc = concat!("let _ = (", stringify!($SelfT), "::MAX - 2).strict_add_unsigned(3);")]
@@ -646,10 +637,9 @@ macro_rules! int_impl {
             if b { overflow_panic::add() } else { a }
         }
 
-        /// Checked integer subtraction. Computes `self - rhs`, returning `None` if
-        /// overflow occurred.
+        /// 检查型整数减法。计算 `self - rhs`，如果发生溢出则返回 `None`。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!((", stringify!($SelfT), "::MIN + 2).checked_sub(1), Some(", stringify!($SelfT), "::MIN + 1));")]
@@ -665,22 +655,21 @@ macro_rules! int_impl {
             if intrinsics::unlikely(b) { None } else { Some(a) }
         }
 
-        /// Strict integer subtraction. Computes `self - rhs`, panicking if
-        /// overflow occurred.
+        /// 严格整数减法。计算 `self - rhs`，如果发生溢出则 panic。
         ///
         /// # Panics
         ///
-        /// ## Overflow behavior
+        /// ## 溢出行为
         ///
-        /// This function will always panic on overflow, regardless of whether overflow checks are enabled.
+        /// 无论是否启用溢出检查，此函数都会在溢出时 panic。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!((", stringify!($SelfT), "::MIN + 2).strict_sub(1), ", stringify!($SelfT), "::MIN + 1);")]
         /// ```
         ///
-        /// The following panics because of overflow:
+        /// 以下代码会因溢出而 panic：
         ///
         /// ```should_panic
         #[doc = concat!("let _ = (", stringify!($SelfT), "::MIN + 2).strict_sub(3);")]
@@ -696,20 +685,19 @@ macro_rules! int_impl {
             if b { overflow_panic::sub() } else { a }
         }
 
-        /// Unchecked integer subtraction. Computes `self - rhs`, assuming overflow
-        /// cannot occur.
+        /// 不检查的整数减法。计算 `self - rhs`，并假定不会发生溢出。
         ///
-        /// Calling `x.unchecked_sub(y)` is semantically equivalent to calling
+        /// 调用 `x.unchecked_sub(y)` 在语义上等价于调用
         /// `x.`[`checked_sub`]`(y).`[`unwrap_unchecked`]`()`.
         ///
-        /// If you're just trying to avoid the panic in debug mode, then **do not**
-        /// use this.  Instead, you're looking for [`wrapping_sub`].
+        /// 如果你只是想避免调试模式下的 panic，那么**不要**使用此函数。
+        /// 你需要的是 [`wrapping_sub`]。
         ///
-        /// # Safety
+        /// # 安全性(Safety）
         ///
-        /// This results in undefined behavior when
+        /// 当出现以下情况时会导致未定义行为：
         #[doc = concat!("`self - rhs > ", stringify!($SelfT), "::MAX` or `self - rhs < ", stringify!($SelfT), "::MIN`,")]
-        /// i.e. when [`checked_sub`] would return `None`.
+        /// 也就是 [`checked_sub`] 会返回 `None` 的情况。
         ///
         /// [`unwrap_unchecked`]: option/enum.Option.html#method.unwrap_unchecked
         #[doc = concat!("[`checked_sub`]: ", stringify!($SelfT), "::checked_sub")]
@@ -730,16 +718,16 @@ macro_rules! int_impl {
                 ) => !lhs.overflowing_sub(rhs).1,
             );
 
-            // SAFETY: this is guaranteed to be safe by the caller.
+            // SAFETY: 调用方必须保证减法不会溢出，这是 `unchecked_sub` 的前置条件。
             unsafe {
                 intrinsics::unchecked_sub(self, rhs)
             }
         }
 
-        /// Checked subtraction with an unsigned integer. Computes `self - rhs`,
-        /// returning `None` if overflow occurred.
+        /// 与无符号整数相减的检查型减法。计算 `self - rhs`，
+        /// 如果发生溢出则返回 `None`。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(1", stringify!($SelfT), ".checked_sub_unsigned(2), Some(-1));")]
@@ -755,22 +743,22 @@ macro_rules! int_impl {
             if intrinsics::unlikely(b) { None } else { Some(a) }
         }
 
-        /// Strict subtraction with an unsigned integer. Computes `self - rhs`,
-        /// panicking if overflow occurred.
+        /// 与无符号整数相减的严格减法。计算 `self - rhs`，
+        /// 如果发生溢出则 panic。
         ///
         /// # Panics
         ///
-        /// ## Overflow behavior
+        /// ## 溢出行为
         ///
-        /// This function will always panic on overflow, regardless of whether overflow checks are enabled.
+        /// 无论是否启用溢出检查，此函数都会在溢出时 panic。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(1", stringify!($SelfT), ".strict_sub_unsigned(2), -1);")]
         /// ```
         ///
-        /// The following panics because of overflow:
+        /// 以下代码会因溢出而 panic：
         ///
         /// ```should_panic
         #[doc = concat!("let _ = (", stringify!($SelfT), "::MIN + 2).strict_sub_unsigned(3);")]
@@ -786,10 +774,9 @@ macro_rules! int_impl {
             if b { overflow_panic::sub() } else { a }
         }
 
-        /// Checked integer multiplication. Computes `self * rhs`, returning `None` if
-        /// overflow occurred.
+        /// 检查型整数乘法。计算 `self * rhs`，如果发生溢出则返回 `None`。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(", stringify!($SelfT), "::MAX.checked_mul(1), Some(", stringify!($SelfT), "::MAX));")]
@@ -805,22 +792,21 @@ macro_rules! int_impl {
             if intrinsics::unlikely(b) { None } else { Some(a) }
         }
 
-        /// Strict integer multiplication. Computes `self * rhs`, panicking if
-        /// overflow occurred.
+        /// 严格整数乘法。计算 `self * rhs`，如果发生溢出则 panic。
         ///
         /// # Panics
         ///
-        /// ## Overflow behavior
+        /// ## 溢出行为
         ///
-        /// This function will always panic on overflow, regardless of whether overflow checks are enabled.
+        /// 无论是否启用溢出检查，此函数都会在溢出时 panic。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(", stringify!($SelfT), "::MAX.strict_mul(1), ", stringify!($SelfT), "::MAX);")]
         /// ```
         ///
-        /// The following panics because of overflow:
+        /// 以下代码会因溢出而 panic：
         ///
         /// ``` should_panic
         #[doc = concat!("let _ = ", stringify!($SelfT), "::MAX.strict_mul(2);")]
@@ -836,20 +822,19 @@ macro_rules! int_impl {
             if b { overflow_panic::mul() } else { a }
         }
 
-        /// Unchecked integer multiplication. Computes `self * rhs`, assuming overflow
-        /// cannot occur.
+        /// 不检查的整数乘法。计算 `self * rhs`，并假定不会发生溢出。
         ///
-        /// Calling `x.unchecked_mul(y)` is semantically equivalent to calling
+        /// 调用 `x.unchecked_mul(y)` 在语义上等价于调用
         /// `x.`[`checked_mul`]`(y).`[`unwrap_unchecked`]`()`.
         ///
-        /// If you're just trying to avoid the panic in debug mode, then **do not**
-        /// use this.  Instead, you're looking for [`wrapping_mul`].
+        /// 如果你只是想避免调试模式下的 panic，那么**不要**使用此函数。
+        /// 你需要的是 [`wrapping_mul`]。
         ///
-        /// # Safety
+        /// # 安全性(Safety）
         ///
-        /// This results in undefined behavior when
+        /// 当出现以下情况时会导致未定义行为：
         #[doc = concat!("`self * rhs > ", stringify!($SelfT), "::MAX` or `self * rhs < ", stringify!($SelfT), "::MIN`,")]
-        /// i.e. when [`checked_mul`] would return `None`.
+        /// 也就是 [`checked_mul`] 会返回 `None` 的情况。
         ///
         /// [`unwrap_unchecked`]: option/enum.Option.html#method.unwrap_unchecked
         #[doc = concat!("[`checked_mul`]: ", stringify!($SelfT), "::checked_mul")]
@@ -870,16 +855,16 @@ macro_rules! int_impl {
                 ) => !lhs.overflowing_mul(rhs).1,
             );
 
-            // SAFETY: this is guaranteed to be safe by the caller.
+            // SAFETY: 调用方必须保证乘法不会溢出，这是 `unchecked_mul` 的前置条件。
             unsafe {
                 intrinsics::unchecked_mul(self, rhs)
             }
         }
 
-        /// Checked integer division. Computes `self / rhs`, returning `None` if `rhs == 0`
-        /// or the division results in overflow.
+        /// 检查型整数除法。计算 `self / rhs`，如果 `rhs == 0`
+        /// 或除法结果溢出则返回 `None`。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!((", stringify!($SelfT), "::MIN + 1).checked_div(-1), Some(", stringify!($Max), "));")]
@@ -895,39 +880,37 @@ macro_rules! int_impl {
             if intrinsics::unlikely(rhs == 0 || ((self == Self::MIN) && (rhs == -1))) {
                 None
             } else {
-                // SAFETY: div by zero and by INT_MIN have been checked above
+                // SAFETY: 上面已经排除了除以零以及 `Self::MIN / -1` 的溢出情形。
                 Some(unsafe { intrinsics::unchecked_div(self, rhs) })
             }
         }
 
-        /// Strict integer division. Computes `self / rhs`, panicking
-        /// if overflow occurred.
+        /// 严格整数除法。计算 `self / rhs`，如果发生溢出则 panic。
         ///
         /// # Panics
         ///
-        /// This function will panic if `rhs` is zero.
+        /// 如果 `rhs` 为零，此函数会 panic。
         ///
-        /// ## Overflow behavior
+        /// ## 溢出行为
         ///
-        /// This function will always panic on overflow, regardless of whether overflow checks are enabled.
+        /// 无论是否启用溢出检查，此函数都会在溢出时 panic。
         ///
-        /// The only case where such an overflow can occur is when one divides `MIN / -1` on a signed type (where
-        /// `MIN` is the negative minimal value for the type); this is equivalent to `-MIN`, a positive value
-        /// that is too large to represent in the type.
+        /// 这种溢出唯一会发生在有符号类型的 `MIN / -1` 上（其中 `MIN`
+        /// 是该类型的最小负值）；这等价于 `-MIN`，其正值过大而无法由该类型表示。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!((", stringify!($SelfT), "::MIN + 1).strict_div(-1), ", stringify!($Max), ");")]
         /// ```
         ///
-        /// The following panics because of overflow:
+        /// 以下代码会因溢出而 panic：
         ///
         /// ```should_panic
         #[doc = concat!("let _ = ", stringify!($SelfT), "::MIN.strict_div(-1);")]
         /// ```
         ///
-        /// The following panics because of division by zero:
+        /// 以下代码会因除以零而 panic：
         ///
         /// ```should_panic
         #[doc = concat!("let _ = (1", stringify!($SelfT), ").strict_div(0);")]
@@ -943,10 +926,10 @@ macro_rules! int_impl {
             if b { overflow_panic::div() } else { a }
         }
 
-        /// Checked Euclidean division. Computes `self.div_euclid(rhs)`,
-        /// returning `None` if `rhs == 0` or the division results in overflow.
+        /// 检查型欧几里得除法。计算 `self.div_euclid(rhs)`，
+        /// 如果 `rhs == 0` 或除法结果溢出则返回 `None`。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!((", stringify!($SelfT), "::MIN + 1).checked_div_euclid(-1), Some(", stringify!($Max), "));")]
@@ -959,7 +942,7 @@ macro_rules! int_impl {
                       without modifying the original"]
         #[inline]
         pub const fn checked_div_euclid(self, rhs: Self) -> Option<Self> {
-            // Using `&` helps LLVM see that it is the same check made in division.
+            // 使用 `&` 有助于 LLVM 看出这与除法中的检查相同。
             if intrinsics::unlikely(rhs == 0 || ((self == Self::MIN) & (rhs == -1))) {
                 None
             } else {
@@ -967,34 +950,32 @@ macro_rules! int_impl {
             }
         }
 
-        /// Strict Euclidean division. Computes `self.div_euclid(rhs)`, panicking
-        /// if overflow occurred.
+        /// 严格欧几里得除法。计算 `self.div_euclid(rhs)`，如果发生溢出则 panic。
         ///
         /// # Panics
         ///
-        /// This function will panic if `rhs` is zero.
+        /// 如果 `rhs` 为零，此函数会 panic。
         ///
-        /// ## Overflow behavior
+        /// ## 溢出行为
         ///
-        /// This function will always panic on overflow, regardless of whether overflow checks are enabled.
+        /// 无论是否启用溢出检查，此函数都会在溢出时 panic。
         ///
-        /// The only case where such an overflow can occur is when one divides `MIN / -1` on a signed type (where
-        /// `MIN` is the negative minimal value for the type); this is equivalent to `-MIN`, a positive value
-        /// that is too large to represent in the type.
+        /// 这种溢出唯一会发生在有符号类型的 `MIN / -1` 上（其中 `MIN`
+        /// 是该类型的最小负值）；这等价于 `-MIN`，其正值过大而无法由该类型表示。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!((", stringify!($SelfT), "::MIN + 1).strict_div_euclid(-1), ", stringify!($Max), ");")]
         /// ```
         ///
-        /// The following panics because of overflow:
+        /// 以下代码会因溢出而 panic：
         ///
         /// ```should_panic
         #[doc = concat!("let _ = ", stringify!($SelfT), "::MIN.strict_div_euclid(-1);")]
         /// ```
         ///
-        /// The following panics because of division by zero:
+        /// 以下代码会因除以零而 panic：
         ///
         /// ```should_panic
         #[doc = concat!("let _ = (1", stringify!($SelfT), ").strict_div_euclid(0);")]
@@ -1010,11 +991,10 @@ macro_rules! int_impl {
             if b { overflow_panic::div() } else { a }
         }
 
-        /// Checked integer division without remainder. Computes `self / rhs`,
-        /// returning `None` if `rhs == 0`, the division results in overflow,
-        /// or `self % rhs != 0`.
+        /// 检查型无余数整数除法。计算 `self / rhs`，如果 `rhs == 0`、
+        /// 除法结果溢出，或 `self % rhs != 0`，则返回 `None`。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         /// #![feature(exact_div)]
@@ -1034,7 +1014,7 @@ macro_rules! int_impl {
             if intrinsics::unlikely(rhs == 0 || ((self == Self::MIN) && (rhs == -1))) {
                 None
             } else {
-                // SAFETY: division by zero and overflow are checked above
+                // SAFETY: 上面已经排除了除以零以及 `Self::MIN / -1` 的溢出情形。
                 unsafe {
                     if intrinsics::unlikely(intrinsics::unchecked_rem(self, rhs) != 0) {
                         None
@@ -1045,18 +1025,18 @@ macro_rules! int_impl {
             }
         }
 
-        /// Integer division without remainder. Computes `self / rhs`, returning `None` if `self % rhs != 0`.
+        /// 无余数整数除法。计算 `self / rhs`，如果 `self % rhs != 0` 则返回 `None`。
         ///
         /// # Panics
         ///
-        /// This function will panic  if `rhs == 0`.
+        /// 如果 `rhs == 0`，此函数会 panic。
         ///
-        /// ## Overflow behavior
+        /// ## 溢出行为
         ///
-        /// On overflow, this function will panic if overflow checks are enabled (default in debug
-        /// mode) and wrap if overflow checks are disabled (default in release mode).
+        /// 发生溢出时，如果启用了溢出检查（调试模式下默认启用），此函数会 panic；
+        /// 如果禁用了溢出检查（发布模式下默认禁用），则会回绕。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         /// #![feature(exact_div)]
@@ -1089,13 +1069,13 @@ macro_rules! int_impl {
             }
         }
 
-        /// Unchecked integer division without remainder. Computes `self / rhs`.
+        /// 不检查的无余数整数除法。计算 `self / rhs`。
         ///
-        /// # Safety
+        /// # 安全性(Safety）
         ///
-        /// This results in undefined behavior when `rhs == 0`, `self % rhs != 0`, or
+        /// 当 `rhs == 0`、`self % rhs != 0`，或者出现以下情况时会导致未定义行为：
         #[doc = concat!("`self == ", stringify!($SelfT), "::MIN && rhs == -1`,")]
-        /// i.e. when [`checked_div_exact`](Self::checked_div_exact) would return `None`.
+        /// 也就是 [`checked_div_exact`](Self::checked_div_exact) 会返回 `None` 的情况。
         #[unstable(
             feature = "exact_div",
             issue = "139911",
@@ -1112,14 +1092,14 @@ macro_rules! int_impl {
                     rhs: $SelfT = rhs,
                 ) => rhs > 0 && lhs % rhs == 0 && (lhs != <$SelfT>::MIN || rhs != -1),
             );
-            // SAFETY: Same precondition
+            // SAFETY: 调用方必须满足与 `exact_div` 相同的前置条件：非零、无余数且不溢出。
             unsafe { intrinsics::exact_div(self, rhs) }
         }
 
-        /// Checked integer remainder. Computes `self % rhs`, returning `None` if
-        /// `rhs == 0` or the division results in overflow.
+        /// 检查型整数取余。计算 `self % rhs`，如果 `rhs == 0`
+        /// 或除法结果溢出则返回 `None`。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(5", stringify!($SelfT), ".checked_rem(2), Some(1));")]
@@ -1135,38 +1115,37 @@ macro_rules! int_impl {
             if intrinsics::unlikely(rhs == 0 || ((self == Self::MIN) && (rhs == -1))) {
                 None
             } else {
-                // SAFETY: div by zero and by INT_MIN have been checked above
+                // SAFETY: 上面已经排除了除以零以及 `Self::MIN / -1` 的溢出情形。
                 Some(unsafe { intrinsics::unchecked_rem(self, rhs) })
             }
         }
 
-        /// Strict integer remainder. Computes `self % rhs`, panicking if
-        /// the division results in overflow.
+        /// 严格整数取余。计算 `self % rhs`，如果除法结果溢出则 panic。
         ///
         /// # Panics
         ///
-        /// This function will panic if `rhs` is zero.
+        /// 如果 `rhs` 为零，此函数会 panic。
         ///
-        /// ## Overflow behavior
+        /// ## 溢出行为
         ///
-        /// This function will always panic on overflow, regardless of whether overflow checks are enabled.
+        /// 无论是否启用溢出检查，此函数都会在溢出时 panic。
         ///
-        /// The only case where such an overflow can occur is `x % y` for `MIN / -1` on a
-        /// signed type (where `MIN` is the negative minimal value), which is invalid due to implementation artifacts.
+        /// 这种溢出唯一会发生在有符号类型的 `MIN / -1` 对应的 `x % y` 上
+        /// （其中 `MIN` 是最小负值）；由于实现细节，这种取余是无效的。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(5", stringify!($SelfT), ".strict_rem(2), 1);")]
         /// ```
         ///
-        /// The following panics because of division by zero:
+        /// 以下代码会因除以零而 panic：
         ///
         /// ```should_panic
         #[doc = concat!("let _ = 5", stringify!($SelfT), ".strict_rem(0);")]
         /// ```
         ///
-        /// The following panics because of overflow:
+        /// 以下代码会因溢出而 panic：
         ///
         /// ```should_panic
         #[doc = concat!("let _ = ", stringify!($SelfT), "::MIN.strict_rem(-1);")]
@@ -1182,10 +1161,10 @@ macro_rules! int_impl {
             if b { overflow_panic::rem() } else { a }
         }
 
-        /// Checked Euclidean remainder. Computes `self.rem_euclid(rhs)`, returning `None`
-        /// if `rhs == 0` or the division results in overflow.
+        /// 检查型欧几里得取余。计算 `self.rem_euclid(rhs)`，
+        /// 如果 `rhs == 0` 或除法结果溢出则返回 `None`。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(5", stringify!($SelfT), ".checked_rem_euclid(2), Some(1));")]
@@ -1198,7 +1177,7 @@ macro_rules! int_impl {
                       without modifying the original"]
         #[inline]
         pub const fn checked_rem_euclid(self, rhs: Self) -> Option<Self> {
-            // Using `&` helps LLVM see that it is the same check made in division.
+            // 使用 `&` 有助于 LLVM 看出这与除法中的检查相同。
             if intrinsics::unlikely(rhs == 0 || ((self == Self::MIN) & (rhs == -1))) {
                 None
             } else {
@@ -1206,33 +1185,32 @@ macro_rules! int_impl {
             }
         }
 
-        /// Strict Euclidean remainder. Computes `self.rem_euclid(rhs)`, panicking if
-        /// the division results in overflow.
+        /// 严格欧几里得取余。计算 `self.rem_euclid(rhs)`，如果除法结果溢出则 panic。
         ///
         /// # Panics
         ///
-        /// This function will panic if `rhs` is zero.
+        /// 如果 `rhs` 为零，此函数会 panic。
         ///
-        /// ## Overflow behavior
+        /// ## 溢出行为
         ///
-        /// This function will always panic on overflow, regardless of whether overflow checks are enabled.
+        /// 无论是否启用溢出检查，此函数都会在溢出时 panic。
         ///
-        /// The only case where such an overflow can occur is `x % y` for `MIN / -1` on a
-        /// signed type (where `MIN` is the negative minimal value), which is invalid due to implementation artifacts.
+        /// 这种溢出唯一会发生在有符号类型的 `MIN / -1` 对应的 `x % y` 上
+        /// （其中 `MIN` 是最小负值）；由于实现细节，这种取余是无效的。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(5", stringify!($SelfT), ".strict_rem_euclid(2), 1);")]
         /// ```
         ///
-        /// The following panics because of division by zero:
+        /// 以下代码会因除以零而 panic：
         ///
         /// ```should_panic
         #[doc = concat!("let _ = 5", stringify!($SelfT), ".strict_rem_euclid(0);")]
         /// ```
         ///
-        /// The following panics because of overflow:
+        /// 以下代码会因溢出而 panic：
         ///
         /// ```should_panic
         #[doc = concat!("let _ = ", stringify!($SelfT), "::MIN.strict_rem_euclid(-1);")]
@@ -1248,9 +1226,9 @@ macro_rules! int_impl {
             if b { overflow_panic::rem() } else { a }
         }
 
-        /// Checked negation. Computes `-self`, returning `None` if `self == MIN`.
+        /// 检查型取负。计算 `-self`，如果 `self == MIN` 则返回 `None`。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(5", stringify!($SelfT), ".checked_neg(), Some(-5));")]
@@ -1266,13 +1244,13 @@ macro_rules! int_impl {
             if intrinsics::unlikely(b) { None } else { Some(a) }
         }
 
-        /// Unchecked negation. Computes `-self`, assuming overflow cannot occur.
+        /// 不检查的取负。计算 `-self`，并假定不会发生溢出。
         ///
-        /// # Safety
+        /// # 安全性(Safety）
         ///
-        /// This results in undefined behavior when
+        /// 当出现以下情况时会导致未定义行为：
         #[doc = concat!("`self == ", stringify!($SelfT), "::MIN`,")]
-        /// i.e. when [`checked_neg`] would return `None`.
+        /// 也就是 [`checked_neg`] 会返回 `None` 的情况。
         ///
         #[doc = concat!("[`checked_neg`]: ", stringify!($SelfT), "::checked_neg")]
         #[stable(feature = "unchecked_neg", since = "1.93.0")]
@@ -1290,27 +1268,27 @@ macro_rules! int_impl {
                 ) => !lhs.overflowing_neg().1,
             );
 
-            // SAFETY: this is guaranteed to be safe by the caller.
+            // SAFETY: 调用方必须保证取负不会溢出，也就是 `self != MIN`。
             unsafe {
                 intrinsics::unchecked_sub(0, self)
             }
         }
 
-        /// Strict negation. Computes `-self`, panicking if `self == MIN`.
+        /// 严格取负。计算 `-self`，如果 `self == MIN` 则 panic。
         ///
         /// # Panics
         ///
-        /// ## Overflow behavior
+        /// ## 溢出行为
         ///
-        /// This function will always panic on overflow, regardless of whether overflow checks are enabled.
+        /// 无论是否启用溢出检查，此函数都会在溢出时 panic。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(5", stringify!($SelfT), ".strict_neg(), -5);")]
         /// ```
         ///
-        /// The following panics because of overflow:
+        /// 以下代码会因溢出而 panic：
         ///
         /// ```should_panic
         #[doc = concat!("let _ = ", stringify!($SelfT), "::MIN.strict_neg();")]
@@ -1326,10 +1304,10 @@ macro_rules! int_impl {
             if b { overflow_panic::neg() } else { a }
         }
 
-        /// Checked shift left. Computes `self << rhs`, returning `None` if `rhs` is larger
-        /// than or equal to the number of bits in `self`.
+        /// 检查型左移。计算 `self << rhs`，如果 `rhs` 大于或等于 `self`
+        /// 的位数则返回 `None`。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(0x1", stringify!($SelfT), ".checked_shl(4), Some(0x10));")]
@@ -1342,31 +1320,31 @@ macro_rules! int_impl {
                       without modifying the original"]
         #[inline]
         pub const fn checked_shl(self, rhs: u32) -> Option<Self> {
-            // Not using overflowing_shl as that's a wrapping shift
+            // 不使用 `overflowing_shl`，因为那是回绕移位。
             if rhs < Self::BITS {
-                // SAFETY: just checked the RHS is in-range
+                // SAFETY: 刚刚已经检查过右操作数在有效范围内。
                 Some(unsafe { self.unchecked_shl(rhs) })
             } else {
                 None
             }
         }
 
-        /// Strict shift left. Computes `self << rhs`, panicking if `rhs` is larger
-        /// than or equal to the number of bits in `self`.
+        /// 严格左移。计算 `self << rhs`，如果 `rhs` 大于或等于 `self`
+        /// 的位数则 panic。
         ///
         /// # Panics
         ///
-        /// ## Overflow behavior
+        /// ## 溢出行为
         ///
-        /// This function will always panic on overflow, regardless of whether overflow checks are enabled.
+        /// 无论是否启用溢出检查，此函数都会在溢出时 panic。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(0x1", stringify!($SelfT), ".strict_shl(4), 0x10);")]
         /// ```
         ///
-        /// The following panics because of overflow:
+        /// 以下代码会因移位位数越界而 panic：
         ///
         /// ```should_panic
         #[doc = concat!("let _ = 0x1", stringify!($SelfT), ".strict_shl(129);")]
@@ -1382,14 +1360,12 @@ macro_rules! int_impl {
             if b { overflow_panic::shl() } else { a }
         }
 
-        /// Unchecked shift left. Computes `self << rhs`, assuming that
-        /// `rhs` is less than the number of bits in `self`.
+        /// 不检查的左移。计算 `self << rhs`，并假定 `rhs` 小于 `self` 的位数。
         ///
-        /// # Safety
+        /// # 安全性(Safety）
         ///
-        /// This results in undefined behavior if `rhs` is larger than
-        /// or equal to the number of bits in `self`,
-        /// i.e. when [`checked_shl`] would return `None`.
+        /// 如果 `rhs` 大于或等于 `self` 的位数，也就是 [`checked_shl`]
+        /// 会返回 `None` 的情况，会导致未定义行为。
         ///
         #[doc = concat!("[`checked_shl`]: ", stringify!($SelfT), "::checked_shl")]
         #[stable(feature = "unchecked_shifts", since = "1.93.0")]
@@ -1407,18 +1383,17 @@ macro_rules! int_impl {
                 ) => rhs < <$ActualT>::BITS,
             );
 
-            // SAFETY: this is guaranteed to be safe by the caller.
+            // SAFETY: 调用方必须保证 `rhs < Self::BITS`，这是 `unchecked_shl` 的前置条件。
             unsafe {
                 intrinsics::unchecked_shl(self, rhs)
             }
         }
 
-        /// Unbounded shift left. Computes `self << rhs`, without bounding the value of `rhs`.
+        /// 无界左移。计算 `self << rhs`，不要求 `rhs` 预先限制在位宽范围内。
         ///
-        /// If `rhs` is larger or equal to the number of bits in `self`,
-        /// the entire value is shifted out, and `0` is returned.
+        /// 如果 `rhs` 大于或等于 `self` 的位数，整个值都会被移出，并返回 `0`。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(0x1_", stringify!($SelfT), ".unbounded_shl(4), 0x10);")]
@@ -1439,21 +1414,20 @@ macro_rules! int_impl {
         pub const fn unbounded_shl(self, rhs: u32) -> $SelfT{
             if rhs < Self::BITS {
                 // SAFETY:
-                // rhs is just checked to be in-range above
+                // 上面刚刚检查过 `rhs` 在有效范围内。
                 unsafe { self.unchecked_shl(rhs) }
             } else {
                 0
             }
         }
 
-        /// Exact shift left. Computes `self << rhs` as long as it can be reversed losslessly.
+        /// 精确左移。在可无损反向恢复的前提下计算 `self << rhs`。
         ///
-        /// Returns `None` if any bits that would be shifted out differ from the resulting sign bit
-        /// or if `rhs` >=
+        /// 如果任何会被移出的位不同于结果符号位，或 `rhs` >=
         #[doc = concat!("`", stringify!($SelfT), "::BITS`.")]
-        /// Otherwise, returns `Some(self << rhs)`.
+        /// 否则返回 `Some(self << rhs)`。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         /// #![feature(exact_bitshifts)]
@@ -1470,23 +1444,23 @@ macro_rules! int_impl {
         #[inline]
         pub const fn shl_exact(self, rhs: u32) -> Option<$SelfT> {
             if rhs < self.leading_zeros() || rhs < self.leading_ones() {
-                // SAFETY: rhs is checked above
+                // SAFETY: 上面已经检查过 `rhs`。
                 Some(unsafe { self.unchecked_shl(rhs) })
             } else {
                 None
             }
         }
 
-        /// Unchecked exact shift left. Computes `self << rhs`, assuming the operation can be
-        /// losslessly reversed and `rhs` cannot be larger than
+        /// 不检查的精确左移。计算 `self << rhs`，并假定该操作可无损反向恢复，
+        /// 且 `rhs` 不会大于
         #[doc = concat!("`", stringify!($SelfT), "::BITS`.")]
         ///
-        /// # Safety
+        /// # 安全性(Safety）
         ///
-        /// This results in undefined behavior when `rhs >= self.leading_zeros() && rhs >=
-        /// self.leading_ones()` i.e. when
+        /// 当 `rhs >= self.leading_zeros() && rhs >= self.leading_ones()`，
+        /// 也就是
         #[doc = concat!("[`", stringify!($SelfT), "::shl_exact`]")]
-        /// would return `None`.
+        /// 会返回 `None` 的情况，会导致未定义行为。
         #[unstable(feature = "exact_bitshifts", issue = "144336")]
         #[must_use = "this returns the result of the operation, \
                       without modifying the original"]
@@ -1502,14 +1476,14 @@ macro_rules! int_impl {
                 ) => rhs < zeros || rhs < ones,
             );
 
-            // SAFETY: this is guaranteed to be safe by the caller
+            // SAFETY: 调用方必须保证左移不会移出会改变符号扩展语义的位。
             unsafe { self.unchecked_shl(rhs) }
         }
 
-        /// Checked shift right. Computes `self >> rhs`, returning `None` if `rhs` is
-        /// larger than or equal to the number of bits in `self`.
+        /// 检查型右移。计算 `self >> rhs`，如果 `rhs` 大于或等于 `self`
+        /// 的位数则返回 `None`。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(0x10", stringify!($SelfT), ".checked_shr(4), Some(0x1));")]
@@ -1521,31 +1495,31 @@ macro_rules! int_impl {
                       without modifying the original"]
         #[inline]
         pub const fn checked_shr(self, rhs: u32) -> Option<Self> {
-            // Not using overflowing_shr as that's a wrapping shift
+            // 不使用 `overflowing_shr`，因为那是回绕移位。
             if rhs < Self::BITS {
-                // SAFETY: just checked the RHS is in-range
+                // SAFETY: 刚刚已经检查过右操作数在有效范围内。
                 Some(unsafe { self.unchecked_shr(rhs) })
             } else {
                 None
             }
         }
 
-        /// Strict shift right. Computes `self >> rhs`, panicking if `rhs` is
-        /// larger than or equal to the number of bits in `self`.
+        /// 严格右移。计算 `self >> rhs`，如果 `rhs` 大于或等于 `self`
+        /// 的位数则 panic。
         ///
         /// # Panics
         ///
-        /// ## Overflow behavior
+        /// ## 溢出行为
         ///
-        /// This function will always panic on overflow, regardless of whether overflow checks are enabled.
+        /// 无论是否启用溢出检查，此函数都会在溢出时 panic。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(0x10", stringify!($SelfT), ".strict_shr(4), 0x1);")]
         /// ```
         ///
-        /// The following panics because of overflow:
+        /// 以下代码会因移位位数越界而 panic：
         ///
         /// ```should_panic
         #[doc = concat!("let _ = 0x10", stringify!($SelfT), ".strict_shr(128);")]
@@ -1561,14 +1535,12 @@ macro_rules! int_impl {
             if b { overflow_panic::shr() } else { a }
         }
 
-        /// Unchecked shift right. Computes `self >> rhs`, assuming that
-        /// `rhs` is less than the number of bits in `self`.
+        /// 不检查的右移。计算 `self >> rhs`，并假定 `rhs` 小于 `self` 的位数。
         ///
-        /// # Safety
+        /// # 安全性(Safety）
         ///
-        /// This results in undefined behavior if `rhs` is larger than
-        /// or equal to the number of bits in `self`,
-        /// i.e. when [`checked_shr`] would return `None`.
+        /// 如果 `rhs` 大于或等于 `self` 的位数，也就是 [`checked_shr`]
+        /// 会返回 `None` 的情况，会导致未定义行为。
         ///
         #[doc = concat!("[`checked_shr`]: ", stringify!($SelfT), "::checked_shr")]
         #[stable(feature = "unchecked_shifts", since = "1.93.0")]
@@ -1586,19 +1558,18 @@ macro_rules! int_impl {
                 ) => rhs < <$ActualT>::BITS,
             );
 
-            // SAFETY: this is guaranteed to be safe by the caller.
+            // SAFETY: 调用方必须保证 `rhs < Self::BITS`，这是 `unchecked_shr` 的前置条件。
             unsafe {
                 intrinsics::unchecked_shr(self, rhs)
             }
         }
 
-        /// Unbounded shift right. Computes `self >> rhs`, without bounding the value of `rhs`.
+        /// 无界右移。计算 `self >> rhs`，不要求 `rhs` 预先限制在位宽范围内。
         ///
-        /// If `rhs` is larger or equal to the number of bits in `self`,
-        /// the entire value is shifted out, which yields `0` for a positive number,
-        /// and `-1` for a negative number.
+        /// 如果 `rhs` 大于或等于 `self` 的位数，整个值都会被移出；
+        /// 正数会得到 `0`，负数会得到 `-1`。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(0x10_", stringify!($SelfT), ".unbounded_shr(4), 0x1);")]
@@ -1620,24 +1591,24 @@ macro_rules! int_impl {
         pub const fn unbounded_shr(self, rhs: u32) -> $SelfT{
             if rhs < Self::BITS {
                 // SAFETY:
-                // rhs is just checked to be in-range above
+                // 上面刚刚检查过 `rhs` 在有效范围内。
                 unsafe { self.unchecked_shr(rhs) }
             } else {
-                // A shift by `Self::BITS-1` suffices for signed integers, because the sign bit is copied for each of the shifted bits.
+                // 对有符号整数来说，移位 `Self::BITS - 1` 已足够，因为每个移入位都会复制符号位。
 
                 // SAFETY:
-                // `Self::BITS-1` is guaranteed to be less than `Self::BITS`
+                // `Self::BITS - 1` 保证小于 `Self::BITS`。
                 unsafe { self.unchecked_shr(Self::BITS - 1) }
             }
         }
 
-        /// Exact shift right. Computes `self >> rhs` as long as it can be reversed losslessly.
+        /// 精确右移。在可无损反向恢复的前提下计算 `self >> rhs`。
         ///
-        /// Returns `None` if any non-zero bits would be shifted out or if `rhs` >=
+        /// 如果任何非零位会被移出，或 `rhs` >=
         #[doc = concat!("`", stringify!($SelfT), "::BITS`.")]
-        /// Otherwise, returns `Some(self >> rhs)`.
+        /// 否则返回 `Some(self >> rhs)`。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         /// #![feature(exact_bitshifts)]
@@ -1651,24 +1622,24 @@ macro_rules! int_impl {
         #[inline]
         pub const fn shr_exact(self, rhs: u32) -> Option<$SelfT> {
             if rhs <= self.trailing_zeros() && rhs < <$SelfT>::BITS {
-                // SAFETY: rhs is checked above
+                // SAFETY: 上面已经检查过 `rhs`。
                 Some(unsafe { self.unchecked_shr(rhs) })
             } else {
                 None
             }
         }
 
-        /// Unchecked exact shift right. Computes `self >> rhs`, assuming the operation can be
-        /// losslessly reversed and `rhs` cannot be larger than
+        /// 不检查的精确右移。计算 `self >> rhs`，并假定该操作可无损反向恢复，
+        /// 且 `rhs` 不会大于
         #[doc = concat!("`", stringify!($SelfT), "::BITS`.")]
         ///
-        /// # Safety
+        /// # 安全性(Safety）
         ///
-        /// This results in undefined behavior when `rhs > self.trailing_zeros() || rhs >=
+        /// 当 `rhs > self.trailing_zeros() || rhs >=
         #[doc = concat!(stringify!($SelfT), "::BITS`")]
-        /// i.e. when
+        /// 也就是
         #[doc = concat!("[`", stringify!($SelfT), "::shr_exact`]")]
-        /// would return `None`.
+        /// 会返回 `None` 的情况，会导致未定义行为。
         #[unstable(feature = "exact_bitshifts", issue = "144336")]
         #[must_use = "this returns the result of the operation, \
                       without modifying the original"]
@@ -1684,14 +1655,13 @@ macro_rules! int_impl {
                 ) => rhs <= zeros && rhs < bits,
             );
 
-            // SAFETY: this is guaranteed to be safe by the caller
+            // SAFETY: 调用方必须保证右移不会移出任何非零位且移位位数在范围内。
             unsafe { self.unchecked_shr(rhs) }
         }
 
-        /// Checked absolute value. Computes `self.abs()`, returning `None` if
-        /// `self == MIN`.
+        /// 检查型绝对值。计算 `self.abs()`，如果 `self == MIN` 则返回 `None`。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!((-5", stringify!($SelfT), ").checked_abs(), Some(5));")]
@@ -1710,22 +1680,21 @@ macro_rules! int_impl {
             }
         }
 
-        /// Strict absolute value. Computes `self.abs()`, panicking if
-        /// `self == MIN`.
+        /// 严格绝对值。计算 `self.abs()`，如果 `self == MIN` 则 panic。
         ///
         /// # Panics
         ///
-        /// ## Overflow behavior
+        /// ## 溢出行为
         ///
-        /// This function will always panic on overflow, regardless of whether overflow checks are enabled.
+        /// 无论是否启用溢出检查，此函数都会在溢出时 panic。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!((-5", stringify!($SelfT), ").strict_abs(), 5);")]
         /// ```
         ///
-        /// The following panics because of overflow:
+        /// 以下代码会因溢出而 panic：
         ///
         /// ```should_panic
         #[doc = concat!("let _ = ", stringify!($SelfT), "::MIN.strict_abs();")]
@@ -1744,10 +1713,9 @@ macro_rules! int_impl {
             }
         }
 
-        /// Checked exponentiation. Computes `self.pow(exp)`, returning `None` if
-        /// overflow occurred.
+        /// 检查型乘方。计算 `self.pow(exp)`，如果发生溢出则返回 `None`。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(8", stringify!($SelfT), ".checked_pow(2), Some(64));")]
@@ -1770,7 +1738,7 @@ macro_rules! int_impl {
             loop {
                 if (exp & 1) == 1 {
                     acc = try_opt!(acc.checked_mul(base));
-                    // since exp!=0, finally the exp must be 1.
+                    // 因为 exp != 0，最终 exp 必须为 1。
                     if exp == 1 {
                         return Some(acc);
                     }
@@ -1780,23 +1748,22 @@ macro_rules! int_impl {
             }
         }
 
-        /// Strict exponentiation. Computes `self.pow(exp)`, panicking if
-        /// overflow occurred.
+        /// 严格乘方。计算 `self.pow(exp)`，如果发生溢出则 panic。
         ///
         /// # Panics
         ///
-        /// ## Overflow behavior
+        /// ## 溢出行为
         ///
-        /// This function will always panic on overflow, regardless of whether overflow checks are enabled.
+        /// 无论是否启用溢出检查，此函数都会在溢出时 panic。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(8", stringify!($SelfT), ".strict_pow(2), 64);")]
         #[doc = concat!("assert_eq!(0_", stringify!($SelfT), ".strict_pow(0), 1);")]
         /// ```
         ///
-        /// The following panics because of overflow:
+        /// 以下代码会因溢出而 panic：
         ///
         /// ```should_panic
         #[doc = concat!("let _ = ", stringify!($SelfT), "::MAX.strict_pow(2);")]
@@ -1817,7 +1784,7 @@ macro_rules! int_impl {
             loop {
                 if (exp & 1) == 1 {
                     acc = acc.strict_mul(base);
-                    // since exp!=0, finally the exp must be 1.
+                    // 因为 exp != 0，最终 exp 必须为 1。
                     if exp == 1 {
                         return acc;
                     }
@@ -1827,11 +1794,11 @@ macro_rules! int_impl {
             }
         }
 
-        /// Returns the square root of the number, rounded down.
+        /// 返回该数的平方根，向下取整。
         ///
-        /// Returns `None` if `self` is negative.
+        /// 如果 `self` 为负数，则返回 `None`。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(10", stringify!($SelfT), ".checked_isqrt(), Some(3));")]
@@ -1845,24 +1812,19 @@ macro_rules! int_impl {
             if self < 0 {
                 None
             } else {
-                // SAFETY: Input is nonnegative in this `else` branch.
+                // SAFETY: 此 `else` 分支中输入已知为非负数。
                 let result = unsafe {
                     crate::num::int_sqrt::$ActualT(self as $ActualT) as $SelfT
                 };
 
-                // Inform the optimizer what the range of outputs is. If
-                // testing `core` crashes with no panic message and a
-                // `num::int_sqrt::i*` test failed, it's because your edits
-                // caused these assertions to become false.
+                // 告诉优化器输出范围。如果测试 `core` 时崩溃但没有 panic 消息，
+                // 且某个 `num::int_sqrt::i*` 测试失败，说明你的编辑使这些断言变为假。
                 //
-                // SAFETY: Integer square root is a monotonically nondecreasing
-                // function, which means that increasing the input will never
-                // cause the output to decrease. Thus, since the input for
-                // nonnegative signed integers is bounded by
-                // `[0, <$ActualT>::MAX]`, sqrt(n) will be bounded by
-                // `[sqrt(0), sqrt(<$ActualT>::MAX)]`.
+                // SAFETY: 整数平方根是单调不减函数，输入增大不会导致输出减小。
+                // 因此，非负有符号整数的输入范围受 `[0, <$ActualT>::MAX]` 限制时，
+                // sqrt(n) 的范围也会受 `[sqrt(0), sqrt(<$ActualT>::MAX)]` 限制。
                 unsafe {
-                    // SAFETY: `<$ActualT>::MAX` is nonnegative.
+                    // SAFETY: `<$ActualT>::MAX` 是非负数。
                     const MAX_RESULT: $SelfT = unsafe {
                         crate::num::int_sqrt::$ActualT(<$ActualT>::MAX) as $SelfT
                     };
@@ -1875,10 +1837,9 @@ macro_rules! int_impl {
             }
         }
 
-        /// Saturating integer addition. Computes `self + rhs`, saturating at the numeric
-        /// bounds instead of overflowing.
+        /// 饱和整数加法。计算 `self + rhs`，在数值边界处饱和而不是溢出。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(100", stringify!($SelfT), ".saturating_add(1), 101);")]
@@ -1895,10 +1856,10 @@ macro_rules! int_impl {
             intrinsics::saturating_add(self, rhs)
         }
 
-        /// Saturating addition with an unsigned integer. Computes `self + rhs`,
-        /// saturating at the numeric bounds instead of overflowing.
+        /// 与无符号整数相加的饱和加法。计算 `self + rhs`，
+        /// 在数值边界处饱和而不是溢出。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(1", stringify!($SelfT), ".saturating_add_unsigned(2), 3);")]
@@ -1910,18 +1871,17 @@ macro_rules! int_impl {
                       without modifying the original"]
         #[inline]
         pub const fn saturating_add_unsigned(self, rhs: $UnsignedT) -> Self {
-            // Overflow can only happen at the upper bound
-            // We cannot use `unwrap_or` here because it is not `const`
+            // 溢出只可能发生在上界。
+            // 这里不能使用 `unwrap_or`，因为它不是 `const`。
             match self.checked_add_unsigned(rhs) {
                 Some(x) => x,
                 None => Self::MAX,
             }
         }
 
-        /// Saturating integer subtraction. Computes `self - rhs`, saturating at the
-        /// numeric bounds instead of overflowing.
+        /// 饱和整数减法。计算 `self - rhs`，在数值边界处饱和而不是溢出。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(100", stringify!($SelfT), ".saturating_sub(127), -27);")]
@@ -1937,10 +1897,10 @@ macro_rules! int_impl {
             intrinsics::saturating_sub(self, rhs)
         }
 
-        /// Saturating subtraction with an unsigned integer. Computes `self - rhs`,
-        /// saturating at the numeric bounds instead of overflowing.
+        /// 与无符号整数相减的饱和减法。计算 `self - rhs`，
+        /// 在数值边界处饱和而不是溢出。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(100", stringify!($SelfT), ".saturating_sub_unsigned(127), -27);")]
@@ -1952,18 +1912,18 @@ macro_rules! int_impl {
                       without modifying the original"]
         #[inline]
         pub const fn saturating_sub_unsigned(self, rhs: $UnsignedT) -> Self {
-            // Overflow can only happen at the lower bound
-            // We cannot use `unwrap_or` here because it is not `const`
+            // 溢出只可能发生在下界。
+            // 这里不能使用 `unwrap_or`，因为它不是 `const`。
             match self.checked_sub_unsigned(rhs) {
                 Some(x) => x,
                 None => Self::MIN,
             }
         }
 
-        /// Saturating integer negation. Computes `-self`, returning `MAX` if `self == MIN`
-        /// instead of overflowing.
+        /// 饱和整数取负。计算 `-self`，如果 `self == MIN` 则返回 `MAX`
+        /// 而不是溢出。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(100", stringify!($SelfT), ".saturating_neg(), -100);")]
@@ -1981,10 +1941,10 @@ macro_rules! int_impl {
             intrinsics::saturating_sub(0, self)
         }
 
-        /// Saturating absolute value. Computes `self.abs()`, returning `MAX` if `self ==
-        /// MIN` instead of overflowing.
+        /// 饱和绝对值。计算 `self.abs()`，如果 `self == MIN` 则返回 `MAX`
+        /// 而不是溢出。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(100", stringify!($SelfT), ".saturating_abs(), 100);")]
@@ -2006,10 +1966,9 @@ macro_rules! int_impl {
             }
         }
 
-        /// Saturating integer multiplication. Computes `self * rhs`, saturating at the
-        /// numeric bounds instead of overflowing.
+        /// 饱和整数乘法。计算 `self * rhs`，在数值边界处饱和而不是溢出。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(10", stringify!($SelfT), ".saturating_mul(12), 120);")]
@@ -2032,14 +1991,13 @@ macro_rules! int_impl {
             }
         }
 
-        /// Saturating integer division. Computes `self / rhs`, saturating at the
-        /// numeric bounds instead of overflowing.
+        /// 饱和整数除法。计算 `self / rhs`，在数值边界处饱和而不是溢出。
         ///
         /// # Panics
         ///
-        /// This function will panic if `rhs` is zero.
+        /// 如果 `rhs` 为零，此函数会 panic。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(5", stringify!($SelfT), ".saturating_div(2), 2);")]
@@ -2055,14 +2013,13 @@ macro_rules! int_impl {
         pub const fn saturating_div(self, rhs: Self) -> Self {
             match self.overflowing_div(rhs) {
                 (result, false) => result,
-                (_result, true) => Self::MAX, // MIN / -1 is the only possible saturating overflow
+                (_result, true) => Self::MAX, // MIN / -1 是唯一可能的饱和溢出情形。
             }
         }
 
-        /// Saturating integer exponentiation. Computes `self.pow(exp)`,
-        /// saturating at the numeric bounds instead of overflowing.
+        /// 饱和整数乘方。计算 `self.pow(exp)`，在数值边界处饱和而不是溢出。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!((-4", stringify!($SelfT), ").saturating_pow(3), -64);")]
@@ -2083,10 +2040,9 @@ macro_rules! int_impl {
             }
         }
 
-        /// Wrapping (modular) addition. Computes `self + rhs`, wrapping around at the
-        /// boundary of the type.
+        /// 回绕（模）加法。计算 `self + rhs`，并在类型边界处回绕。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(100", stringify!($SelfT), ".wrapping_add(27), 127);")]
@@ -2101,10 +2057,10 @@ macro_rules! int_impl {
             intrinsics::wrapping_add(self, rhs)
         }
 
-        /// Wrapping (modular) addition with an unsigned integer. Computes
-        /// `self + rhs`, wrapping around at the boundary of the type.
+        /// 与无符号整数相加的回绕（模）加法。计算 `self + rhs`，
+        /// 并在类型边界处回绕。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(100", stringify!($SelfT), ".wrapping_add_unsigned(27), 127);")]
@@ -2119,10 +2075,9 @@ macro_rules! int_impl {
             self.wrapping_add(rhs as Self)
         }
 
-        /// Wrapping (modular) subtraction. Computes `self - rhs`, wrapping around at the
-        /// boundary of the type.
+        /// 回绕（模）减法。计算 `self - rhs`，并在类型边界处回绕。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(0", stringify!($SelfT), ".wrapping_sub(127), -127);")]
@@ -2137,10 +2092,10 @@ macro_rules! int_impl {
             intrinsics::wrapping_sub(self, rhs)
         }
 
-        /// Wrapping (modular) subtraction with an unsigned integer. Computes
-        /// `self - rhs`, wrapping around at the boundary of the type.
+        /// 与无符号整数相减的回绕（模）减法。计算 `self - rhs`，
+        /// 并在类型边界处回绕。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(0", stringify!($SelfT), ".wrapping_sub_unsigned(127), -127);")]
@@ -2155,10 +2110,9 @@ macro_rules! int_impl {
             self.wrapping_sub(rhs as Self)
         }
 
-        /// Wrapping (modular) multiplication. Computes `self * rhs`, wrapping around at
-        /// the boundary of the type.
+        /// 回绕（模）乘法。计算 `self * rhs`，并在类型边界处回绕。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(10", stringify!($SelfT), ".wrapping_mul(12), 120);")]
@@ -2173,18 +2127,17 @@ macro_rules! int_impl {
             intrinsics::wrapping_mul(self, rhs)
         }
 
-        /// Wrapping (modular) division. Computes `self / rhs`, wrapping around at the
-        /// boundary of the type.
+        /// 回绕（模）除法。计算 `self / rhs`，并在类型边界处回绕。
         ///
-        /// The only case where such wrapping can occur is when one divides `MIN / -1` on a signed type (where
-        /// `MIN` is the negative minimal value for the type); this is equivalent to `-MIN`, a positive value
-        /// that is too large to represent in the type. In such a case, this function returns `MIN` itself.
+        /// 唯一会发生这种回绕的情况是在有符号类型上计算 `MIN / -1`（其中
+        /// `MIN` 是该类型的最小负值）；这等价于 `-MIN`，一个过大而无法
+        /// 用该类型表示的正值。在这种情况下，此函数会返回 `MIN` 本身。
         ///
         /// # Panics
         ///
-        /// This function will panic if `rhs` is zero.
+        /// 如果 `rhs` 为零，此函数将会 panic。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(100", stringify!($SelfT), ".wrapping_div(10), 10);")]
@@ -2199,18 +2152,18 @@ macro_rules! int_impl {
             self.overflowing_div(rhs).0
         }
 
-        /// Wrapping Euclidean division. Computes `self.div_euclid(rhs)`,
-        /// wrapping around at the boundary of the type.
+        /// 回绕欧几里得除法。计算 `self.div_euclid(rhs)`，
+        /// 并在类型边界处回绕。
         ///
-        /// Wrapping will only occur in `MIN / -1` on a signed type (where `MIN` is the negative minimal value
-        /// for the type). This is equivalent to `-MIN`, a positive value that is too large to represent in the
-        /// type. In this case, this method returns `MIN` itself.
+        /// 只有在有符号类型上计算 `MIN / -1`（其中 `MIN` 是该类型的最小负值）时
+        /// 才会发生回绕。这等价于 `-MIN`，一个过大而无法用该类型表示的正值。
+        /// 在这种情况下，此方法会返回 `MIN` 本身。
         ///
         /// # Panics
         ///
-        /// This function will panic if `rhs` is zero.
+        /// 如果 `rhs` 为零，此函数将会 panic。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(100", stringify!($SelfT), ".wrapping_div_euclid(10), 10);")]
@@ -2225,18 +2178,17 @@ macro_rules! int_impl {
             self.overflowing_div_euclid(rhs).0
         }
 
-        /// Wrapping (modular) remainder. Computes `self % rhs`, wrapping around at the
-        /// boundary of the type.
+        /// 回绕（模）取余。计算 `self % rhs`，并在类型边界处回绕。
         ///
-        /// Such wrap-around never actually occurs mathematically; implementation artifacts make `x % y`
-        /// invalid for `MIN / -1` on a signed type (where `MIN` is the negative minimal value). In such a case,
-        /// this function returns `0`.
+        /// 从数学上讲，这种回绕实际上永远不会发生；实现细节会使有符号类型上
+        /// `MIN / -1`（其中 `MIN` 是最小负值）对应的 `x % y` 无效。
+        /// 在这种情况下，此函数会返回 `0`。
         ///
         /// # Panics
         ///
-        /// This function will panic if `rhs` is zero.
+        /// 如果 `rhs` 为零，此函数将会 panic。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(100", stringify!($SelfT), ".wrapping_rem(10), 0);")]
@@ -2251,17 +2203,16 @@ macro_rules! int_impl {
             self.overflowing_rem(rhs).0
         }
 
-        /// Wrapping Euclidean remainder. Computes `self.rem_euclid(rhs)`, wrapping around
-        /// at the boundary of the type.
+        /// 回绕欧几里得取余。计算 `self.rem_euclid(rhs)`，并在类型边界处回绕。
         ///
-        /// Wrapping will only occur in `MIN % -1` on a signed type (where `MIN` is the negative minimal value
-        /// for the type). In this case, this method returns 0.
+        /// 只有在有符号类型上计算 `MIN % -1`（其中 `MIN` 是该类型的最小负值）时
+        /// 才会发生回绕。在这种情况下，此方法会返回 0。
         ///
         /// # Panics
         ///
-        /// This function will panic if `rhs` is zero.
+        /// 如果 `rhs` 为零，此函数将会 panic。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(100", stringify!($SelfT), ".wrapping_rem_euclid(10), 0);")]
@@ -2276,14 +2227,13 @@ macro_rules! int_impl {
             self.overflowing_rem_euclid(rhs).0
         }
 
-        /// Wrapping (modular) negation. Computes `-self`, wrapping around at the boundary
-        /// of the type.
+        /// 回绕（模）取负。计算 `-self`，并在类型边界处回绕。
         ///
-        /// The only case where such wrapping can occur is when one negates `MIN` on a signed type (where `MIN`
-        /// is the negative minimal value for the type); this is a positive value that is too large to represent
-        /// in the type. In such a case, this function returns `MIN` itself.
+        /// 唯一会发生这种回绕的情况是在有符号类型上对 `MIN` 取负（其中 `MIN`
+        /// 是该类型的最小负值）；这是一个过大而无法用该类型表示的正值。
+        /// 在这种情况下，此函数会返回 `MIN` 本身。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(100", stringify!($SelfT), ".wrapping_neg(), -100);")]
@@ -2299,22 +2249,19 @@ macro_rules! int_impl {
             (0 as $SelfT).wrapping_sub(self)
         }
 
-        /// Panic-free bitwise shift-left; yields `self << mask(rhs)`, where `mask` removes
-        /// any high-order bits of `rhs` that would cause the shift to exceed the bitwidth of the type.
+        /// 不会 panic 的按位左移；产生 `self << mask(rhs)`，其中 `mask`
+        /// 会移除 `rhs` 中会导致移位量超过类型位宽的高位。
         ///
-        /// Beware that, unlike most other `wrapping_*` methods on integers, this
-        /// does *not* give the same result as doing the shift in infinite precision
-        /// then truncating as needed.  The behaviour matches what shift instructions
-        /// do on many processors, and is what the `<<` operator does when overflow
-        /// checks are disabled, but numerically it's weird.  Consider, instead,
-        /// using [`Self::unbounded_shl`] which has nicer behaviour.
+        /// 请注意，与整数上大多数其他 `wrapping_*` 方法不同，这*不会*得到
+        /// 先用无限精度执行移位、再按需截断时的相同结果。其行为与许多处理器
+        /// 上移位指令的行为一致，也与禁用溢出检查时 `<<` 运算符的行为一致，
+        /// 但从数值角度看比较反常。请考虑改用行为更自然的 [`Self::unbounded_shl`]。
         ///
-        /// Note that this is *not* the same as a rotate-left; the RHS of a wrapping shift-left is restricted to
-        /// the range of the type, rather than the bits shifted out of the LHS being returned to the other end.
-        /// The primitive integer types all implement a [`rotate_left`](Self::rotate_left) function,
-        /// which may be what you want instead.
+        /// 注意，这与循环左移*不同*；回绕左移的右操作数会被限制在该类型的范围内，
+        /// 而不是把从左操作数移出的位送回另一端。所有基本整数类型都实现了
+        /// [`rotate_left`](Self::rotate_left) 函数，它可能才是你需要的操作。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!((-1_", stringify!($SelfT), ").wrapping_shl(7), -128);")]
@@ -2329,29 +2276,26 @@ macro_rules! int_impl {
                       without modifying the original"]
         #[inline(always)]
         pub const fn wrapping_shl(self, rhs: u32) -> Self {
-            // SAFETY: the masking by the bitsize of the type ensures that we do not shift
-            // out of bounds
+            // SAFETY: 用类型位宽进行掩码后，移位量一定小于 Self::BITS，
+            // 因而满足 `unchecked_shl` 的前置条件，不会越界移位。
             unsafe {
                 self.unchecked_shl(rhs & (Self::BITS - 1))
             }
         }
 
-        /// Panic-free bitwise shift-right; yields `self >> mask(rhs)`, where `mask`
-        /// removes any high-order bits of `rhs` that would cause the shift to exceed the bitwidth of the type.
+        /// 不会 panic 的按位右移；产生 `self >> mask(rhs)`，其中 `mask`
+        /// 会移除 `rhs` 中会导致移位量超过类型位宽的高位。
         ///
-        /// Beware that, unlike most other `wrapping_*` methods on integers, this
-        /// does *not* give the same result as doing the shift in infinite precision
-        /// then truncating as needed.  The behaviour matches what shift instructions
-        /// do on many processors, and is what the `>>` operator does when overflow
-        /// checks are disabled, but numerically it's weird.  Consider, instead,
-        /// using [`Self::unbounded_shr`] which has nicer behaviour.
+        /// 请注意，与整数上大多数其他 `wrapping_*` 方法不同，这*不会*得到
+        /// 先用无限精度执行移位、再按需截断时的相同结果。其行为与许多处理器
+        /// 上移位指令的行为一致，也与禁用溢出检查时 `>>` 运算符的行为一致，
+        /// 但从数值角度看比较反常。请考虑改用行为更自然的 [`Self::unbounded_shr`]。
         ///
-        /// Note that this is *not* the same as a rotate-right; the RHS of a wrapping shift-right is restricted
-        /// to the range of the type, rather than the bits shifted out of the LHS being returned to the other
-        /// end. The primitive integer types all implement a [`rotate_right`](Self::rotate_right) function,
-        /// which may be what you want instead.
+        /// 注意，这与循环右移*不同*；回绕右移的右操作数会被限制在该类型的范围内，
+        /// 而不是把从左操作数移出的位送回另一端。所有基本整数类型都实现了
+        /// [`rotate_right`](Self::rotate_right) 函数，它可能才是你需要的操作。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!((-128_", stringify!($SelfT), ").wrapping_shr(7), -1);")]
@@ -2366,21 +2310,19 @@ macro_rules! int_impl {
                       without modifying the original"]
         #[inline(always)]
         pub const fn wrapping_shr(self, rhs: u32) -> Self {
-            // SAFETY: the masking by the bitsize of the type ensures that we do not shift
-            // out of bounds
+            // SAFETY: 用类型位宽进行掩码后，移位量一定小于 Self::BITS，
+            // 因而满足 `unchecked_shr` 的前置条件，不会越界移位。
             unsafe {
                 self.unchecked_shr(rhs & (Self::BITS - 1))
             }
         }
 
-        /// Wrapping (modular) absolute value. Computes `self.abs()`, wrapping around at
-        /// the boundary of the type.
+        /// 回绕（模）绝对值。计算 `self.abs()`，并在类型边界处回绕。
         ///
-        /// The only case where such wrapping can occur is when one takes the absolute value of the negative
-        /// minimal value for the type; this is a positive value that is too large to represent in the type. In
-        /// such a case, this function returns `MIN` itself.
+        /// 唯一会发生这种回绕的情况是取得该类型最小负值的绝对值；这是一个
+        /// 过大而无法用该类型表示的正值。在这种情况下，此函数会返回 `MIN` 本身。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(100", stringify!($SelfT), ".wrapping_abs(), 100);")]
@@ -2402,11 +2344,10 @@ macro_rules! int_impl {
              }
         }
 
-        /// Computes the absolute value of `self` without any wrapping
-        /// or panicking.
+        /// 计算 `self` 的绝对值，不会发生任何回绕或 panic。
         ///
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(100", stringify!($SelfT), ".unsigned_abs(), 100", stringify!($UnsignedT), ");")]
@@ -2422,10 +2363,9 @@ macro_rules! int_impl {
              self.wrapping_abs() as $UnsignedT
         }
 
-        /// Wrapping (modular) exponentiation. Computes `self.pow(exp)`,
-        /// wrapping around at the boundary of the type.
+        /// 回绕（模）乘方。计算 `self.pow(exp)`，并在类型边界处回绕。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(3", stringify!($SelfT), ".wrapping_pow(4), 81);")]
@@ -2454,19 +2394,16 @@ macro_rules! int_impl {
                     base = base.wrapping_mul(base);
                 }
 
-                // since exp!=0, finally the exp must be 1.
-                // Deal with the final bit of the exponent separately, since
-                // squaring the base afterwards is not necessary.
+                // 因为 exp != 0，最终 exp 必定为 1。
+                // 单独处理指数的最后一位，因为之后没有必要再对底数平方。
                 acc.wrapping_mul(base)
             } else {
-                // This is faster than the above when the exponent is not known
-                // at compile time. We can't use the same code for the constant
-                // exponent case because LLVM is currently unable to unroll
-                // this loop.
+                // 当指数在编译期未知时，这比上面的分支更快。常量指数场景不能
+                // 使用同一段代码，因为 LLVM 目前无法展开这个循环。
                 loop {
                     if (exp & 1) == 1 {
                         acc = acc.wrapping_mul(base);
-                        // since exp!=0, finally the exp must be 1.
+                        // 因为 exp != 0，最终 exp 必定为 1。
                         if exp == 1 {
                             return acc;
                         }
@@ -2477,13 +2414,12 @@ macro_rules! int_impl {
             }
         }
 
-        /// Calculates `self` + `rhs`.
+        /// 计算 `self` + `rhs`。
         ///
-        /// Returns a tuple of the addition along with a boolean indicating
-        /// whether an arithmetic overflow would occur. If an overflow would have
-        /// occurred then the wrapped value is returned.
+        /// 返回加法结果以及一个表示是否会发生算术溢出的布尔值。
+        /// 如果会发生溢出，则返回回绕后的值。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(5", stringify!($SelfT), ".overflowing_add(2), (7, false));")]
@@ -2499,31 +2435,25 @@ macro_rules! int_impl {
             (a as Self, b)
         }
 
-        /// Calculates `self` + `rhs` + `carry` and checks for overflow.
+        /// 计算 `self` + `rhs` + `carry` 并检查溢出。
         ///
-        /// Performs "ternary addition" of two integer operands and a carry-in
-        /// bit, and returns a tuple of the sum along with a boolean indicating
-        /// whether an arithmetic overflow would occur. On overflow, the wrapped
-        /// value is returned.
+        /// 对两个整数操作数和一个进位输入位执行“三元加法”，并返回和以及一个
+        /// 表示是否会发生算术溢出的布尔值。发生溢出时返回回绕后的值。
         ///
-        /// This allows chaining together multiple additions to create a wider
-        /// addition, and can be useful for bignum addition. This method should
-        /// only be used for the most significant word; for the less significant
-        /// words the unsigned method
+        /// 这允许把多次加法串接起来形成更宽的加法，可用于大数加法。
+        /// 此方法只应当用于最高有效字；对于较低有效字，应当使用无符号方法
         #[doc = concat!("[`", stringify!($UnsignedT), "::carrying_add`]")]
-        /// should be used.
+        /// 。
         ///
-        /// The output boolean returned by this method is *not* a carry flag,
-        /// and should *not* be added to a more significant word.
+        /// 此方法返回的输出布尔值*不是*进位标志，也*不应*加到更高有效字上。
         ///
-        /// If the input carry is false, this method is equivalent to
-        /// [`overflowing_add`](Self::overflowing_add).
+        /// 如果输入进位为 false，此方法等价于 [`overflowing_add`](Self::overflowing_add)。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         /// #![feature(bigint_helper_methods)]
-        /// // Only the most significant word is signed.
+        /// // 只有最高有效字是带符号的。
         /// //
         #[doc = concat!("//   10  MAX    (a = 10 × 2^", stringify!($BITS), " + 2^", stringify!($BITS), " - 1)")]
         #[doc = concat!("// + -5    9    (b = -5 × 2^", stringify!($BITS), " + 9)")]
@@ -2549,20 +2479,19 @@ macro_rules! int_impl {
                       without modifying the original"]
         #[inline]
         pub const fn carrying_add(self, rhs: Self, carry: bool) -> (Self, bool) {
-            // note: longer-term this should be done via an intrinsic.
-            // note: no intermediate overflow is required (https://github.com/rust-lang/rust/issues/85532#issuecomment-1032214946).
+            // 注意：长期来看这里应该通过 intrinsic 实现。
+            // 注意：不需要中间溢出（https://github.com/rust-lang/rust/issues/85532#issuecomment-1032214946）。
             let (a, b) = self.overflowing_add(rhs);
             let (c, d) = a.overflowing_add(carry as $SelfT);
             (c, b != d)
         }
 
-        /// Calculates `self` + `rhs` with an unsigned `rhs`.
+        /// 计算 `self` + `rhs`，其中 `rhs` 是无符号整数。
         ///
-        /// Returns a tuple of the addition along with a boolean indicating
-        /// whether an arithmetic overflow would occur. If an overflow would
-        /// have occurred then the wrapped value is returned.
+        /// 返回加法结果以及一个表示是否会发生算术溢出的布尔值。
+        /// 如果会发生溢出，则返回回绕后的值。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(1", stringify!($SelfT), ".overflowing_add_unsigned(2), (3, false));")]
@@ -2580,12 +2509,12 @@ macro_rules! int_impl {
             (res, overflowed ^ (rhs < 0))
         }
 
-        /// Calculates `self` - `rhs`.
+        /// 计算 `self` - `rhs`。
         ///
-        /// Returns a tuple of the subtraction along with a boolean indicating whether an arithmetic overflow
-        /// would occur. If an overflow would have occurred then the wrapped value is returned.
+        /// 返回减法结果以及一个表示是否会发生算术溢出的布尔值。
+        /// 如果会发生溢出，则返回回绕后的值。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(5", stringify!($SelfT), ".overflowing_sub(2), (3, false));")]
@@ -2601,32 +2530,26 @@ macro_rules! int_impl {
             (a as Self, b)
         }
 
-        /// Calculates `self` &minus; `rhs` &minus; `borrow` and checks for
-        /// overflow.
+        /// 计算 `self` &minus; `rhs` &minus; `borrow` 并检查溢出。
         ///
-        /// Performs "ternary subtraction" by subtracting both an integer
-        /// operand and a borrow-in bit from `self`, and returns a tuple of the
-        /// difference along with a boolean indicating whether an arithmetic
-        /// overflow would occur. On overflow, the wrapped value is returned.
+        /// 从 `self` 同时减去一个整数操作数和一个借位输入位，以此执行
+        /// “三元减法”，并返回差值以及一个表示是否会发生算术溢出的布尔值。
+        /// 发生溢出时返回回绕后的值。
         ///
-        /// This allows chaining together multiple subtractions to create a
-        /// wider subtraction, and can be useful for bignum subtraction. This
-        /// method should only be used for the most significant word; for the
-        /// less significant words the unsigned method
+        /// 这允许把多次减法串接起来形成更宽的减法，可用于大数减法。
+        /// 此方法只应当用于最高有效字；对于较低有效字，应当使用无符号方法
         #[doc = concat!("[`", stringify!($UnsignedT), "::borrowing_sub`]")]
-        /// should be used.
+        /// 。
         ///
-        /// The output boolean returned by this method is *not* a borrow flag,
-        /// and should *not* be subtracted from a more significant word.
+        /// 此方法返回的输出布尔值*不是*借位标志，也*不应*从更高有效字中减去。
         ///
-        /// If the input borrow is false, this method is equivalent to
-        /// [`overflowing_sub`](Self::overflowing_sub).
+        /// 如果输入借位为 false，此方法等价于 [`overflowing_sub`](Self::overflowing_sub)。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         /// #![feature(bigint_helper_methods)]
-        /// // Only the most significant word is signed.
+        /// // 只有最高有效字是带符号的。
         /// //
         #[doc = concat!("//    6    8    (a = 6 × 2^", stringify!($BITS), " + 8)")]
         #[doc = concat!("// - -5    9    (b = -5 × 2^", stringify!($BITS), " + 9)")]
@@ -2652,20 +2575,19 @@ macro_rules! int_impl {
                       without modifying the original"]
         #[inline]
         pub const fn borrowing_sub(self, rhs: Self, borrow: bool) -> (Self, bool) {
-            // note: longer-term this should be done via an intrinsic.
-            // note: no intermediate overflow is required (https://github.com/rust-lang/rust/issues/85532#issuecomment-1032214946).
+            // 注意：长期来看这里应该通过 intrinsic 实现。
+            // 注意：不需要中间溢出（https://github.com/rust-lang/rust/issues/85532#issuecomment-1032214946）。
             let (a, b) = self.overflowing_sub(rhs);
             let (c, d) = a.overflowing_sub(borrow as $SelfT);
             (c, b != d)
         }
 
-        /// Calculates `self` - `rhs` with an unsigned `rhs`.
+        /// 计算 `self` - `rhs`，其中 `rhs` 是无符号整数。
         ///
-        /// Returns a tuple of the subtraction along with a boolean indicating
-        /// whether an arithmetic overflow would occur. If an overflow would
-        /// have occurred then the wrapped value is returned.
+        /// 返回减法结果以及一个表示是否会发生算术溢出的布尔值。
+        /// 如果会发生溢出，则返回回绕后的值。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(1", stringify!($SelfT), ".overflowing_sub_unsigned(2), (-1, false));")]
@@ -2683,12 +2605,12 @@ macro_rules! int_impl {
             (res, overflowed ^ (rhs < 0))
         }
 
-        /// Calculates the multiplication of `self` and `rhs`.
+        /// 计算 `self` 和 `rhs` 的乘法。
         ///
-        /// Returns a tuple of the multiplication along with a boolean indicating whether an arithmetic overflow
-        /// would occur. If an overflow would have occurred then the wrapped value is returned.
+        /// 返回乘法结果以及一个表示是否会发生算术溢出的布尔值。
+        /// 如果会发生溢出，则返回回绕后的值。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(5", stringify!($SelfT), ".overflowing_mul(2), (10, false));")]
@@ -2704,17 +2626,16 @@ macro_rules! int_impl {
             (a as Self, b)
         }
 
-        /// Calculates the complete product `self * rhs` without the possibility to overflow.
+        /// 计算完整的乘积 `self * rhs`，不会发生溢出。
         ///
-        /// This returns the low-order (wrapping) bits and the high-order (overflow) bits
-        /// of the result as two separate values, in that order.
+        /// 这会把结果的低位（回绕）部分和高位（溢出）部分作为两个独立值返回，
+        /// 顺序也如此。
         ///
-        /// If you also need to add a carry to the wide result, then you want
-        /// [`Self::carrying_mul`] instead.
+        /// 如果还需要向宽结果中加入进位，请改用 [`Self::carrying_mul`]。
         ///
-        /// # Examples
+        /// # 示例
         ///
-        /// Please note that this example is shared among integer types, which is why `i32` is used.
+        /// 请注意，此示例在各整数类型之间共享，因此这里使用 `i32`。
         ///
         /// ```
         /// #![feature(bigint_helper_methods)]
@@ -2730,21 +2651,19 @@ macro_rules! int_impl {
             Self::carrying_mul_add(self, rhs, 0, 0)
         }
 
-        /// Calculates the "full multiplication" `self * rhs + carry`
-        /// without the possibility to overflow.
+        /// 计算“完整乘法”`self * rhs + carry`，不会发生溢出。
         ///
-        /// This returns the low-order (wrapping) bits and the high-order (overflow) bits
-        /// of the result as two separate values, in that order.
+        /// 这会把结果的低位（回绕）部分和高位（溢出）部分作为两个独立值返回，
+        /// 顺序也如此。
         ///
-        /// Performs "long multiplication" which takes in an extra amount to add, and may return an
-        /// additional amount of overflow. This allows for chaining together multiple
-        /// multiplications to create "big integers" which represent larger values.
+        /// 执行“长乘法”，它接收一个额外的待加数，并可能返回额外的溢出量。
+        /// 这允许把多次乘法串接起来，创建表示更大数值的“大整数”。
         ///
-        /// If you don't need the `carry`, then you can use [`Self::widening_mul`] instead.
+        /// 如果不需要 `carry`，则可以改用 [`Self::widening_mul`]。
         ///
-        /// # Examples
+        /// # 示例
         ///
-        /// Please note that this example is shared among integer types, which is why `i32` is used.
+        /// 请注意，此示例在各整数类型之间共享，因此这里使用 `i32`。
         ///
         /// ```
         /// #![feature(bigint_helper_methods)]
@@ -2766,22 +2685,20 @@ macro_rules! int_impl {
             Self::carrying_mul_add(self, rhs, carry, 0)
         }
 
-        /// Calculates the "full multiplication" `self * rhs + carry + add`
-        /// without the possibility to overflow.
+        /// 计算“完整乘法”`self * rhs + carry + add`，不会发生溢出。
         ///
-        /// This returns the low-order (wrapping) bits and the high-order (overflow) bits
-        /// of the result as two separate values, in that order.
+        /// 这会把结果的低位（回绕）部分和高位（溢出）部分作为两个独立值返回，
+        /// 顺序也如此。
         ///
-        /// Performs "long multiplication" which takes in an extra amount to add, and may return an
-        /// additional amount of overflow. This allows for chaining together multiple
-        /// multiplications to create "big integers" which represent larger values.
+        /// 执行“长乘法”，它接收一个额外的待加数，并可能返回额外的溢出量。
+        /// 这允许把多次乘法串接起来，创建表示更大数值的“大整数”。
         ///
-        /// If you don't need either `carry`, then you can use [`Self::widening_mul`] instead,
-        /// and if you only need one `carry`, then you can use [`Self::carrying_mul`] instead.
+        /// 如果两个 `carry` 都不需要，则可以改用 [`Self::widening_mul`]；
+        /// 如果只需要一个 `carry`，则可以改用 [`Self::carrying_mul`]。
         ///
-        /// # Examples
+        /// # 示例
         ///
-        /// Please note that this example is shared among integer types, which is why `i32` is used.
+        /// 请注意，此示例在各整数类型之间共享，因此这里使用 `i32`。
         ///
         /// ```
         /// #![feature(bigint_helper_methods)]
@@ -2803,16 +2720,16 @@ macro_rules! int_impl {
             intrinsics::carrying_mul_add(self, rhs, carry, add)
         }
 
-        /// Calculates the divisor when `self` is divided by `rhs`.
+        /// 计算 `self` 除以 `rhs` 所得的商。
         ///
-        /// Returns a tuple of the divisor along with a boolean indicating whether an arithmetic overflow would
-        /// occur. If an overflow would occur then self is returned.
+        /// 返回商以及一个表示是否会发生算术溢出的布尔值。
+        /// 如果会发生溢出，则返回 self。
         ///
         /// # Panics
         ///
-        /// This function will panic if `rhs` is zero.
+        /// 如果 `rhs` 为零，此函数将会 panic。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(5", stringify!($SelfT), ".overflowing_div(2), (2, false));")]
@@ -2824,7 +2741,7 @@ macro_rules! int_impl {
         #[must_use = "this returns the result of the operation, \
                       without modifying the original"]
         pub const fn overflowing_div(self, rhs: Self) -> (Self, bool) {
-            // Using `&` helps LLVM see that it is the same check made in division.
+            // 使用 `&` 有助于 LLVM 识别这与除法中的检查相同。
             if intrinsics::unlikely((self == Self::MIN) & (rhs == -1)) {
                 (self, true)
             } else {
@@ -2832,16 +2749,16 @@ macro_rules! int_impl {
             }
         }
 
-        /// Calculates the quotient of Euclidean division `self.div_euclid(rhs)`.
+        /// 计算欧几里得除法 `self.div_euclid(rhs)` 的商。
         ///
-        /// Returns a tuple of the divisor along with a boolean indicating whether an arithmetic overflow would
-        /// occur. If an overflow would occur then `self` is returned.
+        /// 返回商以及一个表示是否会发生算术溢出的布尔值。
+        /// 如果会发生溢出，则返回 `self`。
         ///
         /// # Panics
         ///
-        /// This function will panic if `rhs` is zero.
+        /// 如果 `rhs` 为零，此函数将会 panic。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(5", stringify!($SelfT), ".overflowing_div_euclid(2), (2, false));")]
@@ -2853,7 +2770,7 @@ macro_rules! int_impl {
         #[must_use = "this returns the result of the operation, \
                       without modifying the original"]
         pub const fn overflowing_div_euclid(self, rhs: Self) -> (Self, bool) {
-            // Using `&` helps LLVM see that it is the same check made in division.
+            // 使用 `&` 有助于 LLVM 识别这与除法中的检查相同。
             if intrinsics::unlikely((self == Self::MIN) & (rhs == -1)) {
                 (self, true)
             } else {
@@ -2861,16 +2778,16 @@ macro_rules! int_impl {
             }
         }
 
-        /// Calculates the remainder when `self` is divided by `rhs`.
+        /// 计算 `self` 除以 `rhs` 时的余数。
         ///
-        /// Returns a tuple of the remainder after dividing along with a boolean indicating whether an
-        /// arithmetic overflow would occur. If an overflow would occur then 0 is returned.
+        /// 返回除法后的余数以及一个表示是否会发生算术溢出的布尔值。
+        /// 如果会发生溢出，则返回 0。
         ///
         /// # Panics
         ///
-        /// This function will panic if `rhs` is zero.
+        /// 如果 `rhs` 为零，此函数将会 panic。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(5", stringify!($SelfT), ".overflowing_rem(2), (1, false));")]
@@ -2890,16 +2807,16 @@ macro_rules! int_impl {
         }
 
 
-        /// Overflowing Euclidean remainder. Calculates `self.rem_euclid(rhs)`.
+        /// 溢出型欧几里得取余。计算 `self.rem_euclid(rhs)`。
         ///
-        /// Returns a tuple of the remainder after dividing along with a boolean indicating whether an
-        /// arithmetic overflow would occur. If an overflow would occur then 0 is returned.
+        /// 返回除法后的余数以及一个表示是否会发生算术溢出的布尔值。
+        /// 如果会发生溢出，则返回 0。
         ///
         /// # Panics
         ///
-        /// This function will panic if `rhs` is zero.
+        /// 如果 `rhs` 为零，此函数将会 panic。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(5", stringify!($SelfT), ".overflowing_rem_euclid(2), (1, false));")]
@@ -2920,13 +2837,13 @@ macro_rules! int_impl {
         }
 
 
-        /// Negates self, overflowing if this is equal to the minimum value.
+        /// 对 `self` 取负；如果它等于最小值，则报告溢出。
         ///
-        /// Returns a tuple of the negated version of self along with a boolean indicating whether an overflow
-        /// happened. If `self` is the minimum value (e.g., `i32::MIN` for values of type `i32`), then the
-        /// minimum value will be returned again and `true` will be returned for an overflow happening.
+        /// 返回取负后的值和一个布尔值；该布尔值表示是否发生溢出。
+        /// 如果 `self` 是最小值（例如 `i32` 值的 `i32::MIN`），结果仍会返回最小值，
+        /// 并用 `true` 表示发生了溢出。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(2", stringify!($SelfT), ".overflowing_neg(), (-2, false));")]
@@ -2946,13 +2863,13 @@ macro_rules! int_impl {
             }
         }
 
-        /// Shifts self left by `rhs` bits.
+        /// 将 `self` 左移 `rhs` 位。
         ///
-        /// Returns a tuple of the shifted version of self along with a boolean indicating whether the shift
-        /// value was larger than or equal to the number of bits. If the shift value is too large, then value is
-        /// masked (N-1) where N is the number of bits, and this value is then used to perform the shift.
+        /// 返回移位后的值和一个布尔值；该布尔值表示移位量是否大于或等于位数。
+        /// 如果移位量过大，则会用 `N - 1` 对它取掩码，其中 `N` 是该类型的位数，
+        /// 然后用掩码后的值执行移位。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(0x1", stringify!($SelfT),".overflowing_shl(4), (0x10, false));")]
@@ -2968,13 +2885,13 @@ macro_rules! int_impl {
             (self.wrapping_shl(rhs), rhs >= Self::BITS)
         }
 
-        /// Shifts self right by `rhs` bits.
+        /// 将 `self` 右移 `rhs` 位。
         ///
-        /// Returns a tuple of the shifted version of self along with a boolean indicating whether the shift
-        /// value was larger than or equal to the number of bits. If the shift value is too large, then value is
-        /// masked (N-1) where N is the number of bits, and this value is then used to perform the shift.
+        /// 返回移位后的值和一个布尔值；该布尔值表示移位量是否大于或等于位数。
+        /// 如果移位量过大，则会用 `N - 1` 对它取掩码，其中 `N` 是该类型的位数，
+        /// 然后用掩码后的值执行移位。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(0x10", stringify!($SelfT), ".overflowing_shr(4), (0x1, false));")]
@@ -2989,15 +2906,13 @@ macro_rules! int_impl {
             (self.wrapping_shr(rhs), rhs >= Self::BITS)
         }
 
-        /// Computes the absolute value of `self`.
+        /// 计算 `self` 的绝对值。
         ///
-        /// Returns a tuple of the absolute version of self along with a boolean indicating whether an overflow
-        /// happened. If self is the minimum value
+        /// 返回绝对值和一个布尔值；该布尔值表示是否发生溢出。如果 `self` 是最小值
         #[doc = concat!("(e.g., ", stringify!($SelfT), "::MIN for values of type ", stringify!($SelfT), "),")]
-        /// then the minimum value will be returned again and true will be returned
-        /// for an overflow happening.
+        /// 则仍返回最小值，并用 `true` 表示发生了溢出。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(10", stringify!($SelfT), ".overflowing_abs(), (10, false));")]
@@ -3013,12 +2928,11 @@ macro_rules! int_impl {
             (self.wrapping_abs(), self == Self::MIN)
         }
 
-        /// Raises self to the power of `exp`, using exponentiation by squaring.
+        /// 使用平方求幂计算 `self` 的 `exp` 次方。
         ///
-        /// Returns a tuple of the exponentiation along with a bool indicating
-        /// whether an overflow happened.
+        /// 返回幂运算结果和一个布尔值；该布尔值表示计算过程中是否发生过溢出。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(3", stringify!($SelfT), ".overflowing_pow(4), (81, false));")]
@@ -3037,13 +2951,13 @@ macro_rules! int_impl {
             let mut base = self;
             let mut acc: Self = 1;
             let mut overflown = false;
-            // Scratch space for storing results of overflowing_mul.
+            // 用于暂存 `overflowing_mul` 结果的临时空间。
             let mut r;
 
             loop {
                 if (exp & 1) == 1 {
                     r = acc.overflowing_mul(base);
-                    // since exp!=0, finally the exp must be 1.
+                    // 因为 `exp != 0`，最终 `exp` 必然会降到 1。
                     if exp == 1 {
                         r.1 |= overflown;
                         return r;
@@ -3058,12 +2972,12 @@ macro_rules! int_impl {
             }
         }
 
-        /// Raises self to the power of `exp`, using exponentiation by squaring.
+        /// 使用平方求幂计算 `self` 的 `exp` 次方。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
-        #[doc = concat!("let x: ", stringify!($SelfT), " = 2; // or any other integer type")]
+        #[doc = concat!("let x: ", stringify!($SelfT), " = 2; // 或任何其他整数类型")]
         ///
         /// assert_eq!(x.pow(5), 32);
         #[doc = concat!("assert_eq!(0_", stringify!($SelfT), ".pow(0), 1);")]
@@ -3090,20 +3004,17 @@ macro_rules! int_impl {
                     base = base * base;
                 }
 
-                // since exp!=0, finally the exp must be 1.
-                // Deal with the final bit of the exponent separately, since
-                // squaring the base afterwards is not necessary and may cause a
-                // needless overflow.
+                // 因为 `exp != 0`，最终 `exp` 必然会降到 1。
+                // 单独处理指数的最后一位，因为之后不再需要对底数平方，
+                // 而继续平方可能造成不必要的溢出。
                 acc * base
             } else {
-                // This is faster than the above when the exponent is not known
-                // at compile time. We can't use the same code for the constant
-                // exponent case because LLVM is currently unable to unroll
-                // this loop.
+                // 当指数不是编译期已知值时，这比上面的路径更快。常量指数情形不能复用这段代码，
+                // 因为 LLVM 目前无法展开这个循环。
                 loop {
                     if (exp & 1) == 1 {
                         acc = acc * base;
-                        // since exp!=0, finally the exp must be 1.
+                        // 因为 `exp != 0`，最终 `exp` 必然会降到 1。
                         if exp == 1 {
                             return acc;
                         }
@@ -3114,13 +3025,13 @@ macro_rules! int_impl {
             }
         }
 
-        /// Returns the square root of the number, rounded down.
+        /// 返回该数的平方根，并向下舍入。
         ///
         /// # Panics
         ///
-        /// This function will panic if `self` is negative.
+        /// 如果 `self` 为负数，此函数会 panic。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(10", stringify!($SelfT), ".isqrt(), 3);")]
@@ -3138,27 +3049,26 @@ macro_rules! int_impl {
             }
         }
 
-        /// Calculates the quotient of Euclidean division of `self` by `rhs`.
+        /// 计算 `self` 除以 `rhs` 的 Euclidean 除法商。
         ///
-        /// This computes the integer `q` such that `self = q * rhs + r`, with
-        /// `r = self.rem_euclid(rhs)` and `0 <= r < abs(rhs)`.
+        /// 它会计算满足 `self = q * rhs + r` 的整数 `q`，其中
+        /// `r = self.rem_euclid(rhs)` 且 `0 <= r < abs(rhs)`。
         ///
-        /// In other words, the result is `self / rhs` rounded to the integer `q`
-        /// such that `self >= q * rhs`.
-        /// If `self > 0`, this is equal to rounding towards zero (the default in Rust);
-        /// if `self < 0`, this is equal to rounding away from zero (towards +/- infinity).
-        /// If `rhs > 0`, this is equal to rounding towards -infinity;
-        /// if `rhs < 0`, this is equal to rounding towards +infinity.
+        /// 换句话说，结果是把 `self / rhs` 舍入到满足 `self >= q * rhs` 的整数 `q`。
+        /// 如果 `self > 0`，这等同于向零舍入（Rust 默认行为）；
+        /// 如果 `self < 0`，这等同于远离零舍入（朝 +/- infinity）。
+        /// 如果 `rhs > 0`，这等同于向 -infinity 舍入；
+        /// 如果 `rhs < 0`，这等同于向 +infinity 舍入。
         ///
         /// # Panics
         ///
-        /// This function will panic if `rhs` is zero or if `self` is `Self::MIN`
-        /// and `rhs` is -1. This behavior is not affected by the `overflow-checks` flag.
+        /// 如果 `rhs` 为零，或 `self` 为 `Self::MIN` 且 `rhs` 为 -1，
+        /// 此函数会 panic。该行为不受 `overflow-checks` 标志影响。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
-        #[doc = concat!("let a: ", stringify!($SelfT), " = 7; // or any other integer type")]
+        #[doc = concat!("let a: ", stringify!($SelfT), " = 7; // 或任何其他整数类型")]
         /// let b = 4;
         ///
         /// assert_eq!(a.div_euclid(b), 1); // 7 >= 4 * 1
@@ -3181,22 +3091,21 @@ macro_rules! int_impl {
         }
 
 
-        /// Calculates the least nonnegative remainder of `self` when
-        /// divided by `rhs`.
+        /// 计算 `self` 除以 `rhs` 后的最小非负余数。
         ///
-        /// This is done as if by the Euclidean division algorithm -- given
-        /// `r = self.rem_euclid(rhs)`, the result satisfies
-        /// `self = rhs * self.div_euclid(rhs) + r` and `0 <= r < abs(rhs)`.
+        /// 这就像使用 Euclidean 除法算法完成：给定
+        /// `r = self.rem_euclid(rhs)`，结果满足
+        /// `self = rhs * self.div_euclid(rhs) + r` 且 `0 <= r < abs(rhs)`。
         ///
         /// # Panics
         ///
-        /// This function will panic if `rhs` is zero or if `self` is `Self::MIN` and
-        /// `rhs` is -1. This behavior is not affected by the `overflow-checks` flag.
+        /// 如果 `rhs` 为零，或 `self` 为 `Self::MIN` 且 `rhs` 为 -1，
+        /// 此函数会 panic。该行为不受 `overflow-checks` 标志影响。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
-        #[doc = concat!("let a: ", stringify!($SelfT), " = 7; // or any other integer type")]
+        #[doc = concat!("let a: ", stringify!($SelfT), " = 7; // 或任何其他整数类型")]
         /// let b = 4;
         ///
         /// assert_eq!(a.rem_euclid(b), 3);
@@ -3205,7 +3114,7 @@ macro_rules! int_impl {
         /// assert_eq!((-a).rem_euclid(-b), 1);
         /// ```
         ///
-        /// This will panic:
+        /// 以下代码会 panic：
         /// ```should_panic
         #[doc = concat!("let _ = ", stringify!($SelfT), "::MIN.rem_euclid(-1);")]
         /// ```
@@ -3219,28 +3128,27 @@ macro_rules! int_impl {
         pub const fn rem_euclid(self, rhs: Self) -> Self {
             let r = self % rhs;
             if r < 0 {
-                // Semantically equivalent to `if rhs < 0 { r - rhs } else { r + rhs }`.
-                // If `rhs` is not `Self::MIN`, then `r + abs(rhs)` will not overflow
-                // and is clearly equivalent, because `r` is negative.
-                // Otherwise, `rhs` is `Self::MIN`, then we have
-                // `r.wrapping_add(Self::MIN.wrapping_abs())`, which evaluates
-                // to `r.wrapping_add(Self::MIN)`, which is equivalent to
-                // `r - Self::MIN`, which is what we wanted (and will not overflow
-                // for negative `r`).
+                // 在语义上等价于 `if rhs < 0 { r - rhs } else { r + rhs }`。
+                // 如果 `rhs` 不是 `Self::MIN`，那么 `r + abs(rhs)` 不会溢出；
+                // 因为 `r` 为负数，这显然等价。
+                // 否则 `rhs` 是 `Self::MIN`，此时有
+                // `r.wrapping_add(Self::MIN.wrapping_abs())`，它会求值为
+                // `r.wrapping_add(Self::MIN)`，等价于我们想要的 `r - Self::MIN`
+                // （对于负的 `r` 不会溢出）。
                 r.wrapping_add(rhs.wrapping_abs())
             } else {
                 r
             }
         }
 
-        /// Calculates the quotient of `self` and `rhs`, rounding the result towards negative infinity.
+        /// 计算 `self` 与 `rhs` 的商，并将结果向负无穷舍入。
         ///
         /// # Panics
         ///
-        /// This function will panic if `rhs` is zero or if `self` is `Self::MIN`
-        /// and `rhs` is -1. This behavior is not affected by the `overflow-checks` flag.
+        /// 如果 `rhs` 为零，或 `self` 为 `Self::MIN` 且 `rhs` 为 -1，
+        /// 此函数会 panic。该行为不受 `overflow-checks` 标志影响。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         /// #![feature(int_roundings)]
@@ -3261,12 +3169,10 @@ macro_rules! int_impl {
             let d = self / rhs;
             let r = self % rhs;
 
-            // If the remainder is non-zero, we need to subtract one if the
-            // signs of self and rhs differ, as this means we rounded upwards
-            // instead of downwards. We do this branchlessly by creating a mask
-            // which is all-ones iff the signs differ, and 0 otherwise. Then by
-            // adding this mask (which corresponds to the signed value -1), we
-            // get our correction.
+            // 如果余数非零，且 self 与 rhs 的符号不同，就需要减一；
+            // 这表示我们刚才向上而不是向下舍入了。这里通过构造一个无分支掩码完成校正：
+            // 当符号不同时掩码全为 1，否则为 0。加上这个掩码
+            // （对应有符号值 -1）即可得到校正量。
             let correction = (self ^ rhs) >> (Self::BITS - 1);
             if r != 0 {
                 d + correction
@@ -3275,14 +3181,14 @@ macro_rules! int_impl {
             }
         }
 
-        /// Calculates the quotient of `self` and `rhs`, rounding the result towards positive infinity.
+        /// 计算 `self` 与 `rhs` 的商，并将结果向正无穷舍入。
         ///
         /// # Panics
         ///
-        /// This function will panic if `rhs` is zero or if `self` is `Self::MIN`
-        /// and `rhs` is -1. This behavior is not affected by the `overflow-checks` flag.
+        /// 如果 `rhs` 为零，或 `self` 为 `Self::MIN` 且 `rhs` 为 -1，
+        /// 此函数会 panic。该行为不受 `overflow-checks` 标志影响。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         /// #![feature(int_roundings)]
@@ -3303,8 +3209,8 @@ macro_rules! int_impl {
             let d = self / rhs;
             let r = self % rhs;
 
-            // When remainder is non-zero we have a.div_ceil(b) == 1 + a.div_floor(b),
-            // so we can re-use the algorithm from div_floor, just adding 1.
+            // 当余数非零时，有 a.div_ceil(b) == 1 + a.div_floor(b)，
+            // 因此可以复用 div_floor 的算法，只需额外加 1。
             let correction = 1 + ((self ^ rhs) >> (Self::BITS - 1));
             if r != 0 {
                 d + correction
@@ -3313,21 +3219,19 @@ macro_rules! int_impl {
             }
         }
 
-        /// If `rhs` is positive, calculates the smallest value greater than or
-        /// equal to `self` that is a multiple of `rhs`. If `rhs` is negative,
-        /// calculates the largest value less than or equal to `self` that is a
-        /// multiple of `rhs`.
+        /// 如果 `rhs` 为正，计算大于或等于 `self` 的最小 `rhs` 倍数。
+        /// 如果 `rhs` 为负，计算小于或等于 `self` 的最大 `rhs` 倍数。
         ///
         /// # Panics
         ///
-        /// This function will panic if `rhs` is zero.
+        /// 如果 `rhs` 为零，此函数会 panic。
         ///
         /// ## Overflow behavior
         ///
-        /// On overflow, this function will panic if overflow checks are enabled (default in debug
-        /// mode) and wrap if overflow checks are disabled (default in release mode).
+        /// 发生溢出时，如果启用了溢出检查（debug 模式默认启用），此函数会 panic；
+        /// 如果禁用了溢出检查（release 模式默认禁用），结果会回绕。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         /// #![feature(int_roundings)]
@@ -3346,7 +3250,7 @@ macro_rules! int_impl {
         #[inline]
         #[rustc_inherit_overflow_checks]
         pub const fn next_multiple_of(self, rhs: Self) -> Self {
-            // This would otherwise fail when calculating `r` when self == T::MIN.
+            // 否则当 self == T::MIN 时，计算 `r` 会失败。
             if rhs == -1 {
                 return self;
             }
@@ -3365,13 +3269,11 @@ macro_rules! int_impl {
             }
         }
 
-        /// If `rhs` is positive, calculates the smallest value greater than or
-        /// equal to `self` that is a multiple of `rhs`. If `rhs` is negative,
-        /// calculates the largest value less than or equal to `self` that is a
-        /// multiple of `rhs`. Returns `None` if `rhs` is zero or the operation
-        /// would result in overflow.
+        /// 如果 `rhs` 为正，计算大于或等于 `self` 的最小 `rhs` 倍数。
+        /// 如果 `rhs` 为负，计算小于或等于 `self` 的最大 `rhs` 倍数。
+        /// 如果 `rhs` 为零，或该操作会导致溢出，则返回 `None`。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         /// #![feature(int_roundings)]
@@ -3391,14 +3293,14 @@ macro_rules! int_impl {
                       without modifying the original"]
         #[inline]
         pub const fn checked_next_multiple_of(self, rhs: Self) -> Option<Self> {
-            // This would otherwise fail when calculating `r` when self == T::MIN.
+            // 否则当 self == T::MIN 时，计算 `r` 会失败。
             if rhs == -1 {
                 return Some(self);
             }
 
             let r = try_opt!(self.checked_rem(rhs));
             let m = if (r > 0 && rhs < 0) || (r < 0 && rhs > 0) {
-                // r + rhs cannot overflow because they have opposite signs
+                // `r` 与 `rhs` 符号相反，因此 `r + rhs` 不会溢出。
                 r + rhs
             } else {
                 r
@@ -3407,24 +3309,21 @@ macro_rules! int_impl {
             if m == 0 {
                 Some(self)
             } else {
-                // rhs - m cannot overflow because m has the same sign as rhs
+                // `m` 与 `rhs` 符号相同，因此 `rhs - m` 不会溢出。
                 self.checked_add(rhs - m)
             }
         }
 
-        /// Returns the logarithm of the number with respect to an arbitrary base,
-        /// rounded down.
+        /// 返回该数相对于任意进制底数的对数，并向下舍入。
         ///
-        /// This method might not be optimized owing to implementation details;
-        /// `ilog2` can produce results more efficiently for base 2, and `ilog10`
-        /// can produce results more efficiently for base 10.
+        /// 受实现细节影响，此方法可能没有完全优化；底数为 2 时 [`ilog2`] 更高效，
+        /// 底数为 10 时 [`ilog10`] 更高效。
         ///
         /// # Panics
         ///
-        /// This function will panic if `self` is less than or equal to zero,
-        /// or if `base` is less than 2.
+        /// 如果 `self` 小于或等于零，或 `base` 小于 2，此函数会 panic。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(5", stringify!($SelfT), ".ilog(5), 1);")]
@@ -3444,13 +3343,13 @@ macro_rules! int_impl {
             }
         }
 
-        /// Returns the base 2 logarithm of the number, rounded down.
+        /// 返回该数以 2 为底的对数，并向下舍入。
         ///
         /// # Panics
         ///
-        /// This function will panic if `self` is less than or equal to zero.
+        /// 如果 `self` 小于或等于零，此函数会 panic。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(2", stringify!($SelfT), ".ilog2(), 1);")]
@@ -3469,13 +3368,13 @@ macro_rules! int_impl {
             }
         }
 
-        /// Returns the base 10 logarithm of the number, rounded down.
+        /// 返回该数以 10 为底的对数，并向下舍入。
         ///
         /// # Panics
         ///
-        /// This function will panic if `self` is less than or equal to zero.
+        /// 如果 `self` 小于或等于零，此函数会 panic。
         ///
-        /// # Example
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(10", stringify!($SelfT), ".ilog10(), 1);")]
@@ -3494,16 +3393,14 @@ macro_rules! int_impl {
             }
         }
 
-        /// Returns the logarithm of the number with respect to an arbitrary base,
-        /// rounded down.
+        /// 返回该数相对于任意进制底数的对数，并向下舍入。
         ///
-        /// Returns `None` if the number is negative or zero, or if the base is not at least 2.
+        /// 如果该数为负数或零，或底数小于 2，则返回 `None`。
         ///
-        /// This method might not be optimized owing to implementation details;
-        /// `checked_ilog2` can produce results more efficiently for base 2, and
-        /// `checked_ilog10` can produce results more efficiently for base 10.
+        /// 受实现细节影响，此方法可能没有完全优化；底数为 2 时 [`checked_ilog2`] 更高效，
+        /// 底数为 10 时 [`checked_ilog10`] 更高效。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(5", stringify!($SelfT), ".checked_ilog(5), Some(1));")]
@@ -3517,17 +3414,17 @@ macro_rules! int_impl {
             if self <= 0 || base <= 1 {
                 None
             } else {
-                // Delegate to the unsigned implementation.
-                // The condition makes sure that both casts are exact.
+                // 委托给无符号实现。
+                // 前面的条件确保两次转换都是精确的。
                 (self as $UnsignedT).checked_ilog(base as $UnsignedT)
             }
         }
 
-        /// Returns the base 2 logarithm of the number, rounded down.
+        /// 返回该数以 2 为底的对数，并向下舍入。
         ///
-        /// Returns `None` if the number is negative or zero.
+        /// 如果该数为负数或零，则返回 `None`。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(2", stringify!($SelfT), ".checked_ilog2(), Some(1));")]
@@ -3541,17 +3438,17 @@ macro_rules! int_impl {
             if self <= 0 {
                 None
             } else {
-                // SAFETY: We just checked that this number is positive
+                // SAFETY: 刚刚已经检查过该数为正数，因此满足 `ctlz_nonzero` 的非零前置条件。
                 let log = (Self::BITS - 1) - unsafe { intrinsics::ctlz_nonzero(self) as u32 };
                 Some(log)
             }
         }
 
-        /// Returns the base 10 logarithm of the number, rounded down.
+        /// 返回该数以 10 为底的对数，并向下舍入。
         ///
-        /// Returns `None` if the number is negative or zero.
+        /// 如果该数为负数或零，则返回 `None`。
         ///
-        /// # Example
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(10", stringify!($SelfT), ".checked_ilog10(), Some(1));")]
@@ -3565,22 +3462,20 @@ macro_rules! int_impl {
             int_log10::$ActualT(self as $ActualT)
         }
 
-        /// Computes the absolute value of `self`.
+        /// 计算 `self` 的绝对值。
         ///
-        /// # Overflow behavior
+        /// # 溢出行为
         ///
-        /// The absolute value of
+        /// 以下值的绝对值
         #[doc = concat!("`", stringify!($SelfT), "::MIN`")]
-        /// cannot be represented as an
-        #[doc = concat!("`", stringify!($SelfT), "`,")]
-        /// and attempting to calculate it will cause an overflow. This means
-        /// that code in debug mode will trigger a panic on this case and
-        /// optimized code will return
+        /// 无法表示为
+        #[doc = concat!("`", stringify!($SelfT), "`，")]
+        /// 因而尝试计算它会导致溢出。这意味着 debug 模式下的代码遇到这种情况会触发 panic，
+        /// 优化后的代码则会返回
         #[doc = concat!("`", stringify!($SelfT), "::MIN`")]
-        /// without a panic. If you do not want this behavior, consider
-        /// using [`unsigned_abs`](Self::unsigned_abs) instead.
+        /// 而不 panic。如果不想要这种行为，请考虑改用 [`unsigned_abs`](Self::unsigned_abs)。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(10", stringify!($SelfT), ".abs(), 10);")]
@@ -3594,9 +3489,8 @@ macro_rules! int_impl {
         #[inline]
         #[rustc_inherit_overflow_checks]
         pub const fn abs(self) -> Self {
-            // Note that the #[rustc_inherit_overflow_checks] and #[inline]
-            // above mean that the overflow semantics of the subtraction
-            // depend on the crate we're being called from.
+            // 注意，上面的 #[rustc_inherit_overflow_checks] 和 #[inline]
+            // 意味着这个取负操作的溢出语义取决于调用它的 crate。
             if self.is_negative() {
                 -self
             } else {
@@ -3604,12 +3498,11 @@ macro_rules! int_impl {
             }
         }
 
-        /// Computes the absolute difference between `self` and `other`.
+        /// 计算 `self` 与 `other` 之间的绝对差值。
         ///
-        /// This function always returns the correct answer without overflow or
-        /// panics by returning an unsigned integer.
+        /// 该函数返回无符号整数，因此总能在不溢出、不 panic 的情况下返回正确结果。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(100", stringify!($SelfT), ".abs_diff(80), 20", stringify!($UnsignedT), ");")]
@@ -3625,32 +3518,29 @@ macro_rules! int_impl {
         #[inline]
         pub const fn abs_diff(self, other: Self) -> $UnsignedT {
             if self < other {
-                // Converting a non-negative x from signed to unsigned by using
-                // `x as U` is left unchanged, but a negative x is converted
-                // to value x + 2^N. Thus if `s` and `o` are binary variables
-                // respectively indicating whether `self` and `other` are
-                // negative, we are computing the mathematical value:
+                // 使用 `x as U` 将非负 x 从有符号转为无符号时，数值保持不变；
+                // 负的 x 则会转换为 x + 2^N。因此，如果 `s` 和 `o` 是二值变量，
+                // 分别表示 `self` 和 `other` 是否为负数，我们计算的是以下数学值：
                 //
                 //    (other + o*2^N) - (self + s*2^N)    mod  2^N
                 //    other - self + (o-s)*2^N            mod  2^N
                 //    other - self                        mod  2^N
                 //
-                // Finally, taking the mod 2^N of the mathematical value of
-                // `other - self` does not change it as it already is
-                // in the range [0, 2^N).
+                // 最后，对 `other - self` 的数学值取 mod 2^N 不会改变它，
+                // 因为它已经位于 [0, 2^N) 范围内。
                 (other as $UnsignedT).wrapping_sub(self as $UnsignedT)
             } else {
                 (self as $UnsignedT).wrapping_sub(other as $UnsignedT)
             }
         }
 
-        /// Returns a number representing sign of `self`.
+        /// 返回一个表示 `self` 符号的数字。
         ///
-        ///  - `0` if the number is zero
-        ///  - `1` if the number is positive
-        ///  - `-1` if the number is negative
+        ///  - 如果该数为零，返回 `0`
+        ///  - 如果该数为正，返回 `1`
+        ///  - 如果该数为负，返回 `-1`
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert_eq!(10", stringify!($SelfT), ".signum(), 1);")]
@@ -3663,18 +3553,17 @@ macro_rules! int_impl {
                       without modifying the original"]
         #[inline(always)]
         pub const fn signum(self) -> Self {
-            // Picking the right way to phrase this is complicated
+            // 为这个操作选择合适写法很复杂
             // (<https://graphics.stanford.edu/~seander/bithacks.html#CopyIntegerSign>)
-            // so delegate it to `Ord` which is already producing -1/0/+1
-            // exactly like we need and can be the place to deal with the complexity.
+            // 因此委托给 `Ord`。它已经能精确产出我们需要的 -1/0/+1，
+            // 也适合作为处理这些复杂性的地方。
 
             crate::intrinsics::three_way_compare(self, 0) as Self
         }
 
-        /// Returns `true` if `self` is positive and `false` if the number is zero or
-        /// negative.
+        /// 如果 `self` 为正数，则返回 `true`；如果该数为零或负数，则返回 `false`。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert!(10", stringify!($SelfT), ".is_positive());")]
@@ -3686,10 +3575,9 @@ macro_rules! int_impl {
         #[inline(always)]
         pub const fn is_positive(self) -> bool { self > 0 }
 
-        /// Returns `true` if `self` is negative and `false` if the number is zero or
-        /// positive.
+        /// 如果 `self` 为负数，则返回 `true`；如果该数为零或正数，则返回 `false`。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("assert!((-10", stringify!($SelfT), ").is_negative());")]
@@ -3701,12 +3589,11 @@ macro_rules! int_impl {
         #[inline(always)]
         pub const fn is_negative(self) -> bool { self < 0 }
 
-        /// Returns the memory representation of this integer as a byte array in
-        /// big-endian (network) byte order.
+        /// 以 big-endian（网络）字节序字节数组的形式返回此整数的内存表示。
         ///
         #[doc = $to_xe_bytes_doc]
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("let bytes = ", $swap_op, stringify!($SelfT), ".to_be_bytes();")]
@@ -3721,12 +3608,11 @@ macro_rules! int_impl {
             self.to_be().to_ne_bytes()
         }
 
-        /// Returns the memory representation of this integer as a byte array in
-        /// little-endian byte order.
+        /// 以 little-endian 字节序字节数组的形式返回此整数的内存表示。
         ///
         #[doc = $to_xe_bytes_doc]
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("let bytes = ", $swap_op, stringify!($SelfT), ".to_le_bytes();")]
@@ -3741,19 +3627,17 @@ macro_rules! int_impl {
             self.to_le().to_ne_bytes()
         }
 
-        /// Returns the memory representation of this integer as a byte array in
-        /// native byte order.
+        /// 以原生字节序字节数组的形式返回此整数的内存表示。
         ///
-        /// As the target platform's native endianness is used, portable code
-        /// should use [`to_be_bytes`] or [`to_le_bytes`], as appropriate,
-        /// instead.
+        /// 由于这里使用目标平台的原生字节序，可移植代码通常应酌情改用
+        /// [`to_be_bytes`] 或 [`to_le_bytes`]。
         ///
         #[doc = $to_xe_bytes_doc]
         ///
         /// [`to_be_bytes`]: Self::to_be_bytes
         /// [`to_le_bytes`]: Self::to_le_bytes
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("let bytes = ", $swap_op, stringify!($SelfT), ".to_ne_bytes();")]
@@ -3769,30 +3653,28 @@ macro_rules! int_impl {
         #[stable(feature = "int_to_from_bytes", since = "1.32.0")]
         #[rustc_const_stable(feature = "const_int_conversion", since = "1.44.0")]
         #[allow(unnecessary_transmutes)]
-        // SAFETY: const sound because integers are plain old datatypes so we can always
-        // transmute them to arrays of bytes
+        // SAFETY: 这个 const 转换是健全的，因为整数是 plain old datatype，
+        // 所有位模式都有效，因此总能 transmute 为字节数组。
         #[must_use = "this returns the result of the operation, \
                       without modifying the original"]
         #[inline]
         pub const fn to_ne_bytes(self) -> [u8; size_of::<Self>()] {
-            // SAFETY: integers are plain old datatypes so we can always transmute them to
-            // arrays of bytes
+            // SAFETY: 整数是 plain old datatype，所有位模式都有效，因此总能 transmute 为字节数组。
             unsafe { mem::transmute(self) }
         }
 
-        /// Creates an integer value from its representation as a byte array in
-        /// big endian.
+        /// 从 big endian 字节数组表示创建一个整数值。
         ///
         #[doc = $from_xe_bytes_doc]
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("let value = ", stringify!($SelfT), "::from_be_bytes(", $be_bytes, ");")]
         #[doc = concat!("assert_eq!(value, ", $swap_op, ");")]
         /// ```
         ///
-        /// When starting from a slice rather than an array, fallible conversion APIs can be used:
+        /// 如果起点是切片而不是数组，可以使用可失败转换 API：
         ///
         /// ```
         #[doc = concat!("fn read_be_", stringify!($SelfT), "(input: &mut &[u8]) -> ", stringify!($SelfT), " {")]
@@ -3809,19 +3691,18 @@ macro_rules! int_impl {
             Self::from_be(Self::from_ne_bytes(bytes))
         }
 
-        /// Creates an integer value from its representation as a byte array in
-        /// little endian.
+        /// 从 little endian 字节数组表示创建一个整数值。
         ///
         #[doc = $from_xe_bytes_doc]
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("let value = ", stringify!($SelfT), "::from_le_bytes(", $le_bytes, ");")]
         #[doc = concat!("assert_eq!(value, ", $swap_op, ");")]
         /// ```
         ///
-        /// When starting from a slice rather than an array, fallible conversion APIs can be used:
+        /// 如果起点是切片而不是数组，可以使用可失败转换 API：
         ///
         /// ```
         #[doc = concat!("fn read_le_", stringify!($SelfT), "(input: &mut &[u8]) -> ", stringify!($SelfT), " {")]
@@ -3838,19 +3719,17 @@ macro_rules! int_impl {
             Self::from_le(Self::from_ne_bytes(bytes))
         }
 
-        /// Creates an integer value from its memory representation as a byte
-        /// array in native endianness.
+        /// 从原生字节序字节数组形式的内存表示创建一个整数值。
         ///
-        /// As the target platform's native endianness is used, portable code
-        /// likely wants to use [`from_be_bytes`] or [`from_le_bytes`], as
-        /// appropriate instead.
+        /// 由于这里使用目标平台的原生字节序，可移植代码通常应酌情改用
+        /// [`from_be_bytes`] 或 [`from_le_bytes`]。
         ///
         /// [`from_be_bytes`]: Self::from_be_bytes
         /// [`from_le_bytes`]: Self::from_le_bytes
         ///
         #[doc = $from_xe_bytes_doc]
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         #[doc = concat!("let value = ", stringify!($SelfT), "::from_ne_bytes(if cfg!(target_endian = \"big\") {")]
@@ -3861,7 +3740,7 @@ macro_rules! int_impl {
         #[doc = concat!("assert_eq!(value, ", $swap_op, ");")]
         /// ```
         ///
-        /// When starting from a slice rather than an array, fallible conversion APIs can be used:
+        /// 如果起点是切片而不是数组，可以使用可失败转换 API：
         ///
         /// ```
         #[doc = concat!("fn read_ne_", stringify!($SelfT), "(input: &mut &[u8]) -> ", stringify!($SelfT), " {")]
@@ -3874,18 +3753,18 @@ macro_rules! int_impl {
         #[rustc_const_stable(feature = "const_int_conversion", since = "1.44.0")]
         #[allow(unnecessary_transmutes)]
         #[must_use]
-        // SAFETY: const sound because integers are plain old datatypes so we can always
-        // transmute to them
+        // SAFETY: 这个 const 转换是健全的，因为整数是 plain old datatype，
+        // 所有位模式都有效，因此总能从字节数组 transmute 为整数。
         #[inline]
         pub const fn from_ne_bytes(bytes: [u8; size_of::<Self>()]) -> Self {
-            // SAFETY: integers are plain old datatypes so we can always transmute to them
+            // SAFETY: 整数是 plain old datatype，所有位模式都有效，因此总能从字节数组 transmute 为整数。
             unsafe { mem::transmute(bytes) }
         }
 
-        /// New code should prefer to use
-        #[doc = concat!("[`", stringify!($SelfT), "::MIN", "`] instead.")]
+        /// 新代码应优先使用
+        #[doc = concat!("[`", stringify!($SelfT), "::MIN", "`]。")]
         ///
-        /// Returns the smallest value that can be represented by this integer type.
+        /// 返回此整数类型可以表示的最小值。
         #[stable(feature = "rust1", since = "1.0.0")]
         #[inline(always)]
         #[rustc_promotable]
@@ -3896,10 +3775,10 @@ macro_rules! int_impl {
             Self::MIN
         }
 
-        /// New code should prefer to use
-        #[doc = concat!("[`", stringify!($SelfT), "::MAX", "`] instead.")]
+        /// 新代码应优先使用
+        #[doc = concat!("[`", stringify!($SelfT), "::MAX", "`]。")]
         ///
-        /// Returns the largest value that can be represented by this integer type.
+        /// 返回此整数类型可以表示的最大值。
         #[stable(feature = "rust1", since = "1.0.0")]
         #[inline(always)]
         #[rustc_promotable]
@@ -3910,14 +3789,13 @@ macro_rules! int_impl {
             Self::MAX
         }
 
-        /// Clamps this number to a symmetric range centred around zero.
+        /// 将此数限制在以零为中心的对称范围内。
         ///
-        /// The method clamps the number's magnitude (absolute value) to be at most `limit`.
+        /// 该方法会把数值的幅度（绝对值）限制为至多 `limit`。
         ///
-        /// This is functionally equivalent to `self.clamp(-limit, limit)`, but is more
-        /// explicit about the intent.
+        /// 从功能上看，这等价于 `self.clamp(-limit, limit)`，但意图表达得更明确。
         ///
-        /// # Examples
+        /// # 示例
         ///
         /// ```
         /// #![feature(clamp_magnitude)]

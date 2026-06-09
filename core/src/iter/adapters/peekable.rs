@@ -2,11 +2,9 @@ use crate::iter::adapters::SourceIter;
 use crate::iter::{FusedIterator, TrustedLen};
 use crate::ops::{ControlFlow, Try};
 
-/// An iterator with a `peek()` that returns an optional reference to the next
-/// element.
+/// 带有 `peek()` 的迭代器，可以返回下一元素的可选引用。
 ///
-/// This `struct` is created by the [`peekable`] method on [`Iterator`]. See its
-/// documentation for more.
+/// 该 `struct` 由 [`Iterator`] 上的 [`peekable`] 方法创建。更多信息见该方法文档。
 ///
 /// [`peekable`]: Iterator::peekable
 /// [`Iterator`]: trait.Iterator.html
@@ -16,7 +14,7 @@ use crate::ops::{ControlFlow, Try};
 #[rustc_diagnostic_item = "IterPeekable"]
 pub struct Peekable<I: Iterator> {
     iter: I,
-    /// Remember a peeked value, even if it was None.
+    /// 记住已经 peek 到的值，即使它是 None。
     peeked: Option<Option<I::Item>>,
 }
 
@@ -26,10 +24,9 @@ impl<I: Iterator> Peekable<I> {
     }
 }
 
-// Peekable must remember if a None has been seen in the `.peek()` method.
-// It ensures that `.peek(); .peek();` or `.peek(); .next();` only advances the
-// underlying iterator at most once. This does not by itself make the iterator
-// fused.
+// Peekable 必须记住 `.peek()` 方法是否见过 None。
+// 这保证 `.peek(); .peek();` 或 `.peek(); .next();` 最多只推进底层迭代器一次。
+// 这个状态本身不会让迭代器变成 fused。
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<I: Iterator> Iterator for Peekable<I> {
     type Item = I::Item;
@@ -174,40 +171,38 @@ impl<I: ExactSizeIterator> ExactSizeIterator for Peekable<I> {}
 impl<I: FusedIterator> FusedIterator for Peekable<I> {}
 
 impl<I: Iterator> Peekable<I> {
-    /// Returns a reference to the next() value without advancing the iterator.
+    /// 返回对 next() 值的引用，但不推进迭代器。
     ///
-    /// Like [`next`], if there is a value, it is wrapped in a `Some(T)`.
-    /// But if the iteration is over, `None` is returned.
+    /// 和 [`next`] 一样，如果存在值，就把它包在 `Some(T)` 中；如果迭代结束，
+    /// 则返回 `None`。
     ///
     /// [`next`]: Iterator::next
     ///
-    /// Because `peek()` returns a reference, and many iterators iterate over
-    /// references, there can be a possibly confusing situation where the
-    /// return value is a double reference. You can see this effect in the
-    /// examples below.
+    /// 因为 `peek()` 返回引用，而许多迭代器本身也遍历引用，所以返回值可能出现双重
+    /// 引用，看起来有些令人困惑。下面的示例展示了这种效果。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage:
+    /// 基本用法:
     ///
     /// ```
     /// let xs = [1, 2, 3];
     ///
     /// let mut iter = xs.iter().peekable();
     ///
-    /// // peek() lets us see into the future
+    /// // peek() 让我们能看到下一项。
     /// assert_eq!(iter.peek(), Some(&&1));
     /// assert_eq!(iter.next(), Some(&1));
     ///
     /// assert_eq!(iter.next(), Some(&2));
     ///
-    /// // The iterator does not advance even if we `peek` multiple times
+    /// // 即使多次 `peek`，迭代器也不会推进。
     /// assert_eq!(iter.peek(), Some(&&3));
     /// assert_eq!(iter.peek(), Some(&&3));
     ///
     /// assert_eq!(iter.next(), Some(&3));
     ///
-    /// // After the iterator is finished, so is `peek()`
+    /// // 迭代器结束后，`peek()` 也结束。
     /// assert_eq!(iter.peek(), None);
     /// assert_eq!(iter.next(), None);
     /// ```
@@ -218,37 +213,35 @@ impl<I: Iterator> Peekable<I> {
         self.peeked.get_or_insert_with(|| iter.next()).as_ref()
     }
 
-    /// Returns a mutable reference to the next() value without advancing the iterator.
+    /// 返回对 next() 值的可变引用，但不推进迭代器。
     ///
-    /// Like [`next`], if there is a value, it is wrapped in a `Some(T)`.
-    /// But if the iteration is over, `None` is returned.
+    /// 和 [`next`] 一样，如果存在值，就把它包在 `Some(T)` 中；如果迭代结束，
+    /// 则返回 `None`。
     ///
-    /// Because `peek_mut()` returns a reference, and many iterators iterate over
-    /// references, there can be a possibly confusing situation where the
-    /// return value is a double reference. You can see this effect in the examples
-    /// below.
+    /// 因为 `peek_mut()` 返回引用，而许多迭代器本身也遍历引用，所以返回值可能出现
+    /// 双重引用。下面的示例展示了这种效果。
     ///
     /// [`next`]: Iterator::next
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage:
+    /// 基本用法:
     ///
     /// ```
     /// let mut iter = [1, 2, 3].iter().peekable();
     ///
-    /// // Like with `peek()`, we can see into the future without advancing the iterator.
+    /// // 和 `peek()` 一样，可以在不推进迭代器的情况下看到下一项。
     /// assert_eq!(iter.peek_mut(), Some(&mut &1));
     /// assert_eq!(iter.peek_mut(), Some(&mut &1));
     /// assert_eq!(iter.next(), Some(&1));
     ///
-    /// // Peek into the iterator and set the value behind the mutable reference.
+    /// // 查看迭代器下一项，并设置可变引用背后的值。
     /// if let Some(p) = iter.peek_mut() {
     ///     assert_eq!(*p, &2);
     ///     *p = &5;
     /// }
     ///
-    /// // The value we put in reappears as the iterator continues.
+    /// // 放入的值会在迭代继续时重新出现。
     /// assert_eq!(iter.collect::<Vec<_>>(), vec![&5, &3]);
     /// ```
     #[inline]
@@ -258,29 +251,28 @@ impl<I: Iterator> Peekable<I> {
         self.peeked.get_or_insert_with(|| iter.next()).as_mut()
     }
 
-    /// Consume and return the next value of this iterator if a condition is true.
+    /// 如果条件为 true，则消耗并返回该迭代器的下一个值。
     ///
-    /// If `func` returns `true` for the next value of this iterator, consume and return it.
-    /// Otherwise, return `None`.
+    /// 如果 `func` 对该迭代器的下一个值返回 `true`，则消耗并返回该值；否则返回 `None`。
     ///
-    /// # Examples
-    /// Consume a number if it's equal to 0.
+    /// # 示例
+    /// 如果数字等于 0，则消耗它。
     /// ```
     /// let mut iter = (0..5).peekable();
-    /// // The first item of the iterator is 0; consume it.
+    /// // 迭代器第一项是 0；消耗它。
     /// assert_eq!(iter.next_if(|&x| x == 0), Some(0));
-    /// // The next item returned is now 1, so `next_if` will return `None`.
+    /// // 现在下一项是 1，因此 `next_if` 会返回 `None`。
     /// assert_eq!(iter.next_if(|&x| x == 0), None);
-    /// // `next_if` retains the next item if the predicate evaluates to `false` for it.
+    /// // 如果 predicate 对下一项求值为 `false`，`next_if` 会保留该项。
     /// assert_eq!(iter.next(), Some(1));
     /// ```
     ///
-    /// Consume any number less than 10.
+    /// 消耗所有小于 10 的数字。
     /// ```
     /// let mut iter = (1..20).peekable();
-    /// // Consume all numbers less than 10
+    /// // 消耗所有小于 10 的数字。
     /// while iter.next_if(|&x| x < 10).is_some() {}
-    /// // The next value returned will be 10
+    /// // 下一个返回值将是 10。
     /// assert_eq!(iter.next(), Some(10));
     /// ```
     #[stable(feature = "peekable_next_if", since = "1.51.0")]
@@ -288,7 +280,7 @@ impl<I: Iterator> Peekable<I> {
         match self.next() {
             Some(matched) if func(&matched) => Some(matched),
             other => {
-                // Since we called `self.next()`, we consumed `self.peeked`.
+                // 因为调用了 `self.next()`，所以已经消耗了 `self.peeked`。
                 assert!(self.peeked.is_none());
                 self.peeked = Some(other);
                 None
@@ -296,17 +288,17 @@ impl<I: Iterator> Peekable<I> {
         }
     }
 
-    /// Consume and return the next item if it is equal to `expected`.
+    /// 如果下一项等于 `expected`，则消耗并返回该项。
     ///
-    /// # Example
-    /// Consume a number if it's equal to 0.
+    /// # 示例
+    /// 如果数字等于 0，则消耗它。
     /// ```
     /// let mut iter = (0..5).peekable();
-    /// // The first item of the iterator is 0; consume it.
+    /// // 迭代器第一项是 0；消耗它。
     /// assert_eq!(iter.next_if_eq(&0), Some(0));
-    /// // The next item returned is now 1, so `next_if_eq` will return `None`.
+    /// // 现在下一项是 1，因此 `next_if_eq` 会返回 `None`。
     /// assert_eq!(iter.next_if_eq(&0), None);
-    /// // `next_if_eq` retains the next item if it was not equal to `expected`.
+    /// // 如果下一项不等于 `expected`，`next_if_eq` 会保留该项。
     /// assert_eq!(iter.next(), Some(1));
     /// ```
     #[stable(feature = "peekable_next_if", since = "1.51.0")]
@@ -318,24 +310,21 @@ impl<I: Iterator> Peekable<I> {
         self.next_if(|next| next == expected)
     }
 
-    /// Consumes the next value of this iterator and applies a function `f` on it,
-    /// returning the result if the closure returns `Ok`.
+    /// 消耗该迭代器的下一个值并对其应用函数 `f`；如果闭包返回 `Ok`，则返回其中结果。
     ///
-    /// Otherwise if the closure returns `Err` the value is put back for the next iteration.
+    /// 否则，如果闭包返回 `Err`，该值会被放回，供下一次迭代使用。
     ///
-    /// The content of the `Err` variant is typically the original value of the closure,
-    /// but this is not required. If a different value is returned,
-    /// the next `peek()` or `next()` call will result in this new value.
-    /// This is similar to modifying the output of `peek_mut()`.
+    /// `Err` 变体中的内容通常是传给闭包的原始值，但这不是强制要求。如果返回了不同值，
+    /// 下一次 `peek()` 或 `next()` 调用将得到这个新值。这类似于修改 `peek_mut()` 的输出。
     ///
-    /// If the closure panics, the next value will always be consumed and dropped
-    /// even if the panic is caught, because the closure never returned an `Err` value to put back.
+    /// 如果闭包 panic，下一个值总会被消耗并 drop；即使 panic 被捕获也是如此，因为闭包
+    /// 没有返回可放回的 `Err` 值。
     ///
-    /// See also: [`next_if_map_mut`](Self::next_if_map_mut).
+    /// 另见: [`next_if_map_mut`](Self::next_if_map_mut)。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Parse the leading decimal number from an iterator of characters.
+    /// 从字符迭代器中解析开头的十进制数。
     /// ```
     /// let mut iter = "125 GOTO 10".chars().peekable();
     /// let mut line_num = 0_u32;
@@ -346,7 +335,7 @@ impl<I: Iterator> Peekable<I> {
     /// assert_eq!(iter.collect::<String>(), " GOTO 10");
     /// ```
     ///
-    /// Matching custom types.
+    /// 匹配自定义类型。
     /// ```
     ///
     /// #[derive(Debug, PartialEq, Eq)]
@@ -357,15 +346,15 @@ impl<I: Iterator> Peekable<I> {
     ///     Blue(String),
     /// }
     ///
-    /// /// Combines all consecutive `Comment` nodes into a single one.
+    /// /// 将所有连续的 `Comment` 节点合并成单个节点。
     /// fn combine_comments(nodes: Vec<Node>) -> Vec<Node> {
     ///     let mut result = Vec::with_capacity(nodes.len());
     ///     let mut iter = nodes.into_iter().peekable();
     ///     let mut comment_text = None::<String>;
     ///     loop {
-    ///         // Typically the closure in .next_if_map() matches on the input,
-    ///         //  extracts the desired pattern into an `Ok`,
-    ///         //  and puts the rest into an `Err`.
+    ///         // .next_if_map() 中的闭包通常会匹配输入，
+    ///         //  把期望的模式提取到 `Ok` 中，
+    ///         //  并把其余内容放入 `Err`。
     ///         while let Some(text) = iter.next_if_map(|node| match node {
     ///             Node::Comment(text) => Ok(text),
     ///             other => Err(other),
@@ -384,7 +373,7 @@ impl<I: Iterator> Peekable<I> {
     ///     }
     ///     result
     /// }
-    ///# assert_eq!( // hiding the test to avoid cluttering the documentation.
+    ///# assert_eq!( // 隐藏测试，避免文档过于拥挤。
     ///#     combine_comments(vec![
     ///#         Node::Comment("The".to_owned()),
     ///#         Node::Comment("Quick".to_owned()),
@@ -420,20 +409,20 @@ impl<I: Iterator> Peekable<I> {
         None
     }
 
-    /// Gives a mutable reference to the next value of the iterator and applies a function `f` to it,
-    /// returning the result and advancing the iterator if `f` returns `Some`.
+    /// 给出迭代器下一个值的可变引用，并对其应用函数 `f`；如果 `f` 返回 `Some`，
+    /// 则返回该结果并推进迭代器。
     ///
-    /// Otherwise, if `f` returns `None`, the next value is kept for the next iteration.
+    /// 否则，如果 `f` 返回 `None`，下一个值会保留到下一次迭代。
     ///
-    /// If `f` panics, the item that is consumed from the iterator as if `Some` was returned from `f`.
-    /// The value will be dropped.
+    /// 如果 `f` panic，从迭代器中取出的项会像 `f` 返回了 `Some` 一样被消耗。
+    /// 该值随后会被 drop。
     ///
-    /// This is similar to [`next_if_map`](Self::next_if_map), except ownership of the item is not given to `f`.
-    /// This can be preferable if `f` would copy the item anyway.
+    /// 这类似于 [`next_if_map`](Self::next_if_map)，区别是不会把项的所有权交给 `f`。
+    /// 如果 `f` 本来就会复制该项，这种方式可能更合适。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Parse the leading decimal number from an iterator of characters.
+    /// 从字符迭代器中解析开头的十进制数。
     /// ```
     /// let mut iter = "125 GOTO 10".chars().peekable();
     /// let mut line_num = 0_u32;
@@ -470,7 +459,7 @@ where
 
     #[inline]
     unsafe fn as_inner(&mut self) -> &mut I::Source {
-        // SAFETY: unsafe function forwarding to unsafe function with the same requirements
+        // SAFETY: 转发到具有相同要求的 unsafe 函数。
         unsafe { SourceIter::as_inner(&mut self.iter) }
     }
 }

@@ -1,44 +1,36 @@
-//! Utilities for working with borrowed data.
+//! 用于处理借用数据的工具。
 
 #![stable(feature = "rust1", since = "1.0.0")]
 
-/// A trait for borrowing data.
+/// 一个用于借用数据的 trait。
 ///
-/// In Rust, it is common to provide different representations of a type for
-/// different use cases. For instance, storage location and management for a
-/// value can be specifically chosen as appropriate for a particular use via
-/// pointer types such as [`Box<T>`] or [`Rc<T>`]. Beyond these generic
-/// wrappers that can be used with any type, some types provide optional
-/// facets providing potentially costly functionality. An example for such a
-/// type is [`String`] which adds the ability to extend a string to the basic
-/// [`str`]. This requires keeping additional information unnecessary for a
-/// simple, immutable string.
+/// 在 Rust 中,为同一类型针对不同的使用场景提供不同的表示形式是很常见的。
+/// 例如,一个值的存储位置与管理方式,可以通过诸如 [`Box<T>`] 或 [`Rc<T>`]
+/// 之类的指针类型,按特定用途的需要专门选定。除了这些可用于任意类型的通用
+/// 包装之外,某些类型还提供一些可选的“切面”(facet),带来可能开销不菲的
+/// 功能。这样一个类型的例子是 [`String`],它在基本的 [`str`] 之上增加了
+/// 扩展字符串的能力。这需要保存一些对于简单的、不可变的字符串而言并不必要的
+/// 额外信息。
 ///
-/// These types provide access to the underlying data through references
-/// to the type of that data. They are said to be ‘borrowed as’ that type.
-/// For instance, a [`Box<T>`] can be borrowed as `T` while a [`String`]
-/// can be borrowed as `str`.
+/// 这些类型通过指向其底层数据类型的引用来提供对底层数据的访问。我们说它们
+/// 可以“借用为”(borrowed as)那个类型。例如,[`Box<T>`] 可以借用为 `T`,
+/// 而 [`String`] 可以借用为 `str`。
 ///
-/// Types express that they can be borrowed as some type `T` by implementing
-/// `Borrow<T>`, providing a reference to a `T` in the trait’s
-/// [`borrow`] method. A type is free to borrow as several different types.
-/// If it wishes to mutably borrow as the type, allowing the underlying data
-/// to be modified, it can additionally implement [`BorrowMut<T>`].
+/// 类型通过实现 `Borrow<T>` 来表达自己可以借用为某个类型 `T`,具体做法是在
+/// 该 trait 的 [`borrow`] 方法中提供一个指向 `T` 的引用。一个类型可以自由地
+/// 借用为好几种不同的类型。如果它希望可变地借用为某个类型,从而允许修改底层
+/// 数据,它可以额外实现 [`BorrowMut<T>`]。
 ///
-/// Further, when providing implementations for additional traits, it needs
-/// to be considered whether they should behave identically to those of the
-/// underlying type as a consequence of acting as a representation of that
-/// underlying type. Generic code typically uses `Borrow<T>` when it relies
-/// on the identical behavior of these additional trait implementations.
-/// These traits will likely appear as additional trait bounds.
+/// 此外,在为额外的 trait 提供实现时,需要考虑:既然该类型充当其底层类型的
+/// 一种表示,那么这些 trait 实现是否应当表现得与底层类型的实现完全一致。
+/// 当泛型代码依赖这些额外 trait 实现的一致行为时,它通常会使用 `Borrow<T>`。
+/// 这些 trait 很可能会作为额外的 trait 约束出现。
 ///
-/// In particular `Eq`, `Ord` and `Hash` must be equivalent for
-/// borrowed and owned values: `x.borrow() == y.borrow()` should give the
-/// same result as `x == y`.
+/// 特别地,`Eq`、`Ord` 和 `Hash` 对于借用值与拥有值必须是等价的:
+/// `x.borrow() == y.borrow()` 应当给出与 `x == y` 相同的结果。
 ///
-/// If generic code merely needs to work for all types that can
-/// provide a reference to related type `T`, it is often better to use
-/// [`AsRef<T>`] as more types can safely implement it.
+/// 如果泛型代码只是需要对所有能提供相关类型 `T` 的引用的类型都能工作,
+/// 那么通常更好的选择是使用 [`AsRef<T>`],因为有更多类型能安全地实现它。
 ///
 /// [`Box<T>`]: ../../std/boxed/struct.Box.html
 /// [`Mutex<T>`]: ../../std/sync/struct.Mutex.html
@@ -46,18 +38,15 @@
 /// [`String`]: ../../std/string/struct.String.html
 /// [`borrow`]: Borrow::borrow
 ///
-/// # Examples
+/// # 示例
 ///
-/// As a data collection, [`HashMap<K, V>`] owns both keys and values. If
-/// the key’s actual data is wrapped in a managing type of some kind, it
-/// should, however, still be possible to search for a value using a
-/// reference to the key’s data. For instance, if the key is a string, then
-/// it is likely stored with the hash map as a [`String`], while it should
-/// be possible to search using a [`&str`][`str`]. Thus, `insert` needs to
-/// operate on a `String` while `get` needs to be able to use a `&str`.
+/// 作为一种数据集合,[`HashMap<K, V>`] 同时拥有键和值。然而,如果键的实际
+/// 数据被包裹在某种管理类型之中,那么应当仍然可以用一个指向键数据的引用来
+/// 搜索某个值。例如,如果键是字符串,那么它很可能以 [`String`] 的形式与
+/// 哈希表一起存储,而搜索时应当可以使用一个 [`&str`][`str`]。因此,`insert`
+/// 需要在一个 `String` 上操作,而 `get` 则需要能够使用一个 `&str`。
 ///
-/// Slightly simplified, the relevant parts of `HashMap<K, V>` look like
-/// this:
+/// 略作简化,`HashMap<K, V>` 中相关的部分看上去是这样的:
 ///
 /// ```
 /// use std::borrow::Borrow;
@@ -65,7 +54,7 @@
 ///
 /// pub struct HashMap<K, V> {
 ///     # marker: ::std::marker::PhantomData<(K, V)>,
-///     // fields omitted
+///     // 字段省略
 /// }
 ///
 /// impl<K, V> HashMap<K, V> {
@@ -87,33 +76,24 @@
 /// }
 /// ```
 ///
-/// The entire hash map is generic over a key type `K`. Because these keys
-/// are stored with the hash map, this type has to own the key’s data.
-/// When inserting a key-value pair, the map is given such a `K` and needs
-/// to find the correct hash bucket and check if the key is already present
-/// based on that `K`. It therefore requires `K: Hash + Eq`.
+/// 整个哈希表对键类型 `K` 是泛型的。由于这些键与哈希表一起存储,该类型必须
+/// 拥有键的数据。在插入一个键值对时,该映射会得到这样一个 `K`,并需要基于
+/// 这个 `K` 找到正确的哈希桶、检查该键是否已经存在。因此它要求 `K: Hash + Eq`。
 ///
-/// When searching for a value in the map, however, having to provide a
-/// reference to a `K` as the key to search for would require to always
-/// create such an owned value. For string keys, this would mean a `String`
-/// value needs to be created just for the search for cases where only a
-/// `str` is available.
+/// 然而,在映射中搜索某个值时,如果必须提供一个指向 `K` 的引用来作为待搜索的
+/// 键,那就总是不得不创建这样一个拥有所有权的值。对于字符串键来说,这意味着
+/// 在只有 `str` 可用的情形下,也得仅仅为了搜索而创建一个 `String` 值。
 ///
-/// Instead, the `get` method is generic over the type of the underlying key
-/// data, called `Q` in the method signature above. It states that `K`
-/// borrows as a `Q` by requiring that `K: Borrow<Q>`. By additionally
-/// requiring `Q: Hash + Eq`, it signals the requirement that `K` and `Q`
-/// have implementations of the `Hash` and `Eq` traits that produce identical
-/// results.
+/// 与此不同,`get` 方法对底层键数据的类型(在上面的方法签名中称为 `Q`)是
+/// 泛型的。它通过要求 `K: Borrow<Q>` 来声明 `K` 借用为一个 `Q`。又通过额外
+/// 要求 `Q: Hash + Eq`,它表明了这样一个要求:`K` 和 `Q` 对 `Hash` 与 `Eq`
+/// trait 的实现必须产生一致的结果。
 ///
-/// The implementation of `get` relies in particular on identical
-/// implementations of `Hash` by determining the key’s hash bucket by calling
-/// `Hash::hash` on the `Q` value even though it inserted the key based on
-/// the hash value calculated from the `K` value.
+/// `get` 的实现尤其依赖 `Hash` 的一致实现:它通过对 `Q` 值调用 `Hash::hash`
+/// 来确定该键的哈希桶,尽管它当初是基于由 `K` 值算出的哈希值来插入该键的。
 ///
-/// As a consequence, the hash map breaks if a `K` wrapping a `Q` value
-/// produces a different hash than `Q`. For instance, imagine you have a
-/// type that wraps a string but compares ASCII letters ignoring their case:
+/// 因此,如果包裹着 `Q` 值的 `K` 产生的哈希与 `Q` 不同,哈希表就会出错。
+/// 例如,设想你有一个包裹字符串、但在比较时忽略 ASCII 字母大小写的类型:
 ///
 /// ```
 /// pub struct CaseInsensitiveString(String);
@@ -127,8 +107,8 @@
 /// impl Eq for CaseInsensitiveString { }
 /// ```
 ///
-/// Because two equal values need to produce the same hash value, the
-/// implementation of `Hash` needs to ignore ASCII case, too:
+/// 由于两个相等的值需要产生相同的哈希值,`Hash` 的实现也需要忽略 ASCII
+/// 大小写:
 ///
 /// ```
 /// # use std::hash::{Hash, Hasher};
@@ -142,12 +122,11 @@
 /// }
 /// ```
 ///
-/// Can `CaseInsensitiveString` implement `Borrow<str>`? It certainly can
-/// provide a reference to a string slice via its contained owned string.
-/// But because its `Hash` implementation differs, it behaves differently
-/// from `str` and therefore must not, in fact, implement `Borrow<str>`.
-/// If it wants to allow others access to the underlying `str`, it can do
-/// that via `AsRef<str>` which doesn’t carry any extra requirements.
+/// `CaseInsensitiveString` 能实现 `Borrow<str>` 吗?它当然可以通过其内含的
+/// 拥有所有权的字符串提供一个指向字符串切片的引用。但由于它的 `Hash` 实现
+/// 不同,它的行为与 `str` 不一致,因此实际上 *不得* 实现 `Borrow<str>`。
+/// 如果它想允许别人访问底层的 `str`,可以通过 `AsRef<str>` 来做到——后者
+/// 不附带任何额外要求。
 ///
 /// [`Hash`]: crate::hash::Hash
 /// [`HashMap<K, V>`]: ../../std/collections/struct.HashMap.html
@@ -156,9 +135,9 @@
 #[rustc_diagnostic_item = "Borrow"]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
 pub const trait Borrow<Borrowed: ?Sized> {
-    /// Immutably borrows from an owned value.
+    /// 从一个拥有所有权的值不可变地借用。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::borrow::Borrow;
@@ -179,18 +158,17 @@ pub const trait Borrow<Borrowed: ?Sized> {
     fn borrow(&self) -> &Borrowed;
 }
 
-/// A trait for mutably borrowing data.
+/// 一个用于可变地借用数据的 trait。
 ///
-/// As a companion to [`Borrow<T>`] this trait allows a type to borrow as
-/// an underlying type by providing a mutable reference. See [`Borrow<T>`]
-/// for more information on borrowing as another type.
+/// 作为 [`Borrow<T>`] 的搭档,本 trait 允许一个类型通过提供可变引用来借用为
+/// 某个底层类型。关于借用为另一种类型的更多信息,参见 [`Borrow<T>`]。
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_diagnostic_item = "BorrowMut"]
 #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
 pub const trait BorrowMut<Borrowed: ?Sized>: [const] Borrow<Borrowed> {
-    /// Mutably borrows from an owned value.
+    /// 从一个拥有所有权的值可变地借用。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::borrow::BorrowMut;

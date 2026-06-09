@@ -1,66 +1,68 @@
 use crate::iter::Step;
 use crate::num::NonZero;
 
-/// Same as FusedIterator
+/// 与 `FusedIterator` 语义相同的内部可信标记。
 ///
-/// # Safety
+/// # 安全性(Safety）
 ///
-/// This is used for specialization. Therefore implementations must not
-/// be lifetime-dependent.
+/// 该 trait 用于 specialization。实现不能依赖生命周期差异来改变 fused 语义；
+/// 否则编译器和库内特化路径可能把某个实例当作“结束后永久返回 `None`”，而实际
+/// 另一个生命周期实例又会恢复产出元素，导致优化分支的假设被破坏。
 #[unstable(issue = "none", feature = "trusted_fused")]
 #[doc(hidden)]
 #[rustc_specialization_trait]
 pub unsafe trait TrustedFused {}
 
-/// An iterator that always continues to yield `None` when exhausted.
+/// 耗尽后会一直继续产出 `None` 的迭代器。
 ///
-/// Calling next on a fused iterator that has returned `None` once is guaranteed
-/// to return [`None`] again. This trait should be implemented by all iterators
-/// that behave this way because it allows optimizing [`Iterator::fuse()`].
+/// 对已经返回过一次 [`None`] 的 fused 迭代器再次调用 `next`，保证仍返回 [`None`]。
+/// 这比普通 [`Iterator`] 的契约更强: 普通迭代器允许在 `None` 后重新返回
+/// `Some(_)`，而 `FusedIterator` 明确禁止这种恢复。
 ///
-/// Note: In general, you should not use `FusedIterator` in generic bounds if
-/// you need a fused iterator. Instead, you should just call [`Iterator::fuse()`]
-/// on the iterator. If the iterator is already fused, the additional [`Fuse`]
-/// wrapper will be a no-op with no performance penalty.
+/// 所有实际满足该语义的迭代器都应实现本 trait，因为它允许 [`Iterator::fuse()`]
+/// 和其他适配器跳过额外状态检查。
+///
+/// 注意: 如果泛型代码需要一个 fused 迭代器，通常不应把 `FusedIterator` 写成泛型
+/// bound，而应直接对传入迭代器调用 [`Iterator::fuse()`]。若迭代器本来已经 fused，
+/// 额外的 [`Fuse`] 包装会被优化成无操作，没有性能开销。
 ///
 /// [`Fuse`]: crate::iter::Fuse
 #[stable(feature = "fused", since = "1.26.0")]
 #[rustc_unsafe_specialization_marker]
-// FIXME: this should be a #[marker] and have another blanket impl for T: TrustedFused
-// but that ICEs iter::Fuse specializations.
+// FIXME: 这里理论上应是 #[marker]，并为 T: TrustedFused 再提供一个 blanket impl，
+// 但那会触发 iter::Fuse specialization 的 ICE。
 #[lang = "fused_iterator"]
 pub trait FusedIterator: Iterator {}
 
 #[stable(feature = "fused", since = "1.26.0")]
 impl<I: FusedIterator + ?Sized> FusedIterator for &mut I {}
 
-/// An iterator that reports an accurate length using size_hint.
+/// 使用 `size_hint` 报告可信准确长度的迭代器。
 ///
-/// The iterator reports a size hint where it is either exact
-/// (lower bound is equal to upper bound), or the upper bound is [`None`].
-/// The upper bound must only be [`None`] if the actual iterator length is
-/// larger than [`usize::MAX`]. In that case, the lower bound must be
-/// [`usize::MAX`], resulting in an [`Iterator::size_hint()`] of
-/// `(usize::MAX, None)`.
+/// 迭代器报告的 size hint 必须满足两种形式之一: 要么精确，即下界等于上界；
+/// 要么上界为 [`None`]。上界只有在实际长度大于 [`usize::MAX`] 时才允许为
+/// [`None`]；这种情况下下界必须是 [`usize::MAX`]，也就是
+/// [`Iterator::size_hint()`] 返回 `(usize::MAX, None)`。
 ///
-/// The iterator must produce exactly the number of elements it reported
-/// or diverge before reaching the end.
+/// 迭代器必须精确地产出自己报告的元素数量，或者在到达末尾前发散。和
+/// `ExactSizeIterator` 不同，`TrustedLen` 是 unsafe trait，消费者可以在 unsafe
+/// 代码中依赖它来预留并初始化内存；错误实现可能让消费者越界写入、读取未初始化
+/// 元素或错误地跳过检查，从而造成 UB。
 ///
-/// # When *shouldn't* an adapter be `TrustedLen`?
+/// # 适配器何时不应实现 `TrustedLen`?
 ///
-/// If an adapter makes an iterator *shorter* by a given amount, then it's
-/// usually incorrect for that adapter to implement `TrustedLen`.  The inner
-/// iterator might return more than `usize::MAX` items, but there's no way to
-/// know what `k` elements less than that will be, since the `size_hint` from
-/// the inner iterator has already saturated and lost that information.
+/// 如果适配器会按某个数量让迭代器变短，它通常不应实现 `TrustedLen`。内层迭代器
+/// 可能实际返回超过 `usize::MAX` 项，但它的 `size_hint` 已经饱和并丢失了精确信息；
+/// 此时无法知道“少 `k` 个元素”后的真实长度。
 ///
-/// This is why [`Skip<I>`](crate::iter::Skip) isn't `TrustedLen`, even when
-/// `I` implements `TrustedLen`.
+/// 这就是 [`Skip<I>`](crate::iter::Skip) 即使在 `I` 实现 `TrustedLen` 时也不实现
+/// `TrustedLen` 的原因。
 ///
-/// # Safety
+/// # 安全性(Safety）
 ///
-/// This trait must only be implemented when the contract is upheld. Consumers
-/// of this trait must inspect [`Iterator::size_hint()`]’s upper bound.
+/// 只有在完全维护上述契约时才能实现该 trait。消费者必须检查
+/// [`Iterator::size_hint()`] 的上界: `Some(upper)` 表示可以信任接下来至少且至多
+/// 有 `upper` 项；`None` 只表示长度超过 [`usize::MAX`]，不能被当作“未知但有限”。
 #[unstable(feature = "trusted_len", issue = "37572")]
 #[rustc_unsafe_specialization_marker]
 pub unsafe trait TrustedLen: Iterator {}
@@ -68,17 +70,14 @@ pub unsafe trait TrustedLen: Iterator {}
 #[unstable(feature = "trusted_len", issue = "37572")]
 unsafe impl<I: TrustedLen + ?Sized> TrustedLen for &mut I {}
 
-/// An iterator that when yielding an item will have taken at least one element
-/// from its underlying [`SourceIter`].
+/// 每产出一项时都至少从底层 [`SourceIter`] 取走一个元素的迭代器。
 ///
-/// Calling any method that advances the iterator, e.g.  [`next()`] or [`try_fold()`],
-/// guarantees that for each step at least one value of the iterator's underlying source
-/// has been moved out and the result of the iterator chain could be inserted
-/// in its place, assuming structural constraints of the source allow such an insertion.
-/// In other words this trait indicates that an iterator pipeline can be collected in place.
+/// 调用任何会推进迭代器的方法，例如 [`next()`] 或 [`try_fold()`]，都保证每一步至少
+/// 已经从迭代器底层 source 中移走一个值；如果 source 的结构允许，就可以把迭代器
+/// 链产出的结果写回这个腾出的槽位。换句话说，该 trait 表示这条迭代器流水线可以
+/// 被原地收集。
 ///
-/// The primary use of this trait is in-place iteration. Refer to the [`vec::in_place_collect`]
-/// module documentation for more information.
+/// 该 trait 的主要用途是原地迭代。更多信息见 [`vec::in_place_collect`] 模块文档。
 ///
 /// [`vec::in_place_collect`]: ../../../../alloc/vec/in_place_collect/index.html
 /// [`SourceIter`]: crate::iter::SourceIter
@@ -88,29 +87,26 @@ unsafe impl<I: TrustedLen + ?Sized> TrustedLen for &mut I {}
 #[doc(hidden)]
 #[rustc_specialization_trait]
 pub unsafe trait InPlaceIterable {
-    /// The product of one-to-many item expansions that happen throughout the iterator pipeline.
-    /// E.g. [[u8; 4]; 4].iter().flatten().flatten() would have a `EXPAND_BY` of 16.
-    /// This is an upper bound, i.e. the transformations will produce at most this many items per
-    /// input. It's meant for layout calculations.
+    /// 迭代器流水线中所有一对多展开倍数的乘积。
+    /// 例如 [[u8; 4]; 4].iter().flatten().flatten() 的 `EXPAND_BY` 为 16。
+    /// 这是上界，即每个输入最多会产生这么多输出项，用于布局计算。
     const EXPAND_BY: Option<NonZero<usize>>;
-    /// The product of many-to-one item reductions that happen throughout the iterator pipeline.
-    /// E.g. [u8].iter().array_chunks::<4>().array_chunks::<4>() would have a `MERGE_BY` of 16.
-    /// This is a lower bound, i.e. the transformations will consume at least this many items per
-    /// output.
+    /// 迭代器流水线中所有多对一归并倍数的乘积。
+    /// 例如 [u8].iter().array_chunks::<4>().array_chunks::<4>() 的 `MERGE_BY` 为 16。
+    /// 这是下界，即每个输出至少会消耗这么多输入项。
     const MERGE_BY: Option<NonZero<usize>>;
 }
 
-/// A type that upholds all invariants of [`Step`].
+/// 维护 [`Step`] 全部不变量的类型。
 ///
-/// The invariants of [`Step::steps_between()`] are a superset of the invariants
-/// of [`TrustedLen`]. As such, [`TrustedLen`] is implemented for all range
-/// types with the same generic type argument.
+/// [`Step::steps_between()`] 的不变量是 [`TrustedLen`] 不变量的超集。因此，使用同一
+/// 泛型参数的所有 range 类型都可以基于 `TrustedStep` 实现 [`TrustedLen`]。
 ///
-/// # Safety
+/// # 安全性(Safety）
 ///
-/// The implementation of [`Step`] for the given type must guarantee all
-/// invariants of all methods are upheld. See the [`Step`] trait's documentation
-/// for details. Consumers are free to rely on the invariants in unsafe code.
+/// 给定类型的 [`Step`] 实现必须保证所有方法的不变量都成立。具体要求见 [`Step`]
+/// trait 文档。消费者可以在 unsafe 代码中依赖这些不变量，例如把 range 的长度当作
+/// 可信精确长度来进行未检查访问或预分配。
 #[unstable(feature = "trusted_step", issue = "85731")]
 #[rustc_specialization_trait]
 pub unsafe trait TrustedStep: Step + Copy {}

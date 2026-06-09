@@ -1,8 +1,11 @@
-//! Primitive traits and types representing basic properties of types.
+//! 表示类型基本属性的原始 trait 与类型。
 //!
-//! Rust types can be classified in various useful ways according to
-//! their intrinsic properties. These classifications are represented
-//! as traits.
+//! Rust 的类型可以依据其内在性质从多个有用的角度进行分类。这些分类
+//! 在语言中以 trait 的形式表达出来。例如:能否跨线程转移所有权
+//! (`Send`)、引用能否跨线程共享(`Sync`)、大小是否在编译期已知
+//! (`Sized`)、能否按位复制(`Copy`)等。这些 trait 大多是
+//! “标记 trait”(marker trait):它们没有任何方法,仅仅作为类型
+//! 性质的标记存在,供编译器在类型检查时依据它们做出安全性判断。
 
 #![stable(feature = "rust1", since = "1.0.0")]
 
@@ -20,20 +23,20 @@ use crate::fmt::Debug;
 use crate::hash::{Hash, Hasher};
 use crate::pin::UnsafePinned;
 
-// NOTE: for consistent error messages between `core` and `minicore`, all `diagnostic` attributes
-// should be replicated exactly in `minicore` (if `minicore` defines the item).
+// 注意:为了让 `core` 与 `minicore` 产生一致的错误信息,所有 `diagnostic` 属性
+// 在 `minicore` 中(若 `minicore` 也定义了该条目)都应当被一字不差地复制过去。
 
-/// Implements a given marker trait for multiple types at the same time.
+/// 同时为多个类型实现某个给定的标记 trait。
 ///
-/// The basic syntax looks like this:
+/// 基本语法如下:
 /// ```ignore private macro
 /// marker_impls! { MarkerTrait for u8, i8 }
 /// ```
-/// You can also implement `unsafe` traits
+/// 也可以实现 `unsafe` trait:
 /// ```ignore private macro
 /// marker_impls! { unsafe MarkerTrait for u8, i8 }
 /// ```
-/// Add attributes to all impls:
+/// 为所有 impl 添加属性:
 /// ```ignore private macro
 /// marker_impls! {
 ///     #[allow(lint)]
@@ -41,7 +44,7 @@ use crate::pin::UnsafePinned;
 ///     MarkerTrait for u8, i8
 /// }
 /// ```
-/// And use generics:
+/// 并且可以使用泛型:
 /// ```ignore private macro
 /// marker_impls! {
 ///     MarkerTrait for
@@ -53,7 +56,7 @@ use crate::pin::UnsafePinned;
 /// }
 /// ```
 #[unstable(feature = "internal_impls_macro", issue = "none")]
-// Allow implementations of `UnsizedConstParamTy` even though std cannot use that feature.
+// 允许实现 `UnsizedConstParamTy`,即便 std 无法使用该 feature。
 #[allow_internal_unstable(unsized_const_params)]
 macro marker_impls {
     ( $(#[$($meta:tt)*])* $Trait:ident for $({$($bounds:tt)*})? $T:ty $(, $($rest:tt)*)? ) => {
@@ -69,19 +72,32 @@ macro marker_impls {
     ( $(#[$($meta:tt)*])* unsafe $Trait:ident for ) => {},
 }
 
-/// Types that can be transferred across thread boundaries.
+/// 可以安全地跨线程边界转移所有权的类型。
 ///
-/// This trait is automatically implemented when the compiler determines it's
-/// appropriate.
+/// `Send` 是一个 **unsafe auto trait**(不安全的自动 trait):
+/// - **语义**:`T: Send` 表示把一个 `T` 类型的值的所有权从一个线程
+///   转移(move)到另一个线程是安全的。绝大多数类型都是 `Send`。
+/// - **自动派生**:作为 auto trait,编译器会自动为其所有成员都是
+///   `Send` 的复合类型(结构体、枚举、元组等)实现 `Send`,无需手写。
+///   只要有任何一个字段不是 `Send`,整个类型就自动不是 `Send`。
+/// - **unsafe 的含义**:当某个类型的字段无法让编译器自动推导(例如内部
+///   持有裸指针),而作者确知它在跨线程转移时是安全的,可以手写
+///   `unsafe impl Send`。此时 `unsafe` 关键字代表实现者向编译器
+///   **郑重承诺**该类型确实满足线程安全契约;一旦承诺不实,就会引入
+///   数据竞争,属于未定义行为。
 ///
-/// An example of a non-`Send` type is the reference-counting pointer
-/// [`rc::Rc`][`Rc`]. If two threads attempt to clone [`Rc`]s that point to the same
-/// reference-counted value, they might try to update the reference count at the
-/// same time, which is [undefined behavior][ub] because [`Rc`] doesn't use atomic
-/// operations. Its cousin [`sync::Arc`][arc] does use atomic operations (incurring
-/// some overhead) and thus is `Send`.
+/// 编译器正是依赖 `Send` 来做线程安全检查:像 `thread::spawn` 这类把
+/// 闭包/值移交给新线程的 API,其参数都带有 `T: Send` 约束。只要类型
+/// 不是 `Send`,这类调用就无法通过编译,从而在编译期阻止把不可跨线程
+/// 的值送进别的线程。
 ///
-/// See [the Nomicon](../../nomicon/send-and-sync.html) and the [`Sync`] trait for more details.
+/// 一个非 `Send` 类型的例子是引用计数指针 [`rc::Rc`][`Rc`]。如果两个
+/// 线程同时克隆指向同一个被引用计数值的 [`Rc`],它们可能会同时更新
+/// 引用计数,这是[未定义行为][ub],因为 [`Rc`] 并不使用原子操作。它的
+/// 表亲 [`sync::Arc`][arc] 使用了原子操作(因而带来一些额外开销),
+/// 所以是 `Send` 的。
+///
+/// 更多细节参见 [Nomicon](../../nomicon/send-and-sync.html) 以及 [`Sync`] trait。
 ///
 /// [`Rc`]: ../../std/rc/struct.Rc.html
 /// [arc]: ../../std/sync/struct.Arc.html
@@ -93,7 +109,7 @@ macro marker_impls {
     label = "`{Self}` cannot be sent between threads safely"
 )]
 pub unsafe auto trait Send {
-    // empty.
+    // 空。
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -101,33 +117,43 @@ impl<T: PointeeSized> !Send for *const T {}
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<T: PointeeSized> !Send for *mut T {}
 
-// Most instances arise automatically, but this instance is needed to link up `T: Sync` with
-// `&T: Send` (and it also removes the unsound default instance `T Send` -> `&T: Send` that would
-// otherwise exist).
+// 大多数实例是自动产生的,但这一条 impl 是必需的,用来把 `T: Sync` 与
+// `&T: Send` 关联起来(同时它还消除了原本会存在的、不可靠的默认实例
+// `T: Send` -> `&T: Send`)。
 #[stable(feature = "rust1", since = "1.0.0")]
-unsafe impl<T: Sync + PointeeSized> Send for &T {}
+unsafe impl<T: Sync + PointeeSized> Send for &T {}{}
 
-/// Types with a constant size known at compile time.
+/// 在编译期具有已知常量大小的类型。
 ///
-/// All type parameters have an implicit bound of `Sized`. The special syntax
-/// `?Sized` can be used to remove this bound if it's not appropriate.
+/// `Sized` 是一个语言项(lang item),也是 Rust 类型系统中最基础的约束之一。
+///
+/// **隐式约束**:所有泛型类型参数都带有一条隐式的 `Sized` 约束,也就是说
+/// 写 `fn foo<T>(x: T)` 等价于 `fn foo<T: Sized>(x: T)`。可以使用特殊语法
+/// `?Sized` 把这条约束去掉(当它不合适时),写成 `T: ?Sized` 表示
+/// “`T` 可能有大小,也可能没有”。
+///
+/// **为何需要它**:像切片 `[T]`、字符串切片 `str`、trait 对象 `dyn Trait`
+/// 这类类型是 *动态大小类型*(DST),它们的大小在编译期无法确定,因此是
+/// `!Sized` 的。这类值不能直接放在栈上、不能作为普通函数参数按值传递,
+/// 必须通过 *胖指针*(fat pointer,例如 `&[T]`、`Box<dyn Trait>`)来间接
+/// 访问——胖指针除了地址之外,还额外携带长度或虚表(vtable)指针等元数据,
+/// 以补足运行期才知道的大小信息。
 ///
 /// ```
 /// # #![allow(dead_code)]
 /// struct Foo<T>(T);
 /// struct Bar<T: ?Sized>(T);
 ///
-/// // struct FooUse(Foo<[i32]>); // error: Sized is not implemented for [i32]
+/// // struct FooUse(Foo<[i32]>); // 错误:[i32] 没有实现 Sized
 /// struct BarUse(Bar<[i32]>); // OK
 /// ```
 ///
-/// The one exception is the implicit `Self` type of a trait. A trait does not
-/// have an implicit `Sized` bound as this is incompatible with [trait object]s
-/// where, by definition, the trait needs to work with all possible implementors,
-/// and thus could be any size.
+/// 唯一的例外是 trait 中隐式的 `Self` 类型。trait 不带隐式的 `Sized` 约束,
+/// 因为这与 [trait 对象][trait object] 不兼容——按定义,trait 需要能与所有
+/// 可能的实现者协作,而它们可以是任意大小。
 ///
-/// Although Rust will let you bind `Sized` to a trait, you won't
-/// be able to use it to form a trait object later:
+/// 虽然 Rust 允许你给 trait 加上 `Sized` 约束,但之后你将无法用它构造出
+/// trait 对象:
 ///
 /// ```
 /// # #![allow(unused_variables)]
@@ -139,7 +165,7 @@ unsafe impl<T: Sync + PointeeSized> Send for &T {}
 /// impl Bar for Impl { }
 ///
 /// let x: &dyn Foo = &Impl;    // OK
-/// // let y: &dyn Bar = &Impl; // error: the trait `Bar` cannot be made into an object
+/// // let y: &dyn Bar = &Impl; // 错误:trait `Bar` 无法构造成 trait 对象
 /// ```
 ///
 /// [trait object]: ../../book/ch17-02-trait-objects.html
@@ -150,19 +176,19 @@ unsafe impl<T: Sync + PointeeSized> Send for &T {}
     message = "the size for values of type `{Self}` cannot be known at compilation time",
     label = "doesn't have a size known at compile-time"
 )]
-#[fundamental] // for Default, for example, which requires that `[T]: !Default` be evaluatable
+#[fundamental] // 例如 Default 需要它,因为 Default 要求能对 `[T]: !Default` 求值
 #[rustc_specialization_trait]
 #[rustc_deny_explicit_impl]
 #[rustc_do_not_implement_via_object]
-// `Sized` being coinductive, despite having supertraits, is okay as there are no user-written impls,
-// and we know that the supertraits are always implemented if the subtrait is just by looking at
-// the builtin impls.
+// `Sized` 虽然带有 supertrait 却是协归纳(coinductive)的,这没有问题:因为
+// 不存在用户手写的 impl,而且仅凭内建 impl 我们就能确定——只要子 trait 成立,
+// 其 supertrait 必然也成立。
 #[rustc_coinductive]
 pub trait Sized: MetaSized {
-    // Empty.
+    // 空。
 }
 
-/// Types with a size that can be determined from pointer metadata.
+/// 大小可以由指针元数据推算出来的类型。
 #[unstable(feature = "sized_hierarchy", issue = "144404")]
 #[lang = "meta_sized"]
 #[diagnostic::on_unimplemented(
@@ -173,14 +199,13 @@ pub trait Sized: MetaSized {
 #[rustc_specialization_trait]
 #[rustc_deny_explicit_impl]
 #[rustc_do_not_implement_via_object]
-// `MetaSized` being coinductive, despite having supertraits, is okay for the same reasons as
-// `Sized` above.
+// `MetaSized` 同样因上面针对 `Sized` 所述的原因而可以是协归纳的。
 #[rustc_coinductive]
 pub trait MetaSized: PointeeSized {
-    // Empty
+    // 空
 }
 
-/// Types that may or may not have a size.
+/// 可能有大小、也可能没有大小的类型。
 #[unstable(feature = "sized_hierarchy", issue = "144404")]
 #[lang = "pointee_sized"]
 #[diagnostic::on_unimplemented(
@@ -193,74 +218,71 @@ pub trait MetaSized: PointeeSized {
 #[rustc_do_not_implement_via_object]
 #[rustc_coinductive]
 pub trait PointeeSized {
-    // Empty
+    // 空
 }
 
-/// Types that can be "unsized" to a dynamically-sized type.
+/// 可以被“去尺寸化”(unsize)成动态大小类型的类型。
 ///
-/// For example, the sized array type `[i8; 2]` implements `Unsize<[i8]>` and
-/// `Unsize<dyn fmt::Debug>`.
+/// 例如,定长数组类型 `[i8; 2]` 实现了 `Unsize<[i8]>` 和
+/// `Unsize<dyn fmt::Debug>`。
 ///
-/// All implementations of `Unsize` are provided automatically by the compiler.
-/// Those implementations are:
+/// `Unsize` 的所有实现都由编译器自动提供。这些实现包括:
 ///
-/// - Arrays `[T; N]` implement `Unsize<[T]>`.
-/// - A type implements `Unsize<dyn Trait + 'a>` if all of these conditions are met:
-///   - The type implements `Trait`.
-///   - `Trait` is dyn-compatible[^1].
-///   - The type is sized.
-///   - The type outlives `'a`.
-/// - Trait objects `dyn TraitA + AutoA... + 'a` implement `Unsize<dyn TraitB + AutoB... + 'b>`
-///    if all of these conditions are met:
-///   - `TraitB` is a supertrait of `TraitA`.
-///   - `AutoB...` is a subset of `AutoA...`.
-///   - `'a` outlives `'b`.
-/// - Structs `Foo<..., T1, ..., Tn, ...>` implement `Unsize<Foo<..., U1, ..., Un, ...>>`
-///   where any number of (type and const) parameters may be changed if all of these conditions
-///   are met:
-///   - Only the last field of `Foo` has a type involving the parameters `T1`, ..., `Tn`.
-///   - All other parameters of the struct are equal.
-///   - `Field<T1, ..., Tn>: Unsize<Field<U1, ..., Un>>`, where `Field<...>` stands for the actual
-///     type of the struct's last field.
+/// - 数组 `[T; N]` 实现 `Unsize<[T]>`。
+/// - 当满足以下所有条件时,某类型实现 `Unsize<dyn Trait + 'a>`:
+///   - 该类型实现了 `Trait`。
+///   - `Trait` 是 dyn 兼容的[^1]。
+///   - 该类型是 sized 的。
+///   - 该类型的存活时间长于 `'a`。
+/// - 当满足以下所有条件时,trait 对象 `dyn TraitA + AutoA... + 'a` 实现
+///   `Unsize<dyn TraitB + AutoB... + 'b>`:
+///   - `TraitB` 是 `TraitA` 的 supertrait。
+///   - `AutoB...` 是 `AutoA...` 的子集。
+///   - `'a` 的存活时间长于 `'b`。
+/// - 结构体 `Foo<..., T1, ..., Tn, ...>` 实现
+///   `Unsize<Foo<..., U1, ..., Un, ...>>`,其中可以改变任意数量的(类型与
+///   const)参数,只要满足以下所有条件:
+///   - 只有 `Foo` 的最后一个字段的类型涉及参数 `T1`, ..., `Tn`。
+///   - 该结构体的其余所有参数都相等。
+///   - `Field<T1, ..., Tn>: Unsize<Field<U1, ..., Un>>`,其中 `Field<...>`
+///     代表该结构体最后一个字段的实际类型。
 ///
-/// `Unsize` is used along with [`ops::CoerceUnsized`] to allow
-/// "user-defined" containers such as [`Rc`] to contain dynamically-sized
-/// types. See the [DST coercion RFC][RFC982] and [the nomicon entry on coercion][nomicon-coerce]
-/// for more details.
+/// `Unsize` 与 [`ops::CoerceUnsized`] 配合使用,使得像 [`Rc`] 这类
+/// “用户自定义”的容器能够容纳动态大小类型。更多细节参见
+/// [DST 强转 RFC][RFC982] 以及 [Nomicon 中关于强转的条目][nomicon-coerce]。
 ///
 /// [`ops::CoerceUnsized`]: crate::ops::CoerceUnsized
 /// [`Rc`]: ../../std/rc/struct.Rc.html
 /// [RFC982]: https://github.com/rust-lang/rfcs/blob/master/text/0982-dst-coercion.md
 /// [nomicon-coerce]: ../../nomicon/coercions.html
-/// [^1]: Formerly known as *object safe*.
+/// [^1]: 旧称 *对象安全*(object safe)。
 #[unstable(feature = "unsize", issue = "18598")]
 #[lang = "unsize"]
 #[rustc_deny_explicit_impl]
 #[rustc_do_not_implement_via_object]
 pub trait Unsize<T: PointeeSized>: PointeeSized {
-    // Empty.
+    // 空。
 }
 
-/// Required trait for constants used in pattern matches.
+/// 用作模式匹配中常量的必备 trait。
 ///
-/// Constants are only allowed as patterns if (a) their type implements
-/// `PartialEq`, and (b) interpreting the value of the constant as a pattern
-/// is equivalent to calling `PartialEq`. This ensures that constants used as
-/// patterns cannot expose implementation details in an unexpected way or
-/// cause semver hazards.
+/// 常量只有在以下条件成立时才允许用作模式:(a) 它的类型实现了
+/// `PartialEq`,并且 (b) 把该常量的值当作模式来解释,等价于调用
+/// `PartialEq`。这样可以确保用作模式的常量不会以意料之外的方式暴露
+/// 实现细节,也不会造成 semver(语义化版本)上的隐患。
 ///
-/// This trait ensures point (b).
-/// Any type that derives `PartialEq` automatically implements this trait.
+/// 本 trait 用来确保第 (b) 点成立。任何派生了 `PartialEq` 的类型都会
+/// 自动实现本 trait。
 ///
-/// Implementing this trait (which is unstable) is a way for type authors to explicitly allow
-/// comparing const values of this type; that operation will recursively compare all fields
-/// (including private fields), even if that behavior differs from `PartialEq`. This can make it
-/// semver-breaking to add further private fields to a type.
+/// 手动实现本 trait(它是 unstable 的)是类型作者显式允许对该类型的
+/// const 值进行比较的一种方式;该比较操作会递归地比较所有字段
+/// (包括私有字段),即便这一行为与 `PartialEq` 有所不同。这也意味着
+/// 给类型新增私有字段可能会造成破坏 semver 的后果。
 #[unstable(feature = "structural_match", issue = "31434")]
 #[diagnostic::on_unimplemented(message = "the type `{Self}` does not `#[derive(PartialEq)]`")]
 #[lang = "structural_peq"]
 pub trait StructuralPartialEq {
-    // Empty.
+    // 空。
 }
 
 marker_impls! {
@@ -270,17 +292,27 @@ marker_impls! {
         isize, i8, i16, i32, i64, i128,
         bool,
         char,
-        str /* Technically requires `[u8]: StructuralPartialEq` */,
+        str /* 严格来说需要 `[u8]: StructuralPartialEq` */,
         (),
         {T, const N: usize} [T; N],
         {T} [T],
         {T: PointeeSized} &T,
 }
 
-/// Types whose values can be duplicated simply by copying bits.
+/// 仅靠复制比特位就能复制其值的类型。
 ///
-/// By default, variable bindings have 'move semantics.' In other
-/// words:
+/// `Copy` 与 `Clone` 是 Rust 中两种不同层次的“复制”概念,理解二者的区别
+/// 至关重要:
+/// - **`Copy`**:按位复制(memcpy),复制行为隐式发生且不可重载,而且要求
+///   类型 **不含 `Drop`**。一个 `Copy` 类型在被 move 之后,原值依然有效、
+///   可以继续使用——因为复制并不会“消耗”原值。
+/// - **`Clone`**:可能进行深拷贝、必须 **显式调用** `x.clone()`;允许执行
+///   复制资源所需的任意逻辑。
+///
+/// `Copy` 以 `Clone` 为 supertrait(即 `Copy: Clone`),所以凡是 `Copy`
+/// 的类型也必然实现 `Clone`;反之则不然。
+///
+/// 默认情况下,变量绑定具有“移动语义”(move semantics)。换句话说:
 ///
 /// ```
 /// #[derive(Debug)]
@@ -290,16 +322,16 @@ marker_impls! {
 ///
 /// let y = x;
 ///
-/// // `x` has moved into `y`, and so cannot be used
+/// // `x` 已经被 move 进 `y`,因此不能再被使用
 ///
-/// // println!("{x:?}"); // error: use of moved value
+/// // println!("{x:?}"); // 错误:使用了已被 move 的值
 /// ```
 ///
-/// However, if a type implements `Copy`, it instead has 'copy semantics':
+/// 然而,如果一个类型实现了 `Copy`,它转而具有“复制语义”(copy semantics):
 ///
 /// ```
-/// // We can derive a `Copy` implementation. `Clone` is also required, as it's
-/// // a supertrait of `Copy`.
+/// // 我们可以派生 `Copy` 的实现。同时还要求 `Clone`,因为它是 `Copy`
+/// // 的 supertrait。
 /// #[derive(Debug, Copy, Clone)]
 /// struct Foo;
 ///
@@ -307,25 +339,25 @@ marker_impls! {
 ///
 /// let y = x;
 ///
-/// // `y` is a copy of `x`
+/// // `y` 是 `x` 的一份拷贝
 ///
-/// println!("{x:?}"); // A-OK!
+/// println!("{x:?}"); // 完全没问题!
 /// ```
 ///
-/// It's important to note that in these two examples, the only difference is whether you
-/// are allowed to access `x` after the assignment. Under the hood, both a copy and a move
-/// can result in bits being copied in memory, although this is sometimes optimized away.
+/// 重要的是要注意:在上面两个例子中,唯一的区别在于赋值之后你是否还能
+/// 访问 `x`。在底层,无论是 copy 还是 move 都可能造成内存中比特位的复制,
+/// 尽管这种复制有时会被优化掉。
 ///
-/// ## How can I implement `Copy`?
+/// ## 如何为类型实现 `Copy`?
 ///
-/// There are two ways to implement `Copy` on your type. The simplest is to use `derive`:
+/// 为类型实现 `Copy` 有两种方式。最简单的是使用 `derive`:
 ///
 /// ```
 /// #[derive(Copy, Clone)]
 /// struct MyStruct;
 /// ```
 ///
-/// You can also implement `Copy` and `Clone` manually:
+/// 你也可以手动实现 `Copy` 和 `Clone`:
 ///
 /// ```
 /// struct MyStruct;
@@ -339,8 +371,7 @@ marker_impls! {
 /// }
 /// ```
 ///
-/// There is a small difference between the two. The `derive` strategy will also place a `Copy`
-/// bound on type parameters:
+/// 两者之间有一个细微差别。`derive` 策略还会给类型参数加上 `Copy` 约束:
 ///
 /// ```
 /// #[derive(Clone)]
@@ -349,30 +380,29 @@ marker_impls! {
 /// impl<T: Copy> Copy for MyStruct<T> { }
 /// ```
 ///
-/// This isn't always desired. For example, shared references (`&T`) can be copied regardless of
-/// whether `T` is `Copy`. Likewise, a generic struct containing markers such as [`PhantomData`]
-/// could potentially be duplicated with a bit-wise copy.
+/// 这并不总是我们想要的。例如,共享引用(`&T`)无论 `T` 是否 `Copy` 都可以
+/// 被复制。同理,一个含有诸如 [`PhantomData`] 之类标记的泛型结构体,也可能
+/// 可以通过按位复制来复制。
 ///
-/// ## What's the difference between `Copy` and `Clone`?
+/// ## `Copy` 与 `Clone` 有什么区别?
 ///
-/// Copies happen implicitly, for example as part of an assignment `y = x`. The behavior of
-/// `Copy` is not overloadable; it is always a simple bit-wise copy.
+/// 复制(copy)是隐式发生的,例如作为赋值 `y = x` 的一部分。`Copy` 的行为
+/// 不可重载;它永远是一次简单的按位复制。
 ///
-/// Cloning is an explicit action, `x.clone()`. The implementation of [`Clone`] can
-/// provide any type-specific behavior necessary to duplicate values safely. For example,
-/// the implementation of [`Clone`] for [`String`] needs to copy the pointed-to string
-/// buffer in the heap. A simple bitwise copy of [`String`] values would merely copy the
-/// pointer, leading to a double free down the line. For this reason, [`String`] is [`Clone`]
-/// but not `Copy`.
+/// 克隆(clone)是显式动作,即 `x.clone()`。[`Clone`] 的实现可以提供安全
+/// 复制值所需的任意类型相关行为。例如,[`String`] 的 [`Clone`] 实现需要
+/// 复制堆上被指向的字符串缓冲区。对 [`String`] 值做一次简单的按位复制只会
+/// 复制指针,从而在后续导致重复释放(double free)。正因如此,[`String`]
+/// 是 [`Clone`] 但不是 `Copy`。
 ///
-/// [`Clone`] is a supertrait of `Copy`, so everything which is `Copy` must also implement
-/// [`Clone`]. If a type is `Copy` then its [`Clone`] implementation only needs to return `*self`
-/// (see the example above).
+/// [`Clone`] 是 `Copy` 的 supertrait,所以凡是 `Copy` 的类型都必须同时实现
+/// [`Clone`]。如果一个类型是 `Copy`,那么它的 [`Clone`] 实现只需返回 `*self`
+/// 即可(见上面的例子)。
 ///
-/// ## When can my type be `Copy`?
+/// ## 我的类型什么时候可以是 `Copy`?
 ///
-/// A type can implement `Copy` if all of its components implement `Copy`. For example, this
-/// struct can be `Copy`:
+/// 当一个类型的所有成员都实现了 `Copy` 时,它就可以实现 `Copy`。例如,
+/// 下面这个结构体可以是 `Copy`:
 ///
 /// ```
 /// # #[allow(dead_code)]
@@ -383,8 +413,8 @@ marker_impls! {
 /// }
 /// ```
 ///
-/// A struct can be `Copy`, and [`i32`] is `Copy`, therefore `Point` is eligible to be `Copy`.
-/// By contrast, consider
+/// 一个结构体可以是 `Copy`,而 [`i32`] 是 `Copy`,因此 `Point` 有资格成为
+/// `Copy`。相比之下,考虑下面这个:
 ///
 /// ```
 /// # #![allow(dead_code)]
@@ -394,17 +424,17 @@ marker_impls! {
 /// }
 /// ```
 ///
-/// The struct `PointList` cannot implement `Copy`, because [`Vec<T>`] is not `Copy`. If we
-/// attempt to derive a `Copy` implementation, we'll get an error:
+/// 结构体 `PointList` 无法实现 `Copy`,因为 [`Vec<T>`] 不是 `Copy`。如果我们
+/// 试图派生 `Copy` 实现,会得到一个错误:
 ///
 /// ```text
 /// the trait `Copy` cannot be implemented for this type; field `points` does not implement `Copy`
 /// ```
 ///
-/// Shared references (`&T`) are also `Copy`, so a type can be `Copy`, even when it holds
-/// shared references of types `T` that are *not* `Copy`. Consider the following struct,
-/// which can implement `Copy`, because it only holds a *shared reference* to our non-`Copy`
-/// type `PointList` from above:
+/// 共享引用(`&T`)也是 `Copy`,所以即使一个类型持有的是 *非* `Copy` 类型
+/// `T` 的共享引用,该类型本身仍可以是 `Copy`。考虑下面这个结构体,它可以
+/// 实现 `Copy`,因为它只持有指向上面那个非 `Copy` 类型 `PointList` 的
+/// *共享引用*:
 ///
 /// ```
 /// # #![allow(dead_code)]
@@ -415,39 +445,38 @@ marker_impls! {
 /// }
 /// ```
 ///
-/// ## When *can't* my type be `Copy`?
+/// ## 我的类型什么时候 *不能* 是 `Copy`?
 ///
-/// Some types can't be copied safely. For example, copying `&mut T` would create an aliased
-/// mutable reference. Copying [`String`] would duplicate responsibility for managing the
-/// [`String`]'s buffer, leading to a double free.
+/// 有些类型无法被安全地复制。例如,复制 `&mut T` 会制造出别名(aliased)
+/// 的可变引用。复制 [`String`] 则会让多份值同时负责管理 [`String`] 的
+/// 缓冲区,从而导致重复释放。
 ///
-/// Generalizing the latter case, any type implementing [`Drop`] can't be `Copy`, because it's
-/// managing some resource besides its own [`size_of::<T>`] bytes.
+/// 把后一种情形推而广之:任何实现了 [`Drop`] 的类型都不能是 `Copy`,因为
+/// 它管理着除自身 [`size_of::<T>`] 字节之外的某种资源。这正是 `Copy` 要求
+/// 类型不含 `Drop` 的根本原因——按位复制无法复制 `Drop` 所管理的资源,而
+/// move 后原值仍然有效又意味着该资源会被释放两次。
 ///
-/// If you try to implement `Copy` on a struct or enum containing non-`Copy` data, you will get
-/// the error [E0204].
+/// 如果你试图在一个含有非 `Copy` 数据的结构体或枚举上实现 `Copy`,会得到
+/// 错误 [E0204]。
 ///
 /// [E0204]: ../../error_codes/E0204.html
 ///
-/// ## When *should* my type be `Copy`?
+/// ## 我的类型什么时候 *应该* 是 `Copy`?
 ///
-/// Generally speaking, if your type _can_ implement `Copy`, it should. Keep in mind, though,
-/// that implementing `Copy` is part of the public API of your type. If the type might become
-/// non-`Copy` in the future, it could be prudent to omit the `Copy` implementation now, to
-/// avoid a breaking API change.
+/// 一般来说,如果你的类型 _能够_ 实现 `Copy`,那么它就应该实现。不过要记住,
+/// 实现 `Copy` 属于类型公开 API 的一部分。如果该类型未来有可能变成
+/// 非 `Copy`,那么现在就略去 `Copy` 实现也许是明智之举,以避免造成破坏性的
+/// API 变更。
 ///
-/// ## Additional implementors
+/// ## 额外的实现者
 ///
-/// In addition to the [implementors listed below][impls],
-/// the following types also implement `Copy`:
+/// 除了[下方列出的实现者][impls],以下类型也实现了 `Copy`:
 ///
-/// * Function item types (i.e., the distinct types defined for each function)
-/// * Function pointer types (e.g., `fn() -> i32`)
-/// * Closure types, if they capture no value from the environment
-///   or if all such captured values implement `Copy` themselves.
-///   Note that variables captured by shared reference always implement `Copy`
-///   (even if the referent doesn't),
-///   while variables captured by mutable reference never implement `Copy`.
+/// * 函数项类型(即为每个函数定义的那个独一无二的类型)
+/// * 函数指针类型(例如 `fn() -> i32`)
+/// * 闭包类型,前提是它们不从环境中捕获任何值,或者所有被捕获的值自身都实现
+///   了 `Copy`。注意,以共享引用方式捕获的变量总是实现 `Copy`(即便被引用者
+///   本身并不是 `Copy`),而以可变引用方式捕获的变量则永远不是 `Copy`。
 ///
 /// [`Vec<T>`]: ../../std/vec/struct.Vec.html
 /// [`String`]: ../../std/string/struct.String.html
@@ -455,27 +484,26 @@ marker_impls! {
 /// [impls]: #implementors
 #[stable(feature = "rust1", since = "1.0.0")]
 #[lang = "copy"]
-// This is unsound, but required by `hashbrown`
-// FIXME(joboet): change `hashbrown` to use `TrivialClone`
+// 这是不可靠的,但 `hashbrown` 需要它。
+// FIXME(joboet):改用 `TrivialClone` 来让 `hashbrown` 不再依赖此处。
 #[rustc_unsafe_specialization_marker]
 #[rustc_diagnostic_item = "Copy"]
 pub trait Copy: Clone {
-    // Empty.
+    // 空。
 }
 
-/// Derive macro generating an impl of the trait `Copy`.
+/// 生成 `Copy` trait 实现的派生宏。
 #[rustc_builtin_macro]
 #[stable(feature = "builtin_macro_prelude", since = "1.38.0")]
 #[allow_internal_unstable(core_intrinsics, derive_clone_copy_internals)]
 pub macro Copy($item:item) {
-    /* compiler built-in */
+    /* 编译器内建 */
 }
 
-// Implementations of `Copy` for primitive types.
+// 为原始类型实现 `Copy`。
 //
-// Implementations that cannot be described in Rust
-// are implemented in `traits::SelectionContext::copy_clone_conditions()`
-// in `rustc_trait_selection`.
+// 那些无法用 Rust 描述的实现,定义在 `rustc_trait_selection` 中的
+// `traits::SelectionContext::copy_clone_conditions()` 里。
 marker_impls! {
     #[stable(feature = "rust1", since = "1.0.0")]
     Copy for
@@ -491,24 +519,22 @@ marker_impls! {
 #[unstable(feature = "never_type", issue = "35121")]
 impl Copy for ! {}
 
-/// Shared references can be copied, but mutable references *cannot*!
+/// 共享引用可以被复制,但可变引用 *不可以*!
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<T: PointeeSized> Copy for &T {}
 
-/// Marker trait for the types that are allowed in union fields and unsafe
-/// binder types.
+/// 用于标记那些允许出现在 union 字段以及 unsafe binder 类型中的类型的标记 trait。
 ///
-/// Implemented for:
-/// * `&T`, `&mut T` for all `T`,
-/// * `ManuallyDrop<T>` for all `T`,
-/// * tuples and arrays whose elements implement `BikeshedGuaranteedNoDrop`,
-/// * or otherwise, all types that are `Copy`.
+/// 已为以下类型实现:
+/// * 对所有 `T`:`&T`、`&mut T`,
+/// * 对所有 `T`:`ManuallyDrop<T>`,
+/// * 元素都实现了 `BikeshedGuaranteedNoDrop` 的元组与数组,
+/// * 或者,凡是 `Copy` 的所有类型。
 ///
-/// Notably, this doesn't include all trivially-destructible types for semver
-/// reasons.
+/// 值得注意的是,出于 semver 方面的原因,它并不包含所有可平凡析构的类型。
 ///
-/// Bikeshed name for now. This trait does not do anything other than reflect the
-/// set of types that are allowed within unions for field validity.
+/// 目前名字尚未敲定(bikeshed)。本 trait 除了反映 union 中为保证字段有效性
+/// 所允许的类型集合之外,不做任何其他事情。
 #[unstable(feature = "bikeshed_guaranteed_no_drop", issue = "none")]
 #[lang = "bikeshed_guaranteed_no_drop"]
 #[rustc_deny_explicit_impl]
@@ -516,62 +542,57 @@ impl<T: PointeeSized> Copy for &T {}
 #[doc(hidden)]
 pub trait BikeshedGuaranteedNoDrop {}
 
-/// Types for which it is safe to share references between threads.
+/// 可以安全地在线程之间共享引用的类型。
 ///
-/// This trait is automatically implemented when the compiler determines
-/// it's appropriate.
+/// `Sync` 同样是一个 **unsafe auto trait**,与 `Send` 互为表里。
 ///
-/// The precise definition is: a type `T` is [`Sync`] if and only if `&T` is
-/// [`Send`]. In other words, if there is no possibility of
-/// [undefined behavior][ub] (including data races) when passing
-/// `&T` references between threads.
+/// 它的精确定义是:类型 `T` 是 [`Sync`] 当且仅当 `&T` 是 [`Send`]。
+/// 换言之,当把 `&T` 引用在线程之间传递不会有任何[未定义行为][ub]
+/// (包括数据竞争)之虞时,`T` 就是 `Sync`。
 ///
-/// As one would expect, primitive types like [`u8`] and [`f64`]
-/// are all [`Sync`], and so are simple aggregate types containing them,
-/// like tuples, structs and enums. More examples of basic [`Sync`]
-/// types include "immutable" types like `&T`, and those with simple
-/// inherited mutability, such as [`Box<T>`][box], [`Vec<T>`][vec] and
-/// most other collection types. (Generic parameters need to be [`Sync`]
-/// for their container to be [`Sync`].)
+/// 与 `Send` 一样,`Sync` 由编译器 **自动派生**:只要复合类型的所有字段
+/// 都是 `Sync`,该类型就自动是 `Sync`;只要有一个字段不是 `Sync`,整个
+/// 类型就不是。手写 `unsafe impl Sync` 时,`unsafe` 代表实现者承诺:通过
+/// 共享引用 `&T` 并发访问该类型是安全的、不会引发数据竞争;违背此承诺即为
+/// 未定义行为。编译器据此进行线程安全检查——例如要在多个线程间共享某个值的
+/// 引用,该值的类型就必须是 `Sync`。
 ///
-/// A somewhat surprising consequence of the definition is that `&mut T`
-/// is `Sync` (if `T` is `Sync`) even though it seems like that might
-/// provide unsynchronized mutation. The trick is that a mutable
-/// reference behind a shared reference (that is, `& &mut T`)
-/// becomes read-only, as if it were a `& &T`. Hence there is no risk
-/// of a data race.
+/// 不出所料,像 [`u8`] 和 [`f64`] 这样的原始类型都是 [`Sync`],由它们构成的
+/// 简单聚合类型(元组、结构体和枚举)也是。更多基本的 [`Sync`] 类型还包括
+/// 像 `&T` 这样的“不可变”类型,以及那些具有简单的继承式可变性的类型,例如
+/// [`Box<T>`][box]、[`Vec<T>`][vec] 以及大多数其他集合类型。(泛型参数需要是
+/// [`Sync`],其容器才能是 [`Sync`]。)
 ///
-/// A shorter overview of how [`Sync`] and [`Send`] relate to referencing:
-/// * `&T` is [`Send`] if and only if `T` is [`Sync`]
-/// * `&mut T` is [`Send`] if and only if `T` is [`Send`]
-/// * `&T` and `&mut T` are [`Sync`] if and only if `T` is [`Sync`]
+/// 这个定义有一个略显意外的推论:`&mut T` 是 `Sync`(只要 `T` 是 `Sync`),
+/// 尽管看上去它似乎能提供未经同步的可变访问。诀窍在于,处于共享引用之后的
+/// 可变引用(也就是 `& &mut T`)会变成只读,如同 `& &T` 一般。因此不存在
+/// 数据竞争的风险。
 ///
-/// Types that are not `Sync` are those that have "interior
-/// mutability" in a non-thread-safe form, such as [`Cell`][cell]
-/// and [`RefCell`][refcell]. These types allow for mutation of
-/// their contents even through an immutable, shared reference. For
-/// example the `set` method on [`Cell<T>`][cell] takes `&self`, so it requires
-/// only a shared reference [`&Cell<T>`][cell]. The method performs no
-/// synchronization, thus [`Cell`][cell] cannot be `Sync`.
+/// 一份关于 [`Sync`] 和 [`Send`] 如何与引用相关联的简短概览:
+/// * `&T` 是 [`Send`] 当且仅当 `T` 是 [`Sync`]
+/// * `&mut T` 是 [`Send`] 当且仅当 `T` 是 [`Send`]
+/// * `&T` 和 `&mut T` 是 [`Sync`] 当且仅当 `T` 是 [`Sync`]
 ///
-/// Another example of a non-`Sync` type is the reference-counting
-/// pointer [`Rc`][rc]. Given any reference [`&Rc<T>`][rc], you can clone
-/// a new [`Rc<T>`][rc], modifying the reference counts in a non-atomic way.
+/// 不是 `Sync` 的类型,是那些以非线程安全形式具有“内部可变性”的类型,例如
+/// [`Cell`][cell] 和 [`RefCell`][refcell]。这些类型允许即便通过一个不可变的
+/// 共享引用也能修改其内容。例如 [`Cell<T>`][cell] 上的 `set` 方法接收
+/// `&self`,因此它只需要一个共享引用 [`&Cell<T>`][cell]。该方法不执行任何
+/// 同步,因此 [`Cell`][cell] 不可能是 `Sync`。
 ///
-/// For cases when one does need thread-safe interior mutability,
-/// Rust provides [atomic data types], as well as explicit locking via
-/// [`sync::Mutex`][mutex] and [`sync::RwLock`][rwlock]. These types
-/// ensure that any mutation cannot cause data races, hence the types
-/// are `Sync`. Likewise, [`sync::Arc`][arc] provides a thread-safe
-/// analogue of [`Rc`][rc].
+/// 另一个非 `Sync` 类型的例子是引用计数指针 [`Rc`][rc]。给定任意一个引用
+/// [`&Rc<T>`][rc],你都可以克隆出一个新的 [`Rc<T>`][rc],从而以非原子的方式
+/// 修改引用计数。
 ///
-/// Any types with interior mutability must also use the
-/// [`cell::UnsafeCell`][unsafecell] wrapper around the value(s) which
-/// can be mutated through a shared reference. Failing to doing this is
-/// [undefined behavior][ub]. For example, [`transmute`][transmute]-ing
-/// from `&T` to `&mut T` is invalid.
+/// 在确实需要线程安全的内部可变性的场合,Rust 提供了[原子数据类型][atomic data types],
+/// 以及通过 [`sync::Mutex`][mutex] 和 [`sync::RwLock`][rwlock] 进行的显式加锁。
+/// 这些类型确保任何修改都不会引发数据竞争,因此它们是 `Sync`。同样地,
+/// [`sync::Arc`][arc] 提供了 [`Rc`][rc] 的线程安全对应物。
 ///
-/// See [the Nomicon][nomicon-send-and-sync] for more details about `Sync`.
+/// 任何具有内部可变性的类型,都必须在那些可以通过共享引用被修改的值外面
+/// 套上 [`cell::UnsafeCell`][unsafecell] 包装。不这样做即是[未定义行为][ub]。
+/// 例如,从 `&T` [`transmute`][transmute] 成 `&mut T` 是无效的。
+///
+/// 关于 `Sync` 的更多细节,参见 [Nomicon][nomicon-send-and-sync]。
 ///
 /// [box]: ../../std/boxed/struct.Box.html
 /// [vec]: ../../std/vec/struct.Vec.html
@@ -663,9 +684,9 @@ pub trait BikeshedGuaranteedNoDrop {}
     label = "`{Self}` cannot be shared between threads safely"
 )]
 pub unsafe auto trait Sync {
-    // FIXME(estebank): once support to add notes in `rustc_on_unimplemented`
-    // lands in beta, and it has been extended to check whether a closure is
-    // anywhere in the requirement chain, extend it as such (#48534):
+    // FIXME(estebank):一旦在 `rustc_on_unimplemented` 中添加 note 的支持
+    // 进入 beta,并且被扩展为能够检查需求链中是否存在闭包,就按如下方式
+    // 扩展它(#48534):
     // ```
     // on(
     //     closure,
@@ -673,7 +694,7 @@ pub unsafe auto trait Sync {
     // ),
     // ```
 
-    // Empty
+    // 空
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -681,30 +702,38 @@ impl<T: PointeeSized> !Sync for *const T {}
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<T: PointeeSized> !Sync for *mut T {}
 
-/// Zero-sized type used to mark things that "act like" they own a `T`.
+/// 零大小类型(ZST),用来标记那些“表现得像”拥有一个 `T` 的东西。
 ///
-/// Adding a `PhantomData<T>` field to your type tells the compiler that your
-/// type acts as though it stores a value of type `T`, even though it doesn't
-/// really. This information is used when computing certain safety properties.
+/// 给你的类型添加一个 `PhantomData<T>` 字段,等于告诉编译器:你的类型表现得
+/// 仿佛它存储着一个 `T` 类型的值,尽管实际上并没有。编译器在计算某些安全性
+/// 性质时会用到这一信息。`PhantomData<T>` 本身是零大小的,既不占空间也不存
+/// 任何数据,它的全部作用都在于影响编译器对类型的判断,具体包括三方面:
 ///
-/// For a more in-depth explanation of how to use `PhantomData<T>`, please see
-/// [the Nomicon](../../nomicon/phantom-data.html).
+/// 1. **变型(variance)**:`PhantomData<T>` 让外层类型相对于 `T` 具有协变性,
+///    `PhantomData<&'a T>` 引入生命周期 `'a`,`PhantomData<fn(T)>` 则带来逆变,
+///    `PhantomData<*mut T>` / `PhantomData<Cell<T>>` 带来不变。这对裸指针包装
+///    类型尤为重要——裸指针自身不携带变型/生命周期信息,需借助它来表达。
+/// 2. **drop check**:见下文“所有权与 drop check”一节。
+/// 3. **auto trait**(如 `Send`/`Sync`):外层类型会像真的持有 `T` 一样,
+///    依据 `T` 是否满足这些 auto trait 来决定自身是否满足。
 ///
-/// # A ghastly note 👻👻👻
+/// 关于如何使用 `PhantomData<T>` 的更深入解释,请参见
+/// [Nomicon](../../nomicon/phantom-data.html)。
 ///
-/// Though they both have scary names, `PhantomData` and 'phantom types' are
-/// related, but not identical. A phantom type parameter is simply a type
-/// parameter which is never used. In Rust, this often causes the compiler to
-/// complain, and the solution is to add a "dummy" use by way of `PhantomData`.
+/// # 一条阴森的提示 👻👻👻
 ///
-/// # Examples
+/// 尽管名字都挺吓人,`PhantomData` 与“幻影类型”(phantom type)是相关的,
+/// 但并不相同。幻影类型参数,指的不过是一个从未被使用的类型参数。在 Rust 中,
+/// 这通常会招致编译器抱怨,而解决办法就是借助 `PhantomData` 加上一处“占位”
+/// 用途。
 ///
-/// ## Unused lifetime parameters
+/// # 示例
 ///
-/// Perhaps the most common use case for `PhantomData` is a struct that has an
-/// unused lifetime parameter, typically as part of some unsafe code. For
-/// example, here is a struct `Slice` that has two pointers of type `*const T`,
-/// presumably pointing into an array somewhere:
+/// ## 未被使用的生命周期参数
+///
+/// `PhantomData` 也许最常见的用例,就是某个结构体有一个未被使用的生命周期
+/// 参数,通常出现在某些 unsafe 代码中。例如,下面这个结构体 `Slice` 含有两个
+/// 类型为 `*const T` 的指针,大概是指向某处数组之中:
 ///
 /// ```compile_fail,E0392
 /// struct Slice<'a, T> {
@@ -713,12 +742,10 @@ impl<T: PointeeSized> !Sync for *mut T {}
 /// }
 /// ```
 ///
-/// The intention is that the underlying data is only valid for the
-/// lifetime `'a`, so `Slice` should not outlive `'a`. However, this
-/// intent is not expressed in the code, since there are no uses of
-/// the lifetime `'a` and hence it is not clear what data it applies
-/// to. We can correct this by telling the compiler to act *as if* the
-/// `Slice` struct contained a reference `&'a T`:
+/// 这里的本意是:底层数据只在生命周期 `'a` 内有效,因此 `Slice` 不应活得比
+/// `'a` 更久。然而,这一意图并没有在代码中表达出来,因为根本没有用到生命周期
+/// `'a`,于是也就看不出它究竟作用于哪些数据。我们可以通过告诉编译器把 `Slice`
+/// 结构体当作 *仿佛* 含有一个引用 `&'a T` 来纠正这一点:
 ///
 /// ```
 /// use std::marker::PhantomData;
@@ -731,11 +758,10 @@ impl<T: PointeeSized> !Sync for *mut T {}
 /// }
 /// ```
 ///
-/// This also in turn infers the lifetime bound `T: 'a`, indicating
-/// that any references in `T` are valid over the lifetime `'a`.
+/// 这反过来还会推断出生命周期约束 `T: 'a`,表明 `T` 中的任何引用在生命周期
+/// `'a` 内都是有效的。
 ///
-/// When initializing a `Slice` you simply provide the value
-/// `PhantomData` for the field `phantom`:
+/// 初始化 `Slice` 时,你只需为字段 `phantom` 提供值 `PhantomData`:
 ///
 /// ```
 /// # #![allow(dead_code)]
@@ -755,15 +781,13 @@ impl<T: PointeeSized> !Sync for *mut T {}
 /// }
 /// ```
 ///
-/// ## Unused type parameters
+/// ## 未被使用的类型参数
 ///
-/// It sometimes happens that you have unused type parameters which
-/// indicate what type of data a struct is "tied" to, even though that
-/// data is not actually found in the struct itself. Here is an
-/// example where this arises with [FFI]. The foreign interface uses
-/// handles of type `*mut ()` to refer to Rust values of different
-/// types. We track the Rust type using a phantom type parameter on
-/// the struct `ExternalResource` which wraps a handle.
+/// 有时你会遇到这样的情形:你有一些未被使用的类型参数,用来表明某个结构体
+/// 与何种数据“绑定”,即便那份数据本身并不存在于结构体之中。下面是一个在
+/// [FFI] 中出现这种情况的例子。这个外部接口使用类型为 `*mut ()` 的句柄来指代
+/// 不同类型的 Rust 值。我们借助结构体 `ExternalResource`(它包装了一个句柄)
+/// 上的一个幻影类型参数来追踪 Rust 类型。
 ///
 /// [FFI]: ../../book/ch19-01-unsafe-rust.html#using-extern-functions-to-call-external-code
 ///
@@ -799,17 +823,17 @@ impl<T: PointeeSized> !Sync for *mut T {}
 /// }
 /// ```
 ///
-/// ## Ownership and the drop check
+/// ## 所有权与 drop check
 ///
-/// The exact interaction of `PhantomData` with drop check **may change in the future**.
+/// `PhantomData` 与 drop check 之间的确切交互方式 **未来可能会改变**。
 ///
-/// Currently, adding a field of type `PhantomData<T>` indicates that your type *owns* data of type
-/// `T` in very rare circumstances. This in turn has effects on the Rust compiler's [drop check]
-/// analysis. For the exact rules, see the [drop check] documentation.
+/// 当前,添加一个类型为 `PhantomData<T>` 的字段,表明你的类型在极少数情形下
+/// *拥有* 类型为 `T` 的数据。这进而会影响 Rust 编译器的 [drop check] 分析。
+/// 确切规则请参见 [drop check] 文档。
 ///
-/// ## Layout
+/// ## 内存布局
 ///
-/// For all `T`, the following are guaranteed:
+/// 对所有 `T`,以下保证均成立:
 /// * `size_of::<PhantomData<T>>() == 0`
 /// * `align_of::<PhantomData<T>>() == 1`
 ///
@@ -873,11 +897,11 @@ impl<T: PointeeSized> const Default for PhantomData<T> {
 #[unstable(feature = "structural_match", issue = "31434")]
 impl<T: PointeeSized> StructuralPartialEq for PhantomData<T> {}
 
-/// Compiler-internal trait used to indicate the type of enum discriminants.
+/// 编译器内部使用的 trait,用来表示枚举判别值(discriminant)的类型。
 ///
-/// This trait is automatically implemented for every type and does not add any
-/// guarantees to [`mem::Discriminant`]. It is **undefined behavior** to transmute
-/// between `DiscriminantKind::Discriminant` and `mem::Discriminant`.
+/// 本 trait 会自动为每一种类型实现,并且不为 [`mem::Discriminant`] 添加任何
+/// 额外保证。在 `DiscriminantKind::Discriminant` 与 `mem::Discriminant` 之间
+/// 进行 transmute 是 **未定义行为**。
 ///
 /// [`mem::Discriminant`]: crate::mem::Discriminant
 #[unstable(
@@ -889,26 +913,22 @@ impl<T: PointeeSized> StructuralPartialEq for PhantomData<T> {}
 #[rustc_deny_explicit_impl]
 #[rustc_do_not_implement_via_object]
 pub trait DiscriminantKind {
-    /// The type of the discriminant, which must satisfy the trait
-    /// bounds required by `mem::Discriminant`.
+    /// 判别值的类型,它必须满足 `mem::Discriminant` 所要求的 trait 约束。
     #[lang = "discriminant_type"]
     type Discriminant: Clone + Copy + Debug + Eq + PartialEq + Hash + Send + Sync + Unpin;
 }
 
-/// Used to determine whether a type contains
-/// any `UnsafeCell` internally, but not through an indirection.
-/// This affects, for example, whether a `static` of that type is
-/// placed in read-only static memory or writable static memory.
-/// This can be used to declare that a constant with a generic type
-/// will not contain interior mutability, and subsequently allow
-/// placing the constant behind references.
+/// 用来判断一个类型内部是否含有任何 `UnsafeCell`(但不包括经由间接引用
+/// 持有的情形)。这会影响诸如:该类型的 `static` 是被放进只读静态内存,
+/// 还是可写静态内存。它可以用来声明某个泛型类型的常量不会含有内部可变性,
+/// 进而允许把该常量放在引用之后。
 ///
-/// # Safety
+/// # 安全性(Safety)
 ///
-/// This trait is a core part of the language, it is just expressed as a trait in libcore for
-/// convenience. Do *not* implement it for other types.
-// FIXME: Eventually this trait should become `#[rustc_deny_explicit_impl]`.
-// That requires porting the impls below to native internal impls.
+/// 本 trait 是语言的核心组成部分,只是为了方便才在 libcore 中以 trait 的形式
+/// 表达。请 *不要* 为其他类型实现它。
+// FIXME:最终本 trait 应当变为 `#[rustc_deny_explicit_impl]`。
+// 这需要先把下面这些 impl 移植为原生的内部 impl。
 #[lang = "freeze"]
 #[unstable(feature = "freeze", issue = "121675")]
 pub unsafe auto trait Freeze {}
@@ -925,12 +945,13 @@ marker_impls! {
         {T: PointeeSized} &mut T,
 }
 
-/// Used to determine whether a type contains any `UnsafePinned` (or `PhantomPinned`) internally,
-/// but not through an indirection. This affects, for example, whether we emit `noalias` metadata
-/// for `&mut T` or not.
+/// 用来判断一个类型内部是否含有任何 `UnsafePinned`(或 `PhantomPinned`),
+/// 但不包括经由间接引用持有的情形。这会影响诸如:我们是否为 `&mut T` 生成
+/// `noalias` 元数据。
 ///
-/// This is part of [RFC 3467](https://rust-lang.github.io/rfcs/3467-unsafe-pinned.html), and is
-/// tracked by [#125735](https://github.com/rust-lang/rust/issues/125735).
+/// 它是 [RFC 3467](https://rust-lang.github.io/rfcs/3467-unsafe-pinned.html)
+/// 的一部分,追踪于
+/// [#125735](https://github.com/rust-lang/rust/issues/125735)。
 #[lang = "unsafe_unpin"]
 pub(crate) unsafe auto trait UnsafeUnpin {}
 
@@ -941,39 +962,38 @@ unsafe impl<T: ?Sized> UnsafeUnpin for *mut T {}
 unsafe impl<T: ?Sized> UnsafeUnpin for &T {}
 unsafe impl<T: ?Sized> UnsafeUnpin for &mut T {}
 
-/// Types that do not require any pinning guarantees.
+/// 不需要任何 pin(固定)保证的类型。
 ///
-/// For information on what "pinning" is, see the [`pin` module] documentation.
+/// 关于“pin”究竟是什么,请参见 [`pin` 模块][`pin` module] 文档。
 ///
-/// Implementing the `Unpin` trait for `T` expresses the fact that `T` is pinning-agnostic:
-/// it shall not expose nor rely on any pinning guarantees. This, in turn, means that a
-/// `Pin`-wrapped pointer to such a type can feature a *fully unrestricted* API.
-/// In other words, if `T: Unpin`, a value of type `T` will *not* be bound by the invariants
-/// which pinning otherwise offers, even when "pinned" by a [`Pin<Ptr>`] pointing at it.
-/// When a value of type `T` is pointed at by a [`Pin<Ptr>`], [`Pin`] will not restrict access
-/// to the pointee value like it normally would, thus allowing the user to do anything that they
-/// normally could with a non-[`Pin`]-wrapped `Ptr` to that value.
+/// 为 `T` 实现 `Unpin` trait,表达的是这样一个事实:`T` 对 pin 不敏感——
+/// 它既不依赖、也不暴露任何 pin 相关的保证。这进而意味着,指向此类类型的
+/// `Pin` 包装指针可以提供一套 *完全不受限* 的 API。换句话说,如果
+/// `T: Unpin`,那么即便一个 `T` 类型的值被指向它的 [`Pin<Ptr>`]“固定”住,
+/// 它也 *不会* 受到 pin 通常所施加的不变量约束。当一个 `T` 类型的值被
+/// [`Pin<Ptr>`] 指向时,[`Pin`] 不会像通常那样限制对被指向值的访问,从而
+/// 允许用户做任何用一个非 [`Pin`] 包装的 `Ptr` 所能做的事情。
 ///
-/// The idea of this trait is to alleviate the reduced ergonomics of APIs that require the use
-/// of [`Pin`] for soundness for some types, but which also want to be used by other types that
-/// don't care about pinning. The prime example of such an API is [`Future::poll`]. There are many
-/// [`Future`] types that don't care about pinning. These futures can implement `Unpin` and
-/// therefore get around the pinning related restrictions in the API, while still allowing the
-/// subset of [`Future`]s which *do* require pinning to be implemented soundly.
+/// 这个 trait 的用意,是缓解那些“为保证可靠性而要求使用 [`Pin`] 的 API”所
+/// 带来的人体工程学退化,同时让那些不关心 pin 的类型也能使用这些 API。此类
+/// API 的典型代表是 [`Future::poll`]。有许多 [`Future`] 类型并不关心 pin。
+/// 这些 future 可以实现 `Unpin`,从而绕开该 API 中与 pin 相关的限制;与此
+/// 同时,那些 *确实* 需要 pin 的 [`Future`] 子集仍然能够被可靠地实现。
 ///
-/// For more discussion on the consequences of [`Unpin`] within the wider scope of the pinning
-/// system, see the [section about `Unpin`] in the [`pin` module].
+/// 关于 [`Unpin`] 在整个 pin 系统这一更广阔背景下的后果,更多讨论见
+/// [`pin` 模块][`pin` module] 中[关于 `Unpin` 的小节][section about `Unpin`]。
 ///
-/// `Unpin` has no consequence at all for non-pinned data. In particular, [`mem::replace`] happily
-/// moves `!Unpin` data, which would be immovable when pinned ([`mem::replace`] works for any
-/// `&mut T`, not just when `T: Unpin`).
+/// `Unpin` 对未被固定(non-pinned)的数据完全没有任何影响。特别地,
+/// [`mem::replace`] 可以照常移动 `!Unpin` 的数据——而这些数据一旦被固定就是
+/// 不可移动的([`mem::replace`] 对任意 `&mut T` 都适用,并不限于 `T: Unpin`)。
 ///
-/// *However*, you cannot use [`mem::replace`] on `!Unpin` data which is *pinned* by being wrapped
-/// inside a [`Pin<Ptr>`] pointing at it. This is because you cannot (safely) use a
-/// [`Pin<Ptr>`] to get a `&mut T` to its pointee value, which you would need to call
-/// [`mem::replace`], and *that* is what makes this system work.
+/// *然而*,你不能对 *已被固定* 的 `!Unpin` 数据使用 [`mem::replace`]——所谓
+/// 已被固定,是指它被包裹在一个指向它的 [`Pin<Ptr>`] 之内。这是因为你无法
+/// (安全地)用一个 [`Pin<Ptr>`] 取得指向其被指向值的 `&mut T`,而调用
+/// [`mem::replace`] 又恰恰需要这样一个引用;*这一点* 正是整个机制得以成立的
+/// 根本。
 ///
-/// So this, for example, can only be done on types implementing `Unpin`:
+/// 因此,例如下面这件事,只能在实现了 `Unpin` 的类型上做:
 ///
 /// ```rust
 /// # #![allow(unused_must_use)]
@@ -983,19 +1003,19 @@ unsafe impl<T: ?Sized> UnsafeUnpin for &mut T {}
 /// let mut string = "this".to_string();
 /// let mut pinned_string = Pin::new(&mut string);
 ///
-/// // We need a mutable reference to call `mem::replace`.
-/// // We can obtain such a reference by (implicitly) invoking `Pin::deref_mut`,
-/// // but that is only possible because `String` implements `Unpin`.
+/// // 我们需要一个可变引用才能调用 `mem::replace`。
+/// // 我们可以通过(隐式地)调用 `Pin::deref_mut` 来取得这样一个引用,
+/// // 但这之所以可行,只是因为 `String` 实现了 `Unpin`。
 /// mem::replace(&mut *pinned_string, "other".to_string());
 /// ```
 ///
-/// This trait is automatically implemented for almost every type. The compiler is free
-/// to take the conservative stance of marking types as [`Unpin`] so long as all of the types that
-/// compose its fields are also [`Unpin`]. This is because if a type implements [`Unpin`], then it
-/// is unsound for that type's implementation to rely on pinning-related guarantees for soundness,
-/// *even* when viewed through a "pinning" pointer! It is the responsibility of the implementor of
-/// a type that relies upon pinning for soundness to ensure that type is *not* marked as [`Unpin`]
-/// by adding [`PhantomPinned`] field. For more details, see the [`pin` module] docs.
+/// 本 trait 会自动为几乎所有类型实现。编译器可以采取保守立场:只要构成某个
+/// 类型各字段的类型也都是 [`Unpin`],就把该类型标记为 [`Unpin`]。这么做是
+/// 安全的,因为如果一个类型实现了 [`Unpin`],那么该类型的实现为了可靠性而
+/// 依赖 pin 相关保证就是不可靠的——*即便* 透过一个“pin”指针来看待它也是
+/// 如此!对于一个为保证可靠性而依赖 pin 的类型,确保它 *不* 被标记为
+/// [`Unpin`] 是其实现者的责任,做法是添加一个 [`PhantomPinned`] 字段。
+/// 更多细节参见 [`pin` 模块][`pin` module] 文档。
 ///
 /// [`mem::replace`]: crate::mem::replace "mem replace"
 /// [`Future`]: crate::future::Future "Future"
@@ -1013,14 +1033,14 @@ unsafe impl<T: ?Sized> UnsafeUnpin for &mut T {}
 #[lang = "unpin"]
 pub auto trait Unpin {}
 
-/// A marker type which does not implement `Unpin`.
+/// 一个不实现 `Unpin` 的标记类型。
 ///
-/// If a type contains a `PhantomPinned`, it will not implement `Unpin` by default.
+/// 如果一个类型含有 `PhantomPinned`,那么它默认就不会实现 `Unpin`。
 //
-// FIXME(unsafe_pinned): This is *not* a stable guarantee we want to make, at least not yet.
-// Note that for backwards compatibility with the new [`UnsafePinned`] wrapper type, placing this
-// marker in your struct acts as if you wrapped the entire struct in an `UnsafePinned`. This type
-// will likely eventually be deprecated, and all new code should be using `UnsafePinned` instead.
+// FIXME(unsafe_pinned):这 *不是* 我们想要做出的稳定保证,至少现在还不是。
+// 注意,为了与新的 [`UnsafePinned`] 包装类型保持向后兼容,在你的结构体中
+// 放置这个标记的效果,等同于把整个结构体包裹进了一个 `UnsafePinned`。本类型
+// 最终很可能会被废弃,所有新代码都应改用 `UnsafePinned`。
 #[stable(feature = "pin", since = "1.33.0")]
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct PhantomPinned;
@@ -1028,10 +1048,10 @@ pub struct PhantomPinned;
 #[stable(feature = "pin", since = "1.33.0")]
 impl !Unpin for PhantomPinned {}
 
-// This is a small hack to allow existing code which uses PhantomPinned to opt-out of noalias to
-// continue working. Ideally PhantomPinned could just wrap an `UnsafePinned<()>` to get the same
-// effect, but we can't add a new field to an already stable unit struct -- that would be a breaking
-// change.
+// 这是一个小小的 hack,用来让现有那些使用 PhantomPinned 的代码能够选择退出
+// noalias 并继续正常工作。理想情况下,PhantomPinned 只需包裹一个
+// `UnsafePinned<()>` 就能得到同样的效果,但我们无法给一个已经稳定的单元
+// 结构体新增字段——那会是破坏性变更。
 impl !UnsafeUnpin for PhantomPinned {}
 
 marker_impls! {
@@ -1048,10 +1068,9 @@ marker_impls! {
         {T: PointeeSized} *mut T,
 }
 
-/// A marker for types that can be dropped.
+/// 标记可被 drop(析构)的类型。
 ///
-/// This should be used for `[const]` bounds,
-/// as non-const bounds will always hold for every type.
+/// 它应当用于 `[const]` 约束,因为非 const 的约束对每一种类型都恒成立。
 #[unstable(feature = "const_destruct", issue = "133214")]
 #[rustc_const_unstable(feature = "const_destruct", issue = "133214")]
 #[lang = "destruct"]
@@ -1060,10 +1079,9 @@ marker_impls! {
 #[rustc_do_not_implement_via_object]
 pub const trait Destruct: PointeeSized {}
 
-/// A marker for tuple types.
+/// 标记元组类型。
 ///
-/// The implementation of this trait is built-in and cannot be implemented
-/// for any user type.
+/// 本 trait 的实现是内建的,无法为任何用户类型实现。
 #[unstable(feature = "tuple_trait", issue = "none")]
 #[lang = "tuple_trait"]
 #[diagnostic::on_unimplemented(message = "`{Self}` is not a tuple")]
@@ -1071,30 +1089,29 @@ pub const trait Destruct: PointeeSized {}
 #[rustc_do_not_implement_via_object]
 pub trait Tuple {}
 
-/// A marker for types which can be used as types of `const` generic parameters.
+/// 标记那些可以用作 `const` 泛型参数类型的类型。
 ///
-/// These types must have a proper equivalence relation (`Eq`) and it must be automatically
-/// derived (`StructuralPartialEq`). There's a hard-coded check in the compiler ensuring
-/// that all fields are also `ConstParamTy`, which implies that recursively, all fields
-/// are `StructuralPartialEq`.
+/// 这些类型必须具有恰当的等价关系(`Eq`),而且该关系必须是自动派生的
+/// (`StructuralPartialEq`)。编译器中有一处硬编码的检查,确保所有字段也都是
+/// `ConstParamTy`,这隐含着:递归地看,所有字段都满足 `StructuralPartialEq`。
 #[lang = "const_param_ty"]
 #[unstable(feature = "unsized_const_params", issue = "95174")]
 #[diagnostic::on_unimplemented(message = "`{Self}` can't be used as a const parameter type")]
 #[allow(multiple_supertrait_upcastable)]
-// We name this differently than the derive macro so that the `adt_const_params` can
-// be used independently of `unsized_const_params` without requiring a full path
-// to the derive macro every time it is used. This should be renamed on stabilization.
+// 我们给这个 trait 起的名字与派生宏不同,以便 `adt_const_params` 可以独立于
+// `unsized_const_params` 使用,而不必每次都写出派生宏的完整路径。稳定化时
+// 应当对其重命名。
 pub trait ConstParamTy_: StructuralPartialEq + Eq {}
 
-/// Derive macro generating an impl of the trait `ConstParamTy`.
+/// 生成 `ConstParamTy` trait 实现的派生宏。
 #[rustc_builtin_macro]
 #[allow_internal_unstable(unsized_const_params)]
 #[unstable(feature = "adt_const_params", issue = "95174")]
 pub macro ConstParamTy($item:item) {
-    /* compiler built-in */
+    /* 编译器内建 */
 }
 
-// FIXME(adt_const_params): handle `ty::FnDef`/`ty::Closure`
+// FIXME(adt_const_params):处理 `ty::FnDef`/`ty::Closure`
 marker_impls! {
     #[unstable(feature = "adt_const_params", issue = "95174")]
     ConstParamTy_ for
@@ -1115,10 +1132,10 @@ marker_impls! {
         {T: ConstParamTy_ + ?Sized} &T,
 }
 
-/// A common trait implemented by all function pointers.
+/// 由所有函数指针共同实现的一个 trait。
 //
-// Note that while the trait is internal and unstable it is nevertheless
-// exposed as a public bound of the stable `core::ptr::fn_addr_eq` function.
+// 注意,尽管本 trait 是内部的、unstable 的,它仍然作为稳定函数
+// `core::ptr::fn_addr_eq` 的一个公开约束被暴露出来。
 #[unstable(
     feature = "fn_ptr_trait",
     issue = "none",
@@ -1128,21 +1145,21 @@ marker_impls! {
 #[rustc_deny_explicit_impl]
 #[rustc_do_not_implement_via_object]
 pub trait FnPtr: Copy + Clone {
-    /// Returns the address of the function pointer.
+    /// 返回该函数指针的地址。
     #[lang = "fn_ptr_addr"]
     fn addr(self) -> *const ();
 }
 
-/// Derive macro that makes a smart pointer usable with trait objects.
+/// 让智能指针能够配合 trait 对象使用的派生宏。
 ///
-/// # What this macro does
+/// # 这个宏做了什么
 ///
-/// This macro is intended to be used with user-defined pointer types, and makes it possible to
-/// perform coercions on the pointee of the user-defined pointer. There are two aspects to this:
+/// 本宏旨在用于用户自定义的指针类型,使得对该自定义指针的被指向者
+/// (pointee)进行强转(coercion)成为可能。这包含两个方面:
 ///
-/// ## Unsizing coercions of the pointee
+/// ## 被指向者的去尺寸化强转
 ///
-/// By using the macro, the following example will compile:
+/// 借助本宏,下面这个例子就能通过编译:
 /// ```
 /// #![feature(derive_coerce_pointee)]
 /// use std::marker::CoercePointee;
@@ -1166,11 +1183,11 @@ pub trait FnPtr: Copy + Clone {
 /// fn main() {
 ///     let ptr: MySmartPointer<i32> = MySmartPointer(Box::new(4));
 ///
-///     // This coercion would be an error without the derive.
+///     // 没有这个派生宏的话,这次强转会是一个错误。
 ///     let ptr: MySmartPointer<dyn MyTrait> = ptr;
 /// }
 /// ```
-/// Without the `#[derive(CoercePointee)]` macro, this example would fail with the following error:
+/// 如果没有 `#[derive(CoercePointee)]` 宏,该例子会以如下错误失败:
 /// ```text
 /// error[E0308]: mismatched types
 ///   --> src/main.rs:11:44
@@ -1185,10 +1202,10 @@ pub trait FnPtr: Copy + Clone {
 ///    = help: `i32` implements `MyTrait` so you could box the found value and coerce it to the trait object `Box<dyn MyTrait>`, you will have to change the expected type as well
 /// ```
 ///
-/// ## Dyn compatibility
+/// ## dyn 兼容性
 ///
-/// This macro allows you to dispatch on the user-defined pointer type. That is, traits using the
-/// type as a receiver are dyn-compatible. For example, this compiles:
+/// 本宏允许你在这个用户自定义指针类型上进行动态分发。也就是说,以该类型作为
+/// 接收者(receiver)的 trait 是 dyn 兼容的。例如,下面这段代码可以编译:
 ///
 /// ```
 /// #![feature(arbitrary_self_types, derive_coerce_pointee)]
@@ -1206,18 +1223,18 @@ pub trait FnPtr: Copy + Clone {
 ///     }
 /// }
 ///
-/// // You can always define this trait. (as long as you have #![feature(arbitrary_self_types)])
+/// // 你随时都可以定义这个 trait。(只要你启用了 #![feature(arbitrary_self_types)])
 /// trait MyTrait {
 ///     fn func(self: MySmartPointer<Self>);
 /// }
 ///
-/// // But using `dyn MyTrait` requires #[derive(CoercePointee)].
+/// // 但使用 `dyn MyTrait` 需要 #[derive(CoercePointee)]。
 /// fn call_func(value: MySmartPointer<dyn MyTrait>) {
 ///     value.func();
 /// }
 /// ```
-/// If you remove the `#[derive(CoercePointee)]` annotation from the struct, then the above example
-/// will fail with this error message:
+/// 如果你从该结构体上移除 `#[derive(CoercePointee)]` 标注,那么上面的例子会以
+/// 这样的错误信息失败:
 /// ```text
 /// error[E0038]: the trait `MyTrait` is not dyn compatible
 ///   --> src/lib.rs:21:36
@@ -1238,20 +1255,18 @@ pub trait FnPtr: Copy + Clone {
 ///    |                   ^^^^^^^^^^^^^^^^^^^^ ...because method `func`'s `self` parameter cannot be dispatched on
 /// ```
 ///
-/// # Requirements for using the macro
+/// # 使用本宏的要求
 ///
-/// This macro can only be used if:
-/// * The type is a `#[repr(transparent)]` struct.
-/// * The type of its non-zero-sized field must either be a standard library pointer type
-///   (reference, raw pointer, `NonNull`, `Box`, `Rc`, `Arc`, etc.) or another user-defined type
-///   also using the `#[derive(CoercePointee)]` macro.
-/// * Zero-sized fields must not mention any generic parameters unless the zero-sized field has
-///   type [`PhantomData`].
+/// 本宏只有在满足以下条件时才可使用:
+/// * 该类型是一个 `#[repr(transparent)]` 结构体。
+/// * 其非零大小字段的类型,要么是一个标准库指针类型(引用、裸指针、`NonNull`、
+///   `Box`、`Rc`、`Arc` 等),要么是另一个同样使用 `#[derive(CoercePointee)]`
+///   宏的用户自定义类型。
+/// * 零大小字段不得提及任何泛型参数,除非该零大小字段的类型是 [`PhantomData`]。
 ///
-/// ## Multiple type parameters
+/// ## 多个类型参数
 ///
-/// If the type has multiple type parameters, then you must explicitly specify which one should be
-/// used for dynamic dispatch. For example:
+/// 如果该类型有多个类型参数,那么你必须显式指定其中哪一个用于动态分发。例如:
 /// ```
 /// # #![feature(derive_coerce_pointee)]
 /// # use std::marker::{CoercePointee, PhantomData};
@@ -1262,11 +1277,11 @@ pub trait FnPtr: Copy + Clone {
 ///     _phantom: PhantomData<U>,
 /// }
 /// ```
-/// Specifying `#[pointee]` when the struct has only one type parameter is allowed, but not required.
+/// 当结构体只有一个类型参数时,指定 `#[pointee]` 是允许的,但不是必需的。
 ///
-/// # Examples
+/// # 示例
 ///
-/// A custom implementation of the `Rc` type:
+/// 一个 `Rc` 类型的自定义实现:
 /// ```
 /// #![feature(derive_coerce_pointee)]
 /// use std::marker::CoercePointee;
@@ -1306,7 +1321,7 @@ pub trait FnPtr: Copy + Clone {
 ///
 /// impl<T: ?Sized> Clone for Rc<T> {
 ///     fn clone(&self) -> Self {
-///         // A real implementation would handle overflow here.
+///         // 真实的实现会在这里处理溢出。
 ///         unsafe { (*self.inner.as_ptr()).refcount += 1 };
 ///         Self { inner: self.inner }
 ///     }
@@ -1327,18 +1342,18 @@ pub trait FnPtr: Copy + Clone {
 #[rustc_diagnostic_item = "CoercePointee"]
 #[unstable(feature = "derive_coerce_pointee", issue = "123430")]
 pub macro CoercePointee($item:item) {
-    /* compiler built-in */
+    /* 编译器内建 */
 }
 
-/// A trait that is implemented for ADTs with `derive(CoercePointee)` so that
-/// the compiler can enforce the derive impls are valid post-expansion, since
-/// the derive has stricter requirements than if the impls were written by hand.
+/// 一个为带有 `derive(CoercePointee)` 的 ADT 实现的 trait,使编译器能够在派生
+/// 宏展开之后强制检查这些派生 impl 是有效的——因为该派生宏的要求比手写这些
+/// impl 时更为严格。
 ///
-/// This trait is not intended to be implemented by users or used other than
-/// validation, so it should never be stabilized.
+/// 本 trait 不打算供用户实现,也不打算用于校验之外的任何用途,因此它永远不应
+/// 被稳定化。
 #[lang = "coerce_pointee_validated"]
 #[unstable(feature = "coerce_pointee_validated", issue = "none")]
 #[doc(hidden)]
 pub trait CoercePointeeValidated {
-    /* compiler built-in */
+    /* 编译器内建 */
 }
