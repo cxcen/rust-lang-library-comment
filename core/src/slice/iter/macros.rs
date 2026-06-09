@@ -191,7 +191,7 @@ macro_rules! iterator {
                 if len >= N {
                     // SAFETY: 这里仅取得一个 `[T; N]` 数组引用，并把指针前移 N 个元素。
                     let r = unsafe { self.post_inc_start(N).cast_array().$into_ref() }
-                        .$array_ref(); // must convert &[T; N] to [&T; N]
+                        .$array_ref(); // 必须把 &[T; N] 转成 [&T; N]
                     Ok(r)
                 } else {
                     // 不能使用 $array_ref，因为没有 &mut [MU<T>; N] -> [&mut MU<T>; N] 的 builtin。

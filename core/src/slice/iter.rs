@@ -1359,7 +1359,7 @@ impl<'a, T> Iterator for Windows<'a, T> {
             Some(nth)
         } else {
             // 赋值为 &[] 时，设置长度为 0 比覆盖指针更便宜。
-            self.v = &self.v[..0]; // cheaper than &[]
+            self.v = &self.v[..0]; // 比 &[] 更省
             None
         }
     }
@@ -1398,7 +1398,7 @@ impl<'a, T> DoubleEndedIterator for Windows<'a, T> {
             self.v = &self.v[..end - 1];
             Some(res)
         } else {
-            self.v = &self.v[..0]; // cheaper than &[]
+            self.v = &self.v[..0]; // 比 &[] 更省
             None
         }
     }
@@ -1507,7 +1507,7 @@ impl<'a, T> Iterator for Chunks<'a, T> {
             self.v = rest;
             Some(chunk)
         } else {
-            self.v = &self.v[..0]; // cheaper than &[]
+            self.v = &self.v[..0]; // 比 &[] 更省
             None
         }
     }
@@ -1570,7 +1570,7 @@ impl<'a, T> DoubleEndedIterator for Chunks<'a, T> {
             self.v = &self.v[..start];
             Some(nth_back)
         } else {
-            self.v = &self.v[..0]; // cheaper than &[]
+            self.v = &self.v[..0]; // 比 &[] 更省
             None
         }
     }

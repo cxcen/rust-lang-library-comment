@@ -76,7 +76,7 @@ impl<I: DoubleEndedIterator> DoubleEndedIterator for ByRefSized<'_, I> {
     where
         F: FnMut(B, Self::Item) -> B,
     {
-        // `rfold` needs ownership, so this can't forward directly.
+        // `rfold` 需要所有权，所以这里无法直接转发。
         I::try_rfold(self.0, init, NeverShortCircuit::wrap_mut_2(f)).0
     }
 

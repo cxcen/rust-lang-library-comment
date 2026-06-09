@@ -438,7 +438,7 @@ macro_rules! impl_Exp {
                     } else if over > half {
                         1
                     } else {
-                        floor & 1 // round odd up to even
+                        floor & 1 // 奇数向偶数舍入
                     };
                     // 缩放因子至少为 10 时,加 1 不会溢出。
                     coef = floor + round_up;

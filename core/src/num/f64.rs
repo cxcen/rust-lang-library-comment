@@ -1097,7 +1097,7 @@ impl f64 {
     /// # 示例
     ///
     /// ```
-    /// assert!((1f64).to_bits() != 1f64 as u64); // to_bits() is not casting!
+    /// assert!((1f64).to_bits() != 1f64 as u64); // to_bits() 不是类型转换！
     /// assert_eq!((12.5f64).to_bits(), 0x4029000000000000);
     /// ```
     #[must_use = "this returns the result of the operation, \
@@ -1809,7 +1809,7 @@ pub mod math {
     /// ```
     /// #![feature(core_float_math)]
     ///
-    /// # // FIXME(#140515): mingw has an incorrect fma
+    /// # // FIXME(#140515): mingw 的 fma 实现有误
     /// # // https://sourceforge.net/p/mingw-w64/bugs/848/
     /// # #[cfg(all(target_os = "windows", target_env = "gnu", not(target_abi = "llvm")))] {
     /// use core::f64;

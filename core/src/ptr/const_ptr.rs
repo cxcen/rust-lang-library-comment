@@ -574,7 +574,7 @@ impl<T: PointeeSized> *const T {
     #[stable(feature = "ptr_offset_from", since = "1.47.0")]
     #[rustc_const_stable(feature = "const_ptr_offset_from", since = "1.65.0")]
     #[inline]
-    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+    #[cfg_attr(miri, track_caller)] // 即便不发生 panic，这对 Miri 回溯也有帮助
     pub const unsafe fn offset_from(self, origin: *const T) -> isize
     where
         T: Sized,
@@ -594,7 +594,7 @@ impl<T: PointeeSized> *const T {
     #[inline(always)]
     #[stable(feature = "pointer_byte_offsets", since = "1.75.0")]
     #[rustc_const_stable(feature = "const_pointer_byte_offsets", since = "1.75.0")]
-    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+    #[cfg_attr(miri, track_caller)] // 即便不发生 panic，这对 Miri 回溯也有帮助
     pub const unsafe fn byte_offset_from<U: ?Sized>(self, origin: *const U) -> isize {
         // SAFETY: 调用方必须维护 `offset_from` 的安全契约。
         unsafe { self.cast::<u8>().offset_from(origin.cast::<u8>()) }
@@ -789,7 +789,7 @@ impl<T: PointeeSized> *const T {
             )
         }
 
-        #[cfg(debug_assertions)] // Expensive, and doesn't catch much in the wild.
+        #[cfg(debug_assertions)] // 开销大，且在实际代码中很少能查出问题。
         ub_checks::assert_unsafe_precondition!(
             check_language_ub,
             "ptr::add requires that the address calculation does not overflow",
@@ -887,7 +887,7 @@ impl<T: PointeeSized> *const T {
             )
         }
 
-        #[cfg(debug_assertions)] // Expensive, and doesn't catch much in the wild.
+        #[cfg(debug_assertions)] // 开销大，且在实际代码中很少能查出问题。
         ub_checks::assert_unsafe_precondition!(
             check_language_ub,
             "ptr::sub requires that the address calculation does not overflow",

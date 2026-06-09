@@ -71,7 +71,7 @@ impl Decimal {
                 value * F::pow10_fast_path(self.exponent as _)
             }
         } else {
-            // disguised fast path。
+            // 伪装的快速路径。
             let shift = self.exponent - F::MAX_EXPONENT_FAST_PATH;
             let mantissa = self.mantissa.checked_mul(INT_POW10[shift as usize])?;
             if mantissa > F::MAX_MANTISSA_FAST_PATH {

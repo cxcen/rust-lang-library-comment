@@ -1706,7 +1706,7 @@ impl char {
 
     /// 检查该值是否是 ASCII whitespace 字符：
     /// U+0020 SPACE, U+0009 HORIZONTAL TAB, U+000A LINE FEED,
-    /// U+000C FORM FEED, or U+000D CARRIAGE RETURN.
+    /// U+000C FORM FEED，或 U+000D CARRIAGE RETURN。
     ///
     /// Rust 使用 WhatWG Infra Standard 对 [ASCII whitespace][infra-aw] 的定义。
     /// 其他上下文中还广泛使用若干不同定义。例如，[POSIX locale][pct] 除了上述字符外还包含

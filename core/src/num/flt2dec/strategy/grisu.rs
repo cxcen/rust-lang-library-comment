@@ -249,13 +249,13 @@ pub fn format_shortest_opt<'a>(
 
     // 渲染整数部分，同时在每一步检查精度。
     let mut ten_kappa = max_ten_kappa; // 10^kappa
-    let mut remainder = plus1int; // digits yet to be rendered
+    let mut remainder = plus1int; // 尚未渲染的数字位
     loop {
         // 因为 `plus1 >= 10^kappa`，始终至少有一位可渲染。
         // 不变量：
         // - `delta1int <= remainder < 10^(kappa+1)`
         // - `plus1int = d[0..n-1] * 10^(kappa+1) + remainder`
-        //   (it follows that `remainder = plus1int % 10^(kappa+1)`)
+        //   (由此可得 `remainder = plus1int % 10^(kappa+1)`)
 
         // 把 `remainder` 除以 `10^kappa`；两者都按 `2^-e` 缩放。
         let q = remainder / ten_kappa;
@@ -315,7 +315,7 @@ pub fn format_shortest_opt<'a>(
         i += 1;
 
         if r < threshold {
-            let ten_kappa = 1 << e; // implicit divisor
+            let ten_kappa = 1 << e; // 隐含除数
             return round_and_weed(
                 // SAFETY: 上面已经初始化了这段内存。
                 unsafe { buf[..i].assume_init_mut() },
@@ -532,7 +532,7 @@ pub fn format_exact_opt<'a>(
     // 渲染整数部分。误差完全位于小数部分，因此这里无需检查。
     let mut kappa = max_kappa as i16;
     let mut ten_kappa = max_ten_kappa; // 10^kappa
-    let mut remainder = vint; // digits yet to be rendered
+    let mut remainder = vint; // 尚未渲染的数字位
     loop {
         // 始终至少有一位可渲染。
         // 不变量：

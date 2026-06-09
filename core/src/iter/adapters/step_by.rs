@@ -250,11 +250,11 @@ unsafe impl<I: Iterator> StepByImpl<I> for StepBy<I> {
             }
             n -= 1;
         }
-        // n and self.step_minus_one are indices, we need to add 1 to get the amount of elements
-        // When calling `.nth`, we need to subtract 1 again to convert back to an index
+        // n 和 self.step_minus_one 都是下标，要加 1 才能得到元素个数
+        // 调用 `.nth` 时又要减回 1 才能换算回下标
         let mut step = self.original_step().get();
-        // n + 1 could overflow
-        // thus, if n is usize::MAX, instead of adding one, we call .nth(step)
+        // n + 1 可能溢出
+        // 因此当 n 为 usize::MAX 时，不再加一，而是直接调用 .nth(step)
         if n == usize::MAX {
             self.iter.nth(step - 1);
         } else {
@@ -549,7 +549,7 @@ macro_rules! spec_int_ranges_r {
 
 #[cfg(target_pointer_width = "64")]
 spec_int_ranges!(u8 u16 u32 u64 usize);
-// DoubleEndedIterator requires ExactSizeIterator, which isn't implemented for Range<u64>
+// DoubleEndedIterator 要求 ExactSizeIterator，而后者并未为 Range<u64> 实现
 #[cfg(target_pointer_width = "64")]
 spec_int_ranges_r!(u8 u16 u32 usize);
 

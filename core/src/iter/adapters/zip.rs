@@ -125,7 +125,7 @@ where
     }
 }
 
-// Zip specialization trait。
+// Zip 的特化 trait。
 #[doc(hidden)]
 trait ZipImpl<A, B> {
     type Item;

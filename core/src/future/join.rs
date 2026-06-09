@@ -1,4 +1,4 @@
-#![allow(unused_imports, unused_macros)] // items are used by the macro
+#![allow(unused_imports, unused_macros)] // 这些条目由宏使用
 
 use crate::cell::UnsafeCell;
 use crate::future::{Future, poll_fn};

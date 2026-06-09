@@ -459,7 +459,7 @@ mod mut_ptr;
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_const_stable(feature = "const_intrinsic_copy", since = "1.83.0")]
 #[inline(always)]
-#[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+#[cfg_attr(miri, track_caller)] // 即便不发生 panic，这对 Miri 回溯也有帮助
 #[rustc_diagnostic_item = "ptr_copy_nonoverlapping"]
 pub const unsafe fn copy_nonoverlapping<T>(src: *const T, dst: *mut T, count: usize) {
     ub_checks::assert_unsafe_precondition!(
@@ -550,7 +550,7 @@ pub const unsafe fn copy_nonoverlapping<T>(src: *const T, dst: *mut T, count: us
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_const_stable(feature = "const_intrinsic_copy", since = "1.83.0")]
 #[inline(always)]
-#[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+#[cfg_attr(miri, track_caller)] // 即便不发生 panic，这对 Miri 回溯也有帮助
 #[rustc_diagnostic_item = "ptr_copy"]
 pub const unsafe fn copy<T>(src: *const T, dst: *mut T, count: usize) {
     // SAFETY: `copy` 的安全契约必须由调用方维护。
@@ -622,7 +622,7 @@ pub const unsafe fn copy<T>(src: *const T, dst: *mut T, count: usize) {
 #[stable(feature = "rust1", since = "1.0.0")]
 #[rustc_const_stable(feature = "const_ptr_write", since = "1.83.0")]
 #[inline(always)]
-#[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+#[cfg_attr(miri, track_caller)] // 即便不发生 panic，这对 Miri 回溯也有帮助
 #[rustc_diagnostic_item = "ptr_write_bytes"]
 pub const unsafe fn write_bytes<T>(dst: *mut T, val: u8, count: usize) {
     // SAFETY: `write_bytes` 的安全契约必须由调用方维护。
@@ -832,7 +832,7 @@ pub const fn dangling<T>() -> *const T {
 #[stable(feature = "strict_provenance", since = "1.84.0")]
 #[rustc_const_stable(feature = "strict_provenance", since = "1.84.0")]
 #[rustc_diagnostic_item = "ptr_without_provenance_mut"]
-#[allow(integer_to_ptr_transmutes)] // Expected semantics here.
+#[allow(integer_to_ptr_transmutes)] // 此处期望的就是这种语义。
 pub const fn without_provenance_mut<T>(addr: usize) -> *mut T {
     // 一次 int-to-pointer 的 transmute 目前恰好具有我们想要的语义：它创建一个不带 provenance
     // 的指针。注意这*不是*关于 transmute 语义的稳定保证，它依赖于 sysroot crate 拥有特殊地位。
@@ -1232,7 +1232,7 @@ pub const unsafe fn swap<T>(x: *mut T, y: *mut T) {
 #[stable(feature = "swap_nonoverlapping", since = "1.27.0")]
 #[rustc_const_stable(feature = "const_swap_nonoverlapping", since = "1.88.0")]
 #[rustc_diagnostic_item = "ptr_swap_nonoverlapping"]
-#[rustc_allow_const_fn_unstable(const_eval_select)] // both implementations behave the same
+#[rustc_allow_const_fn_unstable(const_eval_select)] // 两种实现行为一致
 #[track_caller]
 pub const unsafe fn swap_nonoverlapping<T>(x: *mut T, y: *mut T, count: usize) {
     ub_checks::assert_unsafe_precondition!(

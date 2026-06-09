@@ -277,7 +277,7 @@ impl f128 {
     ///
     /// ```
     /// #![feature(f128)]
-    /// # // FIXME(f16_f128): remove when `unordtf2` is available
+    /// # // FIXME(f16_f128): 等 `unordtf2` 可用后再移除
     /// # #[cfg(all(target_arch = "x86_64", target_os = "linux"))] {
     ///
     /// let nan = f128::NAN;
@@ -300,7 +300,7 @@ impl f128 {
     ///
     /// ```
     /// #![feature(f128)]
-    /// # // FIXME(f16_f128): remove when `eqtf2` is available
+    /// # // FIXME(f16_f128): 等 `eqtf2` 可用后再移除
     /// # #[cfg(all(target_arch = "x86_64", target_os = "linux"))] {
     ///
     /// let f = 7.0f128;
@@ -326,7 +326,7 @@ impl f128 {
     ///
     /// ```
     /// #![feature(f128)]
-    /// # // FIXME(f16_f128): remove when `lttf2` is available
+    /// # // FIXME(f16_f128): 等 `lttf2` 可用后再移除
     /// # #[cfg(all(target_arch = "x86_64", target_os = "linux"))] {
     ///
     /// let f = 7.0f128;
@@ -355,7 +355,7 @@ impl f128 {
     ///
     /// ```
     /// #![feature(f128)]
-    /// # // FIXME(f16_f128): remove when `eqtf2` is available
+    /// # // FIXME(f16_f128): 等 `eqtf2` 可用后再移除
     /// # #[cfg(all(target_arch = "x86_64", target_os = "linux"))] {
     ///
     /// let min = f128::MIN_POSITIVE; // 3.362103143e-4932f128
@@ -386,7 +386,7 @@ impl f128 {
     ///
     /// ```
     /// #![feature(f128)]
-    /// # // FIXME(f16_f128): remove when `eqtf2` is available
+    /// # // FIXME(f16_f128): 等 `eqtf2` 可用后再移除
     /// # #[cfg(all(target_arch = "x86_64", target_os = "linux"))] {
     ///
     /// let min = f128::MIN_POSITIVE; // 3.362103143e-4932f128
@@ -419,7 +419,7 @@ impl f128 {
     ///
     /// ```
     /// #![feature(f128)]
-    /// # // FIXME(f16_f128): remove when `eqtf2` is available
+    /// # // FIXME(f16_f128): 等 `eqtf2` 可用后再移除
     /// # #[cfg(all(target_arch = "x86_64", target_os = "linux"))] {
     ///
     /// use std::num::FpCategory;
@@ -514,7 +514,7 @@ impl f128 {
     ///
     /// ```rust
     /// #![feature(f128)]
-    /// # // FIXME(f16_f128): remove when `eqtf2` is available
+    /// # // FIXME(f16_f128): 等 `eqtf2` 可用后再移除
     /// # #[cfg(all(target_arch = "x86_64", target_os = "linux"))] {
     ///
     /// // f128::EPSILON 是 1.0 与下一个更大的数之间的差值。
@@ -569,7 +569,7 @@ impl f128 {
     ///
     /// ```rust
     /// #![feature(f128)]
-    /// # // FIXME(f16_f128): remove when `eqtf2` is available
+    /// # // FIXME(f16_f128): 等 `eqtf2` 可用后再移除
     /// # #[cfg(all(target_arch = "x86_64", target_os = "linux"))] {
     ///
     /// let x = 1.0f128;
@@ -613,7 +613,7 @@ impl f128 {
     ///
     /// ```
     /// #![feature(f128)]
-    /// # // FIXME(f16_f128): remove when `eqtf2` is available
+    /// # // FIXME(f16_f128): 等 `eqtf2` 可用后再移除
     /// # #[cfg(all(target_arch = "x86_64", target_os = "linux"))] {
     ///
     /// let x = 2.0_f128;
@@ -640,7 +640,7 @@ impl f128 {
     ///
     /// ```
     /// #![feature(f128)]
-    /// # // FIXME(f16_f128): remove when `eqtf2` is available
+    /// # // FIXME(f16_f128): 等 `eqtf2` 可用后再移除
     /// # #[cfg(all(target_arch = "x86_64", target_os = "linux"))] {
     ///
     /// let angle = std::f128::consts::PI;
@@ -671,7 +671,7 @@ impl f128 {
     ///
     /// ```
     /// #![feature(f128)]
-    /// # // FIXME(f16_f128): remove when `eqtf2` is available
+    /// # // FIXME(f16_f128): 等 `eqtf2` 可用后再移除
     /// # #[cfg(all(target_arch = "x86_64", target_os = "linux"))] {
     ///
     /// let angle = 180.0f128;
@@ -862,7 +862,7 @@ impl f128 {
     ///
     /// ```
     /// #![feature(f128)]
-    /// # // FIXME(f16_f128): remove when `float*itf` is available
+    /// # // FIXME(f16_f128): 等 `float*itf` 可用后再移除
     /// # #[cfg(all(target_arch = "x86_64", target_os = "linux"))] {
     ///
     /// let value = 4.6_f128;
@@ -907,8 +907,8 @@ impl f128 {
     /// ```
     /// #![feature(f128)]
     ///
-    /// # // FIXME(f16_f128): enable this once const casting works
-    /// # // assert_ne!((1f128).to_bits(), 1f128 as u128); // to_bits() is not casting!
+    /// # // FIXME(f16_f128): 等 const 类型转换可用后再启用此项
+    /// # // assert_ne!((1f128).to_bits(), 1f128 as u128); // to_bits() 不是类型转换！
     /// assert_eq!((12.5f128).to_bits(), 0x40029000000000000000000000000000);
     /// ```
     #[inline]
@@ -952,7 +952,7 @@ impl f128 {
     ///
     /// ```
     /// #![feature(f128)]
-    /// #  // FIXME(f16_f128): remove when `eqtf2` is available
+    /// #  // FIXME(f16_f128): 等 `eqtf2` 可用后再移除
     /// # #[cfg(all(target_arch = "x86_64", target_os = "linux"))] {
     ///
     /// let v = f128::from_bits(0x40029000000000000000000000000000);
@@ -1064,7 +1064,7 @@ impl f128 {
     ///
     /// ```
     /// #![feature(f128)]
-    /// # // FIXME(f16_f128): remove when `eqtf2` is available
+    /// # // FIXME(f16_f128): 等 `eqtf2` 可用后再移除
     /// # #[cfg(all(target_arch = "x86_64", target_os = "linux"))] {
     ///
     /// let value = f128::from_be_bytes(
@@ -1090,7 +1090,7 @@ impl f128 {
     ///
     /// ```
     /// #![feature(f128)]
-    /// # // FIXME(f16_f128): remove when `eqtf2` is available
+    /// # // FIXME(f16_f128): 等 `eqtf2` 可用后再移除
     /// # #[cfg(all(target_arch = "x86_64", target_os = "linux"))] {
     ///
     /// let value = f128::from_le_bytes(
@@ -1123,7 +1123,7 @@ impl f128 {
     ///
     /// ```
     /// #![feature(f128)]
-    /// # // FIXME(f16_f128): remove when `eqtf2` is available
+    /// # // FIXME(f16_f128): 等 `eqtf2` 可用后再移除
     /// # #[cfg(all(target_arch = "x86_64", target_os = "linux"))] {
     ///
     /// let value = f128::from_ne_bytes(if cfg!(target_endian = "big") {
@@ -1257,7 +1257,7 @@ impl f128 {
     ///
     /// ```
     /// #![feature(f128)]
-    /// # // FIXME(f16_f128): remove when `{eq,gt,unord}tf` are available
+    /// # // FIXME(f16_f128): 等 `{eq,gt,unord}tf` 可用后再移除
     /// # #[cfg(all(target_arch = "x86_64", target_os = "linux"))] {
     ///
     /// assert!((-3.0f128).clamp(-2.0, 1.0) == -2.0);

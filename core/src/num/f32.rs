@@ -1098,7 +1098,7 @@ impl f32 {
     /// # 示例
     ///
     /// ```
-    /// assert_ne!((1f32).to_bits(), 1f32 as u32); // to_bits() is not casting!
+    /// assert_ne!((1f32).to_bits(), 1f32 as u32); // to_bits() 不是类型转换！
     /// assert_eq!((12.5f32).to_bits(), 0x41480000);
     ///
     /// ```
@@ -1811,7 +1811,7 @@ pub mod math {
     /// ```
     /// #![feature(core_float_math)]
     ///
-    /// # // FIXME(#140515): mingw has an incorrect fma
+    /// # // FIXME(#140515): mingw 的 fma 实现有误
     /// # // https://sourceforge.net/p/mingw-w64/bugs/848/
     /// # #[cfg(all(target_os = "windows", target_env = "gnu", not(target_abi = "llvm")))] {
     /// use core::f32;

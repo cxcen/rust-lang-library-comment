@@ -284,7 +284,7 @@ mod prim_bool {}
 /// 为了避免这类错误，编译器会记住插入 `absurd` 调用的位置；如果无法推断类型，
 /// 就改用回退类型：
 /// ```rust, ignore
-/// type Fallback = /* An arbitrarily selected type! */;
+/// type Fallback = /* 任意挑选的一个类型！ */;
 /// { absurd::<Fallback>(panic!()) }
 /// ```
 ///
@@ -551,7 +551,7 @@ impl () {}
 ///     unaligned: u32,
 /// }
 /// let s = S::default();
-/// let p = &raw const s.unaligned; // not allowed with coercion
+/// let p = &raw const s.unaligned; // 强制转换（coercion）下不允许
 /// ```
 ///
 /// ## 4. 从 C 获取。
@@ -589,7 +589,7 @@ mod prim_pointer {}
 
 #[rustc_doc_primitive = "array"]
 #[doc(alias = "[]")]
-#[doc(alias = "[T;N]")] // unfortunately, rustdoc doesn't have fuzzy search for aliases
+#[doc(alias = "[T;N]")] // 遗憾的是 rustdoc 对 alias 没有模糊搜索
 #[doc(alias = "[T; N]")]
 /// 固定大小数组，写作 `[T; N]`，其中 `T` 是元素类型，`N` 是非负的编译期常量大小。
 ///
@@ -673,7 +673,7 @@ mod prim_pointer {}
 /// 可以使用 [slice pattern] 从数组中移出元素：
 ///
 /// ```
-/// fn move_away(_: String) { /* Do interesting things. */ }
+/// fn move_away(_: String) { /* 做一些有趣的事情。 */ }
 ///
 /// let [john, roa] = ["John".to_string(), "Roa".to_string()];
 /// move_away(john);
@@ -815,7 +815,7 @@ mod prim_array {}
 ///
 /// ```
 /// let mut x = [1, 2, 3];
-/// let x = &mut x[..]; // Take a full slice of `x`.
+/// let x = &mut x[..]; // 取 `x` 的完整切片。
 /// x[1] = 7;
 /// assert_eq!(x, &[1, 7, 3]);
 /// ```
@@ -823,13 +823,13 @@ mod prim_array {}
 /// 可以使用空范围对切片取空子范围（包括 `slice.len()..slice.len()`）：
 /// ```
 /// let x = [1, 2, 3];
-/// let empty = &x[0..0];   // subslice before the first element
+/// let empty = &x[0..0];   // 第一个元素之前的子切片
 /// assert_eq!(empty, &[]);
 /// let empty = &x[..0];    // same as &x[0..0]
 /// assert_eq!(empty, &[]);
-/// let empty = &x[1..1];   // empty subslice in the middle
+/// let empty = &x[1..1];   // 中间的空子切片
 /// assert_eq!(empty, &[]);
-/// let empty = &x[3..3];   // subslice after the last element
+/// let empty = &x[3..3];   // 最后一个元素之后的子切片
 /// assert_eq!(empty, &[]);
 /// let empty = &x[3..];    // same as &x[3..3]
 /// assert_eq!(empty, &[]);
@@ -1207,7 +1207,7 @@ mod prim_f16 {}
 /// 结果不必与运行时执行同一代码时一致，并且结果可能随编译器版本、flag 等因素变化。
 ///
 /// ### 目标特定的“额外”NaN 值
-// FIXME: Is there a better place to put this?
+// FIXME: 有没有更合适的地方放这段?
 ///
 /// | `target_arch` | 此平台上可能的额外 payload |
 /// |---------------|------------------------------------------|
@@ -1257,7 +1257,7 @@ mod prim_f16 {}
 /// # let c: f32 = 3.0;
 /// # let d: f32 = 4.0;
 /// x = a + b + c + d; // As written
-/// x = (a + c) + (b + d); // Reordered to shorten critical path and enable vectorization
+/// x = (a + c) + (b + d); // 重排以缩短关键路径并启用向量化
 /// ```
 #[stable(feature = "rust1", since = "1.0.0")]
 mod prim_f32 {}
@@ -1625,10 +1625,10 @@ mod prim_ref {}
 /// let not_bar_ptr = bar; // `not_bar_ptr` is zero-sized, uniquely identifying `bar`
 /// assert_eq!(size_of_val(&not_bar_ptr), 0);
 ///
-/// let bar_ptr: fn(i32) = not_bar_ptr; // force coercion to function pointer
+/// let bar_ptr: fn(i32) = not_bar_ptr; // 强制转换为函数指针
 /// assert_eq!(size_of_val(&bar_ptr), size_of::<usize>());
 ///
-/// let footgun = &bar; // this is a shared reference to the zero-sized type identifying `bar`
+/// let footgun = &bar; // 这是对标识 `bar` 的零大小类型的共享引用
 /// ```
 ///
 /// 最后一行表明 `&bar` 也不是函数指针。它其实是对函数特定 ZST 的引用。

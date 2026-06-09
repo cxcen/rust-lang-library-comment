@@ -348,7 +348,7 @@ macro_rules! uint_impl {
         #[must_use = "this returns the result of the operation, \
                       without modifying the original"]
         #[inline(always)]
-        #[rustc_allow_const_fn_unstable(const_trait_impl)] // for the intrinsic fallback
+        #[rustc_allow_const_fn_unstable(const_trait_impl)] // 供 intrinsic 回退路径使用
         pub const fn rotate_left(self, n: u32) -> Self {
             return intrinsics::rotate_left(self, n);
         }
@@ -375,7 +375,7 @@ macro_rules! uint_impl {
         #[must_use = "this returns the result of the operation, \
                       without modifying the original"]
         #[inline(always)]
-        #[rustc_allow_const_fn_unstable(const_trait_impl)] // for the intrinsic fallback
+        #[rustc_allow_const_fn_unstable(const_trait_impl)] // 供 intrinsic 回退路径使用
         pub const fn rotate_right(self, n: u32) -> Self {
             return intrinsics::rotate_right(self, n);
         }
@@ -3336,7 +3336,7 @@ macro_rules! uint_impl {
         /// # 示例
         ///
         /// ```
-        #[doc = concat!("assert_eq!(7", stringify!($SelfT), ".div_euclid(4), 1); // or any other integer type")]
+        #[doc = concat!("assert_eq!(7", stringify!($SelfT), ".div_euclid(4), 1); // 或任何其他整数类型")]
         /// ```
         #[stable(feature = "euclidean_division", since = "1.38.0")]
         #[rustc_const_stable(feature = "const_euclidean_int_methods", since = "1.52.0")]
@@ -3360,7 +3360,7 @@ macro_rules! uint_impl {
         /// # 示例
         ///
         /// ```
-        #[doc = concat!("assert_eq!(7", stringify!($SelfT), ".rem_euclid(4), 3); // or any other integer type")]
+        #[doc = concat!("assert_eq!(7", stringify!($SelfT), ".rem_euclid(4), 3); // 或任何其他整数类型")]
         /// ```
         #[doc(alias = "modulo", alias = "mod")]
         #[stable(feature = "euclidean_division", since = "1.38.0")]

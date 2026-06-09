@@ -425,19 +425,19 @@ macro_rules! derive_pattern_clone {
 /// struct $reverse_iterator($internal_iterator);
 ///
 /// impl Iterator for $forward_iterator
-/// { /* internal ends up calling Searcher::next_match() */ }
+/// { /* 内部实现最终会调用 Searcher::next_match() */ }
 ///
 /// impl DoubleEndedIterator for $forward_iterator
 ///       where P::Searcher: DoubleEndedSearcher
-/// { /* internal ends up calling Searcher::next_match_back() */ }
+/// { /* 内部实现最终会调用 Searcher::next_match_back() */ }
 ///
 /// impl Iterator for $reverse_iterator
 ///       where P::Searcher: ReverseSearcher
-/// { /* internal ends up calling Searcher::next_match_back() */ }
+/// { /* 内部实现最终会调用 Searcher::next_match_back() */ }
 ///
 /// impl DoubleEndedIterator for $reverse_iterator
 ///       where P::Searcher: DoubleEndedSearcher
-/// { /* internal ends up calling Searcher::next_match() */ }
+/// { /* 内部实现最终会调用 Searcher::next_match() */ }
 ///
 /// 内部迭代器在宏外定义，通过把正向和反向迭代委托给 `pattern::Searcher`
 /// 与 `pattern::ReverseSearcher`，语义上几乎等同于 DoubleEndedIterator。

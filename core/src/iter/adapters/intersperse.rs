@@ -225,7 +225,7 @@ where
         next_item.take()
     } else {
         let n = iter.next();
-        // skip invoking fold() for empty iterators
+        // 空迭代器跳过 fold() 调用
         if n.is_none() {
             return accum;
         }

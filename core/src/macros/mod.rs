@@ -199,7 +199,7 @@ pub macro assert_matches {
 ///
 /// cfg_select! {
 ///     unix => {
-///         fn foo() { /* unix specific functionality */ }
+///         fn foo() { /* unix 特有的功能 */ }
 ///     }
 ///     target_pointer_width = "32" => {
 ///         fn foo() { /* non-unix, 32-bit functionality */ }

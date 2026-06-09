@@ -38,7 +38,7 @@ use crate::{fmt, ops, slice, str};
 /// use std::ffi::CStr;
 /// use std::os::raw::c_char;
 ///
-/// # /* Extern functions are awkward in doc comments - fake it instead
+/// # /* 外部函数在文档注释里很别扭——这里改用伪造的方式
 /// extern "C" { fn my_string() -> *const c_char; }
 /// # */ unsafe extern "C" fn my_string() -> *const c_char { c"hello".as_ptr() }
 ///
@@ -69,7 +69,7 @@ use crate::{fmt, ops, slice, str};
 /// use std::ffi::CStr;
 /// use std::os::raw::c_char;
 ///
-/// # /* Extern functions are awkward in doc comments - fake it instead
+/// # /* 外部函数在文档注释里很别扭——这里改用伪造的方式
 /// extern "C" { fn my_string() -> *const c_char; }
 /// # */ unsafe extern "C" fn my_string() -> *const c_char { c"hello".as_ptr() }
 ///
@@ -230,7 +230,7 @@ impl CStr {
     /// ```
     ///
     /// [valid]: core::ptr#safety
-    #[inline] // inline is necessary for codegen to see strlen.
+    #[inline] // inline 是必要的，让 codegen 能看到 strlen。
     #[must_use]
     #[stable(feature = "rust1", since = "1.0.0")]
     #[rustc_const_stable(feature = "const_cstr_from_ptr", since = "1.81.0")]

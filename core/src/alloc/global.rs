@@ -24,7 +24,7 @@ use crate::{cmp, ptr};
 /// #[repr(C, align(4096))] // 4096 == MAX_SUPPORTED_ALIGN
 /// struct SimpleAllocator {
 ///     arena: UnsafeCell<[u8; ARENA_SIZE]>,
-///     remaining: AtomicUsize, // we allocate from the top, counting down
+///     remaining: AtomicUsize, // 从顶部开始分配，向下递减计数
 /// }
 ///
 /// #[global_allocator]
@@ -95,7 +95,7 @@ use crate::{cmp, ptr};
 ///
 ///   ```rust,ignore (unsound and has placeholders)
 ///   drop(Box::new(42));
-///   let number_of_heap_allocs = /* call private allocator API */;
+///   let number_of_heap_allocs = /* 调用私有的分配器 API */;
 ///   unsafe { std::hint::assert_unchecked(number_of_heap_allocs > 0); }
 ///   ```
 ///

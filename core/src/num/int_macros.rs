@@ -2977,7 +2977,7 @@ macro_rules! int_impl {
         /// # 示例
         ///
         /// ```
-        #[doc = concat!("let x: ", stringify!($SelfT), " = 2; // or any other integer type")]
+        #[doc = concat!("let x: ", stringify!($SelfT), " = 2; // 或任何其他整数类型")]
         ///
         /// assert_eq!(x.pow(5), 32);
         #[doc = concat!("assert_eq!(0_", stringify!($SelfT), ".pow(0), 1);")]
@@ -3068,7 +3068,7 @@ macro_rules! int_impl {
         /// # 示例
         ///
         /// ```
-        #[doc = concat!("let a: ", stringify!($SelfT), " = 7; // or any other integer type")]
+        #[doc = concat!("let a: ", stringify!($SelfT), " = 7; // 或任何其他整数类型")]
         /// let b = 4;
         ///
         /// assert_eq!(a.div_euclid(b), 1); // 7 >= 4 * 1
@@ -3105,7 +3105,7 @@ macro_rules! int_impl {
         /// # 示例
         ///
         /// ```
-        #[doc = concat!("let a: ", stringify!($SelfT), " = 7; // or any other integer type")]
+        #[doc = concat!("let a: ", stringify!($SelfT), " = 7; // 或任何其他整数类型")]
         /// let b = 4;
         ///
         /// assert_eq!(a.rem_euclid(b), 3);

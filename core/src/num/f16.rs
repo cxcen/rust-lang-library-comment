@@ -443,7 +443,7 @@ impl f16 {
     ///
     /// ```
     /// #![feature(f16)]
-    /// # // FIXME(f16_f128): LLVM crashes on s390x, llvm/llvm-project#50374
+    /// # // FIXME(f16_f128): s390x 上 LLVM 会崩溃，llvm/llvm-project#50374
     /// # #[cfg(all(target_arch = "x86_64", target_os = "linux"))] {
     ///
     /// let f = 7.0_f16;
@@ -472,7 +472,7 @@ impl f16 {
     ///
     /// ```
     /// #![feature(f16)]
-    /// # // FIXME(f16_f128): LLVM crashes on s390x, llvm/llvm-project#50374
+    /// # // FIXME(f16_f128): s390x 上 LLVM 会崩溃，llvm/llvm-project#50374
     /// # #[cfg(all(target_arch = "x86_64", target_os = "linux"))] {
     ///
     /// let f = 7.0_f16;
@@ -507,7 +507,7 @@ impl f16 {
     ///
     /// ```rust
     /// #![feature(f16)]
-    /// # // FIXME(f16_f128): ABI issues on MSVC
+    /// # // FIXME(f16_f128): MSVC 上存在 ABI 问题
     /// # #[cfg(all(target_arch = "x86_64", target_os = "linux"))] {
     ///
     /// // f16::EPSILON 是 1.0 与下一个更大的数之间的差值。
@@ -562,7 +562,7 @@ impl f16 {
     ///
     /// ```rust
     /// #![feature(f16)]
-    /// # // FIXME(f16_f128): ABI issues on MSVC
+    /// # // FIXME(f16_f128): MSVC 上存在 ABI 问题
     /// # #[cfg(all(target_arch = "x86_64", target_os = "linux"))] {
     ///
     /// let x = 1.0f16;
@@ -606,7 +606,7 @@ impl f16 {
     ///
     /// ```
     /// #![feature(f16)]
-    /// # // FIXME(f16_f128): extendhfsf2, truncsfhf2, __gnu_h2f_ieee, __gnu_f2h_ieee missing for many platforms
+    /// # // FIXME(f16_f128): 许多平台缺少 extendhfsf2、truncsfhf2、__gnu_h2f_ieee、__gnu_f2h_ieee
     /// # #[cfg(all(target_arch = "x86_64", target_os = "linux"))] {
     ///
     /// let x = 2.0_f16;
@@ -633,7 +633,7 @@ impl f16 {
     ///
     /// ```
     /// #![feature(f16)]
-    /// # // FIXME(f16_f128): extendhfsf2, truncsfhf2, __gnu_h2f_ieee, __gnu_f2h_ieee missing for many platforms
+    /// # // FIXME(f16_f128): 许多平台缺少 extendhfsf2、truncsfhf2、__gnu_h2f_ieee、__gnu_f2h_ieee
     /// # #[cfg(all(target_arch = "x86_64", target_os = "linux"))] {
     ///
     /// let angle = std::f16::consts::PI;
@@ -663,7 +663,7 @@ impl f16 {
     ///
     /// ```
     /// #![feature(f16)]
-    /// # // FIXME(f16_f128): extendhfsf2, truncsfhf2, __gnu_h2f_ieee, __gnu_f2h_ieee missing for many platforms
+    /// # // FIXME(f16_f128): 许多平台缺少 extendhfsf2、truncsfhf2、__gnu_h2f_ieee、__gnu_f2h_ieee
     /// # #[cfg(all(target_arch = "x86_64", target_os = "linux"))] {
     ///
     /// let angle = 180.0f16;
@@ -893,8 +893,8 @@ impl f16 {
     /// #![feature(f16)]
     /// # #[cfg(all(target_arch = "x86_64", target_os = "linux"))] {
     ///
-    /// # // FIXME(f16_f128): enable this once const casting works
-    /// # // assert_ne!((1f16).to_bits(), 1f16 as u128); // to_bits() is not casting!
+    /// # // FIXME(f16_f128): 等 const 类型转换可用后再启用此项
+    /// # // assert_ne!((1f16).to_bits(), 1f16 as u128); // to_bits() 不是类型转换！
     /// assert_eq!((12.5f16).to_bits(), 0x4a40);
     /// # }
     /// ```
@@ -965,7 +965,7 @@ impl f16 {
     ///
     /// ```
     /// #![feature(f16)]
-    /// # // FIXME(f16_f128): LLVM crashes on s390x, llvm/llvm-project#50374
+    /// # // FIXME(f16_f128): s390x 上 LLVM 会崩溃，llvm/llvm-project#50374
     /// # #[cfg(all(target_arch = "x86_64", target_os = "linux"))] {
     ///
     /// let bytes = 12.5f16.to_be_bytes();
@@ -989,7 +989,7 @@ impl f16 {
     ///
     /// ```
     /// #![feature(f16)]
-    /// # // FIXME(f16_f128): LLVM crashes on s390x, llvm/llvm-project#50374
+    /// # // FIXME(f16_f128): s390x 上 LLVM 会崩溃，llvm/llvm-project#50374
     /// # #[cfg(all(target_arch = "x86_64", target_os = "linux"))] {
     ///
     /// let bytes = 12.5f16.to_le_bytes();
@@ -1019,7 +1019,7 @@ impl f16 {
     ///
     /// ```
     /// #![feature(f16)]
-    /// # // FIXME(f16_f128): LLVM crashes on s390x, llvm/llvm-project#50374
+    /// # // FIXME(f16_f128): s390x 上 LLVM 会崩溃，llvm/llvm-project#50374
     /// # #[cfg(all(target_arch = "x86_64", target_os = "linux"))] {
     ///
     /// let bytes = 12.5f16.to_ne_bytes();
@@ -1150,7 +1150,7 @@ impl f16 {
     ///
     /// ```
     /// #![feature(f16)]
-    /// # // FIXME(f16_f128): extendhfsf2, truncsfhf2, __gnu_h2f_ieee, __gnu_f2h_ieee missing for many platforms
+    /// # // FIXME(f16_f128): 许多平台缺少 extendhfsf2、truncsfhf2、__gnu_h2f_ieee、__gnu_f2h_ieee
     /// # #[cfg(all(target_arch = "x86_64", target_os = "linux"))] {
     ///
     /// struct GoodBoy {

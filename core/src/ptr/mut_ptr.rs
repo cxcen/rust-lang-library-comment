@@ -871,7 +871,7 @@ impl<T: PointeeSized> *mut T {
             )
         }
 
-        #[cfg(debug_assertions)] // Expensive, and doesn't catch much in the wild.
+        #[cfg(debug_assertions)] // 开销大，且在实际代码中很少能查出问题。
         ub_checks::assert_unsafe_precondition!(
             check_language_ub,
             "ptr::add requires that the address calculation does not overflow",
@@ -967,7 +967,7 @@ impl<T: PointeeSized> *mut T {
             )
         }
 
-        #[cfg(debug_assertions)] // Expensive, and doesn't catch much in the wild.
+        #[cfg(debug_assertions)] // 开销大，且在实际代码中很少能查出问题。
         ub_checks::assert_unsafe_precondition!(
             check_language_ub,
             "ptr::sub requires that the address calculation does not overflow",
