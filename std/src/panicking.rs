@@ -1,18 +1,28 @@
-//! Implementation of various bits and pieces of the `panic!` macro and
-//! associated runtime pieces.
+//! `panic!` 宏及其相关运行时部件的各种实现细节。
 //!
-//! Specifically, this module contains the implementation of:
+//! 具体来说，本模块包含以下内容的实现：
 //!
-//! * Panic hooks
-//! * Executing a panic up to doing the actual implementation
-//! * Shims around "try"
+//! * panic 钩子（hook）
+//! * 执行一次 panic，直到进入真正的实现为止
+//! * 围绕 “try” 的各种 shim（垫片）
+//!
+//! 维护的核心不变量与依赖关系：
+//! - 本模块通过 `#[panic_handler]`（`panic_handler` 函数）与 `core` crate 的 panic 入口对接：
+//!   `core::panicking` 把 panic 转发到这里，再由这里走 hook -> unwind/abort 的流程。
+//! - panic 计数（见 `panic_count`）维护着“当前线程是否正在 panic”这一信息，
+//!   [`panicking`] 函数据此判断；它还负责识别递归 panic（double panic）并强制 abort。
+//! - 是否 unwind 还是 abort 的决策集中在 `panic_with_hook`：根据 `can_unwind`、
+//!   `always_abort`、以及 hook 内是否再次 panic 来决定。
+//! - 真正发起 unwind 的工作交给外部 panic 运行时（通过 `__rust_start_panic` 等
+//!   `rustc_std_internal_symbol` 符号对接，见下方 `extern` 块）。
+//! - 失败暴露：无法发起 panic、不可 unwind 场景下仍尝试 unwind、或 hook 内再次 panic，
+//!   都会通过 `rtabort!` / `process::abort()` 令进程直接终止。
 
 #![deny(unsafe_op_in_unsafe_fn)]
 
 use core::panic::{Location, PanicPayload};
 
-// make sure to use the stderr output configured
-// by libtest in the real copy of std
+// 确保使用由 libtest 在真正的那份 std 拷贝中配置好的 stderr 输出
 #[cfg(test)]
 use realstd::io::try_set_output_capture;
 
@@ -27,15 +37,16 @@ use crate::sys::backtrace;
 use crate::sys::stdio::panic_output;
 use crate::{fmt, intrinsics, process, thread};
 
-// This forces codegen of the function called by panic!() inside the std crate, rather than in
-// downstream crates. Primarily this is useful for rustc's codegen tests, which rely on noticing
-// complete removal of panic from generated IR. Since begin_panic is inline(never), it's only
-// codegen'd once per crate-graph so this pushes that to std rather than our codegen test crates.
+// 确保由 panic!() 调用的函数在 std crate 内部完成代码生成（codegen），而不是在下游
+// crate 中。这主要对 rustc 的 codegen 测试有用，那些测试依赖于“能注意到 panic 已被
+// 从生成的 IR 中完全移除”。由于 begin_panic 标注了 inline(never)，它在整个 crate 图中
+// 只会被 codegen 一次，因此这样做能把这次 codegen 推到 std 中，而非我们的 codegen 测试
+// crate 中。
 //
-// (See https://github.com/rust-lang/rust/pull/123244 for more info on why).
+// （关于为何如此，更多信息见 https://github.com/rust-lang/rust/pull/123244）。
 //
-// If this is causing problems we can also modify those codegen tests to use a crate type like
-// cdylib which doesn't export "Rust" symbols to downstream linkage units.
+// 如果这会造成问题，我们也可以改用诸如 cdylib 之类的 crate type 来修改那些 codegen
+// 测试——cdylib 不会向下游链接单元导出 "Rust" 符号。
 #[unstable(feature = "libstd_sys_internals", reason = "used by the panic! macro", issue = "none")]
 #[doc(hidden)]
 #[allow(dead_code)]
@@ -43,16 +54,14 @@ use crate::{fmt, intrinsics, process, thread};
 pub static EMPTY_PANIC: fn(&'static str) -> ! =
     begin_panic::<&'static str> as fn(&'static str) -> !;
 
-// Binary interface to the panic runtime that the standard library depends on.
+// 与标准库所依赖的 panic 运行时之间的二进制接口（binary interface）。
 //
-// The standard library is tagged with `#![needs_panic_runtime]` (introduced in
-// RFC 1513) to indicate that it requires some other crate tagged with
-// `#![panic_runtime]` to exist somewhere. Each panic runtime is intended to
-// implement these symbols (with the same signatures) so we can get matched up
-// to them.
+// 标准库被标记了 `#![needs_panic_runtime]`（在 RFC 1513 中引入），表明它需要
+// 在某处存在另一个标记了 `#![panic_runtime]` 的 crate。每个 panic 运行时都应当
+// 实现这些符号（且签名一致），这样我们才能与它们匹配对接。
 //
-// One day this may look a little less ad-hoc with the compiler helping out to
-// hook up these functions, but it is not this day!
+// 也许有朝一日编译器会帮忙把这些函数挂接起来，使这一切不再这么临时拼凑（ad-hoc），
+// 但那一天还没到来！
 #[allow(improper_ctypes)]
 unsafe extern "C" {
     #[rustc_std_internal_symbol]
@@ -60,23 +69,21 @@ unsafe extern "C" {
 }
 
 unsafe extern "Rust" {
-    /// `PanicPayload` lazily performs allocation only when needed (this avoids
-    /// allocations when using the "abort" panic runtime).
+    /// `PanicPayload` 仅在需要时才惰性进行分配（这样在使用 "abort" panic 运行时
+    /// 时就能避免分配内存）。
     #[rustc_std_internal_symbol]
     fn __rust_start_panic(payload: &mut dyn PanicPayload) -> u32;
 }
 
-/// This function is called by the panic runtime if FFI code catches a Rust
-/// panic but doesn't rethrow it. We don't support this case since it messes
-/// with our panic count.
+/// 当 FFI 代码捕获了一个 Rust panic 却没有重新抛出它时，panic 运行时会调用本函数。
+/// 我们不支持这种情况，因为它会扰乱我们的 panic 计数。
 #[cfg(not(test))]
 #[rustc_std_internal_symbol]
 extern "C" fn __rust_drop_panic() -> ! {
     rtabort!("Rust panics must be rethrown");
 }
 
-/// This function is called by the panic runtime if it catches an exception
-/// object which does not correspond to a Rust panic.
+/// 当 panic 运行时捕获到一个并不对应于 Rust panic 的异常对象时，会调用本函数。
 #[cfg(not(test))]
 #[rustc_std_internal_symbol]
 extern "C" fn __rust_foreign_exception() -> ! {
@@ -102,32 +109,29 @@ impl Hook {
 
 static HOOK: RwLock<Hook> = RwLock::new(Hook::Default);
 
-/// Registers a custom panic hook, replacing the previously registered hook.
+/// 注册一个自定义 panic 钩子，替换先前注册的钩子。
 ///
-/// The panic hook is invoked when a thread panics, but before the panic runtime
-/// is invoked. As such, the hook will run with both the aborting and unwinding
-/// runtimes.
+/// panic 钩子会在某个线程 panic 时、但在调用 panic 运行时之前被触发。因此，
+/// 无论使用的是 abort 还是 unwind 运行时，该钩子都会运行。
 ///
-/// The default hook, which is registered at startup, prints a message to standard error and
-/// generates a backtrace if requested. This behavior can be customized using the `set_hook` function.
-/// The current hook can be retrieved while reinstating the default hook with the [`take_hook`]
-/// function.
+/// 默认钩子在启动时注册，它会向标准错误打印一条消息，并在被请求时生成 backtrace。
+/// 可以使用 `set_hook` 函数自定义这一行为。可以用 [`take_hook`] 函数在恢复默认钩子
+/// 的同时取出当前的钩子。
 ///
 /// [`take_hook`]: ./fn.take_hook.html
 ///
-/// The hook is provided with a `PanicHookInfo` struct which contains information
-/// about the origin of the panic, including the payload passed to `panic!` and
-/// the source code location from which the panic originated.
+/// 钩子会收到一个 `PanicHookInfo` 结构体，其中包含关于 panic 来源的信息，包括传给
+/// `panic!` 的 payload 以及 panic 起源处的源码位置。
 ///
-/// The panic hook is a global resource.
+/// panic 钩子是一项全局资源。
 ///
 /// # Panics
 ///
-/// Panics if called from a panicking thread.
+/// 如果从一个正在 panic 的线程中调用，则会 panic。
 ///
-/// # Examples
+/// # 示例
 ///
-/// The following will print "Custom panic hook":
+/// 下面这段代码会打印 "Custom panic hook"：
 ///
 /// ```should_panic
 /// use std::panic;
@@ -144,27 +148,25 @@ pub fn set_hook(hook: Box<dyn Fn(&PanicHookInfo<'_>) + 'static + Sync + Send>) {
         panic!("cannot modify the panic hook from a panicking thread");
     }
 
-    // Drop the old hook after changing the hook to avoid deadlocking if its
-    // destructor panics.
+    // 在更换钩子之后再 drop 旧钩子，以避免在其析构函数 panic 时发生死锁。
     drop(HOOK.replace(Hook::Custom(hook)));
 }
 
-/// Unregisters the current panic hook and returns it, registering the default hook
-/// in its place.
+/// 注销当前的 panic 钩子并将其返回，同时在原位注册默认钩子。
 ///
-/// *See also the function [`set_hook`].*
+/// *另请参阅函数 [`set_hook`]。*
 ///
 /// [`set_hook`]: ./fn.set_hook.html
 ///
-/// If the default hook is registered it will be returned, but remain registered.
+/// 如果当前注册的是默认钩子，则返回它，但它仍保持注册状态。
 ///
 /// # Panics
 ///
-/// Panics if called from a panicking thread.
+/// 如果从一个正在 panic 的线程中调用，则会 panic。
 ///
-/// # Examples
+/// # 示例
 ///
-/// The following will print "Normal panic":
+/// 下面这段代码会打印 "Normal panic"：
 ///
 /// ```should_panic
 /// use std::panic;
@@ -187,25 +189,25 @@ pub fn take_hook() -> Box<dyn Fn(&PanicHookInfo<'_>) + 'static + Sync + Send> {
     HOOK.replace(Hook::Default).into_box()
 }
 
-/// Atomic combination of [`take_hook`] and [`set_hook`]. Use this to replace the panic handler with
-/// a new panic handler that does something and then executes the old handler.
+/// [`take_hook`] 与 [`set_hook`] 的原子组合。用它来把 panic 处理程序替换为一个
+/// 新的处理程序——该新处理程序先做某些事情，然后再执行旧的处理程序。
 ///
 /// [`take_hook`]: ./fn.take_hook.html
 /// [`set_hook`]: ./fn.set_hook.html
 ///
 /// # Panics
 ///
-/// Panics if called from a panicking thread.
+/// 如果从一个正在 panic 的线程中调用，则会 panic。
 ///
-/// # Examples
+/// # 示例
 ///
-/// The following will print the custom message, and then the normal output of panic.
+/// 下面这段代码会先打印自定义消息，然后再打印 panic 的正常输出。
 ///
 /// ```should_panic
 /// #![feature(panic_update_hook)]
 /// use std::panic;
 ///
-/// // Equivalent to
+/// // 等价于
 /// // let prev = panic::take_hook();
 /// // panic::set_hook(Box::new(move |info| {
 /// //     println!("...");
@@ -235,11 +237,11 @@ where
     *hook = Hook::Custom(Box::new(move |info| hook_fn(&prev, info)));
 }
 
-/// The default panic handler.
+/// 默认的 panic 处理程序。
 #[optimize(size)]
 fn default_hook(info: &PanicHookInfo<'_>) {
-    // If this is a double panic, make sure that we print a backtrace
-    // for this panic. Otherwise only print it if logging is enabled.
+    // 如果这是一次 double panic（panic 套 panic），就确保为本次 panic 打印 backtrace。
+    // 否则只有在启用了日志时才打印它。
     let backtrace = if info.force_no_backtrace() {
         None
     } else if panic_count::get_count() >= 2 {
@@ -248,28 +250,27 @@ fn default_hook(info: &PanicHookInfo<'_>) {
         crate::panic::get_backtrace_style()
     };
 
-    // The current implementation always returns `Some`.
+    // 当前实现总是返回 `Some`。
     let location = info.location().unwrap();
 
     let msg = payload_as_str(info.payload());
 
     let write = #[optimize(size)]
     |err: &mut dyn crate::io::Write| {
-        // Use a lock to prevent mixed output in multithreading context.
-        // Some platforms also require it when printing a backtrace, like `SymFromAddr` on Windows.
+        // 使用锁来防止多线程环境下输出相互混杂。
+        // 某些平台在打印 backtrace 时也需要它，比如 Windows 上的 `SymFromAddr`。
         let mut lock = backtrace::lock();
 
         thread::with_current_name(|name| {
             let name = name.unwrap_or("<unnamed>");
             let tid = thread::current_os_id();
 
-            // Try to write the panic message to a buffer first to prevent other concurrent outputs
-            // interleaving with it.
+            // 先尝试把 panic 消息写入一个缓冲区，以防止其他并发输出与之交错。
             let mut buffer = [0u8; 512];
             let mut cursor = crate::io::Cursor::new(&mut buffer[..]);
 
             let write_msg = |dst: &mut dyn crate::io::Write| {
-                // We add a newline to ensure the panic message appears at the start of a line.
+                // 我们加一个换行符，以确保 panic 消息出现在某一行的开头。
                 writeln!(dst, "\nthread '{name}' ({tid}) panicked at {location}:\n{msg}")
             };
 
@@ -277,7 +278,7 @@ fn default_hook(info: &PanicHookInfo<'_>) {
                 let pos = cursor.position() as usize;
                 let _ = err.write_all(&buffer[0..pos]);
             } else {
-                // The message did not fit into the buffer, write it directly instead.
+                // 消息没能装进缓冲区，那就直接把它写出去。
                 let _ = write_msg(err);
             };
         });
@@ -307,7 +308,7 @@ fn default_hook(info: &PanicHookInfo<'_>) {
                     }
                 }
             }
-            // If backtraces aren't supported or are forced-off, do nothing.
+            // 如果不支持 backtrace，或者 backtrace 被强制关闭，则什么也不做。
             None => {}
         }
     };
@@ -325,7 +326,7 @@ fn default_hook(info: &PanicHookInfo<'_>) {
 #[cfg(panic = "immediate-abort")]
 #[unstable(feature = "update_panic_count", issue = "none")]
 pub mod panic_count {
-    /// A reason for forcing an immediate abort on panic.
+    /// 强制立即 abort 的原因。
     #[derive(Debug)]
     pub enum MustAbort {
         AlwaysAbort,
@@ -346,7 +347,7 @@ pub mod panic_count {
     #[inline]
     pub fn set_always_abort() {}
 
-    // Disregards ALWAYS_ABORT_FLAG
+    // 忽略 ALWAYS_ABORT_FLAG
     #[inline]
     #[must_use]
     pub fn get_count() -> usize {
@@ -370,55 +371,47 @@ pub mod panic_count {
 
     const ALWAYS_ABORT_FLAG: usize = 1 << (usize::BITS - 1);
 
-    /// A reason for forcing an immediate abort on panic.
+    /// 强制立即 abort 的原因。
     #[derive(Debug)]
     pub enum MustAbort {
         AlwaysAbort,
         PanicInHook,
     }
 
-    // Panic count for the current thread and whether a panic hook is currently
-    // being executed..
+    // 当前线程的 panic 计数，以及当前是否正在执行某个 panic 钩子。
     thread_local! {
         static LOCAL_PANIC_COUNT: Cell<(usize, bool)> = const { Cell::new((0, false)) }
     }
 
-    // Sum of panic counts from all threads. The purpose of this is to have
-    // a fast path in `count_is_zero` (which is used by `panicking`). In any particular
-    // thread, if that thread currently views `GLOBAL_PANIC_COUNT` as being zero,
-    // then `LOCAL_PANIC_COUNT` in that thread is zero. This invariant holds before
-    // and after increase and decrease, but not necessarily during their execution.
+    // 所有线程 panic 计数之和。它的用途是给 `count_is_zero`（被 `panicking` 使用）提供
+    // 一条快速路径。对任意某个线程而言，如果该线程当前看到的 `GLOBAL_PANIC_COUNT` 为零，
+    // 那么该线程中的 `LOCAL_PANIC_COUNT` 也为零。这一不变量在 increase 与 decrease 执行
+    // 前后都成立，但在它们执行过程中不一定成立。
     //
-    // Additionally, the top bit of GLOBAL_PANIC_COUNT (GLOBAL_ALWAYS_ABORT_FLAG)
-    // records whether panic::always_abort() has been called. This can only be
-    // set, never cleared.
-    // panic::always_abort() is usually called to prevent memory allocations done by
-    // the panic handling in the child created by `libc::fork`.
-    // Memory allocations performed in a child created with `libc::fork` are undefined
-    // behavior in most operating systems.
-    // Accessing LOCAL_PANIC_COUNT in a child created by `libc::fork` would lead to a memory
-    // allocation. Only GLOBAL_PANIC_COUNT can be accessed in this situation. This is
-    // sufficient because a child process will always have exactly one thread only.
-    // See also #85261 for details.
+    // 此外，GLOBAL_PANIC_COUNT 的最高位（GLOBAL_ALWAYS_ABORT_FLAG）记录 panic::always_abort()
+    // 是否已被调用。该位只能被置位，永远不会被清除。
+    // panic::always_abort() 通常被用来防止在 `libc::fork` 创建的子进程中、panic 处理过程
+    // 所做的内存分配。
+    // 在用 `libc::fork` 创建的子进程中执行内存分配，在大多数操作系统上都是未定义行为。
+    // 在 `libc::fork` 创建的子进程中访问 LOCAL_PANIC_COUNT 会导致一次内存分配。在这种
+    // 情形下只能访问 GLOBAL_PANIC_COUNT。这已经足够，因为子进程总是恰好只有一个线程。
+    // 详情另见 #85261。
     //
-    // This could be viewed as a struct containing a single bit and an n-1-bit
-    // value, but if we wrote it like that it would be more than a single word,
-    // and even a newtype around usize would be clumsy because we need atomics.
-    // But we use such a tuple for the return type of increase().
+    // 它可以被看作一个包含“一个 bit”和“一个 n-1 位的值”的结构体，但如果真这么写，
+    // 它会超过一个字（word）的大小；而即便是围绕 usize 的 newtype 也会很笨拙，因为我们
+    // 需要原子操作。不过我们确实在 increase() 的返回类型中使用了这样的元组。
     //
-    // Stealing a bit is fine because it just amounts to assuming that each
-    // panicking thread consumes at least 2 bytes of address space.
+    // “偷用”一个 bit 是没问题的，因为这相当于假设每个正在 panic 的线程至少占用 2 字节的
+    // 地址空间。
     static GLOBAL_PANIC_COUNT: Atomic<usize> = AtomicUsize::new(0);
 
-    // Increases the global and local panic count, and returns whether an
-    // immediate abort is required.
+    // 增加全局和本地的 panic 计数，并返回是否需要立即 abort。
     //
-    // This also updates thread-local state to keep track of whether a panic
-    // hook is currently executing.
+    // 它还会更新线程局部状态，以跟踪当前是否有某个 panic 钩子正在执行。
     pub fn increase(run_panic_hook: bool) -> Option<MustAbort> {
         let global_count = GLOBAL_PANIC_COUNT.fetch_add(1, Ordering::Relaxed);
         if global_count & ALWAYS_ABORT_FLAG != 0 {
-            // Do *not* access thread-local state, we might be after a `fork`.
+            // *不要* 访问线程局部状态，我们此刻可能正处于一次 `fork` 之后。
             return Some(MustAbort::AlwaysAbort);
         }
 
@@ -451,34 +444,30 @@ pub mod panic_count {
         GLOBAL_PANIC_COUNT.fetch_or(ALWAYS_ABORT_FLAG, Ordering::Relaxed);
     }
 
-    // Disregards ALWAYS_ABORT_FLAG
+    // 忽略 ALWAYS_ABORT_FLAG
     #[must_use]
     pub fn get_count() -> usize {
         LOCAL_PANIC_COUNT.with(|c| c.get().0)
     }
 
-    // Disregards ALWAYS_ABORT_FLAG
+    // 忽略 ALWAYS_ABORT_FLAG
     #[must_use]
     #[inline]
     pub fn count_is_zero() -> bool {
         if GLOBAL_PANIC_COUNT.load(Ordering::Relaxed) & !ALWAYS_ABORT_FLAG == 0 {
-            // Fast path: if `GLOBAL_PANIC_COUNT` is zero, all threads
-            // (including the current one) will have `LOCAL_PANIC_COUNT`
-            // equal to zero, so TLS access can be avoided.
+            // 快速路径：如果 `GLOBAL_PANIC_COUNT` 为零，那么所有线程（包括当前线程）的
+            // `LOCAL_PANIC_COUNT` 都将等于零，于是可以避免 TLS 访问。
             //
-            // In terms of performance, a relaxed atomic load is similar to a normal
-            // aligned memory read (e.g., a mov instruction in x86), but with some
-            // compiler optimization restrictions. On the other hand, a TLS access
-            // might require calling a non-inlinable function (such as `__tls_get_addr`
-            // when using the GD TLS model).
+            // 就性能而言，一次 relaxed 原子加载与一次普通的对齐内存读取（例如 x86 上的
+            // mov 指令）相近，只是带有一些编译器优化方面的限制。而另一方面，一次 TLS 访问
+            // 可能需要调用一个不可内联的函数（例如使用 GD TLS 模型时的 `__tls_get_addr`）。
             true
         } else {
             is_zero_slow_path()
         }
     }
 
-    // Slow path is in a separate function to reduce the amount of code
-    // inlined from `count_is_zero`.
+    // 慢速路径放在一个单独的函数里，以减少从 `count_is_zero` 内联进来的代码量。
     #[inline(never)]
     #[cold]
     fn is_zero_slow_path() -> bool {
@@ -489,13 +478,13 @@ pub mod panic_count {
 #[cfg(test)]
 pub use realstd::rt::panic_count;
 
-/// Invoke a closure, capturing the cause of an unwinding panic if one occurs.
+/// 调用一个闭包，并在其因 panic 而 unwind 时捕获导致 unwind 的原因。
 #[cfg(panic = "immediate-abort")]
 pub unsafe fn catch_unwind<R, F: FnOnce() -> R>(f: F) -> Result<R, Box<dyn Any + Send>> {
     Ok(f())
 }
 
-/// Invoke a closure, capturing the cause of an unwinding panic if one occurs.
+/// 调用一个闭包，并在其因 panic 而 unwind 时捕获导致 unwind 的原因。
 #[cfg(not(panic = "immediate-abort"))]
 pub unsafe fn catch_unwind<R, F: FnOnce() -> R>(f: F) -> Result<R, Box<dyn Any + Send>> {
     union Data<F, R> {
@@ -504,42 +493,36 @@ pub unsafe fn catch_unwind<R, F: FnOnce() -> R>(f: F) -> Result<R, Box<dyn Any +
         p: ManuallyDrop<Box<dyn Any + Send>>,
     }
 
-    // We do some sketchy operations with ownership here for the sake of
-    // performance. We can only pass pointers down to `do_call` (can't pass
-    // objects by value), so we do all the ownership tracking here manually
-    // using a union.
+    // 出于性能考虑，我们在这里对所有权做了一些“取巧”的操作。我们只能把指针传给
+    // `do_call`（无法按值传递对象），所以我们在这里用一个 union 手动完成全部的
+    // 所有权跟踪。
     //
-    // We go through a transition where:
+    // 我们会经历这样一个状态转移过程：
     //
-    // * First, we set the data field `f` to be the argumentless closure that we're going to call.
-    // * When we make the function call, the `do_call` function below, we take
-    //   ownership of the function pointer. At this point the `data` union is
-    //   entirely uninitialized.
-    // * If the closure successfully returns, we write the return value into the
-    //   data's return slot (field `r`).
-    // * If the closure panics (`do_catch` below), we write the panic payload into field `p`.
-    // * Finally, when we come back out of the `try` intrinsic we're
-    //   in one of two states:
+    // * 首先，把 data 的 `f` 字段设为我们将要调用的那个无参闭包。
+    // * 当我们发起函数调用时（下面的 `do_call` 函数），它会取得该函数指针的所有权。
+    //   此时 `data` union 完全处于未初始化状态。
+    // * 如果闭包成功返回，我们把返回值写入 data 的返回值槽（字段 `r`）。
+    // * 如果闭包 panic（下面的 `do_catch`），我们把 panic payload 写入字段 `p`。
+    // * 最后，当我们从 `try` 内建（intrinsic）返回时，会处于以下两种状态之一：
     //
-    //      1. The closure didn't panic, in which case the return value was
-    //         filled in. We move it out of `data.r` and return it.
-    //      2. The closure panicked, in which case the panic payload was
-    //         filled in. We move it out of `data.p` and return it.
+    //      1. 闭包没有 panic，此时返回值已被填好。我们把它从 `data.r` 中移出并返回。
+    //      2. 闭包 panic 了，此时 panic payload 已被填好。我们把它从 `data.p` 中移出并返回。
     //
-    // Once we stack all that together we should have the "most efficient'
-    // method of calling a catch panic whilst juggling ownership.
+    // 把上面这些组合到一起，我们就得到了在捕获 panic 的同时兼顾所有权管理的“最高效”
+    // 的方法。
     let mut data = Data { f: ManuallyDrop::new(f) };
 
     let data_ptr = (&raw mut data) as *mut u8;
     // SAFETY:
     //
-    // Access to the union's fields: this is `std` and we know that the `catch_unwind`
-    // intrinsic fills in the `r` or `p` union field based on its return value.
+    // 对 union 各字段的访问：这里是 `std`，我们知道 `catch_unwind` 内建会根据其返回值
+    // 来填充 union 的 `r` 或 `p` 字段。
     //
-    // The call to `intrinsics::catch_unwind` is made safe by:
-    // - `do_call`, the first argument, can be called with the initial `data_ptr`.
-    // - `do_catch`, the second argument, can be called with the `data_ptr` as well.
-    // See their safety preconditions for more information
+    // 对 `intrinsics::catch_unwind` 的调用之所以安全，是因为：
+    // - 第一个参数 `do_call` 可以用最初的 `data_ptr` 来调用。
+    // - 第二个参数 `do_catch` 同样可以用 `data_ptr` 来调用。
+    // 更多信息见它们各自的安全前置条件。
     unsafe {
         return if intrinsics::catch_unwind(do_call::<F, R>, data_ptr, do_catch::<F, R>) == 0 {
             Ok(ManuallyDrop::into_inner(data.r))
@@ -548,32 +531,28 @@ pub unsafe fn catch_unwind<R, F: FnOnce() -> R>(f: F) -> Result<R, Box<dyn Any +
         };
     }
 
-    // We consider unwinding to be rare, so mark this function as cold. However,
-    // do not mark it no-inline -- that decision is best to leave to the
-    // optimizer (in most cases this function is not inlined even as a normal,
-    // non-cold function, though, as of the writing of this comment).
+    // 我们认为 unwind 是少见情形，因此把本函数标记为 cold。不过不把它标记为 no-inline——
+    // 那个决定最好留给优化器（在大多数情况下，即便作为普通的、非 cold 的函数，本函数也
+    // 不会被内联——截至撰写本注释时如此）。
     #[cold]
     #[optimize(size)]
     unsafe fn cleanup(payload: *mut u8) -> Box<dyn Any + Send + 'static> {
-        // SAFETY: The whole unsafe block hinges on a correct implementation of
-        // the panic handler `__rust_panic_cleanup`. As such we can only
-        // assume it returns the correct thing for `Box::from_raw` to work
-        // without undefined behavior.
+        // SAFETY: 整个 unsafe 块的成立都取决于 panic 处理程序 `__rust_panic_cleanup`
+        // 被正确实现。因此我们只能假定它返回的东西是正确的，从而 `Box::from_raw`
+        // 可以在不引发未定义行为的前提下工作。
         let obj = unsafe { Box::from_raw(__rust_panic_cleanup(payload)) };
         panic_count::decrease();
         obj
     }
 
     // SAFETY:
-    // data must be non-NUL, correctly aligned, and a pointer to a `Data<F, R>`
-    // Its must contains a valid `f` (type: F) value that can be use to fill
-    // `data.r`.
+    // data 必须非 NUL、正确对齐，并且是一个指向 `Data<F, R>` 的指针。
+    // 它必须包含一个有效的 `f`（类型为 F）值，可用来填充 `data.r`。
     //
-    // This function cannot be marked as `unsafe` because `intrinsics::catch_unwind`
-    // expects normal function pointers.
+    // 本函数不能被标记为 `unsafe`，因为 `intrinsics::catch_unwind` 期望的是普通函数指针。
     #[inline]
     fn do_call<F: FnOnce() -> R, R>(data: *mut u8) {
-        // SAFETY: this is the responsibility of the caller, see above.
+        // SAFETY: 这是调用方的责任，见上文。
         unsafe {
             let data = data as *mut Data<F, R>;
             let data = &mut (*data);
@@ -582,25 +561,21 @@ pub unsafe fn catch_unwind<R, F: FnOnce() -> R>(f: F) -> Result<R, Box<dyn Any +
         }
     }
 
-    // We *do* want this part of the catch to be inlined: this allows the
-    // compiler to properly track accesses to the Data union and optimize it
-    // away most of the time.
+    // 我们 *确实* 希望 catch 的这一部分被内联：这能让编译器恰当地跟踪对 Data union
+    // 的访问，并在大多数情况下把它优化掉。
     //
     // SAFETY:
-    // data must be non-NUL, correctly aligned, and a pointer to a `Data<F, R>`
-    // Since this uses `cleanup` it also hinges on a correct implementation of
-    // `__rustc_panic_cleanup`.
+    // data 必须非 NUL、正确对齐，并且是一个指向 `Data<F, R>` 的指针。
+    // 由于它使用了 `cleanup`，所以也取决于 `__rustc_panic_cleanup` 被正确实现。
     //
-    // This function cannot be marked as `unsafe` because `intrinsics::catch_unwind`
-    // expects normal function pointers.
+    // 本函数不能被标记为 `unsafe`，因为 `intrinsics::catch_unwind` 期望的是普通函数指针。
     #[inline]
-    #[rustc_nounwind] // `intrinsic::catch_unwind` requires catch fn to be nounwind
+    #[rustc_nounwind] // `intrinsic::catch_unwind` 要求 catch 函数必须是 nounwind
     fn do_catch<F: FnOnce() -> R, R>(data: *mut u8, payload: *mut u8) {
-        // SAFETY: this is the responsibility of the caller, see above.
+        // SAFETY: 这是调用方的责任，见上文。
         //
-        // When `__rustc_panic_cleaner` is correctly implemented we can rely
-        // on `obj` being the correct thing to pass to `data.p` (after wrapping
-        // in `ManuallyDrop`).
+        // 当 `__rustc_panic_cleaner` 被正确实现时，我们可以依赖 `obj` 是正确的、
+        // 可传给 `data.p` 的东西（在用 `ManuallyDrop` 包装之后）。
         unsafe {
             let data = data as *mut Data<F, R>;
             let data = &mut (*data);
@@ -610,13 +585,13 @@ pub unsafe fn catch_unwind<R, F: FnOnce() -> R>(f: F) -> Result<R, Box<dyn Any +
     }
 }
 
-/// Determines whether the current thread is unwinding because of panic.
+/// 判断当前线程是否正因 panic 而处于 unwind 状态。
 #[inline]
 pub fn panicking() -> bool {
     !panic_count::count_is_zero()
 }
 
-/// Entry point of panics from the core crate (`panic_impl` lang item).
+/// 来自 core crate 的 panic 入口点（`panic_impl` lang item）。
 #[cfg(not(any(test, doctest)))]
 #[panic_handler]
 pub fn panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
@@ -628,7 +603,7 @@ pub fn panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
     impl FormatStringPayload<'_> {
         fn fill(&mut self) -> &mut String {
             let inner = self.inner;
-            // Lazily, the first time this gets called, run the actual string formatting.
+            // 惰性处理：在本方法第一次被调用时，才真正执行字符串格式化。
             self.string.get_or_insert_with(|| {
                 let mut s = String::new();
                 let mut fmt = fmt::Formatter::new(&mut s, fmt::FormattingOptions::new());
@@ -640,9 +615,9 @@ pub fn panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
 
     unsafe impl PanicPayload for FormatStringPayload<'_> {
         fn take_box(&mut self) -> *mut (dyn Any + Send) {
-            // We do two allocations here, unfortunately. But (a) they're required with the current
-            // scheme, and (b) we don't handle panic + OOM properly anyway (see comment in
-            // begin_panic below).
+            // 很遗憾，我们在这里做了两次分配。但是 (a) 在当前方案下这是必需的，
+            // 且 (b) 我们本来也没有正确处理 panic + OOM 的情况（见下方 begin_panic
+            // 中的注释）。
             let contents = mem::take(self.fill());
             Box::into_raw(Box::new(contents))
         }
@@ -684,7 +659,7 @@ pub fn panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
         }
     }
 
-    let loc = info.location().unwrap(); // The current implementation always returns Some
+    let loc = info.location().unwrap(); // 当前实现总是返回 Some
     let msg = info.message();
     crate::sys::backtrace::__rust_end_short_backtrace(move || {
         if let Some(s) = msg.as_str() {
@@ -705,18 +680,16 @@ pub fn panic_handler(info: &core::panic::PanicInfo<'_>) -> ! {
     })
 }
 
-/// This is the entry point of panicking for the non-format-string variants of
-/// panic!() and assert!(). In particular, this is the only entry point that supports
-/// arbitrary payloads, not just format strings.
+/// 这是 `panic!()` 和 `assert!()` 中非“格式化字符串”变体的 panic 入口点。
+/// 特别地，它是唯一支持任意 payload（而不只是格式化字符串）的入口点。
 #[unstable(feature = "libstd_sys_internals", reason = "used by the panic! macro", issue = "none")]
 #[cfg_attr(not(any(test, doctest)), lang = "begin_panic")]
-// lang item for CTFE panic support
-// never inline unless panic=immediate-abort to avoid code
-// bloat at the call sites as much as possible
+// 用于 CTFE（编译期求值）panic 支持的 lang item
+// 除非 panic=immediate-abort，否则绝不内联，以尽可能减少调用点处的代码膨胀
 #[cfg_attr(not(panic = "immediate-abort"), inline(never), cold, optimize(size))]
 #[cfg_attr(panic = "immediate-abort", inline)]
 #[track_caller]
-#[rustc_do_not_const_check] // hooked by const-eval
+#[rustc_do_not_const_check] // 由 const-eval 挂接接管
 pub const fn begin_panic<M: Any + Send>(msg: M) -> ! {
     if cfg!(panic = "immediate-abort") {
         intrinsics::abort()
@@ -728,11 +701,10 @@ pub const fn begin_panic<M: Any + Send>(msg: M) -> ! {
 
     unsafe impl<A: Send + 'static> PanicPayload for Payload<A> {
         fn take_box(&mut self) -> *mut (dyn Any + Send) {
-            // Note that this should be the only allocation performed in this code path. Currently
-            // this means that panic!() on OOM will invoke this code path, but then again we're not
-            // really ready for panic on OOM anyway. If we do start doing this, then we should
-            // propagate this allocation to be performed in the parent of this thread instead of the
-            // thread that's panicking.
+            // 注意：这应当是本代码路径中执行的唯一一次分配。当前这意味着在 OOM 时
+            // 调用 panic!() 会走到这条代码路径，不过话说回来，我们本来也还没准备好
+            // 处理 OOM 时的 panic。如果我们将来真要这么做，那么就应当把这次分配改为
+            // 在当前线程的父级中执行，而不是在正在 panic 的这个线程中执行。
             let data = match self.inner.take() {
                 Some(a) => Box::new(a) as Box<dyn Any + Send>,
                 None => process::abort(),
@@ -778,11 +750,10 @@ fn payload_as_str(payload: &dyn Any) -> &str {
     }
 }
 
-/// Central point for dispatching panics.
+/// 派发 panic 的中央枢纽。
 ///
-/// Executes the primary logic for a panic, including checking for recursive
-/// panics, panic hooks, and finally dispatching to the panic runtime to either
-/// abort or unwind.
+/// 执行一次 panic 的主要逻辑，包括检查递归 panic、调用 panic 钩子，以及最终派发给
+/// panic 运行时，由其决定是 abort 还是 unwind。
 #[optimize(size)]
 fn panic_with_hook(
     payload: &mut dyn PanicPayload,
@@ -792,21 +763,21 @@ fn panic_with_hook(
 ) -> ! {
     let must_abort = panic_count::increase(true);
 
-    // Check if we need to abort immediately.
+    // 检查我们是否需要立即 abort。
     if let Some(must_abort) = must_abort {
         match must_abort {
             panic_count::MustAbort::PanicInHook => {
-                // Don't try to format the message in this case, perhaps that is causing the
-                // recursive panics. However if the message is just a string, no user-defined
-                // code is involved in printing it, so that is risk-free.
+                // 在这种情况下不要尝试格式化消息，也许正是格式化在引发这些递归 panic。
+                // 不过，如果消息只是一个字符串，那么打印它不涉及任何用户定义的代码，
+                // 因此是无风险的。
                 let message: &str = payload.as_str().unwrap_or_default();
                 rtprintpanic!(
                     "panicked at {location}:\n{message}\nthread panicked while processing panic. aborting.\n"
                 );
             }
             panic_count::MustAbort::AlwaysAbort => {
-                // Unfortunately, this does not print a backtrace, because creating
-                // a `Backtrace` will allocate, which we must avoid here.
+                // 很遗憾，这里不会打印 backtrace，因为创建一个 `Backtrace` 会分配内存，
+                // 而我们在这里必须避免分配。
                 rtprintpanic!("aborting due to panic at {location}:\n{payload}\n");
             }
         }
@@ -814,12 +785,10 @@ fn panic_with_hook(
     }
 
     match *HOOK.read() {
-        // Some platforms (like wasm) know that printing to stderr won't ever actually
-        // print anything, and if that's the case we can skip the default
-        // hook. Since string formatting happens lazily when calling `payload`
-        // methods, this means we avoid formatting the string at all!
-        // (The panic runtime might still call `payload.take_box()` though and trigger
-        // formatting.)
+        // 某些平台（比如 wasm）知道向 stderr 打印实际上不会输出任何东西，若是这种情况，
+        // 我们就可以跳过默认钩子。由于字符串格式化是在调用 `payload` 的各方法时才惰性
+        // 发生的，这意味着我们可以完全避免格式化该字符串！
+        // （不过 panic 运行时仍然可能调用 `payload.take_box()` 从而触发格式化。）
         Hook::Default if panic_output().is_none() => {}
         Hook::Default => {
             default_hook(&PanicHookInfo::new(
@@ -834,15 +803,13 @@ fn panic_with_hook(
         }
     }
 
-    // Indicate that we have finished executing the panic hook. After this point
-    // it is fine if there is a panic while executing destructors, as long as it
-    // it contained within a `catch_unwind`.
+    // 表明我们已经执行完 panic 钩子。在此之后，即便在执行析构函数期间发生 panic 也没
+    // 关系，只要它被包含在某个 `catch_unwind` 之内即可。
     panic_count::finished_panic_hook();
 
     if !can_unwind {
-        // If a thread panics while running destructors or tries to unwind
-        // through a nounwind function (e.g. extern "C") then we cannot continue
-        // unwinding and have to abort immediately.
+        // 如果一个线程在运行析构函数期间 panic，或试图穿过一个 nounwind 函数
+        // （例如 extern "C"）进行 unwind，那么我们就无法继续 unwind，只能立即 abort。
         rtprintpanic!("thread caused non-unwinding panic. aborting.\n");
         crate::process::abort();
     }
@@ -850,8 +817,8 @@ fn panic_with_hook(
     rust_panic(payload)
 }
 
-/// This is the entry point for `resume_unwind`.
-/// It just forwards the payload to the panic runtime.
+/// 这是 `resume_unwind` 的入口点。
+/// 它只是把 payload 转发给 panic 运行时。
 #[cfg_attr(panic = "immediate-abort", inline)]
 pub fn resume_unwind(payload: Box<dyn Any + Send>) -> ! {
     panic_count::increase(false);
@@ -877,8 +844,8 @@ pub fn resume_unwind(payload: Box<dyn Any + Send>) -> ! {
     rust_panic(&mut RewrapBox(payload))
 }
 
-/// A function with a fixed suffix (through `rustc_std_internal_symbol`)
-/// on which to slap yer breakpoints.
+/// 一个带有固定后缀（通过 `rustc_std_internal_symbol`）的函数，
+/// 方便你往上拍断点（breakpoint）。
 #[inline(never)]
 #[cfg_attr(not(test), rustc_std_internal_symbol)]
 #[cfg(not(panic = "immediate-abort"))]

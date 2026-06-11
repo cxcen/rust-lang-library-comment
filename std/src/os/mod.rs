@@ -1,4 +1,4 @@
-//! OS-specific functionality.
+//! 操作系统相关的功能。
 
 #![stable(feature = "os", since = "1.0.0")]
 #![allow(missing_docs, nonstandard_style, missing_debug_implementations)]
@@ -6,16 +6,16 @@
 
 pub mod raw;
 
-// The code below could be written clearer using `cfg_if!`. However, the items below are
-// publicly exported by `std` and external tools can have trouble analysing them because of the use
-// of a macro that is not vendored by Rust and included in the toolchain.
-// See https://github.com/rust-analyzer/rust-analyzer/issues/6038.
+// 下面的代码若用 `cfg_if!` 编写会更清晰。然而下面这些条目是由 `std`
+// 公开导出的，而外部工具在分析它们时可能会遇到困难，因为它们使用了一个
+// 并未随 Rust 一同 vendored 并包含在工具链中的宏。
+// 参见 https://github.com/rust-analyzer/rust-analyzer/issues/6038。
 
-// On certain platforms right now the "main modules" modules that are
-// documented don't compile (missing things in `libc` which is empty),
-// so just omit them with an empty module and add the "unstable" attribute.
+// 目前在某些平台上，那些被写入文档的“主模块（main modules）”无法编译
+//（`libc` 中缺少某些东西，因为它是空的），因此这里干脆用一个空模块将其略去，
+// 并加上 "unstable" 属性。
 
-// darwin, unix, linux, wasi and windows are handled a bit differently.
+// darwin、unix、linux、wasi 与 windows 的处理方式略有不同。
 #[cfg(all(
     doc,
     any(
@@ -120,7 +120,7 @@ pub mod wasip2;
 #[cfg(any(windows, doc))]
 pub mod windows;
 
-// Others.
+// 其他平台。
 #[cfg(target_os = "aix")]
 pub mod aix;
 #[cfg(target_os = "android")]

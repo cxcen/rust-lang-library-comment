@@ -58,11 +58,11 @@ mod uefi_env {
 
         let mut start = 0;
 
-        // UEFI Shell returns all keys separated by NULL.
-        // End of string is denoted by two NULLs
+        // UEFI Shell 返回的所有键之间以 NULL 分隔。
+        // 字符串结束以连续两个 NULL 标志
         for i in 0.. {
             if unsafe { *val.add(i) } == 0 {
-                // Two NULL signal end of string
+                // 连续两个 NULL 表示字符串结束
                 if i == start {
                     break;
                 }
@@ -70,7 +70,7 @@ mod uefi_env {
                 let key = OsString::from_wide(unsafe {
                     crate::slice::from_raw_parts(val.add(start), i - start)
                 });
-                // SAFETY: val.add(start) is always NULL terminated
+                // SAFETY: val.add(start) 始终以 NULL 结尾
                 let val = unsafe { get_raw(shell, val.add(start)) }
                     .ok_or(io::const_error!(io::ErrorKind::InvalidInput, "invalid value"))?;
 

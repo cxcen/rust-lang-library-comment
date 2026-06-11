@@ -1,13 +1,13 @@
-//! Random data on Apple platforms.
+//! Apple 平台上的随机数据。
 //!
-//! `CCRandomGenerateBytes` calls into `CCRandomCopyBytes` with `kCCRandomDefault`.
-//! `CCRandomCopyBytes` manages a CSPRNG which is seeded from the kernel's CSPRNG.
-//! We use `CCRandomGenerateBytes` instead of `SecCopyBytes` because it is accessible via
-//! `libSystem` (libc) while the other needs to link to `Security.framework`.
+//! `CCRandomGenerateBytes` 会以 `kCCRandomDefault` 调用 `CCRandomCopyBytes`。
+//! `CCRandomCopyBytes` 管理着一个 CSPRNG，它由内核的 CSPRNG 提供种子（seed）。
+//! 我们使用 `CCRandomGenerateBytes` 而非 `SecCopyBytes`，因为前者可通过
+//! `libSystem`（libc）访问，而后者则需要链接到 `Security.framework`。
 //!
-//! Note that technically, `arc4random_buf` is available as well, but that calls
-//! into the same system service anyway, and `CCRandomGenerateBytes` has been
-//! proven to be App Store-compatible.
+//! 注意，从技术上讲 `arc4random_buf` 同样可用，但它最终也是调用
+//! 同一个系统服务，而 `CCRandomGenerateBytes` 已被证明
+//! 兼容 App Store。
 
 pub fn fill_bytes(bytes: &mut [u8]) {
     let ret = unsafe { libc::CCRandomGenerateBytes(bytes.as_mut_ptr().cast(), bytes.len()) };

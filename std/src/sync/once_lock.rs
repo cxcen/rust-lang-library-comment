@@ -6,36 +6,37 @@ use crate::mem::MaybeUninit;
 use crate::panic::{RefUnwindSafe, UnwindSafe};
 use crate::sync::Once;
 
-/// A synchronization primitive which can nominally be written to only once.
+/// 一种名义上只能被写入一次的同步原语。
 ///
-/// This type is a thread-safe [`OnceCell`], and can be used in statics.
-/// In many simple cases, you can use [`LazyLock<T, F>`] instead to get the benefits of this type
-/// with less effort: `LazyLock<T, F>` "looks like" `&T` because it initializes with `F` on deref!
-/// Where OnceLock shines is when LazyLock is too simple to support a given case, as LazyLock
-/// doesn't allow additional inputs to its function after you call [`LazyLock::new(|| ...)`].
+/// 该类型是线程安全版本的 [`OnceCell`]，可用于静态项（statics）。
+/// 在许多简单场景下，你可以改用 [`LazyLock<T, F>`]，以更少的力气获得本类型的
+/// 好处：`LazyLock<T, F>` 在解引用时用 `F` 初始化，因而「看起来就像」`&T`！
+/// OnceLock 的过人之处在于：当 LazyLock 过于简单、无法支持某个场景时——因为
+/// 一旦你调用了 [`LazyLock::new(|| ...)`]，LazyLock 就不允许再向它的函数提供
+/// 额外输入。
 ///
-/// A `OnceLock` can be thought of as a safe abstraction over uninitialized data that becomes
-/// initialized once written.
+/// 可以把 `OnceLock` 看作对「未初始化数据、一经写入即变为已初始化」的一种
+/// 安全抽象。
 ///
-/// Unlike [`Mutex`](crate::sync::Mutex), `OnceLock` is never poisoned on panic.
+/// 与 [`Mutex`](crate::sync::Mutex) 不同，`OnceLock` 在 panic 时绝不会中毒。
 ///
 /// [`OnceCell`]: crate::cell::OnceCell
 /// [`LazyLock<T, F>`]: crate::sync::LazyLock
 /// [`LazyLock::new(|| ...)`]: crate::sync::LazyLock::new
 ///
-/// # Examples
+/// # 示例
 ///
-/// Writing to a `OnceLock` from a separate thread:
+/// 从另一个线程写入 `OnceLock`：
 ///
 /// ```
 /// use std::sync::OnceLock;
 ///
 /// static CELL: OnceLock<usize> = OnceLock::new();
 ///
-/// // `OnceLock` has not been written to yet.
+/// // `OnceLock` 还没有被写入过。
 /// assert!(CELL.get().is_none());
 ///
-/// // Spawn a thread and write to `OnceLock`.
+/// // 派生一个线程并写入 `OnceLock`。
 /// std::thread::spawn(|| {
 ///     let value = CELL.get_or_init(|| 12345);
 ///     assert_eq!(value, &12345);
@@ -43,14 +44,14 @@ use crate::sync::Once;
 /// .join()
 /// .unwrap();
 ///
-/// // `OnceLock` now contains the value.
+/// // `OnceLock` 现在含有该值。
 /// assert_eq!(
 ///     CELL.get(),
 ///     Some(&12345),
 /// );
 /// ```
 ///
-/// You can use `OnceLock` to implement a type that requires "append-only" logic:
+/// 你可以用 `OnceLock` 实现一种需要「只追加」（append-only）逻辑的类型：
 ///
 /// ```
 /// use std::sync::{OnceLock, atomic::{AtomicU32, Ordering}};
@@ -65,8 +66,8 @@ use crate::sync::Once;
 ///         OnceList { data: OnceLock::new(), next: OnceLock::new() }
 ///     }
 ///     fn push(&self, value: T) {
-///         // FIXME: this impl is concise, but is also slow for long lists or many threads.
-///         // as an exercise, consider how you might improve on it while preserving the behavior
+///         // FIXME: 这个实现很简洁，但对长列表或多线程而言也很慢。
+///         // 作为练习，请思考如何在保持其行为的前提下加以改进
 ///         if let Err(value) = self.data.set(value) {
 ///             let next = self.next.get_or_init(|| Box::new(OnceList::new()));
 ///             next.push(value)
@@ -82,7 +83,7 @@ use crate::sync::Once;
 ///     }
 /// }
 ///
-/// // Let's exercise this new Sync append-only list by doing a little counting
+/// // 让我们通过做点小小的计数来检验这个新的、Sync 的只追加列表
 /// static LIST: OnceList<u32> = OnceList::new();
 /// static COUNTER: AtomicU32 = AtomicU32::new(0);
 ///
@@ -107,11 +108,12 @@ use crate::sync::Once;
 /// ```
 #[stable(feature = "once_cell", since = "1.70.0")]
 pub struct OnceLock<T> {
-    // FIXME(nonpoison_once): switch to nonpoison version once it is available
+    // FIXME(nonpoison_once): 一旦不中毒版本可用，就切换到该版本
     once: Once,
-    // Whether or not the value is initialized is tracked by `once.is_completed()`.
+    // 值是否已初始化，由 `once.is_completed()` 来追踪。
     value: UnsafeCell<MaybeUninit<T>>,
-    /// `PhantomData` to make sure dropck understands we're dropping T in our Drop impl.
+    /// 用 `PhantomData` 确保 dropck（drop 检查器）明白：我们在自己的 Drop
+    /// 实现里会 drop 一个 T。
     ///
     /// ```compile_fail,E0597
     /// use std::sync::OnceLock;
@@ -132,7 +134,7 @@ pub struct OnceLock<T> {
 }
 
 impl<T> OnceLock<T> {
-    /// Creates a new uninitialized cell.
+    /// 创建一个新的、未初始化的单元（cell）。
     #[inline]
     #[must_use]
     #[stable(feature = "once_cell", since = "1.70.0")]
@@ -145,45 +147,43 @@ impl<T> OnceLock<T> {
         }
     }
 
-    /// Gets the reference to the underlying value.
+    /// 获取底层值的引用。
     ///
-    /// Returns `None` if the cell is uninitialized, or being initialized.
-    /// This method never blocks.
+    /// 如果该单元未初始化、或正在初始化中，则返回 `None`。本方法绝不阻塞。
     #[inline]
     #[stable(feature = "once_cell", since = "1.70.0")]
     #[rustc_should_not_be_called_on_const_items]
     pub fn get(&self) -> Option<&T> {
         if self.initialized() {
-            // Safe b/c checked initialized
+            // 安全：因为已检查过处于已初始化状态
             Some(unsafe { self.get_unchecked() })
         } else {
             None
         }
     }
 
-    /// Gets the mutable reference to the underlying value.
+    /// 获取底层值的可变引用。
     ///
-    /// Returns `None` if the cell is uninitialized.
+    /// 如果该单元未初始化，则返回 `None`。
     ///
-    /// This method never blocks. Since it borrows the `OnceLock` mutably,
-    /// it is statically guaranteed that no active borrows to the `OnceLock`
-    /// exist, including from other threads.
+    /// 本方法绝不阻塞。由于它以可变方式借用 `OnceLock`，在静态层面即可保证
+    /// 不存在对该 `OnceLock` 的任何活跃借用（包括来自其他线程的借用）。
     #[inline]
     #[stable(feature = "once_cell", since = "1.70.0")]
     pub fn get_mut(&mut self) -> Option<&mut T> {
         if self.initialized_mut() {
-            // Safe b/c checked initialized and we have a unique access
+            // 安全：因为已检查过处于已初始化状态，且我们拥有独占访问权
             Some(unsafe { self.get_unchecked_mut() })
         } else {
             None
         }
     }
 
-    /// Blocks the current thread until the cell is initialized.
+    /// 阻塞当前线程，直到该单元被初始化为止。
     ///
-    /// # Example
+    /// # 示例
     ///
-    /// Waiting for a computation on another thread to finish:
+    /// 等待另一线程上的某项计算完成：
     /// ```rust
     /// use std::thread;
     /// use std::sync::OnceLock;
@@ -206,15 +206,15 @@ impl<T> OnceLock<T> {
         unsafe { self.get_unchecked() }
     }
 
-    /// Initializes the contents of the cell to `value`.
+    /// 把该单元的内容初始化为 `value`。
     ///
-    /// May block if another thread is currently attempting to initialize the cell. The cell is
-    /// guaranteed to contain a value when `set` returns, though not necessarily the one provided.
+    /// 如果另一个线程当前正尝试初始化该单元，本方法可能阻塞。当 `set` 返回时，
+    /// 保证该单元含有一个值，尽管不一定是这里提供的那个。
     ///
-    /// Returns `Ok(())` if the cell was uninitialized and
-    /// `Err(value)` if the cell was already initialized.
+    /// 如果该单元此前未初始化，返回 `Ok(())`；如果它已经初始化过，
+    /// 返回 `Err(value)`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::sync::OnceLock;
@@ -242,17 +242,15 @@ impl<T> OnceLock<T> {
         }
     }
 
-    /// Initializes the contents of the cell to `value` if the cell was uninitialized,
-    /// then returns a reference to it.
+    /// 如果该单元此前未初始化，则把它的内容初始化为 `value`，然后返回其引用。
     ///
-    /// May block if another thread is currently attempting to initialize the cell. The cell is
-    /// guaranteed to contain a value when `try_insert` returns, though not necessarily the
-    /// one provided.
+    /// 如果另一个线程当前正尝试初始化该单元，本方法可能阻塞。当 `try_insert`
+    /// 返回时，保证该单元含有一个值，尽管不一定是这里提供的那个。
     ///
-    /// Returns `Ok(&value)` if the cell was uninitialized and
-    /// `Err((&current_value, value))` if it was already initialized.
+    /// 如果该单元此前未初始化，返回 `Ok(&value)`；如果它已经初始化过，
+    /// 返回 `Err((&current_value, value))`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(once_cell_try_insert)]
@@ -276,6 +274,8 @@ impl<T> OnceLock<T> {
     #[unstable(feature = "once_cell_try_insert", issue = "116693")]
     #[rustc_should_not_be_called_on_const_items]
     pub fn try_insert(&self, value: T) -> Result<&T, (&T, T)> {
+        // 把 value 暂存在 `Option` 中：若初始化闭包被实际执行，`take` 会取走它；
+        // 否则（已被别处初始化）`value` 仍在，据此区分 Ok/Err 两种返回。
         let mut value = Some(value);
         let res = self.get_or_init(|| value.take().unwrap());
         match value {
@@ -284,23 +284,19 @@ impl<T> OnceLock<T> {
         }
     }
 
-    /// Gets the contents of the cell, initializing it to `f()` if the cell
-    /// was uninitialized.
+    /// 获取该单元的内容；如果此前未初始化，则把它初始化为 `f()`。
     ///
-    /// Many threads may call `get_or_init` concurrently with different
-    /// initializing functions, but it is guaranteed that only one function
-    /// will be executed if the function doesn't panic.
+    /// 多个线程可以带着各自不同的初始化函数并发调用 `get_or_init`，但保证：
+    /// 只要函数不 panic，就只有一个函数会被执行。
     ///
     /// # Panics
     ///
-    /// If `f()` panics, the panic is propagated to the caller, and the cell
-    /// remains uninitialized.
+    /// 如果 `f()` panic，则该 panic 会传播给调用方，且该单元保持未初始化。
     ///
-    /// It is an error to reentrantly initialize the cell from `f`. The
-    /// exact outcome is unspecified. Current implementation deadlocks, but
-    /// this may be changed to a panic in the future.
+    /// 从 `f` 中重入式地（reentrantly）初始化该单元是错误的。确切结果未作规定。
+    /// 当前实现会死锁，但将来这可能改为 panic。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::sync::OnceLock;
@@ -318,24 +314,22 @@ impl<T> OnceLock<T> {
     where
         F: FnOnce() -> T,
     {
+        // 借道不会失败的 `get_or_try_init`（错误类型为 `!`）来复用其实现。
         match self.get_or_try_init(|| Ok::<T, !>(f())) {
             Ok(val) => val,
         }
     }
 
-    /// Gets the mutable reference of the contents of the cell, initializing
-    /// it to `f()` if the cell was uninitialized.
+    /// 获取该单元内容的可变引用；如果此前未初始化，则把它初始化为 `f()`。
     ///
-    /// This method never blocks. Since it borrows the `OnceLock` mutably,
-    /// it is statically guaranteed that no active borrows to the `OnceLock`
-    /// exist, including from other threads.
+    /// 本方法绝不阻塞。由于它以可变方式借用 `OnceLock`，在静态层面即可保证
+    /// 不存在对该 `OnceLock` 的任何活跃借用（包括来自其他线程的借用）。
     ///
     /// # Panics
     ///
-    /// If `f()` panics, the panic is propagated to the caller, and the cell
-    /// remains uninitialized.
+    /// 如果 `f()` panic，则该 panic 会传播给调用方，且该单元保持未初始化。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(once_cell_get_mut)]
@@ -363,20 +357,17 @@ impl<T> OnceLock<T> {
         }
     }
 
-    /// Gets the contents of the cell, initializing it to `f()` if
-    /// the cell was uninitialized. If the cell was uninitialized
-    /// and `f()` failed, an error is returned.
+    /// 获取该单元的内容；如果此前未初始化，则把它初始化为 `f()`。如果该单元
+    /// 此前未初始化且 `f()` 失败，则返回一个错误。
     ///
     /// # Panics
     ///
-    /// If `f()` panics, the panic is propagated to the caller, and
-    /// the cell remains uninitialized.
+    /// 如果 `f()` panic，则该 panic 会传播给调用方，且该单元保持未初始化。
     ///
-    /// It is an error to reentrantly initialize the cell from `f`.
-    /// The exact outcome is unspecified. Current implementation
-    /// deadlocks, but this may be changed to a panic in the future.
+    /// 从 `f` 中重入式地初始化该单元是错误的。确切结果未作规定。当前实现会
+    /// 死锁，但将来这可能改为 panic。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(once_cell_try)]
@@ -399,34 +390,30 @@ impl<T> OnceLock<T> {
     where
         F: FnOnce() -> Result<T, E>,
     {
-        // Fast path check
-        // NOTE: We need to perform an acquire on the state in this method
-        // in order to correctly synchronize `LazyLock::force`. This is
-        // currently done by calling `self.get()`, which in turn calls
-        // `self.initialized()`, which in turn performs the acquire.
+        // 快速路径检查
+        // 注意：本方法中我们需要对状态执行一次 acquire，以正确地与
+        // `LazyLock::force` 同步。这目前是通过调用 `self.get()` 来完成的——
+        // 它进而调用 `self.initialized()`，后者再执行 acquire。
         if let Some(value) = self.get() {
             return Ok(value);
         }
         self.initialize(f)?;
 
-        // SAFETY: The inner value has been initialized
+        // SAFETY: 内部的值已被初始化
         Ok(unsafe { self.get_unchecked() })
     }
 
-    /// Gets the mutable reference of the contents of the cell, initializing
-    /// it to `f()` if the cell was uninitialized. If the cell was uninitialized
-    /// and `f()` failed, an error is returned.
+    /// 获取该单元内容的可变引用；如果此前未初始化，则把它初始化为 `f()`。
+    /// 如果该单元此前未初始化且 `f()` 失败，则返回一个错误。
     ///
-    /// This method never blocks. Since it borrows the `OnceLock` mutably,
-    /// it is statically guaranteed that no active borrows to the `OnceLock`
-    /// exist, including from other threads.
+    /// 本方法绝不阻塞。由于它以可变方式借用 `OnceLock`，在静态层面即可保证
+    /// 不存在对该 `OnceLock` 的任何活跃借用（包括来自其他线程的借用）。
     ///
     /// # Panics
     ///
-    /// If `f()` panics, the panic is propagated to the caller, and
-    /// the cell remains uninitialized.
+    /// 如果 `f()` panic，则该 panic 会传播给调用方，且该单元保持未初始化。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(once_cell_get_mut)]
@@ -435,7 +422,7 @@ impl<T> OnceLock<T> {
     ///
     /// let mut cell: OnceLock<u32> = OnceLock::new();
     ///
-    /// // Failed attempts to initialize the cell do not change its contents
+    /// // 初始化该单元的失败尝试不会改变它的内容
     /// assert!(cell.get_mut_or_try_init(|| "not a number!".parse()).is_err());
     /// assert!(cell.get().is_none());
     ///
@@ -454,14 +441,13 @@ impl<T> OnceLock<T> {
             self.initialize(f)?;
         }
 
-        // SAFETY: The inner value has been initialized
+        // SAFETY: 内部的值已被初始化
         Ok(unsafe { self.get_unchecked_mut() })
     }
 
-    /// Consumes the `OnceLock`, returning the wrapped value. Returns
-    /// `None` if the cell was uninitialized.
+    /// 消耗该 `OnceLock`，返回被包裹的值。如果该单元未初始化，返回 `None`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::sync::OnceLock;
@@ -479,14 +465,14 @@ impl<T> OnceLock<T> {
         self.take()
     }
 
-    /// Takes the value out of this `OnceLock`, moving it back to an uninitialized state.
+    /// 把值从这个 `OnceLock` 中取出，使其退回未初始化状态。
     ///
-    /// Has no effect and returns `None` if the `OnceLock` was uninitialized.
+    /// 如果该 `OnceLock` 未初始化，则无任何效果并返回 `None`。
     ///
-    /// Since this method borrows the `OnceLock` mutably, it is statically guaranteed that
-    /// no active borrows to the `OnceLock` exist, including from other threads.
+    /// 由于本方法以可变方式借用 `OnceLock`，在静态层面即可保证不存在对该
+    /// `OnceLock` 的任何活跃借用（包括来自其他线程的借用）。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::sync::OnceLock;
@@ -504,9 +490,9 @@ impl<T> OnceLock<T> {
     pub fn take(&mut self) -> Option<T> {
         if self.initialized_mut() {
             self.once = Once::new();
-            // SAFETY: `self.value` is initialized and contains a valid `T`.
-            // `self.once` is reset, so `initialized()` will be false again
-            // which prevents the value from being read twice.
+            // SAFETY: `self.value` 已初始化，含有一个有效的 `T`。
+            // `self.once` 被重置，因此 `initialized()` 将再次为 false，
+            // 这可防止该值被读取两次。
             unsafe { Some(self.value.get_mut().assume_init_read()) }
         } else {
             None
@@ -520,7 +506,7 @@ impl<T> OnceLock<T> {
 
     #[inline]
     fn initialized_mut(&mut self) -> bool {
-        // `state()` does not perform an atomic load, so prefer it over `is_complete()`.
+        // `state()` 不执行原子加载（atomic load），因此优先用它而非 `is_complete()`。
         let state = self.once.state();
         match state {
             OnceExclusiveState::Complete => true,
@@ -537,8 +523,8 @@ impl<T> OnceLock<T> {
         let mut res: Result<(), E> = Ok(());
         let slot = &self.value;
 
-        // Ignore poisoning from other threads
-        // If another thread panics, then we'll be able to run our closure
+        // 忽略来自其他线程的中毒
+        // 即便另一个线程发生了 panic，我们也仍能运行自己的闭包
         self.once.call_once_force(|p| {
             match f() {
                 Ok(value) => {
@@ -547,8 +533,7 @@ impl<T> OnceLock<T> {
                 Err(e) => {
                     res = Err(e);
 
-                    // Treat the underlying `Once` as poisoned since we
-                    // failed to initialize our value.
+                    // 既然我们未能初始化自己的值，就把底层的 `Once` 视为中毒。
                     p.poison();
                 }
             }
@@ -558,7 +543,7 @@ impl<T> OnceLock<T> {
 
     /// # Safety
     ///
-    /// The cell must be initialized
+    /// 该单元必须已初始化
     #[inline]
     unsafe fn get_unchecked(&self) -> &T {
         debug_assert!(self.initialized());
@@ -567,7 +552,7 @@ impl<T> OnceLock<T> {
 
     /// # Safety
     ///
-    /// The cell must be initialized
+    /// 该单元必须已初始化
     #[inline]
     unsafe fn get_unchecked_mut(&mut self) -> &mut T {
         debug_assert!(self.initialized_mut());
@@ -575,11 +560,10 @@ impl<T> OnceLock<T> {
     }
 }
 
-// Why do we need `T: Send`?
-// Thread A creates a `OnceLock` and shares it with
-// scoped thread B, which fills the cell, which is
-// then destroyed by A. That is, destructor observes
-// a sent value.
+// 为什么我们需要 `T: Send`？
+// 线程 A 创建一个 `OnceLock` 并与作用域线程（scoped thread）B 共享，
+// B 填入该单元，随后该单元被 A 销毁。也就是说，析构函数观测到了一个被
+// 发送过来的值。
 #[stable(feature = "once_cell", since = "1.70.0")]
 unsafe impl<T: Sync + Send> Sync for OnceLock<T> {}
 #[stable(feature = "once_cell", since = "1.70.0")]
@@ -593,9 +577,9 @@ impl<T: UnwindSafe> UnwindSafe for OnceLock<T> {}
 #[stable(feature = "once_cell", since = "1.70.0")]
 #[rustc_const_unstable(feature = "const_default", issue = "143894")]
 impl<T> const Default for OnceLock<T> {
-    /// Creates a new uninitialized cell.
+    /// 创建一个新的、未初始化的单元。
     ///
-    /// # Example
+    /// # 示例
     ///
     /// ```
     /// use std::sync::OnceLock;
@@ -639,9 +623,9 @@ impl<T: Clone> Clone for OnceLock<T> {
 
 #[stable(feature = "once_cell", since = "1.70.0")]
 impl<T> From<T> for OnceLock<T> {
-    /// Creates a new cell with its contents set to `value`.
+    /// 创建一个新单元，其内容设为 `value`。
     ///
-    /// # Example
+    /// # 示例
     ///
     /// ```
     /// use std::sync::OnceLock;
@@ -666,12 +650,11 @@ impl<T> From<T> for OnceLock<T> {
 
 #[stable(feature = "once_cell", since = "1.70.0")]
 impl<T: PartialEq> PartialEq for OnceLock<T> {
-    /// Equality for two `OnceLock`s.
+    /// 两个 `OnceLock` 之间的相等性。
     ///
-    /// Two `OnceLock`s are equal if they either both contain values and their
-    /// values are equal, or if neither contains a value.
+    /// 两个 `OnceLock` 相等的条件是：它们要么都含有值且两值相等，要么都不含值。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::sync::OnceLock;
@@ -700,9 +683,9 @@ unsafe impl<#[may_dangle] T> Drop for OnceLock<T> {
     #[inline]
     fn drop(&mut self) {
         if self.initialized_mut() {
-            // SAFETY: The cell is initialized and being dropped, so it can't
-            // be accessed again. We also don't touch the `T` other than
-            // dropping it, which validates our usage of #[may_dangle].
+            // SAFETY: 该单元已初始化且正在被 drop，因此它不会再被访问。除了
+            // drop 之外我们也不触碰那个 `T`，这印证了我们对 #[may_dangle] 的
+            // 使用是正确的。
             unsafe { self.value.get_mut().assume_init_drop() };
         }
     }

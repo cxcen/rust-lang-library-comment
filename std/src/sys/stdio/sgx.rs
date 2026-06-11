@@ -92,7 +92,7 @@ impl io::Write for Stderr {
 pub const STDIN_BUF_SIZE: usize = crate::sys::io::DEFAULT_BUF_SIZE;
 
 pub fn is_ebadf(err: &io::Error) -> bool {
-    // FIXME: Rust normally maps Unix EBADF to `Uncategorized`
+    // FIXME: Rust 通常会把 Unix 的 EBADF 映射为 `Uncategorized`
     err.raw_os_error() == Some(abi::Error::BrokenPipe as _)
 }
 

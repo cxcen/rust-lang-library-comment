@@ -107,11 +107,11 @@ impl Tcp4 {
         if completion_token.status.is_error() {
             Err(io::Error::from_raw_os_error(completion_token.status.as_usize()))
         } else {
-            // EDK2 internals seem to assume a single ServiceBinding Protocol for TCP4 and TCP6, and
-            // thus does not use any service binding protocol data in destroying child sockets. It
-            // does seem to suggest that we need to cleanup even the protocols created by accept. To
-            // be on the safe side with other implementations, we will be using the same service
-            // binding protocol as the parent TCP4 handle.
+            // EDK2 内部似乎假定 TCP4 和 TCP6 共用单个 ServiceBinding 协议，
+            // 因此在销毁子 socket 时不使用任何 service binding 协议数据。它
+            // 似乎确实暗示我们甚至需要清理由 accept 创建的协议。为了在面对
+            // 其他实现时更稳妥，我们将使用与父 TCP4 handle 相同的 service
+            // binding 协议。
             //
             // https://github.com/tianocore/edk2/blob/f80580f56b267c96f16f985dbf707b2f96947da4/NetworkPkg/TcpDxe/TcpDriver.c#L938
 
@@ -174,9 +174,9 @@ impl Tcp4 {
         let mut data_length = 0u32;
         let mut fragment_count = 0u32;
 
-        // Calculate how many IoSlice in buf can be transmitted.
+        // 计算 buf 中有多少个 IoSlice 可以被发送。
         for i in buf {
-            // IoSlice length is always <= u32::MAX in UEFI.
+            // 在 UEFI 中，IoSlice 的长度总是 <= u32::MAX。
             match data_length
                 .checked_add(u32::try_from(i.as_slice().len()).expect("value is stored as a u32"))
             {
@@ -197,7 +197,7 @@ impl Tcp4 {
             fragment_table: [],
         });
         unsafe {
-            // SAFETY: IoSlice and FragmentData are guaranteed to have same layout.
+            // SAFETY: IoSlice 和 FragmentData 保证具有相同的布局。
             crate::ptr::copy_nonoverlapping(
                 buf.as_ptr().cast(),
                 (*tx_data.as_mut_ptr()).fragment_table.as_mut_ptr(),
@@ -259,9 +259,9 @@ impl Tcp4 {
         let mut data_length = 0u32;
         let mut fragment_count = 0u32;
 
-        // Calculate how many IoSlice in buf can be transmitted.
+        // 计算 buf 中有多少个 IoSlice 可以被发送。
         for i in buf {
-            // IoSlice length is always <= u32::MAX in UEFI.
+            // 在 UEFI 中，IoSlice 的长度总是 <= u32::MAX。
             match data_length.checked_add(u32::try_from(i.len()).expect("value is stored as a u32"))
             {
                 Some(x) => data_length = x,
@@ -280,7 +280,7 @@ impl Tcp4 {
             fragment_table: [],
         });
         unsafe {
-            // SAFETY: IoSlice and FragmentData are guaranteed to have same layout.
+            // SAFETY: IoSlice 和 FragmentData 保证具有相同的布局。
             crate::ptr::copy_nonoverlapping(
                 buf.as_ptr().cast(),
                 (*rx_data.as_mut_ptr()).fragment_table.as_mut_ptr(),
@@ -318,17 +318,17 @@ impl Tcp4 {
         }
     }
 
-    /// Wait for an event to finish. This is checked by an atomic boolean that is supposed to be set
-    /// to true in the event callback.
+    /// 等待某个事件完成。这是通过一个原子布尔值来检查的，该布尔值应当在
+    /// 事件回调中被设置为 true。
     ///
-    /// Optionally, allow specifying a timeout.
+    /// 可选地，允许指定一个超时时间。
     ///
-    /// If a timeout is provided, the operation (specified by its `EFI_TCP4_COMPLETION_TOKEN`) is
-    /// canceled and Error of kind TimedOut is returned.
+    /// 如果提供了超时时间，则该操作（由其 `EFI_TCP4_COMPLETION_TOKEN` 指定）
+    /// 会被取消，并返回一个 TimedOut 类型的 Error。
     ///
-    /// # SAFETY
+    /// # 安全性(Safety）
     ///
-    /// Pointer to a valid `EFI_TCP4_COMPLETION_TOKEN`
+    /// 指向一个有效的 `EFI_TCP4_COMPLETION_TOKEN` 的指针
     unsafe fn wait_or_cancel(
         &self,
         timeout: Option<Duration>,
@@ -342,15 +342,15 @@ impl Tcp4 {
         Ok(())
     }
 
-    /// Abort an asynchronous connection, listen, transmission or receive request.
+    /// 中止一个异步的 connection、listen、transmission 或 receive 请求。
     ///
-    /// If token is NULL, then all pending tokens issued by EFI_TCP4_PROTOCOL.Connect(),
-    /// EFI_TCP4_PROTOCOL.Accept(), EFI_TCP4_PROTOCOL.Transmit() or EFI_TCP4_PROTOCOL.Receive() are
-    /// aborted.
+    /// 如果 token 为 NULL，则由 EFI_TCP4_PROTOCOL.Connect()、
+    /// EFI_TCP4_PROTOCOL.Accept()、EFI_TCP4_PROTOCOL.Transmit() 或
+    /// EFI_TCP4_PROTOCOL.Receive() 发出的所有挂起 token 都会被中止。
     ///
-    /// # SAFETY
+    /// # 安全性(Safety）
     ///
-    /// Pointer to a valid `EFI_TCP4_COMPLETION_TOKEN` or NULL
+    /// 指向一个有效的 `EFI_TCP4_COMPLETION_TOKEN` 的指针，或 NULL
     unsafe fn cancel(&self, token: *mut tcp4::CompletionToken) -> io::Result<()> {
         let protocol = self.protocol.as_ptr();
 

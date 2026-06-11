@@ -1,24 +1,20 @@
-//! This module contains a canonical definition of the `cabi_realloc` function
-//! for the component model.
+//! 本模块包含组件模型（component model）中 `cabi_realloc` 函数的规范定义。
 //!
-//! The component model's canonical ABI for representing datatypes in memory
-//! makes use of this function when transferring lists and strings, for example.
-//! This function behaves like C's `realloc` but also takes alignment into
-//! account.
+//! 组件模型用于在内存中表示数据类型的规范 ABI（canonical ABI），
+//! 在传递列表（list）和字符串（string）等数据时会用到此函数。
+//! 此函数的行为类似于 C 的 `realloc`，但同时还会考虑对齐（alignment）。
 //!
-//! Components are notably not required to export this function, but nearly
-//! all components end up doing so currently. This definition in the standard
-//! library removes the need for all compilations to define this themselves.
+//! 值得注意的是，组件并非必须导出此函数，但目前几乎所有组件最终都会这样做。
+//! 在标准库中提供这一定义，免除了每次编译都要自行定义它的需要。
 //!
-//! More information about the canonical ABI can be found at
+//! 关于规范 ABI 的更多信息可参见
 //! <https://github.com/WebAssembly/component-model/blob/main/design/mvp/CanonicalABI.md>
 //!
-//! Note that the name of this function is not standardized in the canonical ABI
-//! at this time. Instead it's a convention of the "componentization process"
-//! where a core wasm module is converted to a component to use this name.
-//! Additionally this is not the only possible definition of this function, so
-//! this is defined as a "weak" symbol. This means that other definitions are
-//! allowed to overwrite it if they are present in a compilation.
+//! 注意，此函数的名称目前在规范 ABI 中尚未标准化。相反，它是“组件化过程”
+//! （componentization process，即把一个核心 wasm 模块转换为组件）的一种约定，
+//! 该过程会采用这个名称。此外，这并不是此函数唯一可能的定义，因此
+//! 它被定义为一个“弱（weak）”符号。这意味着如果某次编译中存在其他定义，
+//! 则允许它们覆盖此定义。
 
 use crate::alloc::{self, Layout};
 use crate::ptr;
@@ -52,9 +48,8 @@ pub unsafe extern "C" fn cabi_realloc(
         alloc::realloc(old_ptr, layout, new_len)
     };
     if ptr.is_null() {
-        // Print a nice message in debug mode, but in release mode don't
-        // pull in so many dependencies related to printing so just emit an
-        // `unreachable` instruction.
+        // 在 debug 模式下打印一条友好的提示信息，但在 release 模式下
+        // 不引入那么多与打印相关的依赖，因此只发出一条 `unreachable` 指令。
         if cfg!(debug_assertions) {
             alloc::handle_alloc_error(layout);
         } else {

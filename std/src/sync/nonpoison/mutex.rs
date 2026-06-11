@@ -7,18 +7,17 @@ use crate::ptr::NonNull;
 use crate::sync::nonpoison::{TryLockResult, WouldBlock};
 use crate::sys::sync as sys;
 
-/// A mutual exclusion primitive useful for protecting shared data that does not keep track of
-/// lock poisoning.
+/// 一种互斥（mutual exclusion）原语，用于保护共享数据，但 **不** 追踪锁的
+/// 中毒（lock poisoning）。
 ///
-/// For more information about mutexes, check out the documentation for the poisoning variant of
-/// this lock at [`poison::Mutex`].
+/// 关于互斥锁的更多信息，请查阅本锁的中毒变体的文档：[`poison::Mutex`]。
 ///
 /// [`poison::Mutex`]: crate::sync::poison::Mutex
 ///
-/// # Examples
+/// # 示例
 ///
-/// Note that this `Mutex` does **not** propagate threads that panic while holding the lock via
-/// poisoning. If you need this functionality, see [`poison::Mutex`].
+/// 注意，这个 `Mutex` **不会** 通过中毒来传播「在持锁期间发生 panic 的
+/// 线程」。如果你需要这一功能，请参见 [`poison::Mutex`]。
 ///
 /// ```
 /// #![feature(nonpoison_mutex)]
@@ -52,40 +51,36 @@ pub struct Mutex<T: ?Sized> {
     data: UnsafeCell<T>,
 }
 
-/// `T` must be `Send` for a [`Mutex`] to be `Send` because it is possible to acquire
-/// the owned `T` from the `Mutex` via [`into_inner`].
+/// `T` 必须是 `Send`，[`Mutex`] 才能是 `Send`，因为可以通过 [`into_inner`]
+/// 从该 `Mutex` 取出被拥有的 `T`。
 ///
 /// [`into_inner`]: Mutex::into_inner
 #[unstable(feature = "nonpoison_mutex", issue = "134645")]
 unsafe impl<T: ?Sized + Send> Send for Mutex<T> {}
 
-/// `T` must be `Send` for [`Mutex`] to be `Sync`.
-/// This ensures that the protected data can be accessed safely from multiple threads
-/// without causing data races or other unsafe behavior.
+/// `T` 必须是 `Send`，[`Mutex`] 才能是 `Sync`。
+/// 这确保了受保护的数据能从多个线程被安全访问，而不引发数据竞争或其他不安全
+/// 行为。
 ///
-/// [`Mutex<T>`] provides mutable access to `T` to one thread at a time. However, it's essential
-/// for `T` to be `Send` because it's not safe for non-`Send` structures to be accessed in
-/// this manner. For instance, consider [`Rc`], a non-atomic reference counted smart pointer,
-/// which is not `Send`. With `Rc`, we can have multiple copies pointing to the same heap
-/// allocation with a non-atomic reference count. If we were to use `Mutex<Rc<_>>`, it would
-/// only protect one instance of `Rc` from shared access, leaving other copies vulnerable
-/// to potential data races.
+/// [`Mutex<T>`] 一次只向一个线程提供对 `T` 的可变访问。然而，`T` 是 `Send`
+/// 至关重要，因为以这种方式访问非 `Send` 的结构是不安全的。举例来说，考虑
+/// [`Rc`]——一种非原子的引用计数智能指针，它不是 `Send`。借助 `Rc`，我们可以
+/// 有多个副本以非原子的引用计数指向同一块堆分配。如果我们使用 `Mutex<Rc<_>>`，
+/// 它将只能保护其中一个 `Rc` 实例免于共享访问，而其余副本仍可能遭遇数据竞争。
 ///
-/// Also note that it is not necessary for `T` to be `Sync` as `&T` is only made available
-/// to one thread at a time if `T` is not `Sync`.
+/// 还要注意，`T` 不必是 `Sync`，因为当 `T` 不是 `Sync` 时，`&T` 一次只会被
+/// 提供给一个线程。
 ///
 /// [`Rc`]: crate::rc::Rc
 #[unstable(feature = "nonpoison_mutex", issue = "134645")]
 unsafe impl<T: ?Sized + Send> Sync for Mutex<T> {}
 
-/// An RAII implementation of a "scoped lock" of a mutex. When this structure is
-/// dropped (falls out of scope), the lock will be unlocked.
+/// 互斥锁的「作用域锁」（scoped lock）的 RAII 实现。当该结构体被 drop
+/// （离开作用域）时，锁会被解锁。
 ///
-/// The data protected by the mutex can be accessed through this guard via its
-/// [`Deref`] and [`DerefMut`] implementations.
+/// 受互斥锁保护的数据可通过该守卫的 [`Deref`] 与 [`DerefMut`] 实现来访问。
 ///
-/// This structure is created by the [`lock`] and [`try_lock`] methods on
-/// [`Mutex`].
+/// 该结构体由 [`Mutex`] 上的 [`lock`] 与 [`try_lock`] 方法创建。
 ///
 /// [`lock`]: Mutex::lock
 /// [`try_lock`]: Mutex::try_lock
@@ -100,33 +95,29 @@ pub struct MutexGuard<'a, T: ?Sized + 'a> {
     lock: &'a Mutex<T>,
 }
 
-/// A [`MutexGuard`] is not `Send` to maximize platform portability.
+/// 为最大化平台可移植性，[`MutexGuard`] 不是 `Send`。
 ///
-/// On platforms that use POSIX threads (commonly referred to as pthreads) there is a requirement to
-/// release mutex locks on the same thread they were acquired.
-/// For this reason, [`MutexGuard`] must not implement `Send` to prevent it being dropped from
-/// another thread.
+/// 在使用 POSIX 线程（通常称为 pthreads）的平台上，要求在获取互斥锁的同一
+/// 线程上释放它。出于这个原因，[`MutexGuard`] 不可实现 `Send`，以防止它被
+/// 从另一个线程 drop。
 #[unstable(feature = "nonpoison_mutex", issue = "134645")]
 impl<T: ?Sized> !Send for MutexGuard<'_, T> {}
 
-/// `T` must be `Sync` for a [`MutexGuard<T>`] to be `Sync`
-/// because it is possible to get a `&T` from `&MutexGuard` (via `Deref`).
+/// `T` 必须是 `Sync`，[`MutexGuard<T>`] 才能是 `Sync`，因为可以从
+/// `&MutexGuard`（经由 `Deref`）得到一个 `&T`。
 #[unstable(feature = "nonpoison_mutex", issue = "134645")]
 unsafe impl<T: ?Sized + Sync> Sync for MutexGuard<'_, T> {}
 
-/// An RAII mutex guard returned by `MutexGuard::map`, which can point to a
-/// subfield of the protected data. When this structure is dropped (falls out
-/// of scope), the lock will be unlocked.
+/// 由 `MutexGuard::map` 返回的 RAII 互斥守卫，它可以指向受保护数据的某个
+/// 子字段。当该结构体被 drop（离开作用域）时，锁会被解锁。
 ///
-/// The main difference between `MappedMutexGuard` and [`MutexGuard`] is that the
-/// former cannot be used with [`Condvar`], since that could introduce soundness issues if the
-/// locked object is modified by another thread while the `Mutex` is unlocked.
+/// `MappedMutexGuard` 与 [`MutexGuard`] 的主要区别在于：前者不能与
+/// [`Condvar`] 一起使用，因为如果在 `Mutex` 解锁期间，被锁定的对象被另一个
+/// 线程修改，那将引入健全性（soundness）问题。
 ///
-/// The data protected by the mutex can be accessed through this guard via its
-/// [`Deref`] and [`DerefMut`] implementations.
+/// 受互斥锁保护的数据可通过该守卫的 [`Deref`] 与 [`DerefMut`] 实现来访问。
 ///
-/// This structure is created by the [`map`] and [`filter_map`] methods on
-/// [`MutexGuard`].
+/// 该结构体由 [`MutexGuard`] 上的 [`map`] 与 [`filter_map`] 方法创建。
 ///
 /// [`map`]: MutexGuard::map
 /// [`filter_map`]: MutexGuard::filter_map
@@ -139,10 +130,11 @@ unsafe impl<T: ?Sized + Sync> Sync for MutexGuard<'_, T> {}
 // #[unstable(feature = "nonpoison_mutex", issue = "134645")]
 #[clippy::has_significant_drop]
 pub struct MappedMutexGuard<'a, T: ?Sized + 'a> {
-    // NB: we use a pointer instead of `&'a mut T` to avoid `noalias` violations, because a
-    // `MappedMutexGuard` argument doesn't hold uniqueness for its whole scope, only until it drops.
-    // `NonNull` is covariant over `T`, so we add a `PhantomData<&'a mut T>` field
-    // below for the correct variance over `T` (invariance).
+    // 注意（NB）：我们用裸指针而非 `&'a mut T`，以避免违反 `noalias`，因为
+    // 一个 `MappedMutexGuard` 参数在其整个作用域内并不保持唯一性，只在它被
+    // drop 之前保持。`NonNull` 对 `T` 是协变（covariant）的，所以我们在下面
+    // 加了一个 `PhantomData<&'a mut T>` 字段以得到对 `T` 正确的型变（不变性
+    // invariance）。
     data: NonNull<T>,
     inner: &'a sys::Mutex,
     _variance: PhantomData<&'a mut T>,
@@ -156,9 +148,9 @@ impl<T: ?Sized> !Send for MappedMutexGuard<'_, T> {}
 unsafe impl<T: ?Sized + Sync> Sync for MappedMutexGuard<'_, T> {}
 
 impl<T> Mutex<T> {
-    /// Creates a new mutex in an unlocked state ready for use.
+    /// 创建一个新的互斥锁，处于未锁定状态，可随时使用。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(nonpoison_mutex)]
@@ -173,9 +165,9 @@ impl<T> Mutex<T> {
         Mutex { inner: sys::Mutex::new(), data: UnsafeCell::new(t) }
     }
 
-    /// Returns the contained value by cloning it.
+    /// 通过克隆（cloning）返回其中所含的值。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(nonpoison_mutex)]
@@ -196,9 +188,9 @@ impl<T> Mutex<T> {
         self.lock().clone()
     }
 
-    /// Sets the contained value.
+    /// 设置其中所含的值。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(nonpoison_mutex)]
@@ -216,17 +208,17 @@ impl<T> Mutex<T> {
     // #[unstable(feature = "nonpoison_mutex", issue = "134645")]
     pub fn set(&self, value: T) {
         if mem::needs_drop::<T>() {
-            // If the contained value has a non-trivial destructor, we
-            // call that destructor after the lock has been released.
+            // 如果所含的值带有非平凡（non-trivial）的析构函数，我们就在锁
+            // 已被释放之后再调用该析构函数（避免持锁期间执行可能较慢的 drop）。
             drop(self.replace(value))
         } else {
             *self.lock() = value;
         }
     }
 
-    /// Replaces the contained value with `value`, and returns the old contained value.
+    /// 用 `value` 替换其中所含的值，并返回旧的值。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(nonpoison_mutex)]
@@ -248,23 +240,20 @@ impl<T> Mutex<T> {
 }
 
 impl<T: ?Sized> Mutex<T> {
-    /// Acquires a mutex, blocking the current thread until it is able to do so.
+    /// 获取互斥锁，阻塞当前线程直到能够成功获取为止。
     ///
-    /// This function will block the local thread until it is available to acquire
-    /// the mutex. Upon returning, the thread is the only thread with the lock
-    /// held. An RAII guard is returned to allow scoped unlock of the lock. When
-    /// the guard goes out of scope, the mutex will be unlocked.
+    /// 本函数会阻塞本地线程，直到能够获取该互斥锁。返回时，该线程是唯一持有
+    /// 该锁的线程。返回一个 RAII 守卫，以允许对锁进行作用域化的解锁。当该守卫
+    /// 离开作用域时，互斥锁将被解锁。
     ///
-    /// The exact behavior on locking a mutex in the thread which already holds
-    /// the lock is left unspecified. However, this function will not return on
-    /// the second call (it might panic or deadlock, for example).
+    /// 在已经持有锁的线程上再次锁定该互斥锁，其确切行为未作规定。但本函数在
+    /// 第二次调用时不会返回（举例来说，它可能 panic 或死锁）。
     ///
     /// # Panics
     ///
-    /// This function might panic when called if the lock is already held by
-    /// the current thread.
+    /// 如果该锁已被当前线程持有，调用本函数时可能 panic。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(nonpoison_mutex)]
@@ -288,19 +277,18 @@ impl<T: ?Sized> Mutex<T> {
         }
     }
 
-    /// Attempts to acquire this lock.
+    /// 尝试获取该锁。
     ///
-    /// This function does not block. If the lock could not be acquired at this time, then
-    /// [`WouldBlock`] is returned. Otherwise, an RAII guard is returned.
+    /// 本函数不会阻塞。如果此刻无法获取该锁，则返回 [`WouldBlock`]。否则返回
+    /// 一个 RAII 守卫。
     ///
-    /// The lock will be unlocked when the guard is dropped.
+    /// 当该守卫被 drop 时，锁将被解锁。
     ///
     /// # Errors
     ///
-    /// If the mutex could not be acquired because it is already locked, then this call will return
-    /// the [`WouldBlock`] error.
+    /// 如果因互斥锁已被锁定而无法获取它，则本调用会返回 [`WouldBlock`] 错误。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::sync::{Arc, Mutex};
@@ -324,9 +312,9 @@ impl<T: ?Sized> Mutex<T> {
         unsafe { if self.inner.try_lock() { Ok(MutexGuard::new(self)) } else { Err(WouldBlock) } }
     }
 
-    /// Consumes this mutex, returning the underlying data.
+    /// 消耗这个互斥锁，返回其底层数据。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(nonpoison_mutex)]
@@ -344,12 +332,12 @@ impl<T: ?Sized> Mutex<T> {
         self.data.into_inner()
     }
 
-    /// Returns a mutable reference to the underlying data.
+    /// 返回底层数据的可变引用。
     ///
-    /// Since this call borrows the `Mutex` mutably, no actual locking needs to
-    /// take place -- the mutable borrow statically guarantees no locks exist.
+    /// 由于本调用以可变方式借用 `Mutex`，无需进行任何实际的加锁——可变借用
+    /// 在静态层面即保证不存在任何锁。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(nonpoison_mutex)]
@@ -365,26 +353,24 @@ impl<T: ?Sized> Mutex<T> {
         self.data.get_mut()
     }
 
-    /// Returns a raw pointer to the underlying data.
+    /// 返回底层数据的裸指针（raw pointer）。
     ///
-    /// The returned pointer is always non-null and properly aligned, but it is
-    /// the user's responsibility to ensure that any reads and writes through it
-    /// are properly synchronized to avoid data races, and that it is not read
-    /// or written through after the mutex is dropped.
+    /// 返回的指针总是非空且对齐良好的，但用户有责任确保：通过它进行的任何
+    /// 读写都已正确同步以避免数据竞争，并且在该互斥锁被 drop 之后不再通过它
+    /// 读写。
     #[unstable(feature = "mutex_data_ptr", issue = "140368")]
     // #[unstable(feature = "nonpoison_mutex", issue = "134645")]
     pub const fn data_ptr(&self) -> *mut T {
         self.data.get()
     }
 
-    /// Acquires the mutex and provides mutable access to the underlying data by passing
-    /// a mutable reference to the given closure.
+    /// 获取该互斥锁，并通过把一个可变引用传给给定闭包，提供对底层数据的可变
+    /// 访问。
     ///
-    /// This method acquires the lock, calls the provided closure with a mutable reference
-    /// to the data, and returns the result of the closure. The lock is released after
-    /// the closure completes, even if it panics.
+    /// 本方法获取锁，以指向数据的可变引用调用所提供的闭包，并返回该闭包的
+    /// 结果。即使闭包 panic，锁也会在闭包完成后被释放。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(lock_value_accessors, nonpoison_mutex)]
@@ -414,8 +400,8 @@ impl<T: ?Sized> Mutex<T> {
 
 #[unstable(feature = "nonpoison_mutex", issue = "134645")]
 impl<T> From<T> for Mutex<T> {
-    /// Creates a new mutex in an unlocked state ready for use.
-    /// This is equivalent to [`Mutex::new`].
+    /// 创建一个新的互斥锁，处于未锁定状态，可随时使用。
+    /// 这等价于 [`Mutex::new`]。
     fn from(t: T) -> Self {
         Mutex::new(t)
     }
@@ -423,7 +409,7 @@ impl<T> From<T> for Mutex<T> {
 
 #[unstable(feature = "nonpoison_mutex", issue = "134645")]
 impl<T: Default> Default for Mutex<T> {
-    /// Creates a `Mutex<T>`, with the `Default` value for T.
+    /// 用 T 的 `Default` 值创建一个 `Mutex<T>`。
     fn default() -> Mutex<T> {
         Mutex::new(Default::default())
     }
@@ -491,20 +477,20 @@ impl<T: ?Sized + fmt::Display> fmt::Display for MutexGuard<'_, T> {
     }
 }
 
-/// For use in [`nonpoison::condvar`](super::condvar).
+/// 供 [`nonpoison::condvar`](super::condvar) 使用。
 pub(super) fn guard_lock<'a, T: ?Sized>(guard: &MutexGuard<'a, T>) -> &'a sys::Mutex {
     &guard.lock.inner
 }
 
 impl<'a, T: ?Sized> MutexGuard<'a, T> {
-    /// Makes a [`MappedMutexGuard`] for a component of the borrowed data, e.g.
-    /// an enum variant.
+    /// 为被借用数据的某个组成部分（例如某个枚举变体）制作一个
+    /// [`MappedMutexGuard`]。
     ///
-    /// The `Mutex` is already locked, so this cannot fail.
+    /// 此时 `Mutex` 已被锁定，因此本操作不会失败。
     ///
-    /// This is an associated function that needs to be used as
-    /// `MutexGuard::map(...)`. A method would interfere with methods of the
-    /// same name on the contents of the `MutexGuard` used through `Deref`.
+    /// 这是一个关联函数（associated function），需以 `MutexGuard::map(...)`
+    /// 的形式使用。若设计为方法，则会与通过 `Deref` 访问的 `MutexGuard`
+    /// 内容上同名的方法相冲突。
     #[unstable(feature = "mapped_lock_guards", issue = "117108")]
     // #[unstable(feature = "nonpoison_mutex", issue = "134645")]
     pub fn map<U, F>(orig: Self, f: F) -> MappedMutexGuard<'a, U>
@@ -512,24 +498,21 @@ impl<'a, T: ?Sized> MutexGuard<'a, T> {
         F: FnOnce(&mut T) -> &mut U,
         U: ?Sized,
     {
-        // SAFETY: the conditions of `MutexGuard::new` were satisfied when the original guard
-        // was created, and have been upheld throughout `map` and/or `filter_map`.
-        // The signature of the closure guarantees that it will not "leak" the lifetime of the reference
-        // passed to it. If the closure panics, the guard will be dropped.
+        // SAFETY: 创建原始守卫时，`MutexGuard::new` 的各项条件均已满足，且在
+        // 整个 `map` 与/或 `filter_map` 过程中始终得到维持。该闭包的签名保证
+        // 它不会「泄漏」传给它的引用的生命周期。如果该闭包 panic，守卫会被 drop。
         let data = NonNull::from(f(unsafe { &mut *orig.lock.data.get() }));
         let orig = ManuallyDrop::new(orig);
         MappedMutexGuard { data, inner: &orig.lock.inner, _variance: PhantomData }
     }
 
-    /// Makes a [`MappedMutexGuard`] for a component of the borrowed data. The
-    /// original guard is returned as an `Err(...)` if the closure returns
-    /// `None`.
+    /// 为被借用数据的某个组成部分制作一个 [`MappedMutexGuard`]。如果该闭包
+    /// 返回 `None`，则把原始守卫作为 `Err(...)` 返回。
     ///
-    /// The `Mutex` is already locked, so this cannot fail.
+    /// 此时 `Mutex` 已被锁定，因此本操作不会失败。
     ///
-    /// This is an associated function that needs to be used as
-    /// `MutexGuard::filter_map(...)`. A method would interfere with methods of the
-    /// same name on the contents of the `MutexGuard` used through `Deref`.
+    /// 这是一个关联函数，需以 `MutexGuard::filter_map(...)` 的形式使用。若设计
+    /// 为方法，则会与通过 `Deref` 访问的 `MutexGuard` 内容上同名的方法相冲突。
     #[unstable(feature = "mapped_lock_guards", issue = "117108")]
     // #[unstable(feature = "nonpoison_mutex", issue = "134645")]
     pub fn filter_map<U, F>(orig: Self, f: F) -> Result<MappedMutexGuard<'a, U>, Self>
@@ -537,10 +520,9 @@ impl<'a, T: ?Sized> MutexGuard<'a, T> {
         F: FnOnce(&mut T) -> Option<&mut U>,
         U: ?Sized,
     {
-        // SAFETY: the conditions of `MutexGuard::new` were satisfied when the original guard
-        // was created, and have been upheld throughout `map` and/or `filter_map`.
-        // The signature of the closure guarantees that it will not "leak" the lifetime of the reference
-        // passed to it. If the closure panics, the guard will be dropped.
+        // SAFETY: 创建原始守卫时，`MutexGuard::new` 的各项条件均已满足，且在
+        // 整个 `map` 与/或 `filter_map` 过程中始终得到维持。该闭包的签名保证
+        // 它不会「泄漏」传给它的引用的生命周期。如果该闭包 panic，守卫会被 drop。
         match f(unsafe { &mut *orig.lock.data.get() }) {
             Some(data) => {
                 let data = NonNull::from(data);
@@ -593,14 +575,13 @@ impl<T: ?Sized + fmt::Display> fmt::Display for MappedMutexGuard<'_, T> {
 }
 
 impl<'a, T: ?Sized> MappedMutexGuard<'a, T> {
-    /// Makes a [`MappedMutexGuard`] for a component of the borrowed data, e.g.
-    /// an enum variant.
+    /// 为被借用数据的某个组成部分（例如某个枚举变体）制作一个
+    /// [`MappedMutexGuard`]。
     ///
-    /// The `Mutex` is already locked, so this cannot fail.
+    /// 此时 `Mutex` 已被锁定，因此本操作不会失败。
     ///
-    /// This is an associated function that needs to be used as
-    /// `MappedMutexGuard::map(...)`. A method would interfere with methods of the
-    /// same name on the contents of the `MutexGuard` used through `Deref`.
+    /// 这是一个关联函数，需以 `MappedMutexGuard::map(...)` 的形式使用。若设计
+    /// 为方法，则会与通过 `Deref` 访问的 `MutexGuard` 内容上同名的方法相冲突。
     #[unstable(feature = "mapped_lock_guards", issue = "117108")]
     // #[unstable(feature = "nonpoison_mutex", issue = "134645")]
     pub fn map<U, F>(mut orig: Self, f: F) -> MappedMutexGuard<'a, U>
@@ -608,24 +589,22 @@ impl<'a, T: ?Sized> MappedMutexGuard<'a, T> {
         F: FnOnce(&mut T) -> &mut U,
         U: ?Sized,
     {
-        // SAFETY: the conditions of `MutexGuard::new` were satisfied when the original guard
-        // was created, and have been upheld throughout `map` and/or `filter_map`.
-        // The signature of the closure guarantees that it will not "leak" the lifetime of the reference
-        // passed to it. If the closure panics, the guard will be dropped.
+        // SAFETY: 创建原始守卫时，`MutexGuard::new` 的各项条件均已满足，且在
+        // 整个 `map` 与/或 `filter_map` 过程中始终得到维持。该闭包的签名保证
+        // 它不会「泄漏」传给它的引用的生命周期。如果该闭包 panic，守卫会被 drop。
         let data = NonNull::from(f(unsafe { orig.data.as_mut() }));
         let orig = ManuallyDrop::new(orig);
         MappedMutexGuard { data, inner: orig.inner, _variance: PhantomData }
     }
 
-    /// Makes a [`MappedMutexGuard`] for a component of the borrowed data. The
-    /// original guard is returned as an `Err(...)` if the closure returns
-    /// `None`.
+    /// 为被借用数据的某个组成部分制作一个 [`MappedMutexGuard`]。如果该闭包
+    /// 返回 `None`，则把原始守卫作为 `Err(...)` 返回。
     ///
-    /// The `Mutex` is already locked, so this cannot fail.
+    /// 此时 `Mutex` 已被锁定，因此本操作不会失败。
     ///
-    /// This is an associated function that needs to be used as
-    /// `MappedMutexGuard::filter_map(...)`. A method would interfere with methods of the
-    /// same name on the contents of the `MutexGuard` used through `Deref`.
+    /// 这是一个关联函数，需以 `MappedMutexGuard::filter_map(...)` 的形式使用。
+    /// 若设计为方法，则会与通过 `Deref` 访问的 `MutexGuard` 内容上同名的方法
+    /// 相冲突。
     #[unstable(feature = "mapped_lock_guards", issue = "117108")]
     // #[unstable(feature = "nonpoison_mutex", issue = "134645")]
     pub fn filter_map<U, F>(mut orig: Self, f: F) -> Result<MappedMutexGuard<'a, U>, Self>
@@ -633,10 +612,9 @@ impl<'a, T: ?Sized> MappedMutexGuard<'a, T> {
         F: FnOnce(&mut T) -> Option<&mut U>,
         U: ?Sized,
     {
-        // SAFETY: the conditions of `MutexGuard::new` were satisfied when the original guard
-        // was created, and have been upheld throughout `map` and/or `filter_map`.
-        // The signature of the closure guarantees that it will not "leak" the lifetime of the reference
-        // passed to it. If the closure panics, the guard will be dropped.
+        // SAFETY: 创建原始守卫时，`MutexGuard::new` 的各项条件均已满足，且在
+        // 整个 `map` 与/或 `filter_map` 过程中始终得到维持。该闭包的签名保证
+        // 它不会「泄漏」传给它的引用的生命周期。如果该闭包 panic，守卫会被 drop。
         match f(unsafe { orig.data.as_mut() }) {
             Some(data) => {
                 let data = NonNull::from(data);

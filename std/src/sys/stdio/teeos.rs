@@ -37,7 +37,7 @@ impl Stdout {
 
 impl io::Write for Stdout {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        // Corresponds to `HM_DEBUG_PUT_BYTES_LIMIT`.
+        // 对应于 `HM_DEBUG_PUT_BYTES_LIMIT`。
         const MAX_LEN: usize = 512;
         let len = buf.len().min(MAX_LEN);
         let result =

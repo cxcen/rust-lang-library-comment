@@ -1,4 +1,4 @@
-//! [`CStr`], [`CString`], and related types.
+//! [`CStr`]、[`CString`] 及相关类型。
 
 #[stable(feature = "cstring_from_vec_with_nul", since = "1.58.0")]
 pub use alloc::ffi::c_str::FromVecWithNulError;

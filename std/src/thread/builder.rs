@@ -2,25 +2,24 @@ use super::join_handle::JoinHandle;
 use super::lifecycle::spawn_unchecked;
 use crate::io;
 
-/// Thread factory, which can be used in order to configure the properties of
-/// a new thread.
+/// 线程工厂，可用于配置新线程的各项属性。
 ///
-/// Methods can be chained on it in order to configure it.
+/// 可以在它上面链式调用方法来进行配置。
 ///
-/// The two configurations available are:
+/// 目前可用的两项配置是：
 ///
-/// - [`name`]: specifies an [associated name for the thread][naming-threads]
-/// - [`stack_size`]: specifies the [desired stack size for the thread][stack-size]
+/// - [`name`]：为线程指定[一个关联名字][naming-threads]
+/// - [`stack_size`]：为线程指定[期望的栈大小][stack-size]
 ///
-/// The [`spawn`] method will take ownership of the builder and create an
-/// [`io::Result`] to the thread handle with the given configuration.
+/// [`spawn`] 方法会取得 builder 的所有权，并根据给定配置创建出一个指向线程句柄
+/// 的 [`io::Result`]。
 ///
-/// The [`thread::spawn`] free function uses a `Builder` with default
-/// configuration and [`unwrap`]s its return value.
+/// [`thread::spawn`] 自由函数使用一个采用默认配置的 `Builder`，并对它的返回值
+/// 调用 [`unwrap`]。
 ///
-/// You may want to use [`spawn`] instead of [`thread::spawn`], when you want
-/// to recover from a failure to launch a thread, indeed the free function will
-/// panic where the `Builder` method will return a [`io::Result`].
+/// 当你希望能从启动线程失败的情形中恢复时，可能会想用 [`spawn`] 而不是
+/// [`thread::spawn`]——的确，自由函数会 panic，而 `Builder` 方法则会返回一个
+/// [`io::Result`]。
 ///
 /// # Examples
 ///
@@ -30,7 +29,7 @@ use crate::io;
 /// let builder = thread::Builder::new();
 ///
 /// let handler = builder.spawn(|| {
-///     // thread code
+///     // 线程代码
 /// }).unwrap();
 ///
 /// handler.join().unwrap();
@@ -47,17 +46,16 @@ use crate::io;
 #[stable(feature = "rust1", since = "1.0.0")]
 #[derive(Debug)]
 pub struct Builder {
-    /// A name for the thread-to-be, for identification in panic messages
+    /// 待创建线程的名字，用于在 panic 消息中进行标识
     pub(super) name: Option<String>,
-    /// The size of the stack for the spawned thread in bytes
+    /// 派生线程的栈大小（以字节为单位）
     pub(super) stack_size: Option<usize>,
-    /// Skip running and inheriting the thread spawn hooks
+    /// 跳过运行和继承线程的 spawn hook
     pub(super) no_hooks: bool,
 }
 
 impl Builder {
-    /// Generates the base configuration for spawning a thread, from which
-    /// configuration methods can be chained.
+    /// 生成派生线程所需的基础配置，可在其上链式调用各配置方法。
     ///
     /// # Examples
     ///
@@ -69,7 +67,7 @@ impl Builder {
     ///                               .stack_size(32 * 1024);
     ///
     /// let handler = builder.spawn(|| {
-    ///     // thread code
+    ///     // 线程代码
     /// }).unwrap();
     ///
     /// handler.join().unwrap();
@@ -79,13 +77,12 @@ impl Builder {
         Builder { name: None, stack_size: None, no_hooks: false }
     }
 
-    /// Names the thread-to-be. Currently the name is used for identification
-    /// only in panic messages.
+    /// 为待创建的线程命名。目前该名字仅用于在 panic 消息中进行标识。
     ///
-    /// The name must not contain null bytes (`\0`).
+    /// 名字不能包含空字节（`\0`）。
     ///
-    /// For more information about named threads, see
-    /// [this module-level documentation][naming-threads].
+    /// 关于具名线程的更多信息，请参阅
+    /// [此模块级文档][naming-threads]。
     ///
     /// # Examples
     ///
@@ -109,13 +106,12 @@ impl Builder {
         self
     }
 
-    /// Sets the size of the stack (in bytes) for the new thread.
+    /// 设置新线程的栈大小（以字节为单位）。
     ///
-    /// The actual stack size may be greater than this value if
-    /// the platform specifies a minimal stack size.
+    /// 如果平台规定了一个最小栈大小，则实际栈大小可能大于这个值。
     ///
-    /// For more information about the stack size for threads, see
-    /// [this module-level documentation][stack-size].
+    /// 关于线程栈大小的更多信息，请参阅
+    /// [此模块级文档][stack-size]。
     ///
     /// # Examples
     ///
@@ -132,10 +128,9 @@ impl Builder {
         self
     }
 
-    /// Disables running and inheriting [spawn hooks].
+    /// 禁用运行和继承 [spawn hook][spawn hooks]。
     ///
-    /// Use this if the parent thread is in no way relevant for the child thread.
-    /// For example, when lazily spawning threads for a thread pool.
+    /// 如果父线程对子线程毫不相关，就使用它。例如，为线程池惰性地派生线程时。
     ///
     /// [spawn hooks]: super::add_spawn_hook
     #[unstable(feature = "thread_spawn_hook", issue = "132951")]
@@ -144,25 +139,23 @@ impl Builder {
         self
     }
 
-    /// Spawns a new thread by taking ownership of the `Builder`, and returns an
-    /// [`io::Result`] to its [`JoinHandle`].
+    /// 通过取得 `Builder` 的所有权来派生一个新线程，并返回一个指向其
+    /// [`JoinHandle`] 的 [`io::Result`]。
     ///
-    /// The spawned thread may outlive the caller (unless the caller thread
-    /// is the main thread; the whole process is terminated when the main
-    /// thread finishes). The join handle can be used to block on
-    /// termination of the spawned thread, including recovering its panics.
+    /// 派生出来的线程可能比调用者活得更久（除非调用者线程是主线程；当主线程结束
+    /// 时整个进程都会终止）。这个 join 句柄可用于阻塞等待派生线程的终止，包括
+    /// 恢复（recover）它的 panic。
     ///
-    /// For a more complete documentation see [`thread::spawn`].
+    /// 更完整的文档请参阅 [`thread::spawn`]。
     ///
     /// # Errors
     ///
-    /// Unlike the [`spawn`] free function, this method yields an
-    /// [`io::Result`] to capture any failure to create the thread at
-    /// the OS level.
+    /// 与 [`spawn`] 自由函数不同，本方法会返回一个 [`io::Result`]，以捕获在
+    /// 操作系统层面创建线程时的任何失败。
     ///
     /// # Panics
     ///
-    /// Panics if a thread name was set and it contained null bytes.
+    /// 如果设置了线程名且它包含空字节，则会 panic。
     ///
     /// # Examples
     ///
@@ -172,7 +165,7 @@ impl Builder {
     /// let builder = thread::Builder::new();
     ///
     /// let handler = builder.spawn(|| {
-    ///     // thread code
+    ///     // 线程代码
     /// }).unwrap();
     ///
     /// handler.join().unwrap();
@@ -181,7 +174,7 @@ impl Builder {
     /// [`thread::spawn`]: super::spawn
     /// [`spawn`]: super::spawn
     #[stable(feature = "rust1", since = "1.0.0")]
-    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+    #[cfg_attr(miri, track_caller)] // 即便没有 panic，这也有助于 Miri 的回溯（backtrace）
     pub fn spawn<F, T>(self, f: F) -> io::Result<JoinHandle<T>>
     where
         F: FnOnce() -> T,
@@ -191,39 +184,35 @@ impl Builder {
         unsafe { self.spawn_unchecked(f) }
     }
 
-    /// Spawns a new thread without any lifetime restrictions by taking ownership
-    /// of the `Builder`, and returns an [`io::Result`] to its [`JoinHandle`].
+    /// 通过取得 `Builder` 的所有权来派生一个不受生命周期限制的新线程，并返回一个
+    /// 指向其 [`JoinHandle`] 的 [`io::Result`]。
     ///
-    /// The spawned thread may outlive the caller (unless the caller thread
-    /// is the main thread; the whole process is terminated when the main
-    /// thread finishes). The join handle can be used to block on
-    /// termination of the spawned thread, including recovering its panics.
+    /// 派生出来的线程可能比调用者活得更久（除非调用者线程是主线程；当主线程结束
+    /// 时整个进程都会终止）。这个 join 句柄可用于阻塞等待派生线程的终止，包括
+    /// 恢复（recover）它的 panic。
     ///
-    /// This method is identical to [`thread::Builder::spawn`][`Builder::spawn`],
-    /// except for the relaxed lifetime bounds, which render it unsafe.
-    /// For a more complete documentation see [`thread::spawn`].
+    /// 本方法与 [`thread::Builder::spawn`][`Builder::spawn`] 相同，区别仅在于
+    /// 放宽了生命周期约束，这也正是它不安全的原因。更完整的文档请参阅
+    /// [`thread::spawn`]。
     ///
     /// # Errors
     ///
-    /// Unlike the [`spawn`] free function, this method yields an
-    /// [`io::Result`] to capture any failure to create the thread at
-    /// the OS level.
+    /// 与 [`spawn`] 自由函数不同，本方法会返回一个 [`io::Result`]，以捕获在
+    /// 操作系统层面创建线程时的任何失败。
     ///
     /// # Panics
     ///
-    /// Panics if a thread name was set and it contained null bytes.
+    /// 如果设置了线程名且它包含空字节，则会 panic。
     ///
     /// # Safety
     ///
-    /// The caller has to ensure that the spawned thread does not outlive any
-    /// references in the supplied thread closure and its return type.
-    /// This can be guaranteed in two ways:
+    /// 调用者必须确保派生出来的线程不会比所提供的线程闭包及其返回类型中的任何
+    /// 引用活得更久。这可以通过以下两种方式之一来保证：
     ///
-    /// - ensure that [`join`][`JoinHandle::join`] is called before any referenced
-    /// data is dropped
-    /// - use only types with `'static` lifetime bounds, i.e., those with no or only
-    /// `'static` references (both [`thread::Builder::spawn`][`Builder::spawn`]
-    /// and [`thread::spawn`] enforce this property statically)
+    /// - 确保在任何被引用的数据被丢弃之前调用 [`join`][`JoinHandle::join`]
+    /// - 只使用具有 `'static` 生命周期约束的类型，即没有引用、或只含 `'static`
+    /// 引用的类型（[`thread::Builder::spawn`][`Builder::spawn`] 和
+    /// [`thread::spawn`] 都会在静态层面强制这一属性）
     ///
     /// # Examples
     ///
@@ -241,16 +230,15 @@ impl Builder {
     ///     }).unwrap()
     /// };
     ///
-    /// // caller has to ensure `join()` is called, otherwise
-    /// // it is possible to access freed memory if `x` gets
-    /// // dropped before the thread closure is executed!
+    /// // 调用者必须确保 `join()` 被调用，否则如果 `x` 在线程闭包执行之前
+    /// // 就被丢弃，就可能访问到已释放的内存！
     /// handler.join().unwrap();
     /// ```
     ///
     /// [`thread::spawn`]: super::spawn
     /// [`spawn`]: super::spawn
     #[stable(feature = "thread_spawn_unchecked", since = "1.82.0")]
-    #[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+    #[cfg_attr(miri, track_caller)] // 即便没有 panic，这也有助于 Miri 的回溯（backtrace）
     pub unsafe fn spawn_unchecked<F, T>(self, f: F) -> io::Result<JoinHandle<T>>
     where
         F: FnOnce() -> T,

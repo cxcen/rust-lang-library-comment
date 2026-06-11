@@ -1,4 +1,4 @@
-//! Definitions for Horizon OS
+//! 针对 Horizon OS 的定义
 
 #![forbid(unsafe_op_in_unsafe_fn)]
 #![stable(feature = "raw_ext", since = "1.1.0")]

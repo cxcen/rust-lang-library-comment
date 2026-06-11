@@ -1,13 +1,19 @@
-//! Constants for the `f32` single-precision floating point type.
+//! `f32` 单精度（single-precision）浮点类型的相关常量。
 //!
-//! *[See also the `f32` primitive type](primitive@f32).*
+//! *[另见 `f32` 原始类型](primitive@f32)。*
 //!
-//! Mathematically significant numbers are provided in the `consts` sub-module.
+//! 具有数学意义的重要数值由 `consts` 子模块提供。
 //!
-//! For the constants defined directly in this module
-//! (as distinct from those defined in the `consts` sub-module),
-//! new code should instead use the associated constants
-//! defined directly on the `f32` type.
+//! 对于直接定义在本模块中的常量
+//! （区别于在 `consts` 子模块中定义的那些常量），
+//! 新代码应改用
+//! 直接定义在 `f32` 类型上的关联常量。
+//!
+//! 实现说明：本模块在 std 而非 core 中提供 `f32` 的浮点数学方法（如 `sqrt`、
+//! `sin`、`exp`、`ln`、`hypot` 等），是因为这些函数的实现依赖编译器内建函数
+//! （intrinsics）或底层平台/系统的数学库（在 Unix 与 Windows 上即 libc/libm）。
+//! 这类运行时依赖在不依赖操作系统的 core 中无法满足，因此只有 std 才能提供它们；
+//! 而那些不依赖运行时、纯位运算即可完成的方法则定义在 core 上。
 
 #![stable(feature = "rust1", since = "1.0.0")]
 #![allow(missing_docs)]
@@ -26,11 +32,11 @@ use crate::sys::cmath;
 
 #[cfg(not(test))]
 impl f32 {
-    /// Returns the largest integer less than or equal to `self`.
+    /// 返回小于等于 `self` 的最大整数。
     ///
-    /// This function always returns the precise result.
+    /// 本函数始终返回精确结果。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let f = 3.7_f32;
@@ -50,11 +56,11 @@ impl f32 {
         core::f32::math::floor(self)
     }
 
-    /// Returns the smallest integer greater than or equal to `self`.
+    /// 返回大于等于 `self` 的最小整数。
     ///
-    /// This function always returns the precise result.
+    /// 本函数始终返回精确结果。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let f = 3.01_f32;
@@ -73,12 +79,12 @@ impl f32 {
         core::f32::math::ceil(self)
     }
 
-    /// Returns the nearest integer to `self`. If a value is half-way between two
-    /// integers, round away from `0.0`.
+    /// 返回最接近 `self` 的整数。如果某个值恰好处于两个整数正中间，
+    /// 则朝远离 `0.0` 的方向舍入。
     ///
-    /// This function always returns the precise result.
+    /// 本函数始终返回精确结果。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let f = 3.3_f32;
@@ -102,12 +108,12 @@ impl f32 {
         core::f32::math::round(self)
     }
 
-    /// Returns the nearest integer to a number. Rounds half-way cases to the number
-    /// with an even least significant digit.
+    /// 返回最接近某个数的整数。对于恰好处于正中间的情形，舍入到最低有效位为偶数的那个数
+    /// （即四舍六入五成双）。
     ///
-    /// This function always returns the precise result.
+    /// 本函数始终返回精确结果。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let f = 3.3_f32;
@@ -129,12 +135,12 @@ impl f32 {
         core::f32::math::round_ties_even(self)
     }
 
-    /// Returns the integer part of `self`.
-    /// This means that non-integer numbers are always truncated towards zero.
+    /// 返回 `self` 的整数部分。
+    /// 这意味着非整数总是朝零方向截断。
     ///
-    /// This function always returns the precise result.
+    /// 本函数始终返回精确结果。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let f = 3.7_f32;
@@ -155,11 +161,11 @@ impl f32 {
         core::f32::math::trunc(self)
     }
 
-    /// Returns the fractional part of `self`.
+    /// 返回 `self` 的小数部分。
     ///
-    /// This function always returns the precise result.
+    /// 本函数始终返回精确结果。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let x = 3.6_f32;
@@ -179,21 +185,21 @@ impl f32 {
         core::f32::math::fract(self)
     }
 
-    /// Fused multiply-add. Computes `(self * a) + b` with only one rounding
-    /// error, yielding a more accurate result than an unfused multiply-add.
+    /// 融合乘加（fused multiply-add）。计算 `(self * a) + b`，全程只产生一次舍入
+    /// 误差，因此得到的结果比未融合的乘加更精确。
     ///
-    /// Using `mul_add` *may* be more performant than an unfused multiply-add if
-    /// the target architecture has a dedicated `fma` CPU instruction. However,
-    /// this is not always true, and will be heavily dependant on designing
-    /// algorithms with specific target hardware in mind.
+    /// 如果目标架构有专门的 `fma` CPU 指令，使用 `mul_add` *可能* 比未融合的乘加更高效。
+    /// 然而，这并非总是成立，
+    /// 它在很大程度上取决于针对特定目标硬件来设计算法。
+    /// 它在很大程度上取决于针对特定目标硬件来设计算法。
     ///
-    /// # Precision
+    /// # 精度(Precision）
     ///
-    /// The result of this operation is guaranteed to be the rounded
-    /// infinite-precision result. It is specified by IEEE 754 as
-    /// `fusedMultiplyAdd` and guaranteed not to change.
+    /// 本运算的结果保证是对无限精度结果进行舍入后的值。
+    /// 无限精度结果进行舍入后的值。它由 IEEE 754 规定为
+    /// `fusedMultiplyAdd`，并保证不会改变。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let m = 10.0_f32;
@@ -207,9 +213,9 @@ impl f32 {
     /// let one_minus_eps = 1.0_f32 - f32::EPSILON;
     /// let minus_one = -1.0_f32;
     ///
-    /// // The exact result (1 + eps) * (1 - eps) = 1 - eps * eps.
+    /// // 精确结果为 (1 + eps) * (1 - eps) = 1 - eps * eps。
     /// assert_eq!(one_plus_eps.mul_add(one_minus_eps, minus_one), -f32::EPSILON * f32::EPSILON);
-    /// // Different rounding with the non-fused multiply and add.
+    /// // 未融合的乘法和加法会产生不同的舍入。
     /// assert_eq!(one_plus_eps * one_minus_eps + minus_one, 0.0);
     /// ```
     #[rustc_allow_incoherent_impl]
@@ -222,19 +228,19 @@ impl f32 {
         core::f32::math::mul_add(self, a, b)
     }
 
-    /// Calculates Euclidean division, the matching method for `rem_euclid`.
+    /// 计算欧几里得除法，是与 `rem_euclid` 相匹配的方法。
     ///
-    /// This computes the integer `n` such that
-    /// `self = n * rhs + self.rem_euclid(rhs)`.
-    /// In other words, the result is `self / rhs` rounded to the integer `n`
-    /// such that `self >= n * rhs`.
+    /// 它计算出满足下式的整数 `n`：
+    /// `self = n * rhs + self.rem_euclid(rhs)`。
+    /// 换句话说，结果是把 `self / rhs` 向整数 `n` 舍入后的值，
+    /// 使得 `self >= n * rhs`。
     ///
-    /// # Precision
+    /// # 精度(Precision）
     ///
-    /// The result of this operation is guaranteed to be the rounded
-    /// infinite-precision result.
+    /// 本运算的结果保证是对无限精度结果进行舍入后的值。
+    /// 无限精度结果进行舍入后的值。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let a: f32 = 7.0;
@@ -252,24 +258,24 @@ impl f32 {
         core::f32::math::div_euclid(self, rhs)
     }
 
-    /// Calculates the least nonnegative remainder of `self` when divided by
-    /// `rhs`.
+    /// 计算 `self` 除以下述除数后的最小非负余数：
+    /// `rhs`。
     ///
-    /// In particular, the return value `r` satisfies `0.0 <= r < rhs.abs()` in
-    /// most cases. However, due to a floating point round-off error it can
-    /// result in `r == rhs.abs()`, violating the mathematical definition, if
-    /// `self` is much smaller than `rhs.abs()` in magnitude and `self < 0.0`.
-    /// This result is not an element of the function's codomain, but it is the
-    /// closest floating point number in the real numbers and thus fulfills the
-    /// property `self == self.div_euclid(rhs) * rhs + self.rem_euclid(rhs)`
-    /// approximately.
+    /// 具体而言，返回值 `r` 在大多数情况下满足 `0.0 <= r < rhs.abs()`。
+    /// 然而，由于浮点舍入误差，在某些情况下可能得到 `r == rhs.abs()`，从而违反数学定义：
+    /// 即当满足下述条件时：
+    /// 当 `self` 的量级远小于 `rhs.abs()` 且 `self < 0.0` 时则会出现这种情况。
+    /// 该结果并不属于函数的值域，但它是实数中最接近的浮点数，
+    /// 因此它近似地满足如下性质：
+    /// 性质 `self == self.div_euclid(rhs) * rhs + self.rem_euclid(rhs)`
+    /// （近似地）。
     ///
-    /// # Precision
+    /// # 精度(Precision）
     ///
-    /// The result of this operation is guaranteed to be the rounded
-    /// infinite-precision result.
+    /// 本运算的结果保证是对无限精度结果进行舍入后的值。
+    /// 无限精度结果进行舍入后的值。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let a: f32 = 7.0;
@@ -278,7 +284,7 @@ impl f32 {
     /// assert_eq!((-a).rem_euclid(b), 1.0);
     /// assert_eq!(a.rem_euclid(-b), 3.0);
     /// assert_eq!((-a).rem_euclid(-b), 1.0);
-    /// // limitation due to round-off error
+    /// // 由舍入误差导致的局限
     /// assert!((-f32::EPSILON).rem_euclid(3.0) != 0.0);
     /// ```
     #[doc(alias = "modulo", alias = "mod")]
@@ -290,23 +296,23 @@ impl f32 {
         core::f32::math::rem_euclid(self, rhs)
     }
 
-    /// Raises a number to an integer power.
+    /// 计算一个数的整数次幂。
     ///
-    /// Using this function is generally faster than using `powf`.
-    /// It might have a different sequence of rounding operations than `powf`,
-    /// so the results are not guaranteed to agree.
+    /// 使用本函数通常比使用 `powf` 更快。
+    /// 它的舍入操作序列可能与 `powf` 不同，
+    /// 因此不保证两者结果一致。
     ///
-    /// Note that this function is special in that it can return non-NaN results for NaN inputs. For
-    /// example, `f32::powi(f32::NAN, 0)` returns `1.0`. However, if an input is a *signaling*
-    /// NaN, then the result is non-deterministically either a NaN or the result that the
-    /// corresponding quiet NaN would produce.
+    /// 注意本函数较为特殊：对于 NaN 输入它也可能返回非 NaN 的结果。例如，
+    /// 例如，`f32::powi(f32::NAN, 0)` 返回 `1.0`。但是，如果某个输入是一个 *signaling*（信号）
+    /// NaN（即 *signaling* NaN），则结果不确定：要么是 NaN，要么是对应的安静（quiet）
+    /// NaN 所产生的结果。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform, Rust version, and
-    /// can even differ within the same execution from one invocation to the next.
+    /// 本函数的精度是不确定的。这意味着它会随平台、Rust 版本而变化，
+    /// 甚至在同一次执行中，前后两次调用之间也可能不同。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let x = 2.0_f32;
@@ -324,19 +330,19 @@ impl f32 {
         core::f32::math::powi(self, n)
     }
 
-    /// Raises a number to a floating point power.
+    /// 计算一个数的浮点数次幂。
     ///
-    /// Note that this function is special in that it can return non-NaN results for NaN inputs. For
-    /// example, `f32::powf(f32::NAN, 0.0)` returns `1.0`. However, if an input is a *signaling*
-    /// NaN, then the result is non-deterministically either a NaN or the result that the
-    /// corresponding quiet NaN would produce.
+    /// 注意本函数较为特殊：对于 NaN 输入它也可能返回非 NaN 的结果。例如，
+    /// 例如，`f32::powf(f32::NAN, 0.0)` 返回 `1.0`。但是，如果某个输入是一个 *signaling*（信号）
+    /// NaN（即 *signaling* NaN），则结果不确定：要么是 NaN，要么是对应的安静（quiet）
+    /// NaN 所产生的结果。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform, Rust version, and
-    /// can even differ within the same execution from one invocation to the next.
+    /// 本函数的精度是不确定的。这意味着它会随平台、Rust 版本而变化，
+    /// 甚至在同一次执行中，前后两次调用之间也可能不同。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let x = 2.0_f32;
@@ -355,17 +361,17 @@ impl f32 {
         intrinsics::powf32(self, n)
     }
 
-    /// Returns the square root of a number.
+    /// 返回一个数的平方根。
     ///
-    /// Returns NaN if `self` is a negative number other than `-0.0`.
+    /// 若 `self` 是除 `-0.0` 以外的负数，则返回 NaN。
     ///
-    /// # Precision
+    /// # 精度(Precision）
     ///
-    /// The result of this operation is guaranteed to be the rounded
-    /// infinite-precision result. It is specified by IEEE 754 as `squareRoot`
-    /// and guaranteed not to change.
+    /// 本运算的结果保证是对无限精度结果进行舍入后的值。
+    /// 无限精度结果进行舍入后的值。它由 IEEE 754 规定为 `squareRoot`，
+    /// 并保证不会改变。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let positive = 4.0_f32;
@@ -385,14 +391,14 @@ impl f32 {
         core::f32::math::sqrt(self)
     }
 
-    /// Returns `e^(self)`, (the exponential function).
+    /// 返回 `e^(self)`（即指数函数）。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform, Rust version, and
-    /// can even differ within the same execution from one invocation to the next.
+    /// 本函数的精度是不确定的。这意味着它会随平台、Rust 版本而变化，
+    /// 甚至在同一次执行中，前后两次调用之间也可能不同。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let one = 1.0f32;
@@ -412,14 +418,14 @@ impl f32 {
         intrinsics::expf32(self)
     }
 
-    /// Returns `2^(self)`.
+    /// 返回 `2^(self)`。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform, Rust version, and
-    /// can even differ within the same execution from one invocation to the next.
+    /// 本函数的精度是不确定的。这意味着它会随平台、Rust 版本而变化，
+    /// 甚至在同一次执行中，前后两次调用之间也可能不同。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let f = 2.0f32;
@@ -437,16 +443,16 @@ impl f32 {
         intrinsics::exp2f32(self)
     }
 
-    /// Returns the natural logarithm of the number.
+    /// 返回该数的自然对数。
     ///
-    /// This returns NaN when the number is negative, and negative infinity when number is zero.
+    /// 当该数为负时返回 NaN，当该数为零时返回负无穷。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform, Rust version, and
-    /// can even differ within the same execution from one invocation to the next.
+    /// 本函数的精度是不确定的。这意味着它会随平台、Rust 版本而变化，
+    /// 甚至在同一次执行中，前后两次调用之间也可能不同。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let one = 1.0f32;
@@ -459,7 +465,7 @@ impl f32 {
     /// assert!(abs_difference <= 1e-6);
     /// ```
     ///
-    /// Non-positive values:
+    /// 非正值：
     /// ```
     /// assert_eq!(0_f32.ln(), f32::NEG_INFINITY);
     /// assert!((-42_f32).ln().is_nan());
@@ -472,20 +478,20 @@ impl f32 {
         intrinsics::logf32(self)
     }
 
-    /// Returns the logarithm of the number with respect to an arbitrary base.
+    /// 返回该数关于任意底数的对数。
     ///
-    /// This returns NaN when the number is negative, and negative infinity when number is zero.
+    /// 当该数为负时返回 NaN，当该数为零时返回负无穷。
     ///
-    /// The result might not be correctly rounded owing to implementation details;
-    /// `self.log2()` can produce more accurate results for base 2, and
-    /// `self.log10()` can produce more accurate results for base 10.
+    /// 由于实现细节，结果可能未被正确舍入；
+    /// 对于以 2 为底，`self.log2()` 能给出更精确的结果，
+    /// 对于以 10 为底，`self.log10()` 能给出更精确的结果。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform, Rust version, and
-    /// can even differ within the same execution from one invocation to the next.
+    /// 本函数的精度是不确定的。这意味着它会随平台、Rust 版本而变化，
+    /// 甚至在同一次执行中，前后两次调用之间也可能不同。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let five = 5.0f32;
@@ -496,7 +502,7 @@ impl f32 {
     /// assert!(abs_difference <= 1e-6);
     /// ```
     ///
-    /// Non-positive values:
+    /// 非正值：
     /// ```
     /// assert_eq!(0_f32.log(10.0), f32::NEG_INFINITY);
     /// assert!((-42_f32).log(10.0).is_nan());
@@ -509,16 +515,16 @@ impl f32 {
         self.ln() / base.ln()
     }
 
-    /// Returns the base 2 logarithm of the number.
+    /// 返回该数的以 2 为底的对数。
     ///
-    /// This returns NaN when the number is negative, and negative infinity when number is zero.
+    /// 当该数为负时返回 NaN，当该数为零时返回负无穷。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform, Rust version, and
-    /// can even differ within the same execution from one invocation to the next.
+    /// 本函数的精度是不确定的。这意味着它会随平台、Rust 版本而变化，
+    /// 甚至在同一次执行中，前后两次调用之间也可能不同。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let two = 2.0f32;
@@ -529,7 +535,7 @@ impl f32 {
     /// assert!(abs_difference <= 1e-6);
     /// ```
     ///
-    /// Non-positive values:
+    /// 非正值：
     /// ```
     /// assert_eq!(0_f32.log2(), f32::NEG_INFINITY);
     /// assert!((-42_f32).log2().is_nan());
@@ -542,16 +548,16 @@ impl f32 {
         intrinsics::log2f32(self)
     }
 
-    /// Returns the base 10 logarithm of the number.
+    /// 返回该数的以 10 为底的对数。
     ///
-    /// This returns NaN when the number is negative, and negative infinity when number is zero.
+    /// 当该数为负时返回 NaN，当该数为零时返回负无穷。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform, Rust version, and
-    /// can even differ within the same execution from one invocation to the next.
+    /// 本函数的精度是不确定的。这意味着它会随平台、Rust 版本而变化，
+    /// 甚至在同一次执行中，前后两次调用之间也可能不同。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let ten = 10.0f32;
@@ -562,7 +568,7 @@ impl f32 {
     /// assert!(abs_difference <= 1e-6);
     /// ```
     ///
-    /// Non-positive values:
+    /// 非正值：
     /// ```
     /// assert_eq!(0_f32.log10(), f32::NEG_INFINITY);
     /// assert!((-42_f32).log10().is_nan());
@@ -575,19 +581,19 @@ impl f32 {
         intrinsics::log10f32(self)
     }
 
-    /// The positive difference of two numbers.
+    /// 两个数的正差值（positive difference）。
     ///
-    /// * If `self <= other`: `0.0`
-    /// * Else: `self - other`
+    /// * 若 `self <= other`：`0.0`
+    /// * 否则：`self - other`
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform, Rust version, and
-    /// can even differ within the same execution from one invocation to the next.
-    /// This function currently corresponds to the `fdimf` from libc on Unix
-    /// and Windows. Note that this might change in the future.
+    /// 本函数的精度是不确定的。这意味着它会随平台、Rust 版本而变化，
+    /// 甚至在同一次执行中，前后两次调用之间也可能不同。
+    /// 本函数目前对应于 libc 的 `fdimf`（在 Unix
+    /// 与 Windows 上）。注意这在将来可能会改变。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let x = 3.0f32;
@@ -618,16 +624,16 @@ impl f32 {
         core::f32::math::abs_sub(self, other)
     }
 
-    /// Returns the cube root of a number.
+    /// 返回一个数的立方根。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform, Rust version, and
-    /// can even differ within the same execution from one invocation to the next.
-    /// This function currently corresponds to the `cbrtf` from libc on Unix
-    /// and Windows. Note that this might change in the future.
+    /// 本函数的精度是不确定的。这意味着它会随平台、Rust 版本而变化，
+    /// 甚至在同一次执行中，前后两次调用之间也可能不同。
+    /// 本函数目前对应于 libc 的 `cbrtf`（在 Unix
+    /// 与 Windows 上）。注意这在将来可能会改变。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let x = 8.0f32;
@@ -645,19 +651,19 @@ impl f32 {
         core::f32::math::cbrt(self)
     }
 
-    /// Compute the distance between the origin and a point (`x`, `y`) on the
-    /// Euclidean plane. Equivalently, compute the length of the hypotenuse of a
-    /// right-angle triangle with other sides having length `x.abs()` and
-    /// `y.abs()`.
+    /// 计算原点到欧几里得平面上某点 (`x`, `y`) 的距离。
+    /// 等价地说，即计算一个直角三角形斜边的长度，
+    /// 该三角形的另外两条边长分别为 `x.abs()` 与
+    /// `y.abs()`。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform, Rust version, and
-    /// can even differ within the same execution from one invocation to the next.
-    /// This function currently corresponds to the `hypotf` from libc on Unix
-    /// and Windows. Note that this might change in the future.
+    /// 本函数的精度是不确定的。这意味着它会随平台、Rust 版本而变化，
+    /// 甚至在同一次执行中，前后两次调用之间也可能不同。
+    /// 本函数目前对应于 libc 的 `hypotf`（在 Unix
+    /// 与 Windows 上）。注意这在将来可能会改变。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let x = 2.0f32;
@@ -676,14 +682,14 @@ impl f32 {
         cmath::hypotf(self, other)
     }
 
-    /// Computes the sine of a number (in radians).
+    /// 计算一个数（以弧度为单位）的正弦。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform, Rust version, and
-    /// can even differ within the same execution from one invocation to the next.
+    /// 本函数的精度是不确定的。这意味着它会随平台、Rust 版本而变化，
+    /// 甚至在同一次执行中，前后两次调用之间也可能不同。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let x = std::f32::consts::FRAC_PI_2;
@@ -700,14 +706,14 @@ impl f32 {
         intrinsics::sinf32(self)
     }
 
-    /// Computes the cosine of a number (in radians).
+    /// 计算一个数（以弧度为单位）的余弦。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform, Rust version, and
-    /// can even differ within the same execution from one invocation to the next.
+    /// 本函数的精度是不确定的。这意味着它会随平台、Rust 版本而变化，
+    /// 甚至在同一次执行中，前后两次调用之间也可能不同。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let x = 2.0 * std::f32::consts::PI;
@@ -724,16 +730,16 @@ impl f32 {
         intrinsics::cosf32(self)
     }
 
-    /// Computes the tangent of a number (in radians).
+    /// 计算一个数（以弧度为单位）的正切。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform, Rust version, and
-    /// can even differ within the same execution from one invocation to the next.
-    /// This function currently corresponds to the `tanf` from libc on Unix and
-    /// Windows. Note that this might change in the future.
+    /// 本函数的精度是不确定的。这意味着它会随平台、Rust 版本而变化，
+    /// 甚至在同一次执行中，前后两次调用之间也可能不同。
+    /// 本函数目前对应于 libc 的 `tanf`（在 Unix 与
+    /// Windows 上）。注意这在将来可能会改变。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let x = std::f32::consts::FRAC_PI_4;
@@ -749,18 +755,18 @@ impl f32 {
         cmath::tanf(self)
     }
 
-    /// Computes the arcsine of a number. Return value is in radians in
-    /// the range [-pi/2, pi/2] or NaN if the number is outside the range
+    /// 计算一个数的反正弦。返回值为弧度，
+    /// 取值范围为 [-pi/2, pi/2]；如果该数落在 [-1, 1] 范围之外则为 NaN。
     /// [-1, 1].
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform, Rust version, and
-    /// can even differ within the same execution from one invocation to the next.
-    /// This function currently corresponds to the `asinf` from libc on Unix
-    /// and Windows. Note that this might change in the future.
+    /// 本函数的精度是不确定的。这意味着它会随平台、Rust 版本而变化，
+    /// 甚至在同一次执行中，前后两次调用之间也可能不同。
+    /// 本函数目前对应于 libc 的 `asinf`（在 Unix
+    /// 与 Windows 上）。注意这在将来可能会改变。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let f = std::f32::consts::FRAC_PI_4;
@@ -779,18 +785,18 @@ impl f32 {
         cmath::asinf(self)
     }
 
-    /// Computes the arccosine of a number. Return value is in radians in
-    /// the range [0, pi] or NaN if the number is outside the range
+    /// 计算一个数的反余弦。返回值为弧度，
+    /// 取值范围为 [0, pi]；如果该数落在 [-1, 1] 范围之外则为 NaN。
     /// [-1, 1].
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform, Rust version, and
-    /// can even differ within the same execution from one invocation to the next.
-    /// This function currently corresponds to the `acosf` from libc on Unix
-    /// and Windows. Note that this might change in the future.
+    /// 本函数的精度是不确定的。这意味着它会随平台、Rust 版本而变化，
+    /// 甚至在同一次执行中，前后两次调用之间也可能不同。
+    /// 本函数目前对应于 libc 的 `acosf`（在 Unix
+    /// 与 Windows 上）。注意这在将来可能会改变。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let f = std::f32::consts::FRAC_PI_4;
@@ -809,17 +815,17 @@ impl f32 {
         cmath::acosf(self)
     }
 
-    /// Computes the arctangent of a number. Return value is in radians in the
-    /// range [-pi/2, pi/2];
+    /// 计算一个数的反正切。返回值为弧度，
+    /// 取值范围为 [-pi/2, pi/2]；
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform, Rust version, and
-    /// can even differ within the same execution from one invocation to the next.
-    /// This function currently corresponds to the `atanf` from libc on Unix
-    /// and Windows. Note that this might change in the future.
+    /// 本函数的精度是不确定的。这意味着它会随平台、Rust 版本而变化，
+    /// 甚至在同一次执行中，前后两次调用之间也可能不同。
+    /// 本函数目前对应于 libc 的 `atanf`（在 Unix
+    /// 与 Windows 上）。注意这在将来可能会改变。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let f = 1.0f32;
@@ -838,32 +844,32 @@ impl f32 {
         cmath::atanf(self)
     }
 
-    /// Computes the four quadrant arctangent of `self` (`y`) and `other` (`x`) in radians.
+    /// 以弧度为单位计算 `self`（`y`）与 `other`（`x`）的四象限反正切。
     ///
-    ///  | `x`     | `y`     | Piecewise Definition | Range         |
+    ///  | `x`     | `y`     | 分段定义             | 范围          |
     ///  |---------|---------|----------------------|---------------|
     ///  | `>= +0` | `>= +0` | `arctan(y/x)`        | `[+0, +pi/2]` |
     ///  | `>= +0` | `<= -0` | `arctan(y/x)`        | `[-pi/2, -0]` |
     ///  | `<= -0` | `>= +0` | `arctan(y/x) + pi`   | `[+pi/2, +pi]`|
     ///  | `<= -0` | `<= -0` | `arctan(y/x) - pi`   | `[-pi, -pi/2]`|
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform, Rust version, and
-    /// can even differ within the same execution from one invocation to the next.
-    /// This function currently corresponds to the `atan2f` from libc on Unix
-    /// and Windows. Note that this might change in the future.
+    /// 本函数的精度是不确定的。这意味着它会随平台、Rust 版本而变化，
+    /// 甚至在同一次执行中，前后两次调用之间也可能不同。
+    /// 本函数目前对应于 libc 的 `atan2f`（在 Unix
+    /// 与 Windows 上）。注意这在将来可能会改变。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
-    /// // Positive angles measured counter-clockwise
-    /// // from positive x axis
-    /// // -pi/4 radians (45 deg clockwise)
+    /// // 正角度从正 x 轴起
+    /// // （逆时针为正）
+    /// // -pi/4 弧度（顺时针 45 度）
     /// let x1 = 3.0f32;
     /// let y1 = -3.0f32;
     ///
-    /// // 3pi/4 radians (135 deg counter-clockwise)
+    /// // 3pi/4 弧度（逆时针 135 度）
     /// let x2 = -3.0f32;
     /// let y2 = 3.0f32;
     ///
@@ -881,17 +887,17 @@ impl f32 {
         cmath::atan2f(self, other)
     }
 
-    /// Simultaneously computes the sine and cosine of the number, `x`. Returns
-    /// `(sin(x), cos(x))`.
+    /// 同时计算数 `x` 的正弦与余弦，返回
+    /// `(sin(x), cos(x))`。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform, Rust version, and
-    /// can even differ within the same execution from one invocation to the next.
-    /// This function currently corresponds to the `(f32::sin(x),
-    /// f32::cos(x))`. Note that this might change in the future.
+    /// 本函数的精度是不确定的。这意味着它会随平台、Rust 版本而变化，
+    /// 甚至在同一次执行中，前后两次调用之间也可能不同。
+    /// 本函数目前对应于 `(f32::sin(x),
+    /// f32::cos(x))`。注意这在将来可能会改变。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let x = std::f32::consts::FRAC_PI_4;
@@ -911,22 +917,22 @@ impl f32 {
         (self.sin(), self.cos())
     }
 
-    /// Returns `e^(self) - 1` in a way that is accurate even if the
-    /// number is close to zero.
+    /// 以一种即便在数值接近零时也保持精确的方式返回 `e^(self) - 1`。
+    /// ——也就是说，即便该数接近零也保持精确。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform, Rust version, and
-    /// can even differ within the same execution from one invocation to the next.
-    /// This function currently corresponds to the `expm1f` from libc on Unix
-    /// and Windows. Note that this might change in the future.
+    /// 本函数的精度是不确定的。这意味着它会随平台、Rust 版本而变化，
+    /// 甚至在同一次执行中，前后两次调用之间也可能不同。
+    /// 本函数目前对应于 libc 的 `expm1f`（在 Unix
+    /// 与 Windows 上）。注意这在将来可能会改变。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let x = 1e-8_f32;
     ///
-    /// // for very small x, e^x is approximately 1 + x + x^2 / 2
+    /// // 对于非常小的 x，e^x 近似等于 1 + x + x^2 / 2
     /// let approx = x + x * x / 2.0;
     /// let abs_difference = (x.exp_m1() - approx).abs();
     ///
@@ -940,31 +946,31 @@ impl f32 {
         cmath::expm1f(self)
     }
 
-    /// Returns `ln(1+n)` (natural logarithm) more accurately than if
-    /// the operations were performed separately.
+    /// 返回 `ln(1+n)`（自然对数），其精度高于分别执行各步运算的结果。
+    /// 其精度高于分别执行各步运算的结果。
     ///
-    /// This returns NaN when `n < -1.0`, and negative infinity when `n == -1.0`.
+    /// 当 `n < -1.0` 时返回 NaN，当 `n == -1.0` 时返回负无穷。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform, Rust version, and
-    /// can even differ within the same execution from one invocation to the next.
-    /// This function currently corresponds to the `log1pf` from libc on Unix
-    /// and Windows. Note that this might change in the future.
+    /// 本函数的精度是不确定的。这意味着它会随平台、Rust 版本而变化，
+    /// 甚至在同一次执行中，前后两次调用之间也可能不同。
+    /// 本函数目前对应于 libc 的 `log1pf`（在 Unix
+    /// 与 Windows 上）。注意这在将来可能会改变。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let x = 1e-8_f32;
     ///
-    /// // for very small x, ln(1 + x) is approximately x - x^2 / 2
+    /// // 对于非常小的 x，ln(1 + x) 近似等于 x - x^2 / 2
     /// let approx = x - x * x / 2.0;
     /// let abs_difference = (x.ln_1p() - approx).abs();
     ///
     /// assert!(abs_difference < 1e-10);
     /// ```
     ///
-    /// Out-of-range values:
+    /// 超出范围的值：
     /// ```
     /// assert_eq!((-1.0_f32).ln_1p(), f32::NEG_INFINITY);
     /// assert!((-2.0_f32).ln_1p().is_nan());
@@ -978,23 +984,23 @@ impl f32 {
         cmath::log1pf(self)
     }
 
-    /// Hyperbolic sine function.
+    /// 双曲正弦函数。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform, Rust version, and
-    /// can even differ within the same execution from one invocation to the next.
-    /// This function currently corresponds to the `sinhf` from libc on Unix
-    /// and Windows. Note that this might change in the future.
+    /// 本函数的精度是不确定的。这意味着它会随平台、Rust 版本而变化，
+    /// 甚至在同一次执行中，前后两次调用之间也可能不同。
+    /// 本函数目前对应于 libc 的 `sinhf`（在 Unix
+    /// 与 Windows 上）。注意这在将来可能会改变。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let e = std::f32::consts::E;
     /// let x = 1.0f32;
     ///
     /// let f = x.sinh();
-    /// // Solving sinh() at 1 gives `(e^2-1)/(2e)`
+    /// // 在 1 处求 sinh() 得到 `(e^2-1)/(2e)`
     /// let g = ((e * e) - 1.0) / (2.0 * e);
     /// let abs_difference = (f - g).abs();
     ///
@@ -1008,26 +1014,26 @@ impl f32 {
         cmath::sinhf(self)
     }
 
-    /// Hyperbolic cosine function.
+    /// 双曲余弦函数。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform, Rust version, and
-    /// can even differ within the same execution from one invocation to the next.
-    /// This function currently corresponds to the `coshf` from libc on Unix
-    /// and Windows. Note that this might change in the future.
+    /// 本函数的精度是不确定的。这意味着它会随平台、Rust 版本而变化，
+    /// 甚至在同一次执行中，前后两次调用之间也可能不同。
+    /// 本函数目前对应于 libc 的 `coshf`（在 Unix
+    /// 与 Windows 上）。注意这在将来可能会改变。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let e = std::f32::consts::E;
     /// let x = 1.0f32;
     /// let f = x.cosh();
-    /// // Solving cosh() at 1 gives this result
+    /// // 在 1 处求 cosh() 得到此结果
     /// let g = ((e * e) + 1.0) / (2.0 * e);
     /// let abs_difference = (f - g).abs();
     ///
-    /// // Same result
+    /// // 结果相同
     /// assert!(abs_difference <= 1e-6);
     /// ```
     #[rustc_allow_incoherent_impl]
@@ -1038,23 +1044,23 @@ impl f32 {
         cmath::coshf(self)
     }
 
-    /// Hyperbolic tangent function.
+    /// 双曲正切函数。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform, Rust version, and
-    /// can even differ within the same execution from one invocation to the next.
-    /// This function currently corresponds to the `tanhf` from libc on Unix
-    /// and Windows. Note that this might change in the future.
+    /// 本函数的精度是不确定的。这意味着它会随平台、Rust 版本而变化，
+    /// 甚至在同一次执行中，前后两次调用之间也可能不同。
+    /// 本函数目前对应于 libc 的 `tanhf`（在 Unix
+    /// 与 Windows 上）。注意这在将来可能会改变。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let e = std::f32::consts::E;
     /// let x = 1.0f32;
     ///
     /// let f = x.tanh();
-    /// // Solving tanh() at 1 gives `(1 - e^(-2))/(1 + e^(-2))`
+    /// // 在 1 处求 tanh() 得到 `(1 - e^(-2))/(1 + e^(-2))`
     /// let g = (1.0 - e.powi(-2)) / (1.0 + e.powi(-2));
     /// let abs_difference = (f - g).abs();
     ///
@@ -1068,14 +1074,14 @@ impl f32 {
         cmath::tanhf(self)
     }
 
-    /// Inverse hyperbolic sine function.
+    /// 反双曲正弦函数。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform, Rust version, and
-    /// can even differ within the same execution from one invocation to the next.
+    /// 本函数的精度是不确定的。这意味着它会随平台、Rust 版本而变化，
+    /// 甚至在同一次执行中，前后两次调用之间也可能不同。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let x = 1.0f32;
@@ -1096,14 +1102,14 @@ impl f32 {
         (ax + (ax / (Self::hypot(1.0, ix) + ix))).ln_1p().copysign(self)
     }
 
-    /// Inverse hyperbolic cosine function.
+    /// 反双曲余弦函数。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform, Rust version, and
-    /// can even differ within the same execution from one invocation to the next.
+    /// 本函数的精度是不确定的。这意味着它会随平台、Rust 版本而变化，
+    /// 甚至在同一次执行中，前后两次调用之间也可能不同。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let x = 1.0f32;
@@ -1126,14 +1132,14 @@ impl f32 {
         }
     }
 
-    /// Inverse hyperbolic tangent function.
+    /// 反双曲正切函数。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform, Rust version, and
-    /// can even differ within the same execution from one invocation to the next.
+    /// 本函数的精度是不确定的。这意味着它会随平台、Rust 版本而变化，
+    /// 甚至在同一次执行中，前后两次调用之间也可能不同。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// let x = std::f32::consts::FRAC_PI_6;
@@ -1152,16 +1158,16 @@ impl f32 {
         0.5 * ((2.0 * self) / (1.0 - self)).ln_1p()
     }
 
-    /// Gamma function.
+    /// 伽马函数（gamma function）。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform, Rust version, and
-    /// can even differ within the same execution from one invocation to the next.
-    /// This function currently corresponds to the `tgammaf` from libc on Unix
-    /// and Windows. Note that this might change in the future.
+    /// 本函数的精度是不确定的。这意味着它会随平台、Rust 版本而变化，
+    /// 甚至在同一次执行中，前后两次调用之间也可能不同。
+    /// 本函数目前对应于 libc 的 `tgammaf`（在 Unix
+    /// 与 Windows 上）。注意这在将来可能会改变。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(float_gamma)]
@@ -1179,18 +1185,18 @@ impl f32 {
         cmath::tgammaf(self)
     }
 
-    /// Natural logarithm of the absolute value of the gamma function
+    /// 伽马函数绝对值的自然对数。
     ///
-    /// The integer part of the tuple indicates the sign of the gamma function.
+    /// 元组中的整数部分表示伽马函数的符号。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform, Rust version, and
-    /// can even differ within the same execution from one invocation to the next.
-    /// This function currently corresponds to the `lgamma_r` from libc on Unix
-    /// and Windows. Note that this might change in the future.
+    /// 本函数的精度是不确定的。这意味着它会随平台、Rust 版本而变化，
+    /// 甚至在同一次执行中，前后两次调用之间也可能不同。
+    /// 本函数目前对应于 libc 的 `lgamma_r`（在 Unix
+    /// 与 Windows 上）。注意这在将来可能会改变。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(float_gamma)]
@@ -1210,31 +1216,31 @@ impl f32 {
         (x, signgamp)
     }
 
-    /// Error function.
+    /// 误差函数（error function）。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform,
-    /// Rust version, and can even differ within the same execution from one invocation to the next.
+    /// 本函数的精度是不确定的。这意味着它会随平台、
+    /// Rust 版本而变化，甚至在同一次执行中，前后两次调用之间也可能不同。
     ///
-    /// This function currently corresponds to the `erff` from libc on Unix
-    /// and Windows. Note that this might change in the future.
+    /// 本函数目前对应于 libc 的 `erff`（在 Unix
+    /// 与 Windows 上）。注意这在将来可能会改变。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(float_erf)]
-    /// /// The error function relates what percent of a normal distribution lies
-    /// /// within `x` standard deviations (scaled by `1/sqrt(2)`).
+    /// /// 误差函数描述了正态分布中有百分之多少落在
+    /// /// `x` 个标准差以内（按 `1/sqrt(2)` 缩放）。
     /// fn within_standard_deviations(x: f32) -> f32 {
     ///     (x * std::f32::consts::FRAC_1_SQRT_2).erf() * 100.0
     /// }
     ///
-    /// // 68% of a normal distribution is within one standard deviation
+    /// // 正态分布中有 68% 落在一个标准差以内
     /// assert!((within_standard_deviations(1.0) - 68.269).abs() < 0.01);
-    /// // 95% of a normal distribution is within two standard deviations
+    /// // 正态分布中有 95% 落在两个标准差以内
     /// assert!((within_standard_deviations(2.0) - 95.450).abs() < 0.01);
-    /// // 99.7% of a normal distribution is within three standard deviations
+    /// // 正态分布中有 99.7% 落在三个标准差以内
     /// assert!((within_standard_deviations(3.0) - 99.730).abs() < 0.01);
     /// ```
     #[rustc_allow_incoherent_impl]
@@ -1245,17 +1251,17 @@ impl f32 {
         cmath::erff(self)
     }
 
-    /// Complementary error function.
+    /// 互补误差函数（complementary error function）。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform,
-    /// Rust version, and can even differ within the same execution from one invocation to the next.
+    /// 本函数的精度是不确定的。这意味着它会随平台、
+    /// Rust 版本而变化，甚至在同一次执行中，前后两次调用之间也可能不同。
     ///
-    /// This function currently corresponds to the `erfcf` from libc on Unix
-    /// and Windows. Note that this might change in the future.
+    /// 本函数目前对应于 libc 的 `erfcf`（在 Unix
+    /// 与 Windows 上）。注意这在将来可能会改变。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(float_erf)]

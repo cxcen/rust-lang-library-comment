@@ -12,8 +12,8 @@ const INTERVALS_PER_SEC: u64 = NANOS_PER_SEC / 100;
 
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Debug, Hash)]
 pub struct Instant {
-    // This duration is relative to an arbitrary microsecond epoch
-    // from the winapi QueryPerformanceCounter function.
+    // 这个 duration 是相对于一个任意的微秒纪元（epoch）而言的，
+    // 该纪元来自 winapi 的 QueryPerformanceCounter 函数。
     t: Duration,
 }
 
@@ -33,18 +33,16 @@ pub const UNIX_EPOCH: SystemTime = SystemTime {
 
 impl Instant {
     pub fn now() -> Instant {
-        // High precision timing on windows operates in "Performance Counter"
-        // units, as returned by the WINAPI QueryPerformanceCounter function.
-        // These relate to seconds by a factor of QueryPerformanceFrequency.
-        // In order to keep unit conversions out of normal interval math, we
-        // measure in QPC units and immediately convert to nanoseconds.
+        // Windows 上的高精度计时以“性能计数器（Performance Counter）”为单位，
+        // 由 WINAPI 的 QueryPerformanceCounter 函数返回。它们与秒之间的换算系数
+        // 是 QueryPerformanceFrequency。为了让常规的时间间隔运算中不掺杂单位换算，
+        // 我们以 QPC 为单位测量，并立即转换为纳秒。
         perf_counter::PerformanceCounterInstant::now().into()
     }
 
     pub fn checked_sub_instant(&self, other: &Instant) -> Option<Duration> {
-        // On windows there's a threshold below which we consider two timestamps
-        // equivalent due to measurement error. For more details + doc link,
-        // check the docs on epsilon.
+        // 在 Windows 上存在一个阈值，低于该阈值时我们会因测量误差而认为两个时间戳
+        // 是等价的。更多细节及文档链接，请参见 epsilon 上的文档。
         let epsilon = perf_counter::PerformanceCounterInstant::epsilon();
         if other.t > self.t && other.t - self.t <= epsilon {
             Some(Duration::new(0, 0))
@@ -110,10 +108,9 @@ impl SystemTime {
     }
 
     pub fn checked_sub_duration(&self, other: &Duration) -> Option<SystemTime> {
-        // Windows does not support times before 1601, hence why we don't
-        // support negatives. In order to tackle this, we try to convert the
-        // resulting value into an u64, which should obviously fail in the case
-        // that the value is below zero.
+        // Windows 不支持 1601 年之前的时间，这也是我们不支持负值的原因。
+        // 为了解决这一点，我们尝试把计算结果转换为 u64，显然，如果该值
+        // 小于零，转换就会失败。
         let intervals: u64 =
             self.intervals().checked_sub(checked_dur2intervals(other)?)?.try_into().ok()?;
         Some(SystemTime::from_intervals(intervals as i64))
@@ -191,9 +188,9 @@ mod perf_counter {
             Self { ts: query() }
         }
 
-        // Per microsoft docs, the margin of error for cross-thread time comparisons
-        // using QueryPerformanceCounter is 1 "tick" -- defined as 1/frequency().
-        // Reference: https://docs.microsoft.com/en-us/windows/desktop/SysInfo
+        // 根据微软的文档，使用 QueryPerformanceCounter 进行跨线程时间比较时，
+        // 误差范围是 1 个“tick”——定义为 1/frequency()。
+        // 参考：https://docs.microsoft.com/en-us/windows/desktop/SysInfo
         //                   /acquiring-high-resolution-time-stamps
         pub fn epsilon() -> Duration {
             let epsilon = NANOS_PER_SEC / (frequency() as u64);
@@ -209,18 +206,17 @@ mod perf_counter {
     }
 
     fn frequency() -> i64 {
-        // Either the cached result of `QueryPerformanceFrequency` or `0` for
-        // uninitialized. Storing this as a single `AtomicU64` allows us to use
-        // `Relaxed` operations, as we are only interested in the effects on a
-        // single memory location.
+        // 要么是 `QueryPerformanceFrequency` 的缓存结果，要么是表示未初始化的 `0`。
+        // 将其存储为单个 `AtomicU64` 使我们能够使用 `Relaxed` 操作，因为我们只关心
+        // 对单个内存位置的影响。
         static FREQUENCY: Atomic<u64> = AtomicU64::new(0);
 
         let cached = FREQUENCY.load(Ordering::Relaxed);
-        // If a previous thread has filled in this global state, use that.
+        // 如果之前有某个线程已经填好了这个全局状态，就用它。
         if cached != 0 {
             return cached as i64;
         }
-        // ... otherwise learn for ourselves ...
+        // ……否则我们自己来获取……
         let mut frequency = 0;
         unsafe {
             cvt(c::QueryPerformanceFrequency(&mut frequency)).unwrap();
@@ -237,12 +233,12 @@ mod perf_counter {
     }
 }
 
-/// A timer you can wait on.
+/// 一个可供等待的定时器。
 pub(crate) struct WaitableTimer {
     handle: c::HANDLE,
 }
 impl WaitableTimer {
-    /// Creates a high-resolution timer. Will fail before Windows 10, version 1803.
+    /// 创建一个高分辨率定时器。在 Windows 10 version 1803 之前会失败。
     pub fn high_resolution() -> Result<Self, ()> {
         let handle = unsafe {
             c::CreateWaitableTimerExW(
@@ -255,9 +251,9 @@ impl WaitableTimer {
         if !handle.is_null() { Ok(Self { handle }) } else { Err(()) }
     }
     pub fn set(&self, duration: Duration) -> Result<(), ()> {
-        // Convert the Duration to a format similar to FILETIME.
-        // Negative values are relative times whereas positive values are absolute.
-        // Therefore we negate the relative duration.
+        // 将 Duration 转换为类似 FILETIME 的格式。
+        // 负值表示相对时间，正值表示绝对时间。
+        // 因此我们对这个相对的 duration 取负。
         let time = checked_dur2intervals(&duration).ok_or(())?.neg();
         let result = unsafe { c::SetWaitableTimer(self.handle, &time, 0, None, null(), c::FALSE) };
         if result != 0 { Ok(()) } else { Err(()) }

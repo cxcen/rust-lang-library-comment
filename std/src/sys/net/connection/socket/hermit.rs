@@ -62,7 +62,7 @@ impl Socket {
 
         match r {
             Ok(_) => return Ok(()),
-            // there's no ErrorKind for EINPROGRESS :(
+            // EINPROGRESS 没有对应的 ErrorKind :(
             Err(ref e) if e.raw_os_error() == Some(netc::errno::EINPROGRESS) => {}
             Err(e) => return Err(e),
         }
@@ -101,8 +101,8 @@ impl Socket {
                 }
                 0 => {}
                 _ => {
-                    // linux returns POLLOUT|POLLERR|POLLHUP for refused connections (!), so look
-                    // for POLLHUP rather than read readiness
+                    // linux 对于被拒绝的连接会返回 POLLOUT|POLLERR|POLLHUP（!），
+                    // 因此应查找 POLLHUP，而不是查看读就绪状态。
                     if pollfd.revents & netc::POLLHUP != 0 {
                         let e = self.take_error()?.unwrap_or_else(|| {
                             io::const_error!(

@@ -1,8 +1,14 @@
-//! Constants for the `f128` quadruple-precision floating point type.
+//! `f128` 四精度（quadruple-precision）浮点类型的相关常量。
 //!
-//! *[See also the `f128` primitive type](primitive@f128).*
+//! *[另见 `f128` 原始类型](primitive@f128)。*
 //!
-//! Mathematically significant numbers are provided in the `consts` sub-module.
+//! 具有数学意义的重要数值由 `consts` 子模块提供。
+//!
+//! 实现说明：本模块在 std 而非 core 中提供 `f128` 的浮点数学方法（如 `sqrt`、
+//! `sin`、`exp`、`ln`、`hypot` 等），是因为这些函数的实现依赖编译器内建函数
+//! （intrinsics）或底层平台/系统的数学库（在 Unix 与 Windows 上即 libc/libm）。
+//! 这类运行时依赖在不依赖操作系统的 core 中无法满足，因此只有 std 才能提供它们；
+//! 而那些不依赖运行时、纯位运算即可完成的方法则定义在 core 上。
 
 #![unstable(feature = "f128", issue = "116909")]
 #![doc(test(attr(feature(cfg_target_has_reliable_f16_f128), expect(internal_features))))]
@@ -17,19 +23,19 @@ use crate::sys::cmath;
 
 #[cfg(not(test))]
 impl f128 {
-    /// Raises a number to a floating point power.
+    /// 计算一个数的浮点数次幂。
     ///
-    /// Note that this function is special in that it can return non-NaN results for NaN inputs. For
-    /// example, `f128::powf(f128::NAN, 0.0)` returns `1.0`. However, if an input is a *signaling*
-    /// NaN, then the result is non-deterministically either a NaN or the result that the
-    /// corresponding quiet NaN would produce.
+    /// 注意本函数较为特殊：对于 NaN 输入它也可能返回非 NaN 的结果。例如，
+    /// 例如，`f128::powf(f128::NAN, 0.0)` 返回 `1.0`。但是，如果某个输入是一个 *signaling*（信号）
+    /// NaN（即 *signaling* NaN），则结果不确定：要么是 NaN，要么是对应的安静（quiet）
+    /// NaN 所产生的结果。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform,
-    /// Rust version, and can even differ within the same execution from one invocation to the next.
+    /// 本函数的精度是不确定的。这意味着它会随平台、
+    /// Rust 版本而变化，甚至在同一次执行中，前后两次调用之间也可能不同。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(f128)]
@@ -53,14 +59,14 @@ impl f128 {
         intrinsics::powf128(self, n)
     }
 
-    /// Returns `e^(self)`, (the exponential function).
+    /// 返回 `e^(self)`（即指数函数）。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform,
-    /// Rust version, and can even differ within the same execution from one invocation to the next.
+    /// 本函数的精度是不确定的。这意味着它会随平台、
+    /// Rust 版本而变化，甚至在同一次执行中，前后两次调用之间也可能不同。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(f128)]
@@ -85,14 +91,14 @@ impl f128 {
         intrinsics::expf128(self)
     }
 
-    /// Returns `2^(self)`.
+    /// 返回 `2^(self)`。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform,
-    /// Rust version, and can even differ within the same execution from one invocation to the next.
+    /// 本函数的精度是不确定的。这意味着它会随平台、
+    /// Rust 版本而变化，甚至在同一次执行中，前后两次调用之间也可能不同。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(f128)]
@@ -115,16 +121,16 @@ impl f128 {
         intrinsics::exp2f128(self)
     }
 
-    /// Returns the natural logarithm of the number.
+    /// 返回该数的自然对数。
     ///
-    /// This returns NaN when the number is negative, and negative infinity when number is zero.
+    /// 当该数为负时返回 NaN，当该数为零时返回负无穷。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform,
-    /// Rust version, and can even differ within the same execution from one invocation to the next.
+    /// 本函数的精度是不确定的。这意味着它会随平台、
+    /// Rust 版本而变化，甚至在同一次执行中，前后两次调用之间也可能不同。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(f128)]
@@ -142,7 +148,7 @@ impl f128 {
     /// # }
     /// ```
     ///
-    /// Non-positive values:
+    /// 非正值：
     /// ```
     /// #![feature(f128)]
     /// # #[cfg(not(miri))]
@@ -160,20 +166,20 @@ impl f128 {
         intrinsics::logf128(self)
     }
 
-    /// Returns the logarithm of the number with respect to an arbitrary base.
+    /// 返回该数关于任意底数的对数。
     ///
-    /// This returns NaN when the number is negative, and negative infinity when number is zero.
+    /// 当该数为负时返回 NaN，当该数为零时返回负无穷。
     ///
-    /// The result might not be correctly rounded owing to implementation details;
-    /// `self.log2()` can produce more accurate results for base 2, and
-    /// `self.log10()` can produce more accurate results for base 10.
+    /// 由于实现细节，结果可能未被正确舍入；
+    /// 对于以 2 为底，`self.log2()` 能给出更精确的结果，
+    /// 对于以 10 为底，`self.log10()` 能给出更精确的结果。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform,
-    /// Rust version, and can even differ within the same execution from one invocation to the next.
+    /// 本函数的精度是不确定的。这意味着它会随平台、
+    /// Rust 版本而变化，甚至在同一次执行中，前后两次调用之间也可能不同。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(f128)]
@@ -189,7 +195,7 @@ impl f128 {
     /// # }
     /// ```
     ///
-    /// Non-positive values:
+    /// 非正值：
     /// ```
     /// #![feature(f128)]
     /// # #[cfg(not(miri))]
@@ -207,16 +213,16 @@ impl f128 {
         self.ln() / base.ln()
     }
 
-    /// Returns the base 2 logarithm of the number.
+    /// 返回该数的以 2 为底的对数。
     ///
-    /// This returns NaN when the number is negative, and negative infinity when number is zero.
+    /// 当该数为负时返回 NaN，当该数为零时返回负无穷。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform,
-    /// Rust version, and can even differ within the same execution from one invocation to the next.
+    /// 本函数的精度是不确定的。这意味着它会随平台、
+    /// Rust 版本而变化，甚至在同一次执行中，前后两次调用之间也可能不同。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(f128)]
@@ -232,7 +238,7 @@ impl f128 {
     /// # }
     /// ```
     ///
-    /// Non-positive values:
+    /// 非正值：
     /// ```
     /// #![feature(f128)]
     /// # #[cfg(not(miri))]
@@ -250,16 +256,16 @@ impl f128 {
         intrinsics::log2f128(self)
     }
 
-    /// Returns the base 10 logarithm of the number.
+    /// 返回该数的以 10 为底的对数。
     ///
-    /// This returns NaN when the number is negative, and negative infinity when number is zero.
+    /// 当该数为负时返回 NaN，当该数为零时返回负无穷。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform,
-    /// Rust version, and can even differ within the same execution from one invocation to the next.
+    /// 本函数的精度是不确定的。这意味着它会随平台、
+    /// Rust 版本而变化，甚至在同一次执行中，前后两次调用之间也可能不同。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(f128)]
@@ -275,7 +281,7 @@ impl f128 {
     /// # }
     /// ```
     ///
-    /// Non-positive values:
+    /// 非正值：
     /// ```
     /// #![feature(f128)]
     /// # #[cfg(not(miri))]
@@ -293,18 +299,18 @@ impl f128 {
         intrinsics::log10f128(self)
     }
 
-    /// Returns the cube root of a number.
+    /// 返回一个数的立方根。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform,
-    /// Rust version, and can even differ within the same execution from one invocation to the next.
+    /// 本函数的精度是不确定的。这意味着它会随平台、
+    /// Rust 版本而变化，甚至在同一次执行中，前后两次调用之间也可能不同。
     ///
     ///
-    /// This function currently corresponds to the `cbrtf128` from libc on Unix
-    /// and Windows. Note that this might change in the future.
+    /// 本函数目前对应于 libc 的 `cbrtf128`（在 Unix
+    /// 与 Windows 上）。注意这在将来可能会改变。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(f128)]
@@ -327,21 +333,21 @@ impl f128 {
         cmath::cbrtf128(self)
     }
 
-    /// Compute the distance between the origin and a point (`x`, `y`) on the
-    /// Euclidean plane. Equivalently, compute the length of the hypotenuse of a
-    /// right-angle triangle with other sides having length `x.abs()` and
-    /// `y.abs()`.
+    /// 计算原点到欧几里得平面上某点 (`x`, `y`) 的距离。
+    /// 等价地说，即计算一个直角三角形斜边的长度，
+    /// 该三角形的另外两条边长分别为 `x.abs()` 与
+    /// `y.abs()`。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform,
-    /// Rust version, and can even differ within the same execution from one invocation to the next.
+    /// 本函数的精度是不确定的。这意味着它会随平台、
+    /// Rust 版本而变化，甚至在同一次执行中，前后两次调用之间也可能不同。
     ///
     ///
-    /// This function currently corresponds to the `hypotf128` from libc on Unix
-    /// and Windows. Note that this might change in the future.
+    /// 本函数目前对应于 libc 的 `hypotf128`（在 Unix
+    /// 与 Windows 上）。注意这在将来可能会改变。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(f128)]
@@ -365,14 +371,14 @@ impl f128 {
         cmath::hypotf128(self, other)
     }
 
-    /// Computes the sine of a number (in radians).
+    /// 计算一个数（以弧度为单位）的正弦。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform,
-    /// Rust version, and can even differ within the same execution from one invocation to the next.
+    /// 本函数的精度是不确定的。这意味着它会随平台、
+    /// Rust 版本而变化，甚至在同一次执行中，前后两次调用之间也可能不同。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(f128)]
@@ -394,14 +400,14 @@ impl f128 {
         intrinsics::sinf128(self)
     }
 
-    /// Computes the cosine of a number (in radians).
+    /// 计算一个数（以弧度为单位）的余弦。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform,
-    /// Rust version, and can even differ within the same execution from one invocation to the next.
+    /// 本函数的精度是不确定的。这意味着它会随平台、
+    /// Rust 版本而变化，甚至在同一次执行中，前后两次调用之间也可能不同。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(f128)]
@@ -423,17 +429,17 @@ impl f128 {
         intrinsics::cosf128(self)
     }
 
-    /// Computes the tangent of a number (in radians).
+    /// 计算一个数（以弧度为单位）的正切。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform,
-    /// Rust version, and can even differ within the same execution from one invocation to the next.
+    /// 本函数的精度是不确定的。这意味着它会随平台、
+    /// Rust 版本而变化，甚至在同一次执行中，前后两次调用之间也可能不同。
     ///
-    /// This function currently corresponds to the `tanf128` from libc on Unix and
-    /// Windows. Note that this might change in the future.
+    /// 本函数目前对应于 libc 的 `tanf128`（在 Unix 与
+    /// Windows 上）。注意这在将来可能会改变。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(f128)]
@@ -454,19 +460,19 @@ impl f128 {
         cmath::tanf128(self)
     }
 
-    /// Computes the arcsine of a number. Return value is in radians in
-    /// the range [-pi/2, pi/2] or NaN if the number is outside the range
+    /// 计算一个数的反正弦。返回值为弧度，
+    /// 取值范围为 [-pi/2, pi/2]；如果该数落在 [-1, 1] 范围之外则为 NaN。
     /// [-1, 1].
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform,
-    /// Rust version, and can even differ within the same execution from one invocation to the next.
+    /// 本函数的精度是不确定的。这意味着它会随平台、
+    /// Rust 版本而变化，甚至在同一次执行中，前后两次调用之间也可能不同。
     ///
-    /// This function currently corresponds to the `asinf128` from libc on Unix
-    /// and Windows. Note that this might change in the future.
+    /// 本函数目前对应于 libc 的 `asinf128`（在 Unix
+    /// 与 Windows 上）。注意这在将来可能会改变。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(f128)]
@@ -490,19 +496,19 @@ impl f128 {
         cmath::asinf128(self)
     }
 
-    /// Computes the arccosine of a number. Return value is in radians in
-    /// the range [0, pi] or NaN if the number is outside the range
+    /// 计算一个数的反余弦。返回值为弧度，
+    /// 取值范围为 [0, pi]；如果该数落在 [-1, 1] 范围之外则为 NaN。
     /// [-1, 1].
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform,
-    /// Rust version, and can even differ within the same execution from one invocation to the next.
+    /// 本函数的精度是不确定的。这意味着它会随平台、
+    /// Rust 版本而变化，甚至在同一次执行中，前后两次调用之间也可能不同。
     ///
-    /// This function currently corresponds to the `acosf128` from libc on Unix
-    /// and Windows. Note that this might change in the future.
+    /// 本函数目前对应于 libc 的 `acosf128`（在 Unix
+    /// 与 Windows 上）。注意这在将来可能会改变。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(f128)]
@@ -526,18 +532,18 @@ impl f128 {
         cmath::acosf128(self)
     }
 
-    /// Computes the arctangent of a number. Return value is in radians in the
-    /// range [-pi/2, pi/2];
+    /// 计算一个数的反正切。返回值为弧度，
+    /// 取值范围为 [-pi/2, pi/2]；
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform,
-    /// Rust version, and can even differ within the same execution from one invocation to the next.
+    /// 本函数的精度是不确定的。这意味着它会随平台、
+    /// Rust 版本而变化，甚至在同一次执行中，前后两次调用之间也可能不同。
     ///
-    /// This function currently corresponds to the `atanf128` from libc on Unix
-    /// and Windows. Note that this might change in the future.
+    /// 本函数目前对应于 libc 的 `atanf128`（在 Unix
+    /// 与 Windows 上）。注意这在将来可能会改变。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(f128)]
@@ -561,37 +567,37 @@ impl f128 {
         cmath::atanf128(self)
     }
 
-    /// Computes the four quadrant arctangent of `self` (`y`) and `other` (`x`) in radians.
+    /// 以弧度为单位计算 `self`（`y`）与 `other`（`x`）的四象限反正切。
     ///
-    ///  | `x`     | `y`     | Piecewise Definition | Range         |
+    ///  | `x`     | `y`     | 分段定义             | 范围          |
     ///  |---------|---------|----------------------|---------------|
     ///  | `>= +0` | `>= +0` | `arctan(y/x)`        | `[+0, +pi/2]` |
     ///  | `>= +0` | `<= -0` | `arctan(y/x)`        | `[-pi/2, -0]` |
     ///  | `<= -0` | `>= +0` | `arctan(y/x) + pi`   | `[+pi/2, +pi]`|
     ///  | `<= -0` | `<= -0` | `arctan(y/x) - pi`   | `[-pi, -pi/2]`|
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform,
-    /// Rust version, and can even differ within the same execution from one invocation to the next.
+    /// 本函数的精度是不确定的。这意味着它会随平台、
+    /// Rust 版本而变化，甚至在同一次执行中，前后两次调用之间也可能不同。
     ///
-    /// This function currently corresponds to the `atan2f128` from libc on Unix
-    /// and Windows. Note that this might change in the future.
+    /// 本函数目前对应于 libc 的 `atan2f128`（在 Unix
+    /// 与 Windows 上）。注意这在将来可能会改变。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(f128)]
     /// # #[cfg(not(miri))]
     /// # #[cfg(target_has_reliable_f128_math)] {
     ///
-    /// // Positive angles measured counter-clockwise
-    /// // from positive x axis
-    /// // -pi/4 radians (45 deg clockwise)
+    /// // 正角度从正 x 轴起
+    /// // （逆时针为正）
+    /// // -pi/4 弧度（顺时针 45 度）
     /// let x1 = 3.0f128;
     /// let y1 = -3.0f128;
     ///
-    /// // 3pi/4 radians (135 deg counter-clockwise)
+    /// // 3pi/4 弧度（逆时针 135 度）
     /// let x2 = -3.0f128;
     /// let y2 = 3.0f128;
     ///
@@ -610,18 +616,18 @@ impl f128 {
         cmath::atan2f128(self, other)
     }
 
-    /// Simultaneously computes the sine and cosine of the number, `x`. Returns
-    /// `(sin(x), cos(x))`.
+    /// 同时计算数 `x` 的正弦与余弦，返回
+    /// `(sin(x), cos(x))`。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform,
-    /// Rust version, and can even differ within the same execution from one invocation to the next.
+    /// 本函数的精度是不确定的。这意味着它会随平台、
+    /// Rust 版本而变化，甚至在同一次执行中，前后两次调用之间也可能不同。
     ///
-    /// This function currently corresponds to the `(f128::sin(x),
-    /// f128::cos(x))`. Note that this might change in the future.
+    /// 本函数目前对应于 `(f128::sin(x),
+    /// f128::cos(x))`。注意这在将来可能会改变。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(f128)]
@@ -646,18 +652,18 @@ impl f128 {
         (self.sin(), self.cos())
     }
 
-    /// Returns `e^(self) - 1` in a way that is accurate even if the
-    /// number is close to zero.
+    /// 以一种即便在数值接近零时也保持精确的方式返回 `e^(self) - 1`。
+    /// ——也就是说，即便该数接近零也保持精确。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform,
-    /// Rust version, and can even differ within the same execution from one invocation to the next.
+    /// 本函数的精度是不确定的。这意味着它会随平台、
+    /// Rust 版本而变化，甚至在同一次执行中，前后两次调用之间也可能不同。
     ///
-    /// This function currently corresponds to the `expm1f128` from libc on Unix
-    /// and Windows. Note that this might change in the future.
+    /// 本函数目前对应于 libc 的 `expm1f128`（在 Unix
+    /// 与 Windows 上）。注意这在将来可能会改变。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(f128)]
@@ -666,7 +672,7 @@ impl f128 {
     ///
     /// let x = 1e-8_f128;
     ///
-    /// // for very small x, e^x is approximately 1 + x + x^2 / 2
+    /// // 对于非常小的 x，e^x 近似等于 1 + x + x^2 / 2
     /// let approx = x + x * x / 2.0;
     /// let abs_difference = (x.exp_m1() - approx).abs();
     ///
@@ -681,20 +687,20 @@ impl f128 {
         cmath::expm1f128(self)
     }
 
-    /// Returns `ln(1+n)` (natural logarithm) more accurately than if
-    /// the operations were performed separately.
+    /// 返回 `ln(1+n)`（自然对数），其精度高于分别执行各步运算的结果。
+    /// 其精度高于分别执行各步运算的结果。
     ///
-    /// This returns NaN when `n < -1.0`, and negative infinity when `n == -1.0`.
+    /// 当 `n < -1.0` 时返回 NaN，当 `n == -1.0` 时返回负无穷。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform,
-    /// Rust version, and can even differ within the same execution from one invocation to the next.
+    /// 本函数的精度是不确定的。这意味着它会随平台、
+    /// Rust 版本而变化，甚至在同一次执行中，前后两次调用之间也可能不同。
     ///
-    /// This function currently corresponds to the `log1pf128` from libc on Unix
-    /// and Windows. Note that this might change in the future.
+    /// 本函数目前对应于 libc 的 `log1pf128`（在 Unix
+    /// 与 Windows 上）。注意这在将来可能会改变。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(f128)]
@@ -703,7 +709,7 @@ impl f128 {
     ///
     /// let x = 1e-8_f128;
     ///
-    /// // for very small x, ln(1 + x) is approximately x - x^2 / 2
+    /// // 对于非常小的 x，ln(1 + x) 近似等于 x - x^2 / 2
     /// let approx = x - x * x / 2.0;
     /// let abs_difference = (x.ln_1p() - approx).abs();
     ///
@@ -711,7 +717,7 @@ impl f128 {
     /// # }
     /// ```
     ///
-    /// Out-of-range values:
+    /// 超出范围的值：
     /// ```
     /// #![feature(f128)]
     /// # #[cfg(not(miri))]
@@ -730,17 +736,17 @@ impl f128 {
         cmath::log1pf128(self)
     }
 
-    /// Hyperbolic sine function.
+    /// 双曲正弦函数。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform,
-    /// Rust version, and can even differ within the same execution from one invocation to the next.
+    /// 本函数的精度是不确定的。这意味着它会随平台、
+    /// Rust 版本而变化，甚至在同一次执行中，前后两次调用之间也可能不同。
     ///
-    /// This function currently corresponds to the `sinhf128` from libc on Unix
-    /// and Windows. Note that this might change in the future.
+    /// 本函数目前对应于 libc 的 `sinhf128`（在 Unix
+    /// 与 Windows 上）。注意这在将来可能会改变。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(f128)]
@@ -751,7 +757,7 @@ impl f128 {
     /// let x = 1.0f128;
     ///
     /// let f = x.sinh();
-    /// // Solving sinh() at 1 gives `(e^2-1)/(2e)`
+    /// // 在 1 处求 sinh() 得到 `(e^2-1)/(2e)`
     /// let g = ((e * e) - 1.0) / (2.0 * e);
     /// let abs_difference = (f - g).abs();
     ///
@@ -766,17 +772,17 @@ impl f128 {
         cmath::sinhf128(self)
     }
 
-    /// Hyperbolic cosine function.
+    /// 双曲余弦函数。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform,
-    /// Rust version, and can even differ within the same execution from one invocation to the next.
+    /// 本函数的精度是不确定的。这意味着它会随平台、
+    /// Rust 版本而变化，甚至在同一次执行中，前后两次调用之间也可能不同。
     ///
-    /// This function currently corresponds to the `coshf128` from libc on Unix
-    /// and Windows. Note that this might change in the future.
+    /// 本函数目前对应于 libc 的 `coshf128`（在 Unix
+    /// 与 Windows 上）。注意这在将来可能会改变。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(f128)]
@@ -786,11 +792,11 @@ impl f128 {
     /// let e = std::f128::consts::E;
     /// let x = 1.0f128;
     /// let f = x.cosh();
-    /// // Solving cosh() at 1 gives this result
+    /// // 在 1 处求 cosh() 得到此结果
     /// let g = ((e * e) + 1.0) / (2.0 * e);
     /// let abs_difference = (f - g).abs();
     ///
-    /// // Same result
+    /// // 结果相同
     /// assert!(abs_difference <= f128::EPSILON);
     /// # }
     /// ```
@@ -802,17 +808,17 @@ impl f128 {
         cmath::coshf128(self)
     }
 
-    /// Hyperbolic tangent function.
+    /// 双曲正切函数。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform,
-    /// Rust version, and can even differ within the same execution from one invocation to the next.
+    /// 本函数的精度是不确定的。这意味着它会随平台、
+    /// Rust 版本而变化，甚至在同一次执行中，前后两次调用之间也可能不同。
     ///
-    /// This function currently corresponds to the `tanhf128` from libc on Unix
-    /// and Windows. Note that this might change in the future.
+    /// 本函数目前对应于 libc 的 `tanhf128`（在 Unix
+    /// 与 Windows 上）。注意这在将来可能会改变。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(f128)]
@@ -823,7 +829,7 @@ impl f128 {
     /// let x = 1.0f128;
     ///
     /// let f = x.tanh();
-    /// // Solving tanh() at 1 gives `(1 - e^(-2))/(1 + e^(-2))`
+    /// // 在 1 处求 tanh() 得到 `(1 - e^(-2))/(1 + e^(-2))`
     /// let g = (1.0 - e.powi(-2)) / (1.0 + e.powi(-2));
     /// let abs_difference = (f - g).abs();
     ///
@@ -838,14 +844,14 @@ impl f128 {
         cmath::tanhf128(self)
     }
 
-    /// Inverse hyperbolic sine function.
+    /// 反双曲正弦函数。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform,
-    /// Rust version, and can even differ within the same execution from one invocation to the next.
+    /// 本函数的精度是不确定的。这意味着它会随平台、
+    /// Rust 版本而变化，甚至在同一次执行中，前后两次调用之间也可能不同。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(f128)]
@@ -871,14 +877,14 @@ impl f128 {
         (ax + (ax / (Self::hypot(1.0, ix) + ix))).ln_1p().copysign(self)
     }
 
-    /// Inverse hyperbolic cosine function.
+    /// 反双曲余弦函数。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform,
-    /// Rust version, and can even differ within the same execution from one invocation to the next.
+    /// 本函数的精度是不确定的。这意味着它会随平台、
+    /// Rust 版本而变化，甚至在同一次执行中，前后两次调用之间也可能不同。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(f128)]
@@ -906,14 +912,14 @@ impl f128 {
         }
     }
 
-    /// Inverse hyperbolic tangent function.
+    /// 反双曲正切函数。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform,
-    /// Rust version, and can even differ within the same execution from one invocation to the next.
+    /// 本函数的精度是不确定的。这意味着它会随平台、
+    /// Rust 版本而变化，甚至在同一次执行中，前后两次调用之间也可能不同。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(f128)]
@@ -937,17 +943,17 @@ impl f128 {
         0.5 * ((2.0 * self) / (1.0 - self)).ln_1p()
     }
 
-    /// Gamma function.
+    /// 伽马函数（gamma function）。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform,
-    /// Rust version, and can even differ within the same execution from one invocation to the next.
+    /// 本函数的精度是不确定的。这意味着它会随平台、
+    /// Rust 版本而变化，甚至在同一次执行中，前后两次调用之间也可能不同。
     ///
-    /// This function currently corresponds to the `tgammaf128` from libc on Unix
-    /// and Windows. Note that this might change in the future.
+    /// 本函数目前对应于 libc 的 `tgammaf128`（在 Unix
+    /// 与 Windows 上）。注意这在将来可能会改变。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(f128)]
@@ -971,19 +977,19 @@ impl f128 {
         cmath::tgammaf128(self)
     }
 
-    /// Natural logarithm of the absolute value of the gamma function
+    /// 伽马函数绝对值的自然对数。
     ///
-    /// The integer part of the tuple indicates the sign of the gamma function.
+    /// 元组中的整数部分表示伽马函数的符号。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform,
-    /// Rust version, and can even differ within the same execution from one invocation to the next.
+    /// 本函数的精度是不确定的。这意味着它会随平台、
+    /// Rust 版本而变化，甚至在同一次执行中，前后两次调用之间也可能不同。
     ///
-    /// This function currently corresponds to the `lgammaf128_r` from libc on Unix
-    /// and Windows. Note that this might change in the future.
+    /// 本函数目前对应于 libc 的 `lgammaf128_r`（在 Unix
+    /// 与 Windows 上）。注意这在将来可能会改变。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(f128)]
@@ -1009,34 +1015,34 @@ impl f128 {
         (x, signgamp)
     }
 
-    /// Error function.
+    /// 误差函数（error function）。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform,
-    /// Rust version, and can even differ within the same execution from one invocation to the next.
+    /// 本函数的精度是不确定的。这意味着它会随平台、
+    /// Rust 版本而变化，甚至在同一次执行中，前后两次调用之间也可能不同。
     ///
-    /// This function currently corresponds to the `erff128` from libc on Unix
-    /// and Windows. Note that this might change in the future.
+    /// 本函数目前对应于 libc 的 `erff128`（在 Unix
+    /// 与 Windows 上）。注意这在将来可能会改变。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(f128)]
     /// #![feature(float_erf)]
     /// # #[cfg(not(miri))]
     /// # #[cfg(target_has_reliable_f128_math)] {
-    /// /// The error function relates what percent of a normal distribution lies
-    /// /// within `x` standard deviations (scaled by `1/sqrt(2)`).
+    /// /// 误差函数描述了正态分布中有百分之多少落在
+    /// /// `x` 个标准差以内（按 `1/sqrt(2)` 缩放）。
     /// fn within_standard_deviations(x: f128) -> f128 {
     ///     (x * std::f128::consts::FRAC_1_SQRT_2).erf() * 100.0
     /// }
     ///
-    /// // 68% of a normal distribution is within one standard deviation
+    /// // 正态分布中有 68% 落在一个标准差以内
     /// assert!((within_standard_deviations(1.0) - 68.269).abs() < 0.01);
-    /// // 95% of a normal distribution is within two standard deviations
+    /// // 正态分布中有 95% 落在两个标准差以内
     /// assert!((within_standard_deviations(2.0) - 95.450).abs() < 0.01);
-    /// // 99.7% of a normal distribution is within three standard deviations
+    /// // 正态分布中有 99.7% 落在三个标准差以内
     /// assert!((within_standard_deviations(3.0) - 99.730).abs() < 0.01);
     /// # }
     /// ```
@@ -1049,17 +1055,17 @@ impl f128 {
         cmath::erff128(self)
     }
 
-    /// Complementary error function.
+    /// 互补误差函数（complementary error function）。
     ///
-    /// # Unspecified precision
+    /// # 未指定精度(Unspecified precision）
     ///
-    /// The precision of this function is non-deterministic. This means it varies by platform,
-    /// Rust version, and can even differ within the same execution from one invocation to the next.
+    /// 本函数的精度是不确定的。这意味着它会随平台、
+    /// Rust 版本而变化，甚至在同一次执行中，前后两次调用之间也可能不同。
     ///
-    /// This function currently corresponds to the `erfcf128` from libc on Unix
-    /// and Windows. Note that this might change in the future.
+    /// 本函数目前对应于 libc 的 `erfcf128`（在 Unix
+    /// 与 Windows 上）。注意这在将来可能会改变。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(f128)]

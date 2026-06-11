@@ -32,8 +32,8 @@ impl Thread {
         };
 
         return if tid == 0 {
-            // The thread failed to start and as a result data was not consumed. Therefore, it is
-            // safe to reconstruct the box so that it gets deallocated.
+            // 线程启动失败，因此 data 没有被消费掉。所以重新构造这个
+            // box 以便它被释放是安全的。
             unsafe {
                 drop(Box::from_raw(data));
             }
@@ -43,13 +43,13 @@ impl Thread {
         };
 
         extern "C" fn thread_start(data: usize) {
-            // SAFETY: we are simply recreating the box that was leaked earlier.
+            // SAFETY：我们只是在重建先前被泄漏的 box。
             let init =
                 unsafe { Box::from_raw(ptr::with_exposed_provenance_mut::<ThreadInit>(data)) };
             let rust_start = init.init();
             rust_start();
 
-            // Run all destructors.
+            // 运行所有析构函数。
             unsafe {
                 crate::sys::thread_local::destructors::run();
             }
@@ -59,7 +59,7 @@ impl Thread {
 
     pub unsafe fn new(stack: usize, init: Box<ThreadInit>) -> io::Result<Thread> {
         unsafe {
-            Thread::new_with_coreid(stack, init, -1 /* = no specific core */)
+            Thread::new_with_coreid(stack, init, -1 /* = 不指定特定核心 */)
         }
     }
 

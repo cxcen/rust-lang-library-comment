@@ -12,7 +12,7 @@ use crate::{fmt, io};
 pub fn getcwd() -> io::Result<PathBuf> {
     match helpers::open_shell() {
         Some(shell) => {
-            // SAFETY: path_ptr is managed by UEFI shell and should not be deallocated
+            // SAFETY: path_ptr 由 UEFI shell 管理，不应被释放
             let path_ptr = unsafe { ((*shell.as_ptr()).get_cur_dir)(crate::ptr::null_mut()) };
             helpers::os_string_from_raw(path_ptr)
                 .map(PathBuf::from)
@@ -20,8 +20,7 @@ pub fn getcwd() -> io::Result<PathBuf> {
         }
         None => {
             let mut t = current_exe()?;
-            // SAFETY: This should never fail since the disk prefix will be present even for root
-            // executables
+            // SAFETY: 这里绝不会失败，因为即便是根目录下的可执行文件也会带有磁盘前缀
             assert!(t.pop());
             Ok(t)
         }

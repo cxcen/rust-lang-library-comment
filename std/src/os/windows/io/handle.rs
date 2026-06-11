@@ -1,4 +1,4 @@
-//! Owned and borrowed OS handles.
+//! 拥有式（owned）与借用式（borrowed）的操作系统 handle。
 
 #![stable(feature = "io_safety", since = "1.63.0")]
 
@@ -8,29 +8,25 @@ use crate::mem::ManuallyDrop;
 use crate::sys::{AsInner, FromInner, IntoInner, cvt};
 use crate::{fmt, fs, io, ptr, sys};
 
-/// A borrowed handle.
+/// 一个借用式的 handle。
 ///
-/// This has a lifetime parameter to tie it to the lifetime of something that
-/// owns the handle.
+/// 它带有一个生命周期参数，用以将自身绑定到拥有该 handle 的某个对象的生命周期上。
 ///
-/// This uses `repr(transparent)` and has the representation of a host handle,
-/// so it can be used in FFI in places where a handle is passed as an argument,
-/// it is not captured or consumed.
+/// 它采用 `repr(transparent)`，与宿主机 handle 具有相同的表示，因此可以在 FFI 中用于
+/// 那些以参数形式传入 handle、且 handle 不会被捕获或消耗的场合。
 ///
-/// Note that it *may* have the value `-1`, which in `BorrowedHandle` always
-/// represents a valid handle value, such as [the current process handle], and
-/// not `INVALID_HANDLE_VALUE`, despite the two having the same value. See
-/// [here] for the full story.
+/// 注意它 *可能* 取值为 `-1`：在 `BorrowedHandle` 中该值始终代表一个有效的 handle 值，
+/// 例如 [当前进程 handle]，而 *不是* `INVALID_HANDLE_VALUE`，尽管二者数值相同。
+/// 完整来龙去脉见 [here]。
 ///
-/// And, it *may* have the value `NULL` (0), which can occur when consoles are
-/// detached from processes, or when `windows_subsystem` is used.
+/// 此外它 *可能* 取值为 `NULL`（0），这会在控制台从进程脱离、或使用了
+/// `windows_subsystem` 时发生。
 ///
-/// This type's `.to_owned()` implementation returns another `BorrowedHandle`
-/// rather than an `OwnedHandle`. It just makes a trivial copy of the raw
-/// handle, which is then borrowed under the same lifetime.
+/// 本类型的 `.to_owned()` 实现返回的是另一个 `BorrowedHandle` 而不是 `OwnedHandle`。
+/// 它只是对裸 handle 做一次平凡的拷贝，随后在同一个生命周期下被借用。
 ///
 /// [here]: https://devblogs.microsoft.com/oldnewthing/20040302-00/?p=40443
-/// [the current process handle]: https://docs.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getcurrentprocess#remarks
+/// [当前进程 handle]: https://docs.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getcurrentprocess#remarks
 #[derive(Copy, Clone)]
 #[repr(transparent)]
 #[stable(feature = "io_safety", since = "1.63.0")]
@@ -39,77 +35,70 @@ pub struct BorrowedHandle<'handle> {
     _phantom: PhantomData<&'handle OwnedHandle>,
 }
 
-/// An owned handle.
+/// 一个拥有式的 handle。
 ///
-/// This closes the handle on drop.
+/// 它会在 drop 时关闭该 handle。
 ///
-/// Note that it *may* have the value `-1`, which in `OwnedHandle` always
-/// represents a valid handle value, such as [the current process handle], and
-/// not `INVALID_HANDLE_VALUE`, despite the two having the same value. See
-/// [here] for the full story.
+/// 注意它 *可能* 取值为 `-1`：在 `OwnedHandle` 中该值始终代表一个有效的 handle 值，
+/// 例如 [当前进程 handle]，而 *不是* `INVALID_HANDLE_VALUE`，尽管二者数值相同。
+/// 完整来龙去脉见 [here]。
 ///
-/// And, it *may* have the value `NULL` (0), which can occur when consoles are
-/// detached from processes, or when `windows_subsystem` is used.
+/// 此外它 *可能* 取值为 `NULL`（0），这会在控制台从进程脱离、或使用了
+/// `windows_subsystem` 时发生。
 ///
-/// `OwnedHandle` uses [`CloseHandle`] to close its handle on drop. As such,
-/// it must not be used with handles to open registry keys which need to be
-/// closed with [`RegCloseKey`] instead.
+/// `OwnedHandle` 在 drop 时使用 [`CloseHandle`] 关闭其 handle。正因如此，它不得用于
+/// 指向已打开注册表键的 handle——后者需要改用 [`RegCloseKey`] 来关闭。
 ///
 /// [`CloseHandle`]: https://docs.microsoft.com/en-us/windows/win32/api/handleapi/nf-handleapi-closehandle
 /// [`RegCloseKey`]: https://docs.microsoft.com/en-us/windows/win32/api/winreg/nf-winreg-regclosekey
 ///
 /// [here]: https://devblogs.microsoft.com/oldnewthing/20040302-00/?p=40443
-/// [the current process handle]: https://docs.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getcurrentprocess#remarks
+/// [当前进程 handle]: https://docs.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getcurrentprocess#remarks
 #[repr(transparent)]
 #[stable(feature = "io_safety", since = "1.63.0")]
 pub struct OwnedHandle {
     handle: RawHandle,
 }
 
-/// FFI type for handles in return values or out parameters, where `NULL` is used
-/// as a sentry value to indicate errors, such as in the return value of `CreateThread`. This uses
-/// `repr(transparent)` and has the representation of a host handle, so that it can be used in such
-/// FFI declarations.
+/// 用于返回值或输出参数中 handle 的 FFI 类型，适用于以 `NULL` 作为哨兵值来表示错误的场景，
+/// 例如 `CreateThread` 的返回值。它采用 `repr(transparent)`，与宿主机 handle 具有相同的
+/// 表示，因此可以用于这类 FFI 声明。
 ///
-/// The only thing you can usefully do with a `HandleOrNull` is to convert it into an
-/// `OwnedHandle` using its [`TryFrom`] implementation; this conversion takes care of the check for
-/// `NULL`. This ensures that such FFI calls cannot start using the handle without
-/// checking for `NULL` first.
+/// 对一个 `HandleOrNull` 唯一有用的操作，就是通过它的 [`TryFrom`] 实现把它转换成
+/// `OwnedHandle`；该转换会负责完成对 `NULL` 的检查。这确保了这类 FFI 调用在检查
+/// `NULL` 之前无法直接开始使用该 handle。
 ///
-/// This type may hold any handle value that [`OwnedHandle`] may hold. As with `OwnedHandle`, when
-/// it holds `-1`, that value is interpreted as a valid handle value, such as
-/// [the current process handle], and not `INVALID_HANDLE_VALUE`.
+/// 本类型可持有 [`OwnedHandle`] 所能持有的任何 handle 值。与 `OwnedHandle` 一样，
+/// 当它持有 `-1` 时，该值被解释为一个有效的 handle 值，例如 [当前进程 handle]，
+/// 而不是 `INVALID_HANDLE_VALUE`。
 ///
-/// If this holds a non-null handle, it will close the handle on drop.
+/// 如果它持有的是非 null 的 handle，则会在 drop 时关闭该 handle。
 ///
-/// [the current process handle]: https://docs.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getcurrentprocess#remarks
+/// [当前进程 handle]: https://docs.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getcurrentprocess#remarks
 #[repr(transparent)]
 #[stable(feature = "io_safety", since = "1.63.0")]
 #[derive(Debug)]
 pub struct HandleOrNull(RawHandle);
 
-/// FFI type for handles in return values or out parameters, where `INVALID_HANDLE_VALUE` is used
-/// as a sentry value to indicate errors, such as in the return value of `CreateFileW`. This uses
-/// `repr(transparent)` and has the representation of a host handle, so that it can be used in such
-/// FFI declarations.
+/// 用于返回值或输出参数中 handle 的 FFI 类型，适用于以 `INVALID_HANDLE_VALUE` 作为哨兵值
+/// 来表示错误的场景，例如 `CreateFileW` 的返回值。它采用 `repr(transparent)`，与宿主机
+/// handle 具有相同的表示，因此可以用于这类 FFI 声明。
 ///
-/// The only thing you can usefully do with a `HandleOrInvalid` is to convert it into an
-/// `OwnedHandle` using its [`TryFrom`] implementation; this conversion takes care of the check for
-/// `INVALID_HANDLE_VALUE`. This ensures that such FFI calls cannot start using the handle without
-/// checking for `INVALID_HANDLE_VALUE` first.
+/// 对一个 `HandleOrInvalid` 唯一有用的操作，就是通过它的 [`TryFrom`] 实现把它转换成
+/// `OwnedHandle`；该转换会负责完成对 `INVALID_HANDLE_VALUE` 的检查。这确保了这类 FFI
+/// 调用在检查 `INVALID_HANDLE_VALUE` 之前无法直接开始使用该 handle。
 ///
-/// This type may hold any handle value that [`OwnedHandle`] may hold, except that when it holds
-/// `-1`, that value is interpreted to mean `INVALID_HANDLE_VALUE`.
+/// 本类型可持有 [`OwnedHandle`] 所能持有的任何 handle 值，唯一的区别是：当它持有 `-1` 时，
+/// 该值被解释为 `INVALID_HANDLE_VALUE`。
 ///
-/// If holds a handle other than `INVALID_HANDLE_VALUE`, it will close the handle on drop.
+/// 如果它持有的不是 `INVALID_HANDLE_VALUE`，则会在 drop 时关闭该 handle。
 #[repr(transparent)]
 #[stable(feature = "io_safety", since = "1.63.0")]
 #[derive(Debug)]
 pub struct HandleOrInvalid(RawHandle);
 
-// The Windows [`HANDLE`] type may be transferred across and shared between
-// thread boundaries (despite containing a `*mut void`, which in general isn't
-// `Send` or `Sync`).
+// Windows 的 [`HANDLE`] 类型可以跨线程边界传递并在线程间共享（尽管它内部包含一个
+// `*mut void`，而后者通常并不是 `Send` 或 `Sync`）。
 //
 // [`HANDLE`]: std::os::windows::raw::HANDLE
 #[stable(feature = "io_safety", since = "1.63.0")]
@@ -130,18 +119,18 @@ unsafe impl Sync for HandleOrInvalid {}
 unsafe impl Sync for BorrowedHandle<'_> {}
 
 impl BorrowedHandle<'_> {
-    /// Returns a `BorrowedHandle` holding the given raw handle.
+    /// 返回一个持有给定裸 handle 的 `BorrowedHandle`。
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// The resource pointed to by `handle` must be a valid open handle, it
-    /// must remain open for the duration of the returned `BorrowedHandle`.
+    /// `handle` 所指向的资源必须是一个有效的已打开 handle，并且在所返回的
+    /// `BorrowedHandle` 的整个存续期间必须保持打开状态。
     ///
-    /// Note that it *may* have the value `INVALID_HANDLE_VALUE` (-1), which is
-    /// sometimes a valid handle value. See [here] for the full story.
+    /// 注意它 *可能* 取值为 `INVALID_HANDLE_VALUE`（-1），而该值有时是一个有效的
+    /// handle 值。完整来龙去脉见 [here]。
     ///
-    /// And, it *may* have the value `NULL` (0), which can occur when consoles are
-    /// detached from processes, or when `windows_subsystem` is used.
+    /// 此外它 *可能* 取值为 `NULL`（0），这会在控制台从进程脱离、或使用了
+    /// `windows_subsystem` 时发生。
     ///
     /// [here]: https://devblogs.microsoft.com/oldnewthing/20040302-00/?p=40443
     #[inline]
@@ -160,7 +149,7 @@ impl TryFrom<HandleOrNull> for OwnedHandle {
     fn try_from(handle_or_null: HandleOrNull) -> Result<Self, NullHandleError> {
         let handle_or_null = ManuallyDrop::new(handle_or_null);
         if handle_or_null.is_valid() {
-            // SAFETY: The handle is not null.
+            // SAFETY: 该 handle 不是 null。
             Ok(unsafe { OwnedHandle::from_raw_handle(handle_or_null.0) })
         } else {
             Err(NullHandleError(()))
@@ -181,8 +170,7 @@ impl Drop for HandleOrNull {
 }
 
 impl OwnedHandle {
-    /// Creates a new `OwnedHandle` instance that shares the same underlying
-    /// object as the existing `OwnedHandle` instance.
+    /// 创建一个新的 `OwnedHandle` 实例，它与现有的 `OwnedHandle` 实例共享同一个底层对象。
     #[stable(feature = "io_safety", since = "1.63.0")]
     pub fn try_clone(&self) -> io::Result<Self> {
         self.as_handle().try_clone_to_owned()
@@ -190,8 +178,7 @@ impl OwnedHandle {
 }
 
 impl BorrowedHandle<'_> {
-    /// Creates a new `OwnedHandle` instance that shares the same underlying
-    /// object as the existing `BorrowedHandle` instance.
+    /// 创建一个新的 `OwnedHandle` 实例，它与现有的 `BorrowedHandle` 实例共享同一个底层对象。
     #[stable(feature = "io_safety", since = "1.63.0")]
     pub fn try_clone_to_owned(&self) -> io::Result<OwnedHandle> {
         self.duplicate(0, false, sys::c::DUPLICATE_SAME_ACCESS)
@@ -205,10 +192,9 @@ impl BorrowedHandle<'_> {
     ) -> io::Result<OwnedHandle> {
         let handle = self.as_raw_handle();
 
-        // `Stdin`, `Stdout`, and `Stderr` can all hold null handles, such as
-        // in a process with a detached console. `DuplicateHandle` would fail
-        // if we passed it a null handle, but we can treat null as a valid
-        // handle which doesn't do any I/O, and allow it to be duplicated.
+        // `Stdin`、`Stdout` 和 `Stderr` 都可能持有 null handle，例如在控制台已脱离的
+        // 进程中。如果我们把 null handle 传给 `DuplicateHandle`，它会失败；但我们可以把
+        // null 当作一个不做任何 I/O 的有效 handle 来对待，并允许它被复制。
         if handle.is_null() {
             return unsafe { Ok(OwnedHandle::from_raw_handle(handle)) };
         }
@@ -238,7 +224,7 @@ impl TryFrom<HandleOrInvalid> for OwnedHandle {
     fn try_from(handle_or_invalid: HandleOrInvalid) -> Result<Self, InvalidHandleError> {
         let handle_or_invalid = ManuallyDrop::new(handle_or_invalid);
         if handle_or_invalid.is_valid() {
-            // SAFETY: The handle is not invalid.
+            // SAFETY: 该 handle 不是 invalid。
             Ok(unsafe { OwnedHandle::from_raw_handle(handle_or_invalid.0) })
         } else {
             Err(InvalidHandleError(()))
@@ -258,9 +244,8 @@ impl Drop for HandleOrInvalid {
     }
 }
 
-/// This is the error type used by [`HandleOrNull`] when attempting to convert
-/// into a handle, to indicate that the value is null.
-// The empty field prevents constructing this, and allows extending it in the future.
+/// 这是 [`HandleOrNull`] 在尝试转换为 handle 时所使用的错误类型，用于指示该值为 null。
+// 这个空字段使得本类型无法被外部构造，同时也为将来扩展留有余地。
 #[stable(feature = "io_safety", since = "1.63.0")]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NullHandleError(());
@@ -275,10 +260,9 @@ impl fmt::Display for NullHandleError {
 #[stable(feature = "io_safety", since = "1.63.0")]
 impl crate::error::Error for NullHandleError {}
 
-/// This is the error type used by [`HandleOrInvalid`] when attempting to
-/// convert into a handle, to indicate that the value is
-/// `INVALID_HANDLE_VALUE`.
-// The empty field prevents constructing this, and allows extending it in the future.
+/// 这是 [`HandleOrInvalid`] 在尝试转换为 handle 时所使用的错误类型，用于指示该值为
+/// `INVALID_HANDLE_VALUE`。
+// 这个空字段使得本类型无法被外部构造，同时也为将来扩展留有余地。
 #[stable(feature = "io_safety", since = "1.63.0")]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InvalidHandleError(());
@@ -327,18 +311,16 @@ impl FromRawHandle for OwnedHandle {
 }
 
 impl HandleOrNull {
-    /// Constructs a new instance of `Self` from the given `RawHandle` returned
-    /// from a Windows API that uses null to indicate failure, such as
-    /// `CreateThread`.
+    /// 从给定的 `RawHandle` 构造一个新的 `Self` 实例，该 handle 来自一个以 null 表示
+    /// 失败的 Windows API，例如 `CreateThread`。
     ///
-    /// Use `HandleOrInvalid` instead of `HandleOrNull` for APIs that
-    /// use `INVALID_HANDLE_VALUE` to indicate failure.
+    /// 对于以 `INVALID_HANDLE_VALUE` 表示失败的 API，请改用 `HandleOrInvalid` 而非
+    /// `HandleOrNull`。
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// The passed `handle` value must either satisfy the safety requirements
-    /// of [`FromRawHandle::from_raw_handle`], or be null. Note that not all
-    /// Windows APIs use null for errors; see [here] for the full story.
+    /// 传入的 `handle` 值必须要么满足 [`FromRawHandle::from_raw_handle`] 的安全性要求，
+    /// 要么为 null。注意并非所有 Windows API 都用 null 表示错误；完整来龙去脉见 [here]。
     ///
     /// [here]: https://devblogs.microsoft.com/oldnewthing/20040302-00/?p=40443
     #[stable(feature = "io_safety", since = "1.63.0")]
@@ -353,19 +335,16 @@ impl HandleOrNull {
 }
 
 impl HandleOrInvalid {
-    /// Constructs a new instance of `Self` from the given `RawHandle` returned
-    /// from a Windows API that uses `INVALID_HANDLE_VALUE` to indicate
-    /// failure, such as `CreateFileW`.
+    /// 从给定的 `RawHandle` 构造一个新的 `Self` 实例，该 handle 来自一个以
+    /// `INVALID_HANDLE_VALUE` 表示失败的 Windows API，例如 `CreateFileW`。
     ///
-    /// Use `HandleOrNull` instead of `HandleOrInvalid` for APIs that
-    /// use null to indicate failure.
+    /// 对于以 null 表示失败的 API，请改用 `HandleOrNull` 而非 `HandleOrInvalid`。
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// The passed `handle` value must either satisfy the safety requirements
-    /// of [`FromRawHandle::from_raw_handle`], or be
-    /// `INVALID_HANDLE_VALUE` (-1). Note that not all Windows APIs use
-    /// `INVALID_HANDLE_VALUE` for errors; see [here] for the full story.
+    /// 传入的 `handle` 值必须要么满足 [`FromRawHandle::from_raw_handle`] 的安全性要求，
+    /// 要么为 `INVALID_HANDLE_VALUE`（-1）。注意并非所有 Windows API 都用
+    /// `INVALID_HANDLE_VALUE` 表示错误；完整来龙去脉见 [here]。
     ///
     /// [here]: https://devblogs.microsoft.com/oldnewthing/20040302-00/?p=40443
     #[stable(feature = "io_safety", since = "1.63.0")]
@@ -420,12 +399,12 @@ macro_rules! impl_is_terminal {
 
 impl_is_terminal!(BorrowedHandle<'_>, OwnedHandle);
 
-/// A trait to borrow the handle from an underlying object.
+/// 用于从某个底层对象借出其 handle 的 trait。
 #[stable(feature = "io_safety", since = "1.63.0")]
 pub trait AsHandle {
-    /// Borrows the handle.
+    /// 借出该 handle。
     ///
-    /// # Example
+    /// # 示例
     ///
     /// ```rust,no_run
     /// use std::fs::File;
@@ -457,7 +436,7 @@ impl<T: AsHandle + ?Sized> AsHandle for &mut T {
 }
 
 #[stable(feature = "as_windows_ptrs", since = "1.71.0")]
-/// This impl allows implementing traits that require `AsHandle` on Arc.
+/// 这个 impl 使得可以在 Arc 上实现那些要求 `AsHandle` 的 trait。
 /// ```
 /// # #[cfg(windows)] mod group_cfg {
 /// # use std::os::windows::io::AsHandle;
@@ -512,9 +491,8 @@ impl AsHandle for BorrowedHandle<'_> {
 impl AsHandle for OwnedHandle {
     #[inline]
     fn as_handle(&self) -> BorrowedHandle<'_> {
-        // Safety: `OwnedHandle` and `BorrowedHandle` have the same validity
-        // invariants, and the `BorrowedHandle` is bounded by the lifetime
-        // of `&self`.
+        // Safety: `OwnedHandle` 与 `BorrowedHandle` 具有相同的有效性不变量，并且这个
+        // `BorrowedHandle` 的生命周期受 `&self` 约束。
         unsafe { BorrowedHandle::borrow_raw(self.as_raw_handle()) }
     }
 }
@@ -529,7 +507,7 @@ impl AsHandle for fs::File {
 
 #[stable(feature = "io_safety", since = "1.63.0")]
 impl From<fs::File> for OwnedHandle {
-    /// Takes ownership of a [`File`](fs::File)'s underlying file handle.
+    /// 接管一个 [`File`](fs::File) 底层文件 handle 的所有权。
     #[inline]
     fn from(file: fs::File) -> OwnedHandle {
         file.into_inner().into_inner().into_inner()
@@ -538,7 +516,7 @@ impl From<fs::File> for OwnedHandle {
 
 #[stable(feature = "io_safety", since = "1.63.0")]
 impl From<OwnedHandle> for fs::File {
-    /// Returns a [`File`](fs::File) that takes ownership of the given handle.
+    /// 返回一个 [`File`](fs::File)，由它接管给定 handle 的所有权。
     #[inline]
     fn from(owned: OwnedHandle) -> Self {
         Self::from_inner(FromInner::from_inner(FromInner::from_inner(owned)))
@@ -603,7 +581,7 @@ impl AsHandle for crate::process::ChildStdin {
 
 #[stable(feature = "io_safety", since = "1.63.0")]
 impl From<crate::process::ChildStdin> for OwnedHandle {
-    /// Takes ownership of a [`ChildStdin`](crate::process::ChildStdin)'s file handle.
+    /// 接管一个 [`ChildStdin`](crate::process::ChildStdin) 文件 handle 的所有权。
     #[inline]
     fn from(child_stdin: crate::process::ChildStdin) -> OwnedHandle {
         unsafe { OwnedHandle::from_raw_handle(child_stdin.into_raw_handle()) }
@@ -620,7 +598,7 @@ impl AsHandle for crate::process::ChildStdout {
 
 #[stable(feature = "io_safety", since = "1.63.0")]
 impl From<crate::process::ChildStdout> for OwnedHandle {
-    /// Takes ownership of a [`ChildStdout`](crate::process::ChildStdout)'s file handle.
+    /// 接管一个 [`ChildStdout`](crate::process::ChildStdout) 文件 handle 的所有权。
     #[inline]
     fn from(child_stdout: crate::process::ChildStdout) -> OwnedHandle {
         unsafe { OwnedHandle::from_raw_handle(child_stdout.into_raw_handle()) }
@@ -637,7 +615,7 @@ impl AsHandle for crate::process::ChildStderr {
 
 #[stable(feature = "io_safety", since = "1.63.0")]
 impl From<crate::process::ChildStderr> for OwnedHandle {
-    /// Takes ownership of a [`ChildStderr`](crate::process::ChildStderr)'s file handle.
+    /// 接管一个 [`ChildStderr`](crate::process::ChildStderr) 文件 handle 的所有权。
     #[inline]
     fn from(child_stderr: crate::process::ChildStderr) -> OwnedHandle {
         unsafe { OwnedHandle::from_raw_handle(child_stderr.into_raw_handle()) }

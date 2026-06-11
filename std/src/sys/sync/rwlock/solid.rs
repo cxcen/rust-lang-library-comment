@@ -1,4 +1,4 @@
-//! A readers-writer lock implementation backed by the SOLID kernel extension.
+//! 由 SOLID 内核扩展支撑的读写锁实现。
 #![forbid(unsafe_op_in_unsafe_fn)]
 
 use crate::sys::pal::abi;
@@ -6,11 +6,11 @@ use crate::sys::pal::itron::error::{ItronError, expect_success, expect_success_a
 use crate::sys::pal::itron::spin::SpinIdOnceCell;
 
 pub struct RwLock {
-    /// The ID of the underlying mutex object
+    /// 底层 mutex 对象的 ID
     rwl: SpinIdOnceCell<()>,
 }
 
-// Safety: `num_readers` is protected by `mtx_num_readers`
+// Safety: `num_readers` 受 `mtx_num_readers` 保护
 unsafe impl Send for RwLock {}
 unsafe impl Sync for RwLock {}
 
@@ -24,7 +24,7 @@ impl RwLock {
         RwLock { rwl: SpinIdOnceCell::new() }
     }
 
-    /// Gets the inner mutex's ID, which is lazily created.
+    /// 获取内部 mutex 的 ID，该 ID 是惰性创建的。
     fn raw(&self) -> abi::ID {
         match self.rwl.get_or_try_init(|| new_rwl().map(|id| (id, ()))) {
             Ok((id, ())) => id,
@@ -82,8 +82,8 @@ impl RwLock {
 
     #[inline]
     pub unsafe fn downgrade(&self) {
-        // The SOLID platform does not support the `downgrade` operation for reader writer locks, so
-        // this function is simply a no-op as only 1 reader can read: the original writer.
+        // SOLID 平台不支持读写锁的 `downgrade` 操作，所以本函数只是一个空操作
+        //（no-op），因为只有 1 个读者可以读：即原来的那个写者。
     }
 }
 

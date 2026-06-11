@@ -3,13 +3,12 @@ use super::{abi, itron};
 use crate::io;
 use crate::sys::net;
 
-/// Describe the specified SOLID error code. Returns `None` if it's an
-/// undefined error code.
+/// 描述指定的 SOLID 错误码。如果它是未定义的错误码，则返回 `None`。
 ///
-/// The SOLID error codes are a superset of μITRON error codes.
+/// SOLID 错误码是 μITRON 错误码的超集。
 pub fn error_name(er: abi::ER) -> Option<&'static str> {
     match er {
-        // Success
+        // 成功
         er if er >= 0 => None,
         er if er < abi::sockets::SOLID_NET_ERR_BASE => net::error_name(er),
 
@@ -33,7 +32,7 @@ pub fn error_name(er: abi::ER) -> Option<&'static str> {
 
 pub fn decode_error_kind(er: abi::ER) -> io::ErrorKind {
     match er {
-        // Success
+        // 成功
         er if er >= 0 => io::ErrorKind::Uncategorized,
         er if er < abi::sockets::SOLID_NET_ERR_BASE => net::decode_error_kind(er),
 

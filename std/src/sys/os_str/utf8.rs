@@ -1,4 +1,4 @@
-//! An OsString/OsStr implementation that is guaranteed to be UTF-8.
+//! 一种保证为 UTF-8 的 OsString/OsStr 实现。
 
 use core::clone::CloneToUninit;
 
@@ -187,26 +187,23 @@ impl Buf {
         self.as_slice().into_rc()
     }
 
-    /// Provides plumbing to `Vec::truncate` without giving full mutable access
-    /// to the `Vec`.
+    /// 在不给予对 `Vec` 完全可变访问权的前提下，提供通往 `Vec::truncate` 的管道。
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// The length must be at an `OsStr` boundary, according to
-    /// `Slice::check_public_boundary`.
+    /// 根据 `Slice::check_public_boundary`，长度必须位于一个 `OsStr` 边界上。
     #[inline]
     pub unsafe fn truncate_unchecked(&mut self, len: usize) {
         self.inner.truncate(len);
     }
 
-    /// Provides plumbing to `Vec::extend_from_slice` without giving full
-    /// mutable access to the `Vec`.
+    /// 在不给予对 `Vec` 完全可变访问权的前提下，提供通往
+    /// `Vec::extend_from_slice` 的管道。
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// The slice must be valid for the platform encoding (as described in
-    /// `OsStr::from_encoded_bytes_unchecked`). For this encoding, that means
-    /// `other` must be valid UTF-8.
+    /// 该切片必须对平台编码有效（如 `OsStr::from_encoded_bytes_unchecked`
+    /// 中所述）。对于这种编码，这意味着 `other` 必须是有效的 UTF-8。
     #[inline]
     pub unsafe fn extend_from_slice_unchecked(&mut self, other: &[u8]) {
         self.inner.push_str(unsafe { str::from_utf8_unchecked(other) });
@@ -234,13 +231,13 @@ impl Slice {
 
     #[inline]
     pub fn from_str(s: &str) -> &Slice {
-        // SAFETY: Slice is just a wrapper over str.
+        // SAFETY: Slice 只是对 str 的一个包装。
         unsafe { mem::transmute(s) }
     }
 
     #[inline]
     fn from_mut_str(s: &mut str) -> &mut Slice {
-        // SAFETY: Slice is just a wrapper over str.
+        // SAFETY: Slice 只是对 str 的一个包装。
         unsafe { mem::transmute(s) }
     }
 
@@ -324,7 +321,7 @@ unsafe impl CloneToUninit for Slice {
     #[inline]
     #[cfg_attr(debug_assertions, track_caller)]
     unsafe fn clone_to_uninit(&self, dst: *mut u8) {
-        // SAFETY: we're just a transparent wrapper around [u8]
+        // SAFETY: 我们只是对 [u8] 的一个透明包装
         unsafe { self.inner.clone_to_uninit(dst) }
     }
 }

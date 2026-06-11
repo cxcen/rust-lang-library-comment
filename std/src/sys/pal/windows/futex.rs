@@ -9,14 +9,14 @@ use core::time::Duration;
 use super::api::{self, WinError};
 use crate::sys::{c, dur2timeout};
 
-/// An atomic for use as a futex that is at least 32-bits but may be larger
+/// 用作 futex 的原子类型，至少为 32 位，但也可能更大
 pub type Futex = Atomic<Primitive>;
-/// Must be the underlying type of Futex
+/// 必须是 Futex 的底层类型
 pub type Primitive = u32;
 
-/// An atomic for use as a futex that is at least 8-bits but may be larger.
+/// 用作 futex 的原子类型，至少为 8 位，但也可能更大。
 pub type SmallFutex = Atomic<SmallPrimitive>;
-/// Must be the underlying type of SmallFutex
+/// 必须是 SmallFutex 的底层类型
 pub type SmallPrimitive = u8;
 
 pub unsafe trait Futexable {}
@@ -83,7 +83,7 @@ pub fn wake_by_address_all<T: Futexable>(address: &T) {
 }
 
 pub fn futex_wait<W: Waitable>(futex: &W::Futex, expected: W, timeout: Option<Duration>) -> bool {
-    // return false only on timeout
+    // 仅在超时（timeout）时返回 false
     wait_on_address(futex, expected, timeout) || api::get_last_error() != WinError::TIMEOUT
 }
 

@@ -15,25 +15,25 @@ pub(crate) fn map_motor_error(err: moto_rt::Error) -> io::Error {
 #[cfg(not(test))]
 #[unsafe(no_mangle)]
 pub extern "C" fn motor_start() -> ! {
-    // Initialize the runtime.
+    // 初始化运行时（runtime）。
     moto_rt::start();
 
-    // Call main.
+    // 调用 main。
     unsafe extern "C" {
         fn main(_: isize, _: *const *const u8, _: u8) -> i32;
     }
     let result = unsafe { main(0, core::ptr::null(), 0) };
 
-    // Terminate the process.
+    // 终止进程。
     moto_rt::process::exit(result)
 }
 
-// SAFETY: must be called only once during runtime initialization.
-// NOTE: Motor OS uses moto_rt::start() to initialize runtime (see above).
+// SAFETY: 必须在运行时初始化期间仅调用一次。
+// NOTE: Motor OS 使用 moto_rt::start() 来初始化运行时（见上文）。
 pub unsafe fn init(_argc: isize, _argv: *const *const u8, _sigpipe: u8) {}
 
-// SAFETY: must be called only once during runtime cleanup.
-// NOTE: this is not guaranteed to run, for example when the program aborts.
+// SAFETY: 必须在运行时清理期间仅调用一次。
+// NOTE: 不保证一定会被运行，例如当程序中止（abort）时。
 pub unsafe fn cleanup() {}
 
 pub fn unsupported<T>() -> io::Result<T> {

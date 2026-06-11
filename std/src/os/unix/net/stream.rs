@@ -40,9 +40,9 @@ use crate::sys::net::Socket;
 use crate::sys::{AsInner, FromInner, cvt};
 use crate::time::Duration;
 
-/// A Unix stream socket.
+/// 一个 Unix 流式套接字（stream socket）。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```no_run
 /// use std::os::unix::net::UnixStream;
@@ -60,20 +60,20 @@ use crate::time::Duration;
 ///
 /// # `SOCK_CLOEXEC`
 ///
-/// On platforms that support it, we pass the close-on-exec flag to atomically create the socket and
-/// set it as CLOEXEC. On Linux, this was added in 2.6.27. See [`socket(2)`] for more information.
+/// 在支持它的平台上，我们传入 close-on-exec 标志以原子地创建套接字并将其设置为 CLOEXEC。
+/// 在 Linux 上，这是在 2.6.27 中加入的。更多信息参见 [`socket(2)`]。
 ///
 /// [`socket(2)`]: https://www.man7.org/linux/man-pages/man2/socket.2.html#:~:text=SOCK_CLOEXEC
 ///
 /// # `SIGPIPE`
 ///
-/// Writes to the underlying socket in `SOCK_STREAM` mode are made with `MSG_NOSIGNAL` flag.
-/// This suppresses the emission of the  `SIGPIPE` signal when writing to disconnected socket.
-/// In some cases getting a `SIGPIPE` would trigger process termination.
+/// 在 `SOCK_STREAM` 模式下，对底层套接字的写入会带上 `MSG_NOSIGNAL` 标志。
+/// 这会在向已断开连接的套接字写入时抑制 `SIGPIPE` 信号的发出。
+/// 在某些情况下，收到 `SIGPIPE` 会触发进程终止。
 #[stable(feature = "unix_socket", since = "1.10.0")]
 pub struct UnixStream(pub(super) Socket);
 
-/// Allows extension traits within `std`.
+/// 允许 `std` 内部使用的扩展 trait。
 #[unstable(feature = "sealed", issue = "none")]
 impl Sealed for UnixStream {}
 
@@ -93,9 +93,9 @@ impl fmt::Debug for UnixStream {
 }
 
 impl UnixStream {
-    /// Connects to the socket named by `path`.
+    /// 连接到由 `path` 命名的套接字。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::os::unix::net::UnixStream;
@@ -119,11 +119,11 @@ impl UnixStream {
         }
     }
 
-    /// Connects to the socket specified by [`address`].
+    /// 连接到由 [`address`] 指定的套接字。
     ///
     /// [`address`]: crate::os::unix::net::SocketAddr
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::os::unix::net::{UnixListener, UnixStream};
@@ -155,11 +155,11 @@ impl UnixStream {
         }
     }
 
-    /// Creates an unnamed pair of connected sockets.
+    /// 创建一对未命名的、彼此相连的套接字。
     ///
-    /// Returns two `UnixStream`s which are connected to each other.
+    /// 返回两个彼此相连的 `UnixStream`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::os::unix::net::UnixStream;
@@ -178,14 +178,12 @@ impl UnixStream {
         Ok((UnixStream(i1), UnixStream(i2)))
     }
 
-    /// Creates a new independently owned handle to the underlying socket.
+    /// 为底层套接字创建一个新的、独立拥有所有权的句柄。
     ///
-    /// The returned `UnixStream` is a reference to the same stream that this
-    /// object references. Both handles will read and write the same stream of
-    /// data, and options set on one stream will be propagated to the other
-    /// stream.
+    /// 返回的 `UnixStream` 引用的是与此对象所引用的同一个流。两个句柄都将读写同一个数据流，
+    /// 且在一个流上设置的选项将传播到另一个流。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::os::unix::net::UnixStream;
@@ -201,9 +199,9 @@ impl UnixStream {
         self.0.duplicate().map(UnixStream)
     }
 
-    /// Returns the socket address of the local half of this connection.
+    /// 返回此连接本地半边（local half）的套接字地址。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::os::unix::net::UnixStream;
@@ -219,9 +217,9 @@ impl UnixStream {
         SocketAddr::new(|addr, len| unsafe { libc::getsockname(self.as_raw_fd(), addr, len) })
     }
 
-    /// Returns the socket address of the remote half of this connection.
+    /// 返回此连接远程半边（remote half）的套接字地址。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::os::unix::net::UnixStream;
@@ -237,9 +235,9 @@ impl UnixStream {
         SocketAddr::new(|addr, len| unsafe { libc::getpeername(self.as_raw_fd(), addr, len) })
     }
 
-    /// Gets the peer credentials for this Unix domain socket.
+    /// 获取此 Unix 域套接字的对端凭据（peer credentials）。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// #![feature(peer_credentials_unix_socket)]
@@ -267,15 +265,14 @@ impl UnixStream {
         peer_cred(self)
     }
 
-    /// Sets the read timeout for the socket.
+    /// 设置套接字的读超时（read timeout）。
     ///
-    /// If the provided value is [`None`], then [`read`] calls will block
-    /// indefinitely. An [`Err`] is returned if the zero [`Duration`] is passed to this
-    /// method.
+    /// 如果所提供的值是 [`None`]，那么 [`read`] 调用将无限期阻塞。如果向此方法传入了
+    /// 零值 [`Duration`]，则返回 [`Err`]。
     ///
     /// [`read`]: io::Read::read
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::os::unix::net::UnixStream;
@@ -288,8 +285,7 @@ impl UnixStream {
     /// }
     /// ```
     ///
-    /// An [`Err`] is returned if the zero [`Duration`] is passed to this
-    /// method:
+    /// 如果向此方法传入了零值 [`Duration`]，则返回 [`Err`]：
     ///
     /// ```no_run
     /// use std::io;
@@ -309,15 +305,14 @@ impl UnixStream {
         self.0.set_timeout(timeout, libc::SO_RCVTIMEO)
     }
 
-    /// Sets the write timeout for the socket.
+    /// 设置套接字的写超时（write timeout）。
     ///
-    /// If the provided value is [`None`], then [`write`] calls will block
-    /// indefinitely. An [`Err`] is returned if the zero [`Duration`] is
-    /// passed to this method.
+    /// 如果所提供的值是 [`None`]，那么 [`write`] 调用将无限期阻塞。如果向此方法传入了
+    /// 零值 [`Duration`]，则返回 [`Err`]。
     ///
     /// [`read`]: io::Read::read
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::os::unix::net::UnixStream;
@@ -331,8 +326,7 @@ impl UnixStream {
     /// }
     /// ```
     ///
-    /// An [`Err`] is returned if the zero [`Duration`] is passed to this
-    /// method:
+    /// 如果向此方法传入了零值 [`Duration`]，则返回 [`Err`]：
     ///
     /// ```no_run
     /// use std::io;
@@ -352,9 +346,9 @@ impl UnixStream {
         self.0.set_timeout(timeout, libc::SO_SNDTIMEO)
     }
 
-    /// Returns the read timeout of this socket.
+    /// 返回此套接字的读超时（read timeout）。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::os::unix::net::UnixStream;
@@ -372,9 +366,9 @@ impl UnixStream {
         self.0.timeout(libc::SO_RCVTIMEO)
     }
 
-    /// Returns the write timeout of this socket.
+    /// 返回此套接字的写超时（write timeout）。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::os::unix::net::UnixStream;
@@ -393,9 +387,9 @@ impl UnixStream {
         self.0.timeout(libc::SO_SNDTIMEO)
     }
 
-    /// Moves the socket into or out of nonblocking mode.
+    /// 将套接字切换进入或退出非阻塞（nonblocking）模式。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::os::unix::net::UnixStream;
@@ -411,7 +405,7 @@ impl UnixStream {
         self.0.set_nonblocking(nonblocking)
     }
 
-    /// Set the id of the socket for network filtering purpose
+    /// 出于网络过滤（network filtering）目的设置套接字的 id
     ///
     #[cfg_attr(
         any(target_os = "linux", target_os = "freebsd", target_os = "openbsd"),
@@ -436,9 +430,9 @@ impl UnixStream {
         self.0.set_mark(mark)
     }
 
-    /// Returns the value of the `SO_ERROR` option.
+    /// 返回 `SO_ERROR` 选项的值。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::os::unix::net::UnixStream;
@@ -453,19 +447,18 @@ impl UnixStream {
     /// ```
     ///
     /// # Platform specific
-    /// On Redox this always returns `None`.
+    /// 在 Redox 上，这总是返回 `None`。
     #[stable(feature = "unix_socket", since = "1.10.0")]
     pub fn take_error(&self) -> io::Result<Option<io::Error>> {
         self.0.take_error()
     }
 
-    /// Shuts down the read, write, or both halves of this connection.
+    /// 关闭此连接的读半边、写半边，或两者。
     ///
-    /// This function will cause all pending and future I/O calls on the
-    /// specified portions to immediately return with an appropriate value
-    /// (see the documentation of [`Shutdown`]).
+    /// 此函数将导致所指定部分上所有挂起的与未来的 I/O 调用立即返回一个适当的值
+    ///（参见 [`Shutdown`] 的文档）。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::os::unix::net::UnixStream;
@@ -482,14 +475,13 @@ impl UnixStream {
         self.0.shutdown(how)
     }
 
-    /// Receives data on the socket from the remote address to which it is
-    /// connected, without removing that data from the queue. On success,
-    /// returns the number of bytes peeked.
+    /// 从此套接字所连接的远程地址接收数据，但不将该数据从队列中移除。成功时，
+    /// 返回窥视（peeked）的字节数。
     ///
-    /// Successive calls return the same data. This is accomplished by passing
-    /// `MSG_PEEK` as a flag to the underlying `recv` system call.
+    /// 连续多次调用会返回相同的数据。这是通过把 `MSG_PEEK` 作为标志传给底层的 `recv`
+    /// 系统调用实现的。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// #![feature(unix_socket_peek)]
@@ -508,11 +500,11 @@ impl UnixStream {
         self.0.peek(buf)
     }
 
-    /// Receives data and ancillary data from socket.
+    /// 从套接字接收数据与辅助数据（ancillary data）。
     ///
-    /// On success, returns the number of bytes read.
+    /// 成功时，返回读取的字节数。
     ///
-    /// # Examples
+    /// # 示例
     ///
     #[cfg_attr(
         any(target_os = "android", target_os = "linux", target_os = "cygwin"),
@@ -563,11 +555,11 @@ impl UnixStream {
         Ok(count)
     }
 
-    /// Sends data and ancillary data on the socket.
+    /// 在套接字上发送数据与辅助数据（ancillary data）。
     ///
-    /// On success, returns the number of bytes written.
+    /// 成功时，返回写入的字节数。
     ///
-    /// # Examples
+    /// # 示例
     ///
     #[cfg_attr(
         any(target_os = "android", target_os = "linux", target_os = "cygwin"),
@@ -726,7 +718,7 @@ impl AsFd for UnixStream {
 
 #[stable(feature = "io_safety", since = "1.63.0")]
 impl From<UnixStream> for OwnedFd {
-    /// Takes ownership of a [`UnixStream`]'s socket file descriptor.
+    /// 取得一个 [`UnixStream`] 的套接字文件描述符的所有权。
     #[inline]
     fn from(unix_stream: UnixStream) -> OwnedFd {
         unsafe { OwnedFd::from_raw_fd(unix_stream.into_raw_fd()) }

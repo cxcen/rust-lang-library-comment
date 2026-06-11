@@ -1,4 +1,4 @@
-//! Windows-specific extensions to general I/O primitives.
+//! Windows 平台对通用 I/O 原语的特定扩展。
 
 #![stable(feature = "rust1", since = "1.0.0")]
 
@@ -9,29 +9,28 @@ use crate::os::windows::raw;
 use crate::sys::{AsInner, FromInner, IntoInner};
 use crate::{fs, io, net, ptr, sys};
 
-/// Raw HANDLEs.
+/// 裸 HANDLE。
 #[stable(feature = "rust1", since = "1.0.0")]
 pub type RawHandle = raw::HANDLE;
 
-/// Raw SOCKETs.
+/// 裸 SOCKET。
 #[stable(feature = "rust1", since = "1.0.0")]
 pub type RawSocket = raw::SOCKET;
 
-/// Extracts raw handles.
+/// 提取裸 handle。
 #[stable(feature = "rust1", since = "1.0.0")]
 pub trait AsRawHandle {
-    /// Extracts the raw handle.
+    /// 提取裸 handle。
     ///
-    /// This function is typically used to **borrow** an owned handle.
-    /// When used in this way, this method does **not** pass ownership of the
-    /// raw handle to the caller, and the handle is only guaranteed
-    /// to be valid while the original object has not yet been destroyed.
+    /// 本函数通常用于 **借用** 一个拥有式 handle。以这种方式使用时，本方法 **不会**
+    /// 把裸 handle 的所有权转交给调用者，并且只有在原对象尚未被销毁期间，该 handle
+    /// 才保证有效。
     ///
-    /// This function may return null, such as when called on [`Stdin`],
-    /// [`Stdout`], or [`Stderr`] when the console is detached.
+    /// 本函数可能返回 null，例如在控制台已脱离时对 [`Stdin`]、[`Stdout`] 或 [`Stderr`]
+    /// 调用时。
     ///
-    /// However, borrowing is not strictly required. See [`AsHandle::as_handle`]
-    /// for an API which strictly borrows a handle.
+    /// 不过，借用并非严格必需。若需要严格借用 handle 的 API，参见
+    /// [`AsHandle::as_handle`]。
     ///
     /// [`Stdin`]: io::Stdin
     /// [`Stdout`]: io::Stdout
@@ -40,30 +39,26 @@ pub trait AsRawHandle {
     fn as_raw_handle(&self) -> RawHandle;
 }
 
-/// Constructs I/O objects from raw handles.
+/// 从裸 handle 构造 I/O 对象。
 #[stable(feature = "from_raw_os", since = "1.1.0")]
 pub trait FromRawHandle {
-    /// Constructs a new I/O object from the specified raw handle.
+    /// 从指定的裸 handle 构造一个新的 I/O 对象。
     ///
-    /// This function is typically used to **consume ownership** of the handle
-    /// given, passing responsibility for closing the handle to the returned
-    /// object. When used in this way, the returned object
-    /// will take responsibility for closing it when the object goes out of
-    /// scope.
+    /// 本函数通常用于 **消耗（获取）** 所给 handle 的所有权，把关闭该 handle 的责任
+    /// 转交给所返回的对象。以这种方式使用时，所返回的对象将在其离开作用域时负责关闭它。
     ///
-    /// However, consuming ownership is not strictly required. Use a
-    /// `From<OwnedHandle>::from` implementation for an API which strictly
-    /// consumes ownership.
+    /// 不过，消耗所有权并非严格必需。若需要严格消耗所有权的 API，请使用
+    /// `From<OwnedHandle>::from` 实现。
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// The `handle` passed in must:
-    ///   - be an [owned handle][io-safety]; in particular, it must be open.
-    ///   - be a handle for a resource that may be freed via [`CloseHandle`]
-    ///     (as opposed to `RegCloseKey` or other close functions).
+    /// 传入的 `handle` 必须：
+    ///   - 是一个 [拥有式 handle][io-safety]；特别地，它必须处于打开状态。
+    ///   - 是一个可经由 [`CloseHandle`] 释放的资源 handle（而不是需要 `RegCloseKey`
+    ///     或其他关闭函数的那种）。
     ///
-    /// Note that the handle *may* have the value `INVALID_HANDLE_VALUE` (-1),
-    /// which is sometimes a valid handle value. See [here] for the full story.
+    /// 注意该 handle *可能* 取值为 `INVALID_HANDLE_VALUE`（-1），而该值有时是一个有效的
+    /// handle 值。完整来龙去脉见 [here]。
     ///
     /// [`CloseHandle`]: https://docs.microsoft.com/en-us/windows/win32/api/handleapi/nf-handleapi-closehandle
     /// [here]: https://devblogs.microsoft.com/oldnewthing/20040302-00/?p=40443
@@ -72,19 +67,16 @@ pub trait FromRawHandle {
     unsafe fn from_raw_handle(handle: RawHandle) -> Self;
 }
 
-/// A trait to express the ability to consume an object and acquire ownership of
-/// its raw `HANDLE`.
+/// 一个 trait，用于表达消耗某个对象并获取其裸 `HANDLE` 所有权的能力。
 #[stable(feature = "into_raw_os", since = "1.4.0")]
 pub trait IntoRawHandle {
-    /// Consumes this object, returning the raw underlying handle.
+    /// 消耗本对象，返回其底层的裸 handle。
     ///
-    /// This function is typically used to **transfer ownership** of the underlying
-    /// handle to the caller. When used in this way, callers are then the unique
-    /// owners of the handle and must close it once it's no longer needed.
+    /// 本函数通常用于把底层 handle 的 **所有权转交** 给调用者。以这种方式使用时，
+    /// 调用者随后即成为该 handle 的唯一所有者，并且必须在不再需要它时将其关闭。
     ///
-    /// However, transferring ownership is not strictly required. Use a
-    /// `Into<OwnedHandle>::into` implementation for an API which strictly
-    /// transfers ownership.
+    /// 不过，转交所有权并非严格必需。若需要严格转交所有权的 API，请使用
+    /// `Into<OwnedHandle>::into` 实现。
     #[must_use = "losing the raw handle may leak resources"]
     #[stable(feature = "into_raw_os", since = "1.4.0")]
     fn into_raw_handle(self) -> RawHandle;
@@ -140,15 +132,12 @@ impl<'a> AsRawHandle for io::StderrLock<'a> {
     }
 }
 
-// Translate a handle returned from `GetStdHandle` into a handle to return to
-// the user.
+// 把从 `GetStdHandle` 返回的 handle 转换为要返回给用户的 handle。
 fn stdio_handle(raw: RawHandle) -> RawHandle {
-    // `GetStdHandle` isn't expected to actually fail, so when it returns
-    // `INVALID_HANDLE_VALUE`, it means we were launched from a parent which
-    // didn't provide us with stdio handles, such as a parent with a detached
-    // console. In that case, return null to the user, which is consistent
-    // with what they'd get in the parent, and which avoids the problem that
-    // `INVALID_HANDLE_VALUE` aliases the current process handle.
+    // `GetStdHandle` 预期实际上不会失败，因此当它返回 `INVALID_HANDLE_VALUE` 时，
+    // 意味着我们是被某个未向我们提供 stdio handle 的父进程启动的，例如一个控制台已脱离的
+    // 父进程。在那种情况下，我们向用户返回 null——这与用户在父进程中得到的结果一致，
+    // 同时也避免了 `INVALID_HANDLE_VALUE` 与当前进程 handle 取值相同（别名）所带来的问题。
     if raw == sys::c::INVALID_HANDLE_VALUE { ptr::null_mut() } else { raw }
 }
 
@@ -173,42 +162,37 @@ impl IntoRawHandle for fs::File {
     }
 }
 
-/// Extracts raw sockets.
+/// 提取裸 socket。
 #[stable(feature = "rust1", since = "1.0.0")]
 pub trait AsRawSocket {
-    /// Extracts the raw socket.
+    /// 提取裸 socket。
     ///
-    /// This function is typically used to **borrow** an owned socket.
-    /// When used in this way, this method does **not** pass ownership of the
-    /// raw socket to the caller, and the socket is only guaranteed
-    /// to be valid while the original object has not yet been destroyed.
+    /// 本函数通常用于 **借用** 一个拥有式 socket。以这种方式使用时，本方法 **不会**
+    /// 把裸 socket 的所有权转交给调用者，并且只有在原对象尚未被销毁期间，该 socket
+    /// 才保证有效。
     ///
-    /// However, borrowing is not strictly required. See [`AsSocket::as_socket`]
-    /// for an API which strictly borrows a socket.
+    /// 不过，借用并非严格必需。若需要严格借用 socket 的 API，参见
+    /// [`AsSocket::as_socket`]。
     #[stable(feature = "rust1", since = "1.0.0")]
     fn as_raw_socket(&self) -> RawSocket;
 }
 
-/// Creates I/O objects from raw sockets.
+/// 从裸 socket 创建 I/O 对象。
 #[stable(feature = "from_raw_os", since = "1.1.0")]
 pub trait FromRawSocket {
-    /// Constructs a new I/O object from the specified raw socket.
+    /// 从指定的裸 socket 构造一个新的 I/O 对象。
     ///
-    /// This function is typically used to **consume ownership** of the socket
-    /// given, passing responsibility for closing the socket to the returned
-    /// object. When used in this way, the returned object
-    /// will take responsibility for closing it when the object goes out of
-    /// scope.
+    /// 本函数通常用于 **消耗（获取）** 所给 socket 的所有权，把关闭该 socket 的责任
+    /// 转交给所返回的对象。以这种方式使用时，所返回的对象将在其离开作用域时负责关闭它。
     ///
-    /// However, consuming ownership is not strictly required. Use a
-    /// `From<OwnedSocket>::from` implementation for an API which strictly
-    /// consumes ownership.
+    /// 不过，消耗所有权并非严格必需。若需要严格消耗所有权的 API，请使用
+    /// `From<OwnedSocket>::from` 实现。
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// The `socket` passed in must:
-    ///   - be an [owned socket][io-safety]; in particular, it must be open.
-    ///   - be a socket that may be freed via [`closesocket`].
+    /// 传入的 `socket` 必须：
+    ///   - 是一个 [拥有式 socket][io-safety]；特别地，它必须处于打开状态。
+    ///   - 是一个可经由 [`closesocket`] 释放的 socket。
     ///
     /// [`closesocket`]: https://docs.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-closesocket
     /// [io-safety]: io#io-safety
@@ -216,19 +200,16 @@ pub trait FromRawSocket {
     unsafe fn from_raw_socket(sock: RawSocket) -> Self;
 }
 
-/// A trait to express the ability to consume an object and acquire ownership of
-/// its raw `SOCKET`.
+/// 一个 trait，用于表达消耗某个对象并获取其裸 `SOCKET` 所有权的能力。
 #[stable(feature = "into_raw_os", since = "1.4.0")]
 pub trait IntoRawSocket {
-    /// Consumes this object, returning the raw underlying socket.
+    /// 消耗本对象，返回其底层的裸 socket。
     ///
-    /// This function is typically used to **transfer ownership** of the underlying
-    /// socket to the caller. When used in this way, callers are then the unique
-    /// owners of the socket and must close it once it's no longer needed.
+    /// 本函数通常用于把底层 socket 的 **所有权转交** 给调用者。以这种方式使用时，
+    /// 调用者随后即成为该 socket 的唯一所有者，并且必须在不再需要它时将其关闭。
     ///
-    /// However, transferring ownership is not strictly required. Use a
-    /// `Into<OwnedSocket>::into` implementation for an API which strictly
-    /// transfers ownership.
+    /// 不过，转交所有权并非严格必需。若需要严格转交所有权的 API，请使用
+    /// `Into<OwnedSocket>::into` 实现。
     #[must_use = "losing the raw socket may leak resources"]
     #[stable(feature = "into_raw_os", since = "1.4.0")]
     fn into_raw_socket(self) -> RawSocket;

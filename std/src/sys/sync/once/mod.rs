@@ -1,11 +1,9 @@
-// A "once" is a relatively simple primitive, and it's also typically provided
-// by the OS as well (see `pthread_once` or `InitOnceExecuteOnce`). The OS
-// primitives, however, tend to have surprising restrictions, such as the Unix
-// one doesn't allow an argument to be passed to the function.
+// "once" 是一个相对简单的原语，而且通常操作系统本身也会提供它
+//（参见 `pthread_once` 或 `InitOnceExecuteOnce`）。然而这些操作系统原语
+// 往往带有一些出人意料的限制，例如 Unix 的版本不允许向回调函数传入参数。
 //
-// As a result, we end up implementing it ourselves in the standard library.
-// This also gives us the opportunity to optimize the implementation a bit which
-// should help the fast path on call sites.
+// 因此，我们最终选择在标准库里自己实现它。这同时也给了我们一个机会去对实现
+// 做一些优化，从而改善各调用点处的快速路径（fast path）性能。
 
 cfg_select! {
     any(

@@ -1,14 +1,12 @@
-//! This module contains the implementation of the `eh_personality` lang item.
+//! 本模块包含 `eh_personality` lang item 的实现。
 //!
-//! The actual implementation is heavily dependent on the target since Rust
-//! tries to use the native stack unwinding mechanism whenever possible.
+//! 其实际实现高度依赖于 target，因为 Rust 会尽可能地使用本机（native）的
+//! 栈展开（stack unwinding）机制。
 //!
-//! This personality function is still required with `-C panic=abort` because
-//! it is used to catch foreign exceptions from `extern "C-unwind"` and turn
-//! them into aborts.
+//! 即便使用 `-C panic=abort`，这个 personality 函数仍然是必需的，因为它被用来
+//! 捕获来自 `extern "C-unwind"` 的外部异常（foreign exceptions）并将其转为 abort。
 //!
-//! Additionally, ARM EHABI uses the personality function when generating
-//! backtraces.
+//! 此外，ARM EHABI 在生成 backtrace 时会使用 personality 函数。
 
 mod dwarf;
 
@@ -18,11 +16,9 @@ cfg_select! {
         mod emcc;
     }
     any(target_env = "msvc", target_family = "wasm", target_os = "motor") => {
-        // This is required by the compiler to exist (e.g., it's a lang item),
-        // but it's never actually called by the compiler because
-        // __CxxFrameHandler3 (msvc) / __gxx_wasm_personality_v0 (wasm) is the
-        // personality function that is always used.  Hence this is just an
-        // aborting stub.
+        // 编译器要求它存在（例如它是一个 lang item），但编译器实际上从不会调用它，
+        // 因为始终被使用的 personality 函数是 __CxxFrameHandler3 (msvc) /
+        // __gxx_wasm_personality_v0 (wasm)。因此这里只是一个会 abort 的桩（stub）。
         #[lang = "eh_personality"]
         fn rust_eh_personality() {
             core::intrinsics::abort()
@@ -39,8 +35,8 @@ cfg_select! {
         mod gcc;
     }
     _ => {
-        // Targets that don't support unwinding.
-        // - os=none ("bare metal" targets)
+        // 不支持栈展开（unwinding）的 target。
+        // - os=none（“裸机 bare metal” target）
         // - os=uefi
         // - os=espidf
         // - os=hermit

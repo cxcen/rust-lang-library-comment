@@ -1,4 +1,4 @@
-//! Owned and borrowed OS sockets.
+//! 拥有式（owned）与借用式（borrowed）的操作系统 socket。
 
 #![stable(feature = "io_safety", since = "1.63.0")]
 
@@ -9,22 +9,19 @@ use crate::mem::{self, ManuallyDrop};
 use crate::sys::cvt;
 use crate::{fmt, io, sys};
 
-// The max here is -2, in two's complement. -1 is `INVALID_SOCKET`.
+// 这里的最大值是 -2（以二进制补码表示）。-1 即 `INVALID_SOCKET`。
 type ValidRawSocket = core::num::niche_types::NotAllOnes<RawSocket>;
 
-/// A borrowed socket.
+/// 一个借用式的 socket。
 ///
-/// This has a lifetime parameter to tie it to the lifetime of something that
-/// owns the socket.
+/// 它带有一个生命周期参数，用以将自身绑定到拥有该 socket 的某个对象的生命周期上。
 ///
-/// This uses `repr(transparent)` and has the representation of a host socket,
-/// so it can be used in FFI in places where a socket is passed as an argument,
-/// it is not captured or consumed, and it never has the value
-/// `INVALID_SOCKET`.
+/// 它采用 `repr(transparent)`，与宿主机 socket 具有相同的表示，因此可以在 FFI 中用于
+/// 那些以参数形式传入 socket、且 socket 不会被捕获或消耗的场合，并且它的取值永远不会是
+/// `INVALID_SOCKET`。
 ///
-/// This type's `.to_owned()` implementation returns another `BorrowedSocket`
-/// rather than an `OwnedSocket`. It just makes a trivial copy of the raw
-/// socket, which is then borrowed under the same lifetime.
+/// 本类型的 `.to_owned()` 实现返回的是另一个 `BorrowedSocket` 而不是 `OwnedSocket`。
+/// 它只是对裸 socket 做一次平凡的拷贝，随后在同一个生命周期下被借用。
 #[derive(Copy, Clone)]
 #[repr(transparent)]
 #[rustc_nonnull_optimization_guaranteed]
@@ -34,14 +31,13 @@ pub struct BorrowedSocket<'socket> {
     _phantom: PhantomData<&'socket OwnedSocket>,
 }
 
-/// An owned socket.
+/// 一个拥有式的 socket。
 ///
-/// This closes the socket on drop.
+/// 它会在 drop 时关闭该 socket。
 ///
-/// This uses `repr(transparent)` and has the representation of a host socket,
-/// so it can be used in FFI in places where a socket is passed as a consumed
-/// argument or returned as an owned value, and it never has the value
-/// `INVALID_SOCKET`.
+/// 它采用 `repr(transparent)`，与宿主机 socket 具有相同的表示，因此可以在 FFI 中用于
+/// 那些以被消耗的参数形式传入 socket、或以拥有式值返回 socket 的场合，并且它的取值永远
+/// 不会是 `INVALID_SOCKET`。
 #[repr(transparent)]
 #[rustc_nonnull_optimization_guaranteed]
 #[stable(feature = "io_safety", since = "1.63.0")]
@@ -50,13 +46,12 @@ pub struct OwnedSocket {
 }
 
 impl BorrowedSocket<'_> {
-    /// Returns a `BorrowedSocket` holding the given raw socket.
+    /// 返回一个持有给定裸 socket 的 `BorrowedSocket`。
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// The resource pointed to by `socket` must remain open for the duration of
-    /// the returned `BorrowedSocket`, and it must not have the value
-    /// `INVALID_SOCKET`.
+    /// `socket` 所指向的资源必须在所返回的 `BorrowedSocket` 的整个存续期间保持打开状态，
+    /// 并且它的取值不得为 `INVALID_SOCKET`。
     #[inline]
     #[track_caller]
     #[rustc_const_stable(feature = "io_safety", since = "1.63.0")]
@@ -67,14 +62,13 @@ impl BorrowedSocket<'_> {
 }
 
 impl OwnedSocket {
-    /// Creates a new `OwnedSocket` instance that shares the same underlying
-    /// object as the existing `OwnedSocket` instance.
+    /// 创建一个新的 `OwnedSocket` 实例，它与现有的 `OwnedSocket` 实例共享同一个底层对象。
     #[stable(feature = "io_safety", since = "1.63.0")]
     pub fn try_clone(&self) -> io::Result<Self> {
         self.as_socket().try_clone_to_owned()
     }
 
-    // FIXME(strict_provenance_magic): we defined RawSocket to be a u64 ;-;
+    // FIXME(strict_provenance_magic): 我们当初把 RawSocket 定义成了 u64 ;-;
     #[allow(fuzzy_provenance_casts)]
     #[cfg(not(target_vendor = "uwp"))]
     pub(crate) fn set_no_inherit(&self) -> io::Result<()> {
@@ -95,8 +89,7 @@ impl OwnedSocket {
 }
 
 impl BorrowedSocket<'_> {
-    /// Creates a new `OwnedSocket` instance that shares the same underlying
-    /// object as the existing `BorrowedSocket` instance.
+    /// 创建一个新的 `OwnedSocket` 实例，它与现有的 `BorrowedSocket` 实例共享同一个底层对象。
     #[stable(feature = "io_safety", since = "1.63.0")]
     pub fn try_clone_to_owned(&self) -> io::Result<OwnedSocket> {
         let mut info = unsafe { mem::zeroed::<sys::c::WSAPROTOCOL_INFOW>() };
@@ -152,7 +145,7 @@ impl BorrowedSocket<'_> {
     }
 }
 
-/// Returns the last error from the Windows socket interface.
+/// 返回来自 Windows socket 接口的最近一次错误。
 fn last_error() -> io::Error {
     io::Error::from_raw_os_error(unsafe { sys::c::WSAGetLastError() })
 }
@@ -214,10 +207,10 @@ impl fmt::Debug for OwnedSocket {
     }
 }
 
-/// A trait to borrow the socket from an underlying object.
+/// 用于从某个底层对象借出其 socket 的 trait。
 #[stable(feature = "io_safety", since = "1.63.0")]
 pub trait AsSocket {
-    /// Borrows the socket.
+    /// 借出该 socket。
     #[stable(feature = "io_safety", since = "1.63.0")]
     fn as_socket(&self) -> BorrowedSocket<'_>;
 }
@@ -239,7 +232,7 @@ impl<T: AsSocket> AsSocket for &mut T {
 }
 
 #[stable(feature = "as_windows_ptrs", since = "1.71.0")]
-/// This impl allows implementing traits that require `AsSocket` on Arc.
+/// 这个 impl 使得可以在 Arc 上实现那些要求 `AsSocket` 的 trait。
 /// ```
 /// # #[cfg(windows)] mod group_cfg {
 /// # use std::os::windows::io::AsSocket;
@@ -294,9 +287,8 @@ impl AsSocket for BorrowedSocket<'_> {
 impl AsSocket for OwnedSocket {
     #[inline]
     fn as_socket(&self) -> BorrowedSocket<'_> {
-        // Safety: `OwnedSocket` and `BorrowedSocket` have the same validity
-        // invariants, and the `BorrowedSocket` is bounded by the lifetime
-        // of `&self`.
+        // Safety: `OwnedSocket` 与 `BorrowedSocket` 具有相同的有效性不变量，并且这个
+        // `BorrowedSocket` 的生命周期受 `&self` 约束。
         unsafe { BorrowedSocket::borrow_raw(self.as_raw_socket()) }
     }
 }
@@ -311,7 +303,7 @@ impl AsSocket for crate::net::TcpStream {
 
 #[stable(feature = "io_safety", since = "1.63.0")]
 impl From<crate::net::TcpStream> for OwnedSocket {
-    /// Takes ownership of a [`TcpStream`](crate::net::TcpStream)'s socket.
+    /// 接管一个 [`TcpStream`](crate::net::TcpStream) 的 socket 的所有权。
     #[inline]
     fn from(tcp_stream: crate::net::TcpStream) -> OwnedSocket {
         unsafe { OwnedSocket::from_raw_socket(tcp_stream.into_raw_socket()) }
@@ -336,7 +328,7 @@ impl AsSocket for crate::net::TcpListener {
 
 #[stable(feature = "io_safety", since = "1.63.0")]
 impl From<crate::net::TcpListener> for OwnedSocket {
-    /// Takes ownership of a [`TcpListener`](crate::net::TcpListener)'s socket.
+    /// 接管一个 [`TcpListener`](crate::net::TcpListener) 的 socket 的所有权。
     #[inline]
     fn from(tcp_listener: crate::net::TcpListener) -> OwnedSocket {
         unsafe { OwnedSocket::from_raw_socket(tcp_listener.into_raw_socket()) }
@@ -361,7 +353,7 @@ impl AsSocket for crate::net::UdpSocket {
 
 #[stable(feature = "io_safety", since = "1.63.0")]
 impl From<crate::net::UdpSocket> for OwnedSocket {
-    /// Takes ownership of a [`UdpSocket`](crate::net::UdpSocket)'s underlying socket.
+    /// 接管一个 [`UdpSocket`](crate::net::UdpSocket) 底层 socket 的所有权。
     #[inline]
     fn from(udp_socket: crate::net::UdpSocket) -> OwnedSocket {
         unsafe { OwnedSocket::from_raw_socket(udp_socket.into_raw_socket()) }

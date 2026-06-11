@@ -26,51 +26,49 @@ pub const HAS_PREFIXES: bool = true;
 pub const MAIN_SEP_STR: &str = "\\";
 pub const MAIN_SEP: char = '\\';
 
-/// UEFI paths can be of 4 types:
+/// UEFI 路径可以分为 4 种类型：
 ///
-/// 1. Absolute Shell Path: Uses shell mappings (eg: `FS0:`). Does not exist if UEFI shell not present.
-///    It can be identified with `:`.
-///    Eg: FS0:\abc\run.efi
+/// 1. 绝对 Shell 路径(Absolute Shell Path）：使用 shell 映射（例如：`FS0:`）。如果 UEFI shell 不存在则此类型不存在。
+///    它可以通过 `:` 来识别。
+///    例如：FS0:\abc\run.efi
 ///
-/// 2. Absolute Device Path: this is what we want
-///    It can be identified with `/`.
-///    Eg: PciRoot(0x0)/Pci(0x1,0x1)/Ata(Secondary,Slave,0x0)/\abc\run.efi
+/// 2. 绝对设备路径(Absolute Device Path）：这正是我们想要的
+///    它可以通过 `/` 来识别。
+///    例如：PciRoot(0x0)/Pci(0x1,0x1)/Ata(Secondary,Slave,0x0)/\abc\run.efi
 ///
-/// 3: Relative root: path relative to the current volume.
-///    It will start with `\`.
-///    Eg: \abc\run.efi
+/// 3：相对根路径(Relative root）：相对于当前卷的路径。
+///    它会以 `\` 开头。
+///    例如：\abc\run.efi
 ///
-/// 4: Relative
-///    Eg: run.efi
+/// 4：相对路径(Relative）
+///    例如：run.efi
 ///
-/// The algorithm is mostly taken from edk2 UEFI shell implementation and is
-/// somewhat simple. Check for the path type in order.
+/// 该算法大体上取自 edk2 的 UEFI shell 实现，并且相当简单。按顺序检查路径类型。
 ///
-/// The volume mapping in Absolute Shell Path (not the rest of the path) can be converted to Device
-/// Path Protocol using `EFI_SHELL->GetDevicePathFromMap`. The rest of the path (Relative root
-/// path), can just be appended to the remaining path.
+/// 绝对 Shell 路径中的卷映射部分（不包括路径的其余部分）可以使用
+/// `EFI_SHELL->GetDevicePathFromMap` 转换为设备路径协议(Device Path Protocol）形式。
+/// 路径的其余部分（相对根路径）可以直接附加到剩下的路径上。
 ///
-/// For Relative root, we get the current volume (either in Shell Mapping, or Device Path Protocol
-/// form) and join it with the relative root path. We then recurse the function to resolve the Shell
-/// Mapping if present.
+/// 对于相对根路径，我们获取当前卷（以 Shell 映射或设备路径协议形式），并把它与
+/// 相对根路径连接起来。然后我们递归调用本函数，以便在存在 Shell 映射时解析它。
 ///
-/// For Relative paths, we use the current working directory to construct
-/// the new path and recurse the function to resolve the Shell mapping if present.
+/// 对于相对路径，我们使用当前工作目录来构造新路径，并递归调用本函数，
+/// 以便在存在 Shell 映射时解析它。
 ///
-/// Finally, at the end, we get the 2nd form, i.e. Absolute Device Path, which can be used in the
-/// normal UEFI APIs such as file, process, etc.
-/// Eg: PciRoot(0x0)/Pci(0x1,0x1)/Ata(Secondary,Slave,0x0)/\abc\run.efi
+/// 最后，我们得到第 2 种形式，即绝对设备路径，它可以在普通的 UEFI API（例如文件、
+/// 进程等）中使用。
+/// 例如：PciRoot(0x0)/Pci(0x1,0x1)/Ata(Secondary,Slave,0x0)/\abc\run.efi
 pub(crate) fn absolute(path: &Path) -> io::Result<PathBuf> {
-    // Absolute Shell Path
+    // 绝对 Shell 路径
     if path.as_os_str().as_encoded_bytes().contains(&COLON) {
         let mut path_components = path.components();
-        // Since path is not empty, it has at least one Component
+        // 由于 path 非空，它至少有一个 Component
         let prefix = path_components.next().unwrap();
 
         let dev_path = helpers::get_device_path_from_map(prefix.as_ref())?;
         let mut dev_path_text = dev_path.to_text().map_err(|_| unsupported_err())?;
 
-        // UEFI Shell does not seem to end device path with `/`
+        // UEFI Shell 似乎不会以 `/` 结束设备路径
         if *dev_path_text.as_encoded_bytes().last().unwrap() != FORWARD_SLASH {
             dev_path_text.push("/");
         }
@@ -81,16 +79,16 @@ pub(crate) fn absolute(path: &Path) -> io::Result<PathBuf> {
         return Ok(ans);
     }
 
-    // Absolute Device Path
+    // 绝对设备路径
     if path.as_os_str().as_encoded_bytes().contains(&FORWARD_SLASH) {
         return Ok(path.to_path_buf());
     }
 
-    // cur_dir() always returns something
+    // cur_dir() 总是会返回点什么
     let cur_dir = crate::env::current_dir().unwrap();
     let mut path_components = path.components();
 
-    // Relative Root
+    // 相对根路径
     if path_components.next().unwrap() == crate::path::Component::RootDir {
         let mut ans = PathBuf::new();
         ans.push(cur_dir.components().next().unwrap());

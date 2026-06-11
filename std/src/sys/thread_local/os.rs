@@ -14,24 +14,23 @@ use crate::ptr::{self, NonNull};
 #[unstable(feature = "thread_local_internals", issue = "none")]
 #[rustc_macro_transparency = "semiopaque"]
 pub macro thread_local_inner {
-    // NOTE: we cannot import `Storage` or `LocalKey` with a `use` because that can shadow user
-    // provided type or type alias with a matching name. Please update the shadowing test in
-    // `tests/thread.rs` if these types are renamed.
+    // 注意：我们不能用 `use` 来导入 `Storage` 或 `LocalKey`，因为那可能会遮蔽
+    // （shadow）用户提供的同名类型或类型别名。如果这些类型被重命名，请更新
+    // `tests/thread.rs` 中的遮蔽（shadowing）测试。
 
-    // used to generate the `LocalKey` value for `thread_local!`.
+    // 用于为 `thread_local!` 生成 `LocalKey` 值。
     (@key $t:ty, $($(#[$($align_attr:tt)*])+)?, $init:expr) => {{
         #[inline]
         fn __rust_std_internal_init_fn() -> $t { $init }
 
-        // NOTE: this cannot import `LocalKey` or `Storage` with a `use` because that can shadow
-        // user provided type or type alias with a matching name. Please update the shadowing test
-        // in `tests/thread.rs` if these types are renamed.
+        // 注意：这里不能用 `use` 来导入 `LocalKey` 或 `Storage`，因为那可能会遮蔽
+        // 用户提供的同名类型或类型别名。如果这些类型被重命名，请更新
+        // `tests/thread.rs` 中的遮蔽（shadowing）测试。
         unsafe {
             $crate::thread::LocalKey::new(|__rust_std_internal_init| {
                 static __RUST_STD_INTERNAL_VAL: $crate::thread::local_impl::Storage<$t, {
                     $({
-                        // Ensure that attributes have valid syntax
-                        // and that the proper feature gate is enabled
+                        // 确保各属性具有有效语法，且相应的 feature gate 已启用
                         $(#[$($align_attr)*])+
                         #[allow(unused)]
                         static DUMMY: () = ();
@@ -48,7 +47,7 @@ pub macro thread_local_inner {
         }
     }},
 
-    // process a single `rustc_align_static` attribute
+    // 处理单个 `rustc_align_static` 属性
     (@align $final_align:ident, rustc_align_static($($align:tt)*) $(, $($attr_rest:tt)+)?) => {
         let new_align: $crate::primitive::usize = $($align)*;
         if new_align > $final_align {
@@ -58,8 +57,7 @@ pub macro thread_local_inner {
         $($crate::thread::local_impl::thread_local_inner!(@align $final_align, $($attr_rest)+);)?
     },
 
-    // process a single `cfg_attr` attribute
-    // by translating it into a `cfg`ed block and recursing.
+    // 处理单个 `cfg_attr` 属性：把它翻译成一个带 `cfg` 的块然后递归处理。
     // https://doc.rust-lang.org/reference/conditional-compilation.html#railroad-ConfigurationPredicate
 
     (@align $final_align:ident, cfg_attr(true, $($cfg_rhs:tt)*) $(, $($attr_rest:tt)+)?) => {
@@ -90,9 +88,8 @@ pub macro thread_local_inner {
     },
 }
 
-/// Use a regular global static to store this key; the state provided will then be
-/// thread-local.
-/// INVARIANT: ALIGN must be a valid alignment, and no less than `value_align::<T>`.
+/// 使用一个常规的全局 static 来存储此 key；它所提供的状态因而是线程本地的。
+/// 不变量(INVARIANT)：ALIGN 必须是一个有效的对齐值，且不小于 `value_align::<T>`。
 #[allow(missing_debug_implementations)]
 pub struct Storage<T, const ALIGN: usize> {
     key: LazyKey,
@@ -103,9 +100,9 @@ unsafe impl<T, const ALIGN: usize> Sync for Storage<T, ALIGN> {}
 
 #[repr(C)]
 struct Value<T: 'static> {
-    // This field must be first, for correctness of `#[rustc_align_static]`
+    // 为了 `#[rustc_align_static]` 的正确性，此字段必须排在第一位
     value: T,
-    // INVARIANT: if this value is stored under a TLS key, `key` must be that `key`.
+    // 不变量(INVARIANT)：如果此值被存储在某个 TLS key 下，则 `key` 必须就是那个 `key`。
     key: Key,
 }
 
@@ -113,7 +110,7 @@ pub const fn value_align<T: 'static>() -> usize {
     crate::mem::align_of::<Value<T>>()
 }
 
-/// Equivalent to `Box<Value<T>, System>`, but potentially over-aligned.
+/// 等价于 `Box<Value<T>, System>`，但可能是超对齐（over-aligned）的。
 struct AlignedSystemBox<T: 'static, const ALIGN: usize> {
     ptr: NonNull<Value<T>>,
 }
@@ -123,8 +120,8 @@ impl<T: 'static, const ALIGN: usize> AlignedSystemBox<T, ALIGN> {
     fn new(v: Value<T>) -> Self {
         let layout = Layout::new::<Value<T>>().align_to(ALIGN).unwrap();
 
-        // We use the System allocator here to avoid interfering with a potential
-        // Global allocator using thread-local storage.
+        // 我们这里使用 System 分配器，以避免干扰某个可能使用线程本地存储的
+        // Global 分配器。
         let ptr: *mut Value<T> = (unsafe { System.alloc(layout) }).cast();
         let Some(ptr) = NonNull::new(ptr) else {
             alloc::handle_alloc_error(layout);
@@ -174,28 +171,26 @@ impl<T: 'static, const ALIGN: usize> Storage<T, ALIGN> {
         Storage { key: LazyKey::new(Some(destroy_value::<T, ALIGN>)), marker: PhantomData }
     }
 
-    /// Gets a pointer to the TLS value, potentially initializing it with the
-    /// provided parameters. If the TLS variable has been destroyed, a null
-    /// pointer is returned.
+    /// 获取一个指向 TLS 值的指针，必要时用所提供的参数对其进行初始化。
+    /// 如果该 TLS 变量已被销毁，则返回空指针。
     ///
-    /// The resulting pointer may not be used after reentrant inialialization
-    /// or thread destruction has occurred.
+    /// 在发生重入式（reentrant）初始化或线程销毁之后，所得到的指针不可再使用。
     pub fn get(&'static self, i: Option<&mut Option<T>>, f: impl FnOnce() -> T) -> *const T {
         let key = self.key.force();
         let ptr = unsafe { get(key) as *mut Value<T> };
         if ptr.addr() > 1 {
-            // SAFETY: the check ensured the pointer is safe (its destructor
-            // is not running) + it is coming from a trusted source (self).
+            // SAFETY：该检查确保了指针是安全的（它的析构函数没有在运行），
+            // 并且它来自一个可信来源（self）。
             unsafe { &(*ptr).value }
         } else {
-            // SAFETY: trivially correct.
+            // SAFETY：显然正确。
             unsafe { Self::try_initialize(key, ptr, i, f) }
         }
     }
 
-    /// # Safety
-    /// * `key` must be the result of calling `self.key.force()`
-    /// * `ptr` must be the current value associated with `key`.
+    /// # 安全性(Safety）
+    /// * `key` 必须是调用 `self.key.force()` 的结果
+    /// * `ptr` 必须是当前与 `key` 关联的值。
     unsafe fn try_initialize(
         key: Key,
         ptr: *mut Value<T>,
@@ -203,7 +198,7 @@ impl<T: 'static, const ALIGN: usize> Storage<T, ALIGN> {
         f: impl FnOnce() -> T,
     ) -> *const T {
         if ptr.addr() == 1 {
-            // destructor is running
+            // 析构函数正在运行
             return ptr::null();
         }
 
@@ -213,10 +208,10 @@ impl<T: 'static, const ALIGN: usize> Storage<T, ALIGN> {
         });
         let ptr = AlignedSystemBox::into_raw(value);
 
-        // SAFETY:
-        // * key came from a `LazyKey` and is thus correct.
-        // * `ptr` is a correct pointer that can be destroyed by the key destructor.
-        // * the value is stored under the key that it contains.
+        // SAFETY：
+        // * key 来自一个 `LazyKey`，因此是正确的。
+        // * `ptr` 是一个正确的指针，可被该 key 的析构函数销毁。
+        // * 该值被存储在它自身所含有的 key 之下。
         let old = unsafe {
             let old = get(key) as *mut Value<T>;
             set(key, ptr as *mut u8);
@@ -224,39 +219,35 @@ impl<T: 'static, const ALIGN: usize> Storage<T, ALIGN> {
         };
 
         if !old.is_null() {
-            // If the variable was recursively initialized, drop the old value.
-            // SAFETY: We cannot be inside a `LocalKey::with` scope, as the
-            // initializer has already returned and the next scope only starts
-            // after we return the pointer. Therefore, there can be no references
-            // to the old value.
+            // 如果该变量曾被递归初始化，则 drop 旧值。
+            // SAFETY：我们不可能处于某个 `LocalKey::with` 作用域内部，因为初始化器
+            // 已经返回，而下一个作用域只会在我们返回该指针之后才开始。因此，
+            // 不可能存在指向旧值的引用。
             drop(unsafe { AlignedSystemBox::<T, ALIGN>::from_raw(old) });
         }
 
-        // SAFETY: We just created this value above.
+        // SAFETY：我们刚刚在上面创建了这个值。
         unsafe { &(*ptr).value }
     }
 }
 
 unsafe extern "C" fn destroy_value<T: 'static, const ALIGN: usize>(ptr: *mut u8) {
-    // SAFETY:
+    // SAFETY：
     //
-    // The OS TLS ensures that this key contains a null value when this
-    // destructor starts to run. We set it back to a sentinel value of 1 to
-    // ensure that any future calls to `get` for this thread will return
-    // `None`.
+    // 当此析构函数开始运行时，OS 的 TLS 保证此 key 中含有一个空值。
+    // 我们把它重新设置为哨兵值 1，以确保本线程未来对此 key 的任何 `get`
+    // 调用都将返回 `None`。
     //
-    // Note that to prevent an infinite loop we reset it back to null right
-    // before we return from the destructor ourselves.
+    // 注意，为了防止无限循环，我们在自己从析构函数返回之前会把它重新设回 null。
     abort_on_dtor_unwind(|| {
         let ptr = unsafe { AlignedSystemBox::<T, ALIGN>::from_raw(ptr as *mut Value<T>) };
         let key = ptr.key;
-        // SAFETY: `key` is the TLS key `ptr` was stored under.
+        // SAFETY：`key` 就是 `ptr` 被存储于其下的那个 TLS key。
         unsafe { set(key, ptr::without_provenance_mut(1)) };
         drop(ptr);
-        // SAFETY: `key` is the TLS key `ptr` was stored under.
+        // SAFETY：`key` 就是 `ptr` 被存储于其下的那个 TLS key。
         unsafe { set(key, ptr::null_mut()) };
-        // Make sure that the runtime cleanup will be performed
-        // after the next round of TLS destruction.
+        // 确保运行时清理会在下一轮 TLS 析构之后被执行。
         guard::enable();
     });
 }

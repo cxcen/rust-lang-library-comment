@@ -14,15 +14,13 @@ cfg_select! {
         mod sgx;
         pub use sgx::{Thread, current_os_id, sleep, yield_now, DEFAULT_MIN_STACK_SIZE};
 
-        // SGX should protect in-enclave data from outside attackers, so there
-        // must not be any data leakage to the OS, particularly no 1-1 mapping
-        // between SGX thread names and OS thread names. Hence `set_name` is
-        // intentionally a no-op.
+        // SGX 应当保护飞地（enclave）内部数据不被外部攻击者获取，因此
+        // 绝不能有任何数据泄漏给 OS，尤其不能在 SGX 线程名与 OS 线程名
+        // 之间建立一一对应的映射。因此 `set_name` 被有意实现为 no-op（空操作）。
         //
-        // Note that the internally visible SGX thread name is already provided
-        // by the platform-agnostic Rust thread code. This can be observed in
-        // the [`std::thread::tests::test_named_thread`] test, which succeeds
-        // as-is with the SGX target.
+        // 注意，内部可见的 SGX 线程名已经由与平台无关的 Rust 线程代码提供。
+        // 这一点可以在 [`std::thread::tests::test_named_thread`] 测试中观察到，
+        // 该测试在 SGX target 上原样运行即可通过。
         #[expect(dead_code)]
         mod unsupported;
         pub use unsupported::{available_parallelism, set_name};

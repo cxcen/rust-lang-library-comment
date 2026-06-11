@@ -3,14 +3,14 @@
 use crate::alloc::{GlobalAlloc, Layout, System};
 use crate::ptr;
 
-// The minimum alignment guaranteed by the architecture. This value is used to
-// add fast paths for low alignment values.
+// 由体系结构（architecture）保证的最小对齐。该值用于
+// 为较低的对齐值添加快路径（fast path）。
 #[allow(dead_code)]
 const MIN_ALIGN: usize = if cfg!(any(
     all(target_arch = "riscv32", any(target_os = "espidf", target_os = "zkvm")),
     all(target_arch = "xtensa", target_os = "espidf"),
 )) {
-    // The allocator on the esp-idf and zkvm platforms guarantees 4 byte alignment.
+    // esp-idf 与 zkvm 平台上的分配器保证 4 字节对齐。
     4
 } else if cfg!(any(
     target_arch = "x86",
@@ -53,7 +53,7 @@ unsafe fn realloc_fallback(
     old_layout: Layout,
     new_size: usize,
 ) -> *mut u8 {
-    // SAFETY: Docs for GlobalAlloc::realloc require this to be valid
+    // SAFETY: GlobalAlloc::realloc 的文档要求这一点必须有效
     unsafe {
         let new_layout = Layout::from_size_align_unchecked(new_size, old_layout.align());
 

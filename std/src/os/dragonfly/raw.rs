@@ -1,4 +1,4 @@
-//! Dragonfly-specific raw type definitions
+//! Dragonfly 平台特有的原始类型定义
 
 #![stable(feature = "raw_ext", since = "1.1.0")]
 #![deprecated(

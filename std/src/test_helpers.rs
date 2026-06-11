@@ -5,18 +5,15 @@ use crate::panic::Location;
 use crate::path::{Path, PathBuf};
 use crate::{env, fs, thread};
 
-/// Test-only replacement for `rand::thread_rng()`, which is unusable for
-/// us, as we want to allow running stdlib tests on tier-3 targets which may
-/// not have `getrandom` support.
+/// 仅用于测试，替代 `rand::thread_rng()`——后者对我们不可用，因为我们希望
+/// 允许在 tier-3 目标上运行标准库测试，而这些目标可能没有 `getrandom` 支持。
 ///
-/// Does a bit of a song and dance to ensure that the seed is different on
-/// each call (as some tests sadly rely on this), but doesn't try that hard.
+/// 这里做了一点花哨处理，确保每次调用得到的种子都不同（某些测试很遗憾地依赖
+/// 这一点），但也没刻意做得很彻底。
 ///
-/// This is duplicated in the `core`, `alloc` test suites (as well as
-/// `std`'s integration tests), but figuring out a mechanism to share these
-/// seems far more painful than copy-pasting a 7 line function a couple
-/// times, given that even under a perma-unstable feature, I don't think we
-/// want to expose types from `rand` from `std`.
+/// 此函数在 `core`、`alloc` 测试套件（以及 `std` 的集成测试）里都有重复；但要
+/// 设计一套共享机制似乎远比把这 7 行函数复制几遍更麻烦——毕竟即便用一个永久
+/// 不稳定的 feature，我们也不希望从 `std` 暴露 `rand` 里的类型。
 #[track_caller]
 pub(crate) fn test_rng() -> rand_xorshift::XorShiftRng {
     let mut hasher = RandomState::new().build_hasher();
@@ -43,12 +40,11 @@ impl TempDir {
 
 impl Drop for TempDir {
     fn drop(&mut self) {
-        // Gee, seeing how we're testing the fs module I sure hope that we
-        // at least implement this correctly!
+        // 哎，既然我们正在测试 fs 模块，那可真希望这个删除操作本身实现得没问题！
         let TempDir(ref p) = *self;
         let result = fs::remove_dir_all(p);
-        // Avoid panicking while panicking as this causes the process to
-        // immediately abort, without displaying test results.
+        // 避免在 panic 过程中再次 panic，因为那会让进程立即 abort，
+        // 不显示测试结果。
         if !thread::panicking() {
             result.unwrap();
         }

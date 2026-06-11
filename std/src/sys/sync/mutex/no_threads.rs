@@ -1,12 +1,12 @@
 use crate::cell::Cell;
 
 pub struct Mutex {
-    // This platform has no threads, so we can use a Cell here.
+    // 本平台没有线程，所以我们可以在这里使用 Cell。
     locked: Cell<bool>,
 }
 
 unsafe impl Send for Mutex {}
-unsafe impl Sync for Mutex {} // no threads on this platform
+unsafe impl Sync for Mutex {} // 本平台没有线程
 
 impl Mutex {
     #[inline]

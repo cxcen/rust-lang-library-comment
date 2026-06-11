@@ -1,6 +1,6 @@
-//! Zero-capacity channel.
+//! 容量为零的通道（zero-capacity channel）。
 //!
-//! This kind of channel is also known as *rendezvous* channel.
+//! 这种通道也被称为 *rendezvous*（会合）通道。
 
 use super::context::Context;
 use super::error::*;
@@ -14,7 +14,7 @@ use crate::sync::atomic::{Atomic, AtomicBool, Ordering};
 use crate::time::Instant;
 use crate::{fmt, ptr};
 
-/// A pointer to a packet.
+/// 指向一个 packet 的指针。
 pub(crate) struct ZeroToken(*mut ());
 
 impl Default for ZeroToken {
@@ -29,30 +29,30 @@ impl fmt::Debug for ZeroToken {
     }
 }
 
-/// A slot for passing one message from a sender to a receiver.
+/// 一个用于把一条消息从发送者传递给接收者的槽位（packet）。
 struct Packet<T> {
-    /// Equals `true` if the packet is allocated on the stack.
+    /// 如果该 packet 分配在栈上，则等于 `true`。
     on_stack: bool,
 
-    /// Equals `true` once the packet is ready for reading or writing.
+    /// 一旦该 packet 已就绪、可供读取或写入，则等于 `true`。
     ready: Atomic<bool>,
 
-    /// The message.
+    /// 消息本体。
     msg: UnsafeCell<Option<T>>,
 }
 
 impl<T> Packet<T> {
-    /// Creates an empty packet on the stack.
+    /// 在栈上创建一个空的 packet。
     fn empty_on_stack() -> Packet<T> {
         Packet { on_stack: true, ready: AtomicBool::new(false), msg: UnsafeCell::new(None) }
     }
 
-    /// Creates a packet on the stack, containing a message.
+    /// 在栈上创建一个携带消息的 packet。
     fn message_on_stack(msg: T) -> Packet<T> {
         Packet { on_stack: true, ready: AtomicBool::new(false), msg: UnsafeCell::new(Some(msg)) }
     }
 
-    /// Waits until the packet becomes ready for reading or writing.
+    /// 等待直到该 packet 就绪、可供读取或写入。
     fn wait_ready(&self) {
         let backoff = Backoff::new();
         while !self.ready.load(Ordering::Acquire) {
@@ -61,29 +61,29 @@ impl<T> Packet<T> {
     }
 }
 
-/// Inner representation of a zero-capacity channel.
+/// 容量为零的通道的内部表示。
 struct Inner {
-    /// Senders waiting to pair up with a receive operation.
+    /// 正等待与某个接收操作配对的发送者。
     senders: Waker,
 
-    /// Receivers waiting to pair up with a send operation.
+    /// 正等待与某个发送操作配对的接收者。
     receivers: Waker,
 
-    /// Equals `true` when the channel is disconnected.
+    /// 当通道已断连（disconnected）时等于 `true`。
     is_disconnected: bool,
 }
 
-/// Zero-capacity channel.
+/// 容量为零的通道。
 pub(crate) struct Channel<T> {
-    /// Inner representation of the channel.
+    /// 通道的内部表示。
     inner: Mutex<Inner>,
 
-    /// Indicates that dropping a `Channel<T>` may drop values of type `T`.
+    /// 表明丢弃一个 `Channel<T>` 时可能会丢弃类型为 `T` 的值。
     _marker: PhantomData<T>,
 }
 
 impl<T> Channel<T> {
-    /// Constructs a new zero-capacity channel.
+    /// 构造一个新的容量为零的通道。
     pub(crate) fn new() -> Self {
         Channel {
             inner: Mutex::new(Inner {
@@ -95,9 +95,9 @@ impl<T> Channel<T> {
         }
     }
 
-    /// Writes a message into the packet.
+    /// 把一条消息写入 packet。
     pub(crate) unsafe fn write(&self, token: &mut Token, msg: T) -> Result<(), T> {
-        // If there is no packet, the channel is disconnected.
+        // 如果没有 packet，说明通道已断连。
         if token.zero.0.is_null() {
             return Err(msg);
         }
@@ -110,9 +110,9 @@ impl<T> Channel<T> {
         Ok(())
     }
 
-    /// Reads a message from the packet.
+    /// 从 packet 读取一条消息。
     pub(crate) unsafe fn read(&self, token: &mut Token) -> Result<T, ()> {
-        // If there is no packet, the channel is disconnected.
+        // 如果没有 packet，说明通道已断连。
         if token.zero.0.is_null() {
             return Err(());
         }
@@ -120,15 +120,13 @@ impl<T> Channel<T> {
         let packet = unsafe { &*(token.zero.0 as *const Packet<T>) };
 
         if packet.on_stack {
-            // The message has been in the packet from the beginning, so there is no need to wait
-            // for it. However, after reading the message, we need to set `ready` to `true` in
-            // order to signal that the packet can be destroyed.
+            // 消息从一开始就在 packet 里，因此无需等待它。不过，读取消息之后我们需要把
+            // `ready` 设为 `true`，以示意该 packet 可以被销毁了。
             let msg = unsafe { packet.msg.get().replace(None) }.unwrap();
             packet.ready.store(true, Ordering::Release);
             Ok(msg)
         } else {
-            // Wait until the message becomes available, then read it and destroy the
-            // heap-allocated packet.
+            // 等待直到消息变为可用，然后读取它，并销毁这个在堆上分配的 packet。
             packet.wait_ready();
             unsafe {
                 let msg = packet.msg.get().replace(None).unwrap();
@@ -138,12 +136,12 @@ impl<T> Channel<T> {
         }
     }
 
-    /// Attempts to send a message into the channel.
+    /// 尝试向通道发送一条消息。
     pub(crate) fn try_send(&self, msg: T) -> Result<(), TrySendError<T>> {
         let token = &mut Token::default();
         let mut inner = self.inner.lock().unwrap();
 
-        // If there's a waiting receiver, pair up with it.
+        // 如果有一个正在等待的接收者，就与它配对。
         if let Some(operation) = inner.receivers.try_select() {
             token.zero.0 = operation.packet;
             drop(inner);
@@ -158,7 +156,7 @@ impl<T> Channel<T> {
         }
     }
 
-    /// Sends a message into the channel.
+    /// 向通道发送一条消息。
     pub(crate) fn send(
         &self,
         msg: T,
@@ -167,7 +165,7 @@ impl<T> Channel<T> {
         let token = &mut Token::default();
         let mut inner = self.inner.lock().unwrap();
 
-        // If there's a waiting receiver, pair up with it.
+        // 如果有一个正在等待的接收者，就与它配对。
         if let Some(operation) = inner.receivers.try_select() {
             token.zero.0 = operation.packet;
             drop(inner);
@@ -182,15 +180,15 @@ impl<T> Channel<T> {
         }
 
         Context::with(|cx| {
-            // Prepare for blocking until a receiver wakes us up.
+            // 准备阻塞，直到某个接收者把我们唤醒。
             let oper = Operation::hook(token);
             let mut packet = Packet::<T>::message_on_stack(msg);
             inner.senders.register_with_packet(oper, (&raw mut packet) as *mut (), cx);
             inner.receivers.notify();
             drop(inner);
 
-            // Block the current thread.
-            // SAFETY: the context belongs to the current thread.
+            // 阻塞当前线程。
+            // SAFETY: 该上下文属于当前线程。
             let sel = unsafe { cx.wait_until(deadline) };
 
             match sel {
@@ -206,7 +204,7 @@ impl<T> Channel<T> {
                     Err(SendTimeoutError::Disconnected(msg))
                 }
                 Selected::Operation(_) => {
-                    // Wait until the message is read, then drop the packet.
+                    // 等待直到消息被读走，然后丢弃该 packet。
                     packet.wait_ready();
                     Ok(())
                 }
@@ -214,12 +212,12 @@ impl<T> Channel<T> {
         })
     }
 
-    /// Attempts to receive a message without blocking.
+    /// 尝试以非阻塞方式接收一条消息。
     pub(crate) fn try_recv(&self) -> Result<T, TryRecvError> {
         let token = &mut Token::default();
         let mut inner = self.inner.lock().unwrap();
 
-        // If there's a waiting sender, pair up with it.
+        // 如果有一个正在等待的发送者，就与它配对。
         if let Some(operation) = inner.senders.try_select() {
             token.zero.0 = operation.packet;
             drop(inner);
@@ -231,12 +229,12 @@ impl<T> Channel<T> {
         }
     }
 
-    /// Receives a message from the channel.
+    /// 从通道接收一条消息。
     pub(crate) fn recv(&self, deadline: Option<Instant>) -> Result<T, RecvTimeoutError> {
         let token = &mut Token::default();
         let mut inner = self.inner.lock().unwrap();
 
-        // If there's a waiting sender, pair up with it.
+        // 如果有一个正在等待的发送者，就与它配对。
         if let Some(operation) = inner.senders.try_select() {
             token.zero.0 = operation.packet;
             drop(inner);
@@ -250,15 +248,15 @@ impl<T> Channel<T> {
         }
 
         Context::with(|cx| {
-            // Prepare for blocking until a sender wakes us up.
+            // 准备阻塞，直到某个发送者把我们唤醒。
             let oper = Operation::hook(token);
             let mut packet = Packet::<T>::empty_on_stack();
             inner.receivers.register_with_packet(oper, (&raw mut packet) as *mut (), cx);
             inner.senders.notify();
             drop(inner);
 
-            // Block the current thread.
-            // SAFETY: the context belongs to the current thread.
+            // 阻塞当前线程。
+            // SAFETY: 该上下文属于当前线程。
             let sel = unsafe { cx.wait_until(deadline) };
 
             match sel {
@@ -272,7 +270,7 @@ impl<T> Channel<T> {
                     Err(RecvTimeoutError::Disconnected)
                 }
                 Selected::Operation(_) => {
-                    // Wait until the message is provided, then read it.
+                    // 等待直到消息被提供，然后读取它。
                     packet.wait_ready();
                     unsafe { Ok(packet.msg.get().replace(None).unwrap()) }
                 }
@@ -280,9 +278,9 @@ impl<T> Channel<T> {
         })
     }
 
-    /// Disconnects the channel and wakes up all blocked senders and receivers.
+    /// 断开（disconnect）通道，并唤醒所有被阻塞的发送者和接收者。
     ///
-    /// Returns `true` if this call disconnected the channel.
+    /// 如果本次调用使通道断连，返回 `true`。
     pub(crate) fn disconnect(&self) -> bool {
         let mut inner = self.inner.lock().unwrap();
 
@@ -296,23 +294,23 @@ impl<T> Channel<T> {
         }
     }
 
-    /// Returns the current number of messages inside the channel.
+    /// 返回通道中当前的消息数量。
     pub(crate) fn len(&self) -> usize {
         0
     }
 
-    /// Returns the capacity of the channel.
-    #[allow(clippy::unnecessary_wraps)] // This is intentional.
+    /// 返回通道的容量。
+    #[allow(clippy::unnecessary_wraps)] // 这是有意为之。
     pub(crate) fn capacity(&self) -> Option<usize> {
         Some(0)
     }
 
-    /// Returns `true` if the channel is empty.
+    /// 如果通道为空，返回 `true`。
     pub(crate) fn is_empty(&self) -> bool {
         true
     }
 
-    /// Returns `true` if the channel is full.
+    /// 如果通道已满，返回 `true`。
     pub(crate) fn is_full(&self) -> bool {
         true
     }

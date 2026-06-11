@@ -1,78 +1,70 @@
-//! Efficient read-write locking without `pthread_rwlock_t`.
+//! 不依赖 `pthread_rwlock_t` 的高效读写锁。
 //!
-//! The readers-writer lock provided by the `pthread` library has a number of problems which make it
-//! a suboptimal choice for `std`:
+//! `pthread` 库提供的读写锁存在若干问题，使其对 `std` 而言并非最佳选择：
 //!
-//! * It is non-movable, so it needs to be allocated (lazily, to make the constructor `const`).
-//! * `pthread` is an external library, meaning the fast path of acquiring an uncontended lock
-//! cannot be inlined.
-//! * Some platforms (at least glibc before version 2.25) have buggy implementations that can easily
-//! lead to undefined behaviour in safe Rust code when not properly guarded against.
-//! * On some platforms (e.g. macOS), the lock is very slow.
+//! * 它不可移动（non-movable），因此需要被分配（为了让构造函数是 `const`，
+//! 采用惰性分配）。
+//! * `pthread` 是一个外部库，这意味着「获取一个无争用锁」这条快速路径无法被内联。
+//! * 某些平台（至少 2.25 之前版本的 glibc）的实现存在 bug，若未妥善防护，
+//! 很容易在安全的 Rust 代码中导致未定义行为。
+//! * 在某些平台上（例如 macOS），该锁非常慢。
 //!
-//! Therefore, we implement our own [`RwLock`]! Naively, one might reach for a spinlock, but those
-//! can be quite [problematic] when the lock is contended.
+//! 因此，我们实现了自己的 [`RwLock`]！最朴素的做法是直接用自旋锁（spinlock），
+//! 但当锁存在争用时，自旋锁可能相当 [有问题][problematic]。
 //!
-//! Instead, this [`RwLock`] copies its implementation strategy from the Windows [SRWLOCK] and the
-//! [usync] library implementations.
+//! 我们的 [`RwLock`] 转而借鉴了 Windows [SRWLOCK] 和 [usync] 库实现所采用的策略。
 //!
-//! Spinning is still used for the fast path, but it is bounded: after spinning fails, threads will
-//! locklessly add an information structure ([`Node`]) containing a [`Thread`] handle into a queue
-//! of waiters associated with the lock. The lock owner, upon releasing the lock, will scan through
-//! the queue and wake up threads as appropriate, and the newly-awoken threads will then try to
-//! acquire the lock themselves.
+//! 快速路径仍然使用自旋，但它是有界的：自旋失败后，线程会以无锁（lockless）方式
+//! 把一个信息结构体（[`Node`]，内含一个 [`Thread`] 句柄）加入到与该锁关联的等待者
+//! 队列中。锁的持有者在释放锁时，会扫描这个队列并酌情唤醒线程，而新被唤醒的线程
+//! 随后会自行尝试获取锁。
 //!
-//! The resulting [`RwLock`] is:
+//! 由此得到的 [`RwLock`] 具备以下特性：
 //!
-//! * adaptive, since it spins before doing any heavyweight parking operations
-//! * allocation-free, modulo the per-thread [`Thread`] handle, which is allocated anyways when
-//! using threads created by `std`
-//! * writer-preferring, even if some readers may still slip through
-//! * unfair, which reduces context-switching and thus drastically improves performance
+//! * 自适应（adaptive）：在执行任何重量级的 park 操作之前会先自旋
+//! * 免分配（allocation-free）：除每线程的 [`Thread`] 句柄之外不另行分配，而该句柄
+//! 在使用 `std` 创建的线程时本就会被分配
+//! * 偏向写者（writer-preferring）：尽管仍可能有少数读者趁机插入
+//! * 不公平（unfair）：这减少了上下文切换，从而大幅提升性能
 //!
-//! and also quite fast in most cases.
+//! 在大多数情况下它也相当快。
 //!
 //! [problematic]: https://matklad.github.io/2020/01/02/spinlocks-considered-harmful.html
 //! [SRWLOCK]: https://learn.microsoft.com/en-us/windows/win32/sync/slim-reader-writer--srw--locks
 //! [usync]: https://crates.io/crates/usync
 //!
-//! # Implementation
+//! # 实现（Implementation）
 //!
-//! ## State
+//! ## 状态（State）
 //!
-//! A single [`AtomicPtr`] is used as state variable. The lowest four bits are used to indicate the
-//! meaning of the remaining bits:
+//! 用一个 [`AtomicPtr`] 作为状态变量。最低的四个比特用来指示其余比特的含义：
 //!
-//! | [`LOCKED`] | [`QUEUED`] | [`QUEUE_LOCKED`] | [`DOWNGRADED`] | Remaining    |                                                                                                                             |
+//! | [`LOCKED`] | [`QUEUED`] | [`QUEUE_LOCKED`] | [`DOWNGRADED`] | 剩余位（Remaining） |                                                                                                                             |
 //! |------------|:-----------|:-----------------|:---------------|:-------------|:----------------------------------------------------------------------------------------------------------------------------|
-//! | 0          | 0          | 0                | 0              | 0            | The lock is unlocked, no threads are waiting                                                                                |
-//! | 1          | 0          | 0                | 0              | 0            | The lock is write-locked, no threads waiting                                                                                |
-//! | 1          | 0          | 0                | 0              | n > 0        | The lock is read-locked with n readers                                                                                      |
-//! | 0          | 1          | *                | 0              | `*mut Node`  | The lock is unlocked, but some threads are waiting. Only writers may lock the lock                                          |
-//! | 1          | 1          | *                | *              | `*mut Node`  | The lock is locked, but some threads are waiting. If the lock is read-locked, the last queue node contains the reader count |
+//! | 0          | 0          | 0                | 0              | 0            | 锁处于未锁定状态，没有线程在等待                                                                                |
+//! | 1          | 0          | 0                | 0              | 0            | 锁处于写锁定状态，没有线程在等待                                                                                |
+//! | 1          | 0          | 0                | 0              | n > 0        | 锁处于读锁定状态，有 n 个读者                                                                                      |
+//! | 0          | 1          | *                | 0              | `*mut Node`  | 锁处于未锁定状态，但有一些线程在等待。只有写者可以对锁加锁                                          |
+//! | 1          | 1          | *                | *              | `*mut Node`  | 锁处于锁定状态，但有一些线程在等待。如果锁处于读锁定状态，则队列的最后一个节点存放读者计数 |
 //!
-//! ## Waiter Queue
+//! ## 等待者队列（Waiter Queue）
 //!
-//! When threads are waiting on the lock (the `QUEUE` bit is set), the lock state points to a queue
-//! of waiters, which is implemented as a linked list of nodes stored on the stack to avoid memory
-//! allocation.
+//! 当有线程在等待该锁时（`QUEUE` 位被置位），锁状态指向一个等待者队列，它被实现为
+//! 一个存放在栈上的节点链表，以避免内存分配。
 //!
-//! To enable lock-free enqueuing of new nodes to the queue, the linked list is singly-linked upon
-//! creation.
+//! 为了能够无锁地把新节点入队，该链表在创建时是单向链接（singly-linked）的。
 //!
-//! When the lock is read-locked, the lock count (number of readers) is stored in the last link of
-//! the queue. Threads have to traverse the queue to find the last element upon releasing the lock.
-//! To avoid having to traverse the entire list every time we want to access the reader count, a
-//! pointer to the found tail is cached in the (current) first element of the queue.
+//! 当锁处于读锁定状态时，锁计数（读者数量）存放在队列的最后一个链节中。线程在释放锁
+//! 时必须遍历队列以找到最后一个元素。为了避免每次想访问读者计数时都要遍历整个链表，
+//! 我们会把找到的尾节点指针缓存在队列（当前的）第一个元素中。
 //!
-//! Also, while the lock is unfair for performance reasons, it is still best to wake the tail node
-//! first (FIFO ordering). Since we always pop nodes off the tail of the queue, we must store
-//! backlinks to previous nodes so that we can update the `tail` field of the (current) first
-//! element of the queue. Adding backlinks is done at the same time as finding the tail (via the
-//! function [`find_tail_and_add_backlinks`]), and thus encountering a set tail field on a node
-//! indicates that all following nodes in the queue are initialized.
+//! 此外，尽管出于性能原因这个锁是不公平的，但最好还是优先唤醒尾节点（FIFO 顺序）。
+//! 由于我们总是从队列尾部弹出节点，因此我们必须存储指向前驱节点的反向链接
+//!（backlink），这样才能更新队列（当前的）第一个元素的 `tail` 字段。添加反向链接
+//! 与查找尾节点是同时进行的（通过函数 [`find_tail_and_add_backlinks`]），因此当
+//! 在某个节点上遇到一个已设置的 tail 字段时，就表明队列中其后的所有节点都已初始化。
 //!
-//! TLDR: Here's a diagram of what the queue looks like:
+//! 太长不看（TLDR）：下面是队列大致样子的示意图：
 //!
 //! ```text
 //! state
@@ -88,27 +80,24 @@
 //!                                  tail
 //! ```
 //!
-//! Invariants:
-//! 1. At least one node must contain a non-null, current `tail` field.
-//! 2. The first non-null `tail` field must be valid and current.
-//! 3. All nodes preceding this node must have a correct, non-null `next` field.
-//! 4. All nodes following this node must have a correct, non-null `prev` field.
+//! 不变量（Invariants）：
+//! 1. 至少有一个节点必须含有一个非空且最新的 `tail` 字段。
+//! 2. 第一个非空的 `tail` 字段必须有效且最新。
+//! 3. 该节点之前的所有节点都必须含有正确且非空的 `next` 字段。
+//! 4. 该节点之后的所有节点都必须含有正确且非空的 `prev` 字段。
 //!
-//! Access to the queue is controlled by the `QUEUE_LOCKED` bit. Threads will try to set this bit
-//! in two cases: one is when a thread enqueues itself and eagerly adds backlinks to the queue
-//! (which drastically improves performance), and the other is after a thread unlocks the lock to
-//! wake up the next waiter(s).
+//! 对队列的访问由 `QUEUE_LOCKED` 位控制。线程会在两种情况下尝试置位该比特：一种是
+//! 线程把自己入队并主动为队列添加反向链接时（这能大幅提升性能），另一种是线程解锁
+//! 之后要唤醒下一个（或多个）等待者时。
 //!
-//! `QUEUE_LOCKED` is set atomically at the same time as the enqueuing/unlocking operations. The
-//! thread releasing the `QUEUE_LOCKED` bit will check the state of the lock (in particular, whether
-//! a downgrade was requested using the [`DOWNGRADED`] bit) and wake up waiters as appropriate. This
-//! guarantees forward progress even if the unlocking thread could not acquire the queue lock.
+//! `QUEUE_LOCKED` 与入队/解锁操作同时被原子地置位。释放 `QUEUE_LOCKED` 位的线程
+//! 会检查锁的状态（特别是，是否通过 [`DOWNGRADED`] 位请求了一次降级），并酌情唤醒
+//! 等待者。这保证了即使解锁线程未能获取队列锁，整体也能向前推进（forward progress）。
 //!
-//! ## Memory Orderings
+//! ## 内存序（Memory Orderings）
 //!
-//! To properly synchronize changes to the data protected by the lock, the lock is acquired and
-//! released with [`Acquire`] and [`Release`] ordering, respectively. To propagate the
-//! initialization of nodes, changes to the queue lock are also performed using these orderings.
+//! 为了正确同步对受锁保护数据的改动，加锁和解锁分别使用 [`Acquire`] 和 [`Release`]
+//! 内存序。为了传播节点的初始化，对队列锁的改动也使用这些内存序。
 
 #![forbid(unsafe_op_in_unsafe_fn)]
 
@@ -120,9 +109,9 @@ use crate::sync::atomic::Ordering::{AcqRel, Acquire, Relaxed, Release};
 use crate::sync::atomic::{Atomic, AtomicBool, AtomicPtr};
 use crate::thread::{self, Thread};
 
-/// The atomic lock state.
+/// 原子的锁状态。
 type AtomicState = Atomic<State>;
-/// The inner lock state.
+/// 内部的锁状态。
 type State = *mut ();
 
 const UNLOCKED: State = without_provenance_mut(0);
@@ -134,19 +123,18 @@ const SINGLE: usize = 1 << 4;
 const STATE: usize = DOWNGRADED | QUEUE_LOCKED | QUEUED | LOCKED;
 const NODE_MASK: usize = !STATE;
 
-/// Locking uses exponential backoff. `SPIN_COUNT` indicates how many times the locking operation
-/// will be retried.
+/// 加锁采用指数退避（exponential backoff）。`SPIN_COUNT` 表示加锁操作会重试多少次。
 ///
-/// In other words, `spin_loop` will be called `2.pow(SPIN_COUNT) - 1` times.
+/// 换句话说，`spin_loop` 会被调用 `2.pow(SPIN_COUNT) - 1` 次。
 const SPIN_COUNT: usize = 7;
 
-/// Marks the state as write-locked, if possible.
+/// 在可能的情况下，把状态标记为写锁定。
 #[inline]
 fn write_lock(state: State) -> Option<State> {
     if state.addr() & LOCKED == 0 { Some(state.map_addr(|addr| addr | LOCKED)) } else { None }
 }
 
-/// Marks the state as read-locked, if possible.
+/// 在可能的情况下，把状态标记为读锁定。
 #[inline]
 fn read_lock(state: State) -> Option<State> {
     if state.addr() & QUEUED == 0 && state.addr() != LOCKED {
@@ -156,24 +144,23 @@ fn read_lock(state: State) -> Option<State> {
     }
 }
 
-/// Converts a `State` into a `Node` by masking out the bottom bits of the state, assuming that the
-/// state points to a queue node.
+/// 在假定 state 指向一个队列节点的前提下，通过掩掉 state 的低位比特，把 `State`
+/// 转换为一个 `Node`。
 ///
-/// # Safety
+/// # 安全性(Safety）
 ///
-/// The state must contain a valid pointer to a queue node.
+/// state 必须含有一个指向有效队列节点的有效指针。
 #[inline]
 unsafe fn to_node(state: State) -> NonNull<Node> {
     unsafe { NonNull::new_unchecked(state.mask(NODE_MASK)).cast() }
 }
 
-/// The representation of a thread waiting on the lock queue.
+/// 一个正在锁队列上等待的线程的表示。
 ///
-/// We initialize these `Node`s on thread execution stacks to avoid allocation.
+/// 我们把这些 `Node` 初始化在线程的执行栈上，以避免分配。
 ///
-/// Note that we need an alignment of 16 to ensure that the last 4 bits of any
-/// pointers to `Node`s are always zeroed (for the bit flags described in the
-/// module-level documentation).
+/// 注意我们需要 16 字节的对齐，以确保任何指向 `Node` 的指针其最低 4 个比特
+/// 始终为零（用于模块级文档中描述的那些位标志）。
 #[repr(align(16))]
 struct Node {
     next: AtomicLink,
@@ -184,7 +171,7 @@ struct Node {
     completed: Atomic<bool>,
 }
 
-/// An atomic node pointer with relaxed operations.
+/// 一个使用 relaxed 操作的原子节点指针。
 struct AtomicLink(Atomic<*mut Node>);
 
 impl AtomicLink {
@@ -202,7 +189,7 @@ impl AtomicLink {
 }
 
 impl Node {
-    /// Creates a new queue node.
+    /// 创建一个新的队列节点。
     fn new(write: bool) -> Node {
         Node {
             next: AtomicLink::new(None),
@@ -214,18 +201,18 @@ impl Node {
         }
     }
 
-    /// Prepare this node for waiting.
+    /// 为等待准备该节点。
     fn prepare(&mut self) {
-        // Fall back to creating an unnamed `Thread` handle to allow locking in TLS destructors.
+        // 回退为创建一个未命名的 `Thread` 句柄，以允许在 TLS 析构函数中加锁。
         self.thread.get_or_init(thread::current_or_unnamed);
         self.completed = AtomicBool::new(false);
     }
 
-    /// Wait until this node is marked as [`complete`](Node::complete)d by another thread.
+    /// 等待，直到该节点被另一个线程标记为 [`complete`](Node::complete)（已完成）。
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// May only be called from the thread that created the node.
+    /// 只能从创建该节点的那个线程调用。
     unsafe fn wait(&self) {
         while !self.completed.load(Acquire) {
             unsafe {
@@ -234,14 +221,14 @@ impl Node {
         }
     }
 
-    /// Atomically mark this node as completed.
+    /// 原子地把该节点标记为已完成。
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// `node` must point to a valid `Node`, and the node may not outlive this call.
+    /// `node` 必须指向一个有效的 `Node`，且该节点不得在本次调用之后仍然存活。
     unsafe fn complete(node: NonNull<Node>) {
-        // Since the node may be destroyed immediately after the completed flag is set, clone the
-        // thread handle before that.
+        // 由于设置 completed 标志后该节点可能立即被销毁，所以要在那之前先克隆
+        // 线程句柄。
         let thread = unsafe { node.as_ref().thread.get().unwrap().clone() };
         unsafe {
             node.as_ref().completed.store(true, Release);
@@ -250,28 +237,27 @@ impl Node {
     }
 }
 
-/// Traverse the queue and find the tail, adding backlinks to the queue while traversing.
+/// 遍历队列以找到尾节点，并在遍历的同时为队列添加反向链接（backlink）。
 ///
-/// This may be called from multiple threads at the same time as long as the queue is not being
-/// modified (this happens when unlocking multiple readers).
+/// 只要队列没有被修改，本函数可以同时从多个线程调用（这种情况发生在解锁多个读者时）。
 ///
-/// # Safety
+/// # 安全性(Safety）
 ///
-/// * `head` must point to a node in a valid queue.
-/// * `head` must be in front of the previous head node that was used to perform the last removal.
-/// * The part of the queue starting with `head` must not be modified during this call.
+/// * `head` 必须指向一个有效队列中的节点。
+/// * `head` 必须位于「上一次移除操作所使用的前一个头节点」之前。
+/// * 在本次调用期间，以 `head` 开头的那部分队列不得被修改。
 unsafe fn find_tail_and_add_backlinks(head: NonNull<Node>) -> NonNull<Node> {
     let mut current = head;
 
-    // Traverse the queue until we find a node that has a set `tail`.
+    // 遍历队列，直到找到一个已设置了 `tail` 的节点。
     let tail = loop {
         let c = unsafe { current.as_ref() };
         if let Some(tail) = c.tail.get() {
             break tail;
         }
 
-        // SAFETY: All `next` fields before the first node with a set `tail` are non-null and valid
-        // (by Invariant 3).
+        // SAFETY: 在第一个设置了 `tail` 的节点之前，所有的 `next` 字段都非空且有效
+        //（根据不变量 3）。
         unsafe {
             let next = c.next.get().unwrap_unchecked();
             next.as_ref().prev.set(Some(current));
@@ -285,16 +271,16 @@ unsafe fn find_tail_and_add_backlinks(head: NonNull<Node>) -> NonNull<Node> {
     }
 }
 
-/// [`complete`](Node::complete)s all threads in the queue ending with `tail`.
+/// 把队列中以 `tail` 结尾的所有线程都 [`complete`](Node::complete)（标记为完成）。
 ///
-/// # Safety
+/// # 安全性(Safety）
 ///
-/// * `tail` must be a valid tail of a fully linked queue.
-/// * The current thread must have exclusive access to that queue.
+/// * `tail` 必须是一个完全链接好的队列的有效尾节点。
+/// * 当前线程必须对该队列拥有独占访问权。
 unsafe fn complete_all(tail: NonNull<Node>) {
     let mut current = tail;
 
-    // Traverse backwards through the queue (FIFO) and `complete` all of the nodes.
+    // 反向遍历队列（FIFO），并 `complete` 其中所有节点。
     loop {
         let prev = unsafe { current.as_ref().prev.get() };
         unsafe {
@@ -307,7 +293,7 @@ unsafe fn complete_all(tail: NonNull<Node>) {
     }
 }
 
-/// A type to guard against the unwinds of stacks that nodes are located on due to panics.
+/// 一个守卫类型，用于防范因 panic 导致节点所在栈被展开（unwind）。
 struct PanicGuard;
 
 impl Drop for PanicGuard {
@@ -316,7 +302,7 @@ impl Drop for PanicGuard {
     }
 }
 
-/// The public inner `RwLock` type.
+/// 对外暴露的内部 `RwLock` 类型。
 pub struct RwLock {
     state: AtomicState,
 }
@@ -341,10 +327,10 @@ impl RwLock {
 
     #[inline]
     pub fn try_write(&self) -> bool {
-        // Atomically set the `LOCKED` bit. This is lowered to a single atomic instruction on most
-        // modern processors (e.g. "lock bts" on x86 and "ldseta" on modern AArch64), and therefore
-        // is more efficient than `fetch_update(lock(true))`, which can spuriously fail if a new
-        // node is appended to the queue.
+        // 原子地置位 `LOCKED` 比特。在大多数现代处理器上，这会被降级（lower）为
+        // 一条原子指令（例如 x86 上的 "lock bts"、现代 AArch64 上的 "ldseta"），
+        // 因此比 `fetch_update(lock(true))` 更高效——后者在有新节点被追加到队列时
+        // 可能会虚假失败（spuriously fail）。
         self.state.fetch_or(LOCKED, Acquire).addr() & LOCKED == 0
     }
 
@@ -363,17 +349,17 @@ impl RwLock {
         let update_fn = if write { write_lock } else { read_lock };
 
         loop {
-            // Optimistically update the state.
+            // 乐观地更新状态。
             if let Some(next) = update_fn(state) {
-                // The lock is available, try locking it.
+                // 锁可用，尝试加锁。
                 match self.state.compare_exchange_weak(state, next, Acquire, Relaxed) {
                     Ok(_) => return,
                     Err(new) => state = new,
                 }
                 continue;
             } else if state.addr() & QUEUED == 0 && count < SPIN_COUNT {
-                // If the lock is not available and no threads are queued, optimistically spin for a
-                // while, using exponential backoff to decrease cache contention.
+                // 如果锁不可用且没有线程在排队，则乐观地自旋一会儿，
+                // 使用指数退避（exponential backoff）以减少缓存争用。
                 for _ in 0..(1 << count) {
                     spin_loop();
                 }
@@ -381,71 +367,69 @@ impl RwLock {
                 count += 1;
                 continue;
             }
-            // The optimistic paths did not succeed, so fall back to parking the thread.
+            // 乐观路径均未成功，于是回退为把线程 park 起来。
 
-            // First, prepare the node.
+            // 首先，准备好节点。
             node.prepare();
 
-            // If there are threads queued, this will set the `next` field to be a pointer to the
-            // first node in the queue.
-            // If the state is read-locked, this will set `next` to the lock count.
-            // If it is write-locked, it will set `next` to zero.
+            // 如果有线程在排队，这会把 `next` 字段设置为指向队列中第一个节点的指针。
+            // 如果状态是读锁定，这会把 `next` 设置为锁计数。
+            // 如果是写锁定，则会把 `next` 设置为零。
             node.next.0 = AtomicPtr::new(state.mask(NODE_MASK).cast());
             node.prev = AtomicLink::new(None);
 
-            // Set the `QUEUED` bit and preserve the `LOCKED` and `DOWNGRADED` bit.
+            // 置位 `QUEUED` 比特，并保留 `LOCKED` 和 `DOWNGRADED` 比特。
             let mut next = ptr::from_ref(&node)
                 .map_addr(|addr| addr | QUEUED | (state.addr() & (DOWNGRADED | LOCKED)))
                 as State;
 
             let mut is_queue_locked = false;
             if state.addr() & QUEUED == 0 {
-                // If this is the first node in the queue, set the `tail` field to the node itself
-                // to ensure there is a valid `tail` field in the queue (Invariants 1 & 2).
-                // This needs to use `set` to avoid invalidating the new pointer.
+                // 如果这是队列中的第一个节点，把 `tail` 字段设为节点自身，
+                // 以确保队列中存在一个有效的 `tail` 字段（不变量 1 和 2）。
+                // 这里需要用 `set`，以避免使新指针失效。
                 node.tail.set(Some(NonNull::from(&node)));
             } else {
-                // Otherwise, the tail of the queue is not known.
+                // 否则，队列的尾节点是未知的。
                 node.tail.set(None);
 
-                // Try locking the queue to eagerly add backlinks.
+                // 尝试锁住队列，以便主动添加反向链接（backlink）。
                 next = next.map_addr(|addr| addr | QUEUE_LOCKED);
 
-                // Track if we changed the `QUEUE_LOCKED` bit from off to on.
+                // 记录我们是否把 `QUEUE_LOCKED` 比特从关变为开。
                 is_queue_locked = state.addr() & QUEUE_LOCKED == 0;
             }
 
-            // Register the node, using release ordering to propagate our changes to the waking
-            // thread.
+            // 注册该节点，使用 release 内存序把我们的改动传播给唤醒方线程。
             if let Err(new) = self.state.compare_exchange_weak(state, next, AcqRel, Relaxed) {
-                // The state has changed, just try again.
+                // 状态已改变，重试即可。
                 state = new;
                 continue;
             }
-            // The node has been registered, so the structure must not be mutably accessed or
-            // destroyed while other threads may be accessing it.
+            // 节点已被注册，因此在其他线程可能访问该结构体期间，不得对其进行可变
+            // 访问或销毁。
 
-            // Guard against unwinds using a `PanicGuard` that aborts when dropped.
+            // 用一个在 drop 时会 abort 的 `PanicGuard` 来防范栈展开（unwind）。
             let guard = PanicGuard;
 
-            // If the current thread locked the queue, unlock it to eagerly adding backlinks.
+            // 如果当前线程锁住了队列，则解锁它，以便主动添加反向链接。
             if is_queue_locked {
-                // SAFETY: This thread set the `QUEUE_LOCKED` bit above.
+                // SAFETY: 本线程在上面置位了 `QUEUE_LOCKED` 比特。
                 unsafe {
                     self.unlock_queue(next);
                 }
             }
 
-            // Wait until the node is removed from the queue.
-            // SAFETY: the node was created by the current thread.
+            // 等待，直到该节点被从队列中移除。
+            // SAFETY: 该节点是由当前线程创建的。
             unsafe {
                 node.wait();
             }
 
-            // The node was removed from the queue, disarm the guard.
+            // 节点已从队列中移除，解除该守卫的武装（disarm）。
             mem::forget(guard);
 
-            // Reload the state and try again.
+            // 重新加载状态并重试。
             state = self.state.load(Relaxed);
             count = 0;
         }
@@ -455,51 +439,47 @@ impl RwLock {
     pub unsafe fn read_unlock(&self) {
         match self.state.fetch_update(Release, Acquire, |state| {
             if state.addr() & QUEUED == 0 {
-                // If there are no threads queued, simply decrement the reader count.
+                // 如果没有线程在排队，只需简单地把读者计数减一。
                 let count = state.addr() - (SINGLE | LOCKED);
                 Some(if count > 0 { without_provenance_mut(count | LOCKED) } else { UNLOCKED })
             } else if state.addr() & DOWNGRADED != 0 {
-                // This thread used to have exclusive access, but requested a downgrade. This has
-                // not been completed yet, so we still have exclusive access.
-                // Retract the downgrade request and unlock, but leave waking up new threads to the
-                // thread that already holds the queue lock.
+                // 这个线程曾经拥有独占访问权，但请求了一次降级。该降级尚未完成，
+                // 因此我们仍然拥有独占访问权。
+                // 撤销降级请求并解锁，但把唤醒新线程的工作留给已经持有队列锁的那个线程。
                 Some(state.mask(!(DOWNGRADED | LOCKED)))
             } else {
                 None
             }
         }) {
             Ok(_) => {}
-            // There are waiters queued and the lock count was moved to the tail of the queue.
+            // 有等待者在排队，且锁计数已被移动到队列尾部。
             Err(state) => unsafe { self.read_unlock_contended(state) },
         }
     }
 
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// * There must be threads queued on the lock.
-    /// * `state` must be a pointer to a node in a valid queue.
-    /// * There cannot be a `downgrade` in progress.
+    /// * 锁上必须有线程在排队。
+    /// * `state` 必须是一个指向有效队列中某节点的指针。
+    /// * 不能有正在进行中的 `downgrade`。
     #[cold]
     unsafe fn read_unlock_contended(&self, state: State) {
         // SAFETY:
-        // The state was observed with acquire ordering above, so the current thread will have
-        // observed all node initializations.
-        // We also know that no threads can be modifying the queue starting at `state`: because new
-        // read-locks cannot be acquired while there are any threads queued on the lock, all
-        // queue-lock owners will observe a set `LOCKED` bit in `self.state` and will not modify
-        // the queue. The other case that a thread could modify the queue is if a downgrade is in
-        // progress (removal of the entire queue), but since that is part of this function's safety
-        // contract, we can guarantee that no other threads can modify the queue.
+        // 上面是以 acquire 内存序观测到该状态的，所以当前线程将已观测到所有节点的初始化。
+        // 我们还知道没有线程能够修改以 `state` 开头的队列：因为只要锁上有任何线程在
+        // 排队就无法获取新的读锁，所有队列锁的持有者都会在 `self.state` 中观测到一个
+        // 已置位的 `LOCKED` 比特，从而不会修改队列。线程可能修改队列的另一种情形是
+        // 正有一个降级在进行中（即移除整个队列），但既然那已属于本函数安全契约的一部分，
+        // 我们就可以保证没有其他线程能修改队列。
         let tail = unsafe { find_tail_and_add_backlinks(to_node(state)).as_ref() };
 
-        // The lock count is stored in the `next` field of `tail`.
-        // Decrement it, making sure to observe all changes made to the queue by the other lock
-        // owners by using acquire-release ordering.
+        // 锁计数存放在 `tail` 的 `next` 字段中。
+        // 把它减一，并通过使用 acquire-release 内存序来确保观测到其他锁持有者对队列
+        // 所做的全部改动。
         let was_last = tail.next.0.fetch_byte_sub(SINGLE, AcqRel).addr() - SINGLE == 0;
         if was_last {
-            // SAFETY: Other threads cannot read-lock while threads are queued. Also, the `LOCKED`
-            // bit is still set, so there are no writers. Thus the current thread exclusively owns
-            // this lock, even though it is a reader.
+            // SAFETY: 当有线程在排队时，其他线程无法加读锁。此外，`LOCKED` 比特仍然
+            // 被置位，因此没有写者。于是当前线程独占地拥有这个锁，尽管它是一个读者。
             unsafe { self.unlock_contended(state) }
         }
     }
@@ -509,29 +489,29 @@ impl RwLock {
         if let Err(state) =
             self.state.compare_exchange(without_provenance_mut(LOCKED), UNLOCKED, Release, Relaxed)
         {
-            // SAFETY: Since other threads cannot acquire the lock, the state can only have changed
-            // because there are threads queued on the lock.
+            // SAFETY: 由于其他线程无法获取该锁，状态发生改变的唯一原因只能是
+            // 锁上有线程在排队。
             unsafe { self.unlock_contended(state) }
         }
     }
 
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// * The lock must be exclusively owned by this thread.
-    /// * There must be threads queued on the lock.
-    /// * `state` must be a pointer to a node in a valid queue.
-    /// * There cannot be a `downgrade` in progress.
+    /// * 锁必须由当前线程独占持有。
+    /// * 锁上必须有线程在排队。
+    /// * `state` 必须是一个指向有效队列中某节点的指针。
+    /// * 不能有正在进行中的 `downgrade`。
     #[cold]
     unsafe fn unlock_contended(&self, state: State) {
         debug_assert_eq!(state.addr() & (DOWNGRADED | QUEUED | LOCKED), QUEUED | LOCKED);
 
         let mut current = state;
 
-        // We want to atomically release the lock and try to acquire the queue lock.
+        // 我们希望原子地释放锁，并尝试获取队列锁。
         loop {
-            // First check if the queue lock is already held.
+            // 首先检查队列锁是否已被持有。
             if current.addr() & QUEUE_LOCKED != 0 {
-                // Another thread holds the queue lock, so let them wake up waiters for us.
+                // 另一个线程持有队列锁，于是让它替我们唤醒等待者。
                 let next = current.mask(!LOCKED);
                 match self.state.compare_exchange_weak(current, next, Release, Relaxed) {
                     Ok(_) => return,
@@ -542,13 +522,13 @@ impl RwLock {
                 }
             }
 
-            // Atomically release the lock and try to acquire the queue lock.
+            // 原子地释放锁，并尝试获取队列锁。
             let next = current.map_addr(|addr| (addr & !LOCKED) | QUEUE_LOCKED);
             match self.state.compare_exchange_weak(current, next, AcqRel, Relaxed) {
-                // Now that we have the queue lock, we can wake up the next waiter.
+                // 既然我们已经拿到了队列锁，就可以唤醒下一个等待者。
                 Ok(_) => {
-                    // SAFETY: This thread just acquired the queue lock, and this function's safety
-                    // contract requires that there are threads already queued on the lock.
+                    // SAFETY: 本线程刚刚获取了队列锁，且本函数的安全契约要求锁上已经
+                    // 有线程在排队。
                     unsafe { self.unlock_queue(next) };
                     return;
                 }
@@ -557,70 +537,67 @@ impl RwLock {
         }
     }
 
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// * The lock must be write-locked by this thread.
+    /// * 锁必须由当前线程写锁定。
     #[inline]
     pub unsafe fn downgrade(&self) {
-        // Optimistically change the state from write-locked with a single writer and no waiters to
-        // read-locked with a single reader and no waiters.
+        // 乐观地把状态从「单个写者、无等待者的写锁定」改为
+        //「单个读者、无等待者的读锁定」。
         if let Err(state) = self.state.compare_exchange(
             without_provenance_mut(LOCKED),
             without_provenance_mut(SINGLE | LOCKED),
             Release,
             Relaxed,
         ) {
-            // SAFETY: The only way the state can have changed is if there are threads queued.
-            // Wake all of them up.
+            // SAFETY: 状态会发生改变的唯一可能是有线程在排队。
+            // 把它们全部唤醒。
             unsafe { self.downgrade_slow(state) }
         }
     }
 
-    /// Downgrades the lock from write-locked to read-locked in the case that there are threads
-    /// waiting on the wait queue.
+    /// 在等待队列上有线程等待的情况下，把锁从写锁定降级为读锁定。
     ///
-    /// This function will either wake up all of the waiters on the wait queue or designate the
-    /// current holder of the queue lock to wake up all of the waiters instead. Once the waiters
-    /// wake up, they will continue in the execution loop of `lock_contended`.
+    /// 本函数要么唤醒等待队列上的所有等待者，要么指派当前队列锁的持有者去替它唤醒
+    /// 所有等待者。一旦等待者被唤醒，它们会继续在 `lock_contended` 的执行循环中运行。
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// * The lock must be write-locked by this thread.
-    /// * `state` must be a pointer to a node in a valid queue.
-    /// * There must be threads queued on the lock.
+    /// * 锁必须由当前线程写锁定。
+    /// * `state` 必须是一个指向有效队列中某节点的指针。
+    /// * 锁上必须有线程在排队。
     #[cold]
     unsafe fn downgrade_slow(&self, mut state: State) {
         debug_assert_eq!(state.addr() & (DOWNGRADED | QUEUED | LOCKED), QUEUED | LOCKED);
 
-        // Attempt to wake up all waiters by taking ownership of the entire waiter queue.
+        // 尝试通过接管整个等待者队列来唤醒所有等待者。
         loop {
             if state.addr() & QUEUE_LOCKED != 0 {
-                // Another thread already holds the queue lock. Tell it to wake up all waiters.
-                // If the other thread succeeds in waking up waiters before we release our lock, the
-                // effect will be just the same as if we had changed the state below.
-                // Otherwise, the `DOWNGRADED` bit will still be set, meaning that when this thread
-                // calls `read_unlock` later (because it holds a read lock and must unlock
-                // eventually), it will realize that the lock is still exclusively locked and act
-                // accordingly.
+                // 另一个线程已经持有队列锁。告诉它去唤醒所有等待者。
+                // 如果那个线程在我们释放自己的锁之前成功唤醒了等待者，其效果将与
+                // 我们在下面改动状态完全相同。
+                // 否则，`DOWNGRADED` 比特仍会被置位，这意味着当本线程稍后调用
+                // `read_unlock` 时（因为它持有一个读锁，最终必须解锁），它会意识到
+                // 锁仍处于独占锁定状态并据此行事。
                 let next = state.map_addr(|addr| addr | DOWNGRADED);
                 match self.state.compare_exchange_weak(state, next, Release, Relaxed) {
                     Ok(_) => return,
                     Err(new) => state = new,
                 }
             } else {
-                // Grab the entire queue by swapping the `state` with a single reader.
+                // 通过把 `state` 与一个单读者状态做 swap 来抓取整个队列。
                 let next = ptr::without_provenance_mut(SINGLE | LOCKED);
                 if let Err(new) = self.state.compare_exchange_weak(state, next, AcqRel, Relaxed) {
                     state = new;
                     continue;
                 }
 
-                // SAFETY: We have full ownership of this queue now, so nobody else can modify it.
+                // SAFETY: 现在我们完全拥有这个队列，所以没有其他人能修改它。
                 let tail = unsafe { find_tail_and_add_backlinks(to_node(state)) };
 
-                // Wake up all waiters.
-                // SAFETY: `tail` was just computed, meaning the whole queue is linked, and we have
-                // full ownership of the queue, so we have exclusive access.
+                // 唤醒所有等待者。
+                // SAFETY: `tail` 刚刚计算出来，意味着整个队列都已链接好，而且我们
+                // 完全拥有该队列，因此拥有独占访问权。
                 unsafe { complete_all(tail) };
 
                 return;
@@ -628,24 +605,24 @@ impl RwLock {
         }
     }
 
-    /// Unlocks the queue. Wakes up all threads if a downgrade was requested, otherwise wakes up the
-    /// next eligible thread(s) if the lock is unlocked.
+    /// 解锁队列。如果请求了降级，则唤醒所有线程；否则，如果锁处于未锁定状态，
+    /// 则唤醒下一个（或多个）符合条件的线程。
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// * The queue lock must be held by the current thread.
-    /// * `state` must be a pointer to a node in a valid queue.
-    /// * There must be threads queued on the lock.
+    /// * 队列锁必须由当前线程持有。
+    /// * `state` 必须是一个指向有效队列中某节点的指针。
+    /// * 锁上必须有线程在排队。
     unsafe fn unlock_queue(&self, mut state: State) {
         debug_assert_eq!(state.addr() & (QUEUED | QUEUE_LOCKED), QUEUED | QUEUE_LOCKED);
 
         loop {
-            // SAFETY: Since we have the queue lock, nobody else can be modifying the queue.
+            // SAFETY: 既然我们持有队列锁，就没有其他人能修改队列。
             let tail = unsafe { find_tail_and_add_backlinks(to_node(state)) };
 
             if state.addr() & (DOWNGRADED | LOCKED) == LOCKED {
-                // Another thread has locked the lock and no downgrade was requested.
-                // Leave waking up waiters to them by releasing the queue lock.
+                // 另一个线程已经锁住了这个锁，且没有请求降级。
+                // 通过释放队列锁，把唤醒等待者的工作留给它们。
                 match self.state.compare_exchange_weak(
                     state,
                     state.mask(!QUEUE_LOCKED),
@@ -660,9 +637,8 @@ impl RwLock {
                 }
             }
 
-            // Since we hold the queue lock and downgrades cannot be requested if the lock is
-            // already read-locked, we have exclusive control over the queue here and can make
-            // modifications.
+            // 由于我们持有队列锁，且在锁已经处于读锁定状态时无法请求降级，因此我们
+            // 在此对队列拥有独占控制权，可以进行修改。
 
             let downgrade = state.addr() & DOWNGRADED != 0;
             let is_writer = unsafe { tail.as_ref().write };
@@ -670,25 +646,24 @@ impl RwLock {
                 && is_writer
                 && let Some(prev) = unsafe { tail.as_ref().prev.get() }
             {
-                // If we are not downgrading and the next thread is a writer, only wake up that
-                // writing thread.
+                // 如果我们不是在降级，且下一个线程是写者，则只唤醒那一个写者线程。
 
-                // Split off `tail`.
-                // There are no set `tail` links before the node pointed to by `state`, so the first
-                // non-null tail field will be current (Invariant 2).
-                // We also fulfill Invariant 4 since `find_tail` was called on this node, which
-                // ensures all backlinks are set.
+                // 把 `tail` 切下来。
+                // 在 `state` 所指向的节点之前没有任何已设置的 `tail` 链接，所以第一个
+                // 非空的 tail 字段将是最新的（不变量 2）。
+                // 我们也满足不变量 4，因为已经在这个节点上调用过 `find_tail`，从而
+                // 确保所有反向链接都已设置。
                 unsafe {
                     to_node(state).as_ref().tail.set(Some(prev));
                 }
 
-                // Try to release the queue lock. We need to check the state again since another
-                // thread might have acquired the lock and requested a downgrade.
+                // 尝试释放队列锁。我们需要再次检查状态，因为另一个线程可能已经获取了
+                // 锁并请求了降级。
                 let next = state.mask(!QUEUE_LOCKED);
                 if let Err(new) = self.state.compare_exchange_weak(state, next, Release, Acquire) {
-                    // Undo the tail modification above, so that we can find the tail again above.
-                    // As mentioned above, we have exclusive control over the queue, so no other
-                    // thread could have noticed the change.
+                    // 撤销上面对 tail 的修改，以便我们可以在上面重新查找尾节点。
+                    // 如上所述，我们对队列拥有独占控制权，所以没有其他线程能注意到
+                    // 这个改动。
                     unsafe {
                         to_node(state).as_ref().tail.set(Some(tail));
                     }
@@ -696,15 +671,15 @@ impl RwLock {
                     continue;
                 }
 
-                // The tail was split off and the lock was released. Mark the node as completed.
+                // 尾节点已被切下，锁也已释放。把该节点标记为已完成。
                 unsafe {
                     return Node::complete(tail);
                 }
             } else {
-                // We are either downgrading, the next waiter is a reader, or the queue only
-                // consists of one waiter. In any case, just wake all threads.
+                // 我们要么是在降级，要么下一个等待者是读者，要么队列只包含一个等待者。
+                // 无论哪种情况，都直接唤醒所有线程。
 
-                // Clear the queue.
+                // 清空队列。
                 let next =
                     if downgrade { ptr::without_provenance_mut(SINGLE | LOCKED) } else { UNLOCKED };
                 if let Err(new) = self.state.compare_exchange_weak(state, next, Release, Acquire) {
@@ -712,9 +687,9 @@ impl RwLock {
                     continue;
                 }
 
-                // SAFETY: we computed `tail` above, and no new nodes can have been added since
-                // (otherwise the CAS above would have failed).
-                // Thus we have complete control over the whole queue.
+                // SAFETY: 我们在上面已计算出 `tail`，且自那以后不可能有新节点被加入
+                //（否则上面的 CAS 会失败）。
+                // 因此我们对整个队列拥有完全控制权。
                 unsafe {
                     return complete_all(tail);
                 }

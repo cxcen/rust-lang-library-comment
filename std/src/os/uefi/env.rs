@@ -1,4 +1,4 @@
-//! UEFI-specific extensions to the primitives in `std::env` module
+//! 针对 `std::env` 模块中各类基础类型的 UEFI 平台特定扩展
 
 #![unstable(feature = "uefi_std", issue = "100499")]
 
@@ -8,26 +8,24 @@ use crate::sync::atomic::{Atomic, AtomicBool, AtomicPtr, Ordering};
 
 static SYSTEM_TABLE: Atomic<*mut c_void> = AtomicPtr::new(crate::ptr::null_mut());
 static IMAGE_HANDLE: Atomic<*mut c_void> = AtomicPtr::new(crate::ptr::null_mut());
-// Flag to check if BootServices are still valid.
-// Start with assuming that they are not available
+// 用于检查 BootServices 是否仍然有效的标志。
+// 初始假设它们不可用
 static BOOT_SERVICES_FLAG: Atomic<bool> = AtomicBool::new(false);
 
-/// Initializes the global System Table and Image Handle pointers.
+/// 初始化全局的 System Table 与 Image Handle 指针。
 ///
-/// The standard library requires access to the UEFI System Table and the Application Image Handle
-/// to operate. Those are provided to UEFI Applications via their application entry point. By
-/// calling `init_globals()`, those pointers are retained by the standard library for future use.
-/// Thus this function must be called before any of the standard library services are used.
+/// 标准库的运作需要访问 UEFI System Table 和应用程序的 Image Handle。这些会在 UEFI
+/// 应用程序的入口点处提供给它们。通过调用 `init_globals()`，标准库会保留这些指针以供
+/// 将来使用。因此本函数必须在使用任何标准库服务之前被调用。
 ///
-/// The pointers are never exposed to any entity outside of this application and it is guaranteed
-/// that, once the application exited, these pointers are never dereferenced again.
+/// 这些指针绝不会暴露给本应用程序之外的任何实体，并且保证一旦应用程序退出，这些指针
+/// 便绝不会再被解引用。
 ///
-/// Callers are required to ensure the pointers are valid for the entire lifetime of this
-/// application. In particular, UEFI Boot Services must not be exited while an application with the
-/// standard library is loaded.
+/// 调用方需要确保这些指针在本应用程序的整个生命周期内都有效。特别地，当一个使用了标准库
+/// 的应用程序处于加载状态时，UEFI Boot Services 不得被退出。
 ///
-/// # SAFETY
-/// Calling this function more than once will panic.
+/// # 安全性(SAFETY）
+/// 多次调用本函数将会 panic。
 pub(crate) unsafe fn init_globals(handle: NonNull<c_void>, system_table: NonNull<c_void>) {
     IMAGE_HANDLE
         .compare_exchange(
@@ -48,26 +46,25 @@ pub(crate) unsafe fn init_globals(handle: NonNull<c_void>, system_table: NonNull
     BOOT_SERVICES_FLAG.store(true, Ordering::Release)
 }
 
-/// Gets the SystemTable Pointer.
+/// 获取 SystemTable 指针。
 ///
-/// If you want to use `BootServices` then please use [`boot_services`] as it performs some
-/// additional checks.
+/// 如果你想使用 `BootServices`，请改用 [`boot_services`]，因为它会执行一些额外的检查。
 ///
-/// Note: This function panics if the System Table or Image Handle is not initialized.
+/// 注意：如果 System Table 或 Image Handle 尚未初始化，本函数将会 panic。
 pub fn system_table() -> NonNull<c_void> {
     try_system_table().unwrap()
 }
 
-/// Gets the ImageHandle Pointer.
+/// 获取 ImageHandle 指针。
 ///
-/// Note: This function panics if the System Table or Image Handle is not initialized.
+/// 注意：如果 System Table 或 Image Handle 尚未初始化，本函数将会 panic。
 pub fn image_handle() -> NonNull<c_void> {
     try_image_handle().unwrap()
 }
 
-/// Gets the BootServices Pointer.
+/// 获取 BootServices 指针。
 ///
-/// This function also checks if `ExitBootServices` has already been called.
+/// 本函数还会检查 `ExitBootServices` 是否已经被调用过。
 pub fn boot_services() -> Option<NonNull<c_void>> {
     if BOOT_SERVICES_FLAG.load(Ordering::Acquire) {
         let system_table: NonNull<r_efi::efi::SystemTable> = try_system_table()?.cast();
@@ -78,16 +75,16 @@ pub fn boot_services() -> Option<NonNull<c_void>> {
     }
 }
 
-/// Gets the SystemTable Pointer.
+/// 获取 SystemTable 指针。
 ///
-/// This function is mostly intended for places where panic is not an option.
+/// 本函数主要用于那些不允许 panic 的场景。
 pub(crate) fn try_system_table() -> Option<NonNull<c_void>> {
     NonNull::new(SYSTEM_TABLE.load(Ordering::Acquire))
 }
 
-/// Gets the SystemHandle Pointer.
+/// 获取 SystemHandle 指针。
 ///
-/// This function is mostly intended for places where panicking is not an option.
+/// 本函数主要用于那些不允许 panic 的场景。
 pub(crate) fn try_image_handle() -> Option<NonNull<c_void>> {
     NonNull::new(IMAGE_HANDLE.load(Ordering::Acquire))
 }

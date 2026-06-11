@@ -14,10 +14,9 @@ pub(crate) macro weak {
                 panic!("symbol name may not contain NUL")
             };
 
-            // SAFETY: Whoever calls the function pointer returned by `get()`
-            // is responsible for ensuring that the signature is correct. Just
-            // like with extern blocks, this is syntactically enforced by making
-            // the function pointer be unsafe.
+            // SAFETY: 调用 `get()` 所返回的函数指针的人，有责任确保该签名是正确
+            // 的。和 extern 块一样，这一点通过把函数指针声明为 unsafe，在语法层面
+            // 上强制要求调用方履行。
             unsafe { DlsymWeak::new(name) }
         };
 
@@ -26,19 +25,18 @@ pub(crate) macro weak {
 }
 
 pub(crate) struct DlsymWeak<F> {
-    /// A pointer to the nul-terminated name of the symbol.
-    // Use a pointer instead of `&'static CStr` to save space.
+    /// 指向该符号以 nul 结尾的名字的指针。
+    // 使用裸指针而非 `&'static CStr`，以节省空间。
     name: *const c_char,
     func: Atomic<*mut libc::c_void>,
     _marker: PhantomData<F>,
 }
 
 impl<F: FnPtr> DlsymWeak<F> {
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// If the signature of `F` does not match the signature of the symbol (if
-    /// it exists), calling the function pointer returned by `get()` is
-    /// undefined behaviour.
+    /// 如果 `F` 的签名与该符号（若其存在）的签名不一致，那么调用 `get()` 所返回
+    /// 的函数指针即为未定义行为。
     pub const unsafe fn new(name: &'static CStr) -> Self {
         DlsymWeak {
             name: name.as_ptr(),
@@ -49,52 +47,46 @@ impl<F: FnPtr> DlsymWeak<F> {
 
     #[inline]
     pub fn get(&self) -> Option<F> {
-        // The caller is presumably going to read through this value
-        // (by calling the function we've dlsymed). This means we'd
-        // need to have loaded it with at least C11's consume
-        // ordering in order to be guaranteed that the data we read
-        // from the pointer isn't from before the pointer was
-        // stored. Rust has no equivalent to memory_order_consume,
-        // so we use an acquire load (sorry, ARM).
+        // 调用方接下来大概率会通过这个值进行读取（即调用我们 dlsym 得到的那个
+        // 函数）。这意味着我们需要至少以 C11 的 consume 序来加载它，才能保证我们
+        // 从该指针读出的数据不是在该指针被存入之前的旧数据。Rust 没有与
+        // memory_order_consume 等价的东西，所以我们使用 acquire 加载（抱歉了，
+        // ARM）。
         //
-        // Now, in practice this likely isn't needed even on CPUs
-        // where relaxed and consume mean different things. The
-        // symbols we're loading are probably present (or not) at
-        // init, and even if they aren't the runtime dynamic loader
-        // is extremely likely have sufficient barriers internally
-        // (possibly implicitly, for example the ones provided by
-        // invoking `mprotect`).
+        // 不过，实践中即便在 relaxed 与 consume 含义不同的 CPU 上，这大概也并非
+        // 必需。我们要加载的这些符号很可能在初始化时就已经（要么存在、要么不
+        // 存在）确定下来了；而且即便它们当时还没确定，运行时的动态加载器内部也极
+        // 有可能已经具备了足够的内存屏障（可能是隐式的，例如调用 `mprotect` 所
+        // 提供的那些）。
         //
-        // That said, none of that's *guaranteed*, so we use acquire.
+        // 话虽如此，这些都不是*有保证的*，所以我们用 acquire。
         match self.func.load(Ordering::Acquire) {
             func if func.addr() == 1 => self.initialize(),
             func if func.is_null() => None,
             // SAFETY:
-            // `func` is not null and `F` implements `FnPtr`, thus this
-            // transmutation is well-defined. It is the responsibility of the
-            // creator of this `DlsymWeak` to ensure that calling the resulting
-            // function pointer does not result in undefined behaviour (though
-            // the `weak!` macro delegates this responsibility to the caller
-            // of the function by using `unsafe` function pointers).
-            // FIXME: use `transmute` once it stops complaining about generics.
+            // `func` 非空，且 `F` 实现了 `FnPtr`，因此这次 transmute 是良定义
+            // 的。创建该 `DlsymWeak` 的人有责任确保调用最终得到的函数指针不会
+            // 导致未定义行为（不过 `weak!` 宏通过使用 `unsafe` 函数指针，把这一
+            // 责任转交给了该函数的调用方）。
+            // FIXME: 一旦 `transmute` 不再对泛型报错，就改用它。
             func => Some(unsafe { mem::transmute_copy::<*mut c_void, F>(&func) }),
         }
     }
 
-    // Cold because it should only happen during first-time initialization.
+    // 标记为 cold，因为它只应在首次初始化时发生。
     #[cold]
     fn initialize(&self) -> Option<F> {
-        // SAFETY: `self.name` was created from a `&'static CStr` and is
-        // therefore a valid C string pointer.
+        // SAFETY: `self.name` 由一个 `&'static CStr` 创建而来，因此是一个有效的
+        // C 字符串指针。
         let val = unsafe { libc::dlsym(libc::RTLD_DEFAULT, self.name) };
-        // This synchronizes with the acquire load in `get`.
+        // 这与 `get` 中的 acquire 加载形成同步关系。
         self.func.store(val, Ordering::Release);
 
         if val.is_null() {
             None
         } else {
-            // SAFETY: see the comment in `get`.
-            // FIXME: use `transmute` once it stops complaining about generics.
+            // SAFETY: 参见 `get` 中的注释。
+            // FIXME: 一旦 `transmute` 不再对泛型报错，就改用它。
             Some(unsafe { mem::transmute_copy::<*mut libc::c_void, F>(&val) })
         }
     }

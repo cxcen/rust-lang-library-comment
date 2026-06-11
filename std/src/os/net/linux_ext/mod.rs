@@ -1,4 +1,4 @@
-//! Linux, Android and Cygwin-specific networking functionality.
+//! Linux、Android 与 Cygwin 特有的网络功能。
 
 #![doc(cfg(any(target_os = "linux", target_os = "android", target_os = "cygwin")))]
 

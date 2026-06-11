@@ -24,9 +24,9 @@ pub struct UdpSocket {
     fd: u16,
     local: SocketAddr,
     remote: Cell<Option<SocketAddr>>,
-    // in milliseconds. The setting applies only to `recv` calls after the timeout is set.
+    // 以毫秒为单位。该设置仅对超时设置之后的 `recv` 调用生效。
     read_timeout: Cell<u64>,
-    // in milliseconds. The setting applies only to `send` calls after the timeout is set.
+    // 以毫秒为单位。该设置仅对超时设置之后的 `send` 调用生效。
     write_timeout: Cell<u64>,
     handle_count: Arc<Atomic<usize>>,
     nonblocking: Cell<bool>,
@@ -37,11 +37,11 @@ impl UdpSocket {
         return each_addr(addr, inner);
 
         fn inner(addr: &SocketAddr) -> io::Result<UdpSocket> {
-            // Construct the request
+            // 构造请求
             let mut connect_request = ConnectRequest { raw: [0u8; 4096] };
 
-            // Serialize the StdUdpBind structure. This is done "manually" because we don't want to
-            // make an auto-serdes (like bincode or rkyv) crate a dependency of Xous.
+            // 序列化 StdUdpBind 结构体。这里之所以“手动”进行，是因为我们不想让
+            // 某个自动 serdes（如 bincode 或 rkyv）crate 成为 Xous 的依赖。
             let port_bytes = addr.port().to_le_bytes();
             connect_request.raw[0] = port_bytes[0];
             connect_request.raw[1] = port_bytes[1];
@@ -72,8 +72,7 @@ impl UdpSocket {
                 return Err(io::const_error!(io::ErrorKind::InvalidInput, "invalid response"));
             };
 
-            // The first four bytes should be zero upon success, and will be nonzero
-            // for an error.
+            // 成功时前四个字节应当为零，出错时则会是非零值。
             let response = connect_request.raw;
             if response[0] != 0 || valid == 0 {
                 let errcode = response[1];
@@ -122,10 +121,10 @@ impl UdpSocket {
         let mut receive_request = ReceiveData { raw: [0u8; 4096] };
 
         if self.nonblocking.get() {
-            // nonblocking
+            // 非阻塞
             receive_request.raw[0] = 0;
         } else {
-            // blocking
+            // 阻塞
             receive_request.raw[0] = 1;
             for (&s, d) in self
                 .read_timeout
@@ -145,7 +144,7 @@ impl UdpSocket {
             0,
         ) {
             if receive_request.raw[0] != 0 {
-                // error case
+                // 错误情形
                 if receive_request.raw[1] == NetError::TimedOut as u8 {
                     return Err(io::const_error!(io::ErrorKind::TimedOut, "recv timed out"));
                 } else if receive_request.raw[1] == NetError::WouldBlock as u8 {
@@ -222,7 +221,7 @@ impl UdpSocket {
     pub fn send_to(&self, buf: &[u8], addr: &SocketAddr) -> io::Result<usize> {
         let mut tx_req = SendData { raw: [0u8; 4096] };
 
-        // Construct the request.
+        // 构造请求。
         let port_bytes = addr.port().to_le_bytes();
         tx_req.raw[0] = port_bytes[0];
         tx_req.raw[1] = port_bytes[1];
@@ -256,19 +255,19 @@ impl UdpSocket {
         //     .unwrap()
         // };
 
-        // write time-outs are implemented on the caller side. Basically, if the Net crate server
-        // is too busy to take the call immediately: retry, until the timeout is reached.
+        // 写超时是在调用方一侧实现的。基本上就是：如果 Net crate 服务器
+        // 太忙而无法立即接收该调用，则重试，直到达到超时为止。
         let now = crate::time::Instant::now();
         let write_timeout = if self.nonblocking.get() {
-            // nonblocking
+            // 非阻塞
             core::time::Duration::ZERO
         } else {
-            // blocking
+            // 阻塞
             if self.write_timeout.get() == 0 {
-                // forever
+                // 永远等待
                 core::time::Duration::from_millis(u64::MAX)
             } else {
-                // or this amount of time
+                // 或者等待这么长的时间
                 core::time::Duration::from_millis(self.write_timeout.get())
             }
         };
@@ -304,7 +303,7 @@ impl UdpSocket {
                             ));
                         }
                     } else {
-                        // no error
+                        // 无错误
                         return Ok(len as usize);
                     }
                 }
@@ -312,7 +311,7 @@ impl UdpSocket {
                     if now.elapsed() >= write_timeout {
                         return Err(io::const_error!(io::ErrorKind::WouldBlock, "write timed out"));
                     } else {
-                        // question: do we want to do something a bit more gentle than immediately retrying?
+                        // 问题：相比立即重试，我们是否想做一些更温和的处理？
                         crate::thread::yield_now();
                     }
                 }
@@ -384,7 +383,7 @@ impl UdpSocket {
     }
 
     pub fn take_error(&self) -> io::Result<Option<io::Error>> {
-        // this call doesn't have a meaning on our platform, but we can at least not panic if it's used.
+        // 这个调用在我们的平台上没有意义，但至少在它被使用时我们可以不 panic。
         Ok(None)
     }
 
@@ -393,7 +392,7 @@ impl UdpSocket {
         Ok(())
     }
 
-    // ------------- smoltcp base stack does not have multicast or broadcast support ---------------
+    // ------------- smoltcp 基础协议栈不支持组播（multicast）或广播（broadcast）---------------
     pub fn set_broadcast(&self, _: bool) -> io::Result<()> {
         unimpl!();
     }
@@ -452,7 +451,7 @@ impl fmt::Debug for UdpSocket {
 impl Drop for UdpSocket {
     fn drop(&mut self) {
         if self.handle_count.fetch_sub(1, Ordering::Relaxed) == 1 {
-            // only drop if we're the last clone
+            // 只有当我们是最后一个克隆体时才进行 drop
             crate::os::xous::ffi::blocking_scalar(
                 services::net_server(),
                 services::NetBlockingScalar::StdUdpClose(self.fd).into(),

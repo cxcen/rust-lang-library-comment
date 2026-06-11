@@ -3,7 +3,7 @@ use crate::ffi::{OsStr, OsString};
 use crate::path::{self, PathBuf};
 use crate::{fmt, io};
 
-// `solid` directly maps `errno`s to μITRON error codes.
+// `solid` 直接把 `errno` 映射到 μITRON 错误码。
 impl itron::error::ItronError {
     #[inline]
     pub(crate) fn as_io_error(self) -> crate::io::Error {

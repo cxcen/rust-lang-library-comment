@@ -1,4 +1,4 @@
-//! Haiku-specific raw type definitions
+//! Haiku 平台特有的原始类型定义
 
 #![stable(feature = "raw_ext", since = "1.1.0")]
 #![deprecated(
@@ -13,7 +13,7 @@
 use crate::os::raw::c_long;
 use crate::os::unix::raw::{gid_t, uid_t};
 
-// Use the direct definition of usize, instead of uintptr_t like in libc
+// 直接使用 usize 的定义，而非像 libc 那样使用 uintptr_t
 #[stable(feature = "pthread_t", since = "1.8.0")]
 pub type pthread_t = usize;
 

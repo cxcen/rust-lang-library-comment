@@ -4,21 +4,20 @@ use crate::sync::atomic::Ordering::{Acquire, Relaxed, Release};
 use crate::sync::atomic::{Atomic, AtomicBool, AtomicUsize};
 
 pub struct Mutex {
-    /// The "locked" value indicates how many threads are waiting on this
-    /// Mutex. Possible values are:
-    ///     0: The lock is unlocked
-    ///     1: The lock is locked and uncontended
-    ///   >=2: The lock is locked and contended
+    /// "locked"（已锁定）的取值表示有多少个线程正在这个 Mutex 上等待。
+    /// 可能的取值为：
+    ///     0: 锁处于未锁定状态
+    ///     1: 锁已锁定且无争用（uncontended）
+    ///   >=2: 锁已锁定且存在争用（contended）
     ///
-    /// A lock is "contended" when there is more than one thread waiting
-    /// for a lock, or it is locked for long periods of time. Rather than
-    /// spinning, these locks send a Message to the ticktimer server
-    /// requesting that they be woken up when a lock is unlocked.
+    /// 当有不止一个线程在等待锁，或者锁被长时间持有时，该锁就处于「争用」
+    ///（contended）状态。这些锁不会自旋，而是向 ticktimer 服务器发送一条
+    /// Message，请求在锁被解锁时唤醒它们。
     locked: Atomic<usize>,
 
-    /// Whether this Mutex ever was contended, and therefore made a trip
-    /// to the ticktimer server. If this was never set, then we were never
-    /// on the slow path and can skip deregistering the mutex.
+    /// 这个 Mutex 是否曾经处于争用状态，因而曾经与 ticktimer 服务器打过交道。
+    /// 如果这个标志从未被设置过，那么我们就从未进入过慢速路径，于是可以跳过
+    /// 对该 mutex 的注销（deregister）。
     contended: Atomic<bool>,
 }
 
@@ -34,10 +33,9 @@ impl Mutex {
 
     #[inline]
     pub unsafe fn lock(&self) {
-        // Try multiple times to acquire the lock without resorting to the ticktimer
-        // server. For locks that are held for a short amount of time, this will
-        // result in the ticktimer server never getting invoked. The `locked` value
-        // will be either 0 or 1.
+        // 多次尝试获取锁，且不动用 ticktimer 服务器。对于只被短暂持有的锁，
+        // 这会使 ticktimer 服务器永远不会被调用。此时 `locked` 的取值要么是 0
+        // 要么是 1。
         for _attempts in 0..3 {
             if unsafe { self.try_lock() } {
                 return;
@@ -45,20 +43,19 @@ impl Mutex {
             do_yield();
         }
 
-        // Try one more time to lock. If the lock is released between the previous code and
-        // here, then the inner `locked` value will be 1 at the end of this. If it was not
-        // locked, then the value will be more than 1, for example if there are multiple other
-        // threads waiting on this lock.
+        // 再尝试加锁一次。如果在上一段代码与此处之间锁被释放了，那么到这一步结束时
+        // 内部的 `locked` 值会是 1。如果它当时未被锁定，那么该值会大于 1，例如当有
+        // 多个其他线程正在这个锁上等待时。
         if unsafe { self.try_lock_or_poison() } {
             return;
         }
 
-        // When this mutex is dropped, we will need to deregister it with the server.
+        // 当这个 mutex 被 drop 时，我们将需要向服务器注销它。
         self.contended.store(true, Relaxed);
 
-        // The lock is now "contended". When the lock is released, a Message will get sent to the
-        // ticktimer server to wake it up. Note that this may already have happened, so the actual
-        // value of `lock` may be anything (0, 1, 2, ...).
+        // 现在锁处于「争用」（contended）状态。当锁被释放时，会有一条 Message 被发往
+        // ticktimer 服务器以将其唤醒。注意这可能已经发生了，所以 `lock` 的实际取值
+        // 可能是任意值（0、1、2、……）。
         blocking_scalar(
             ticktimer_server(),
             crate::os::xous::services::TicktimerScalar::LockMutex(self.index()).into(),
@@ -70,19 +67,18 @@ impl Mutex {
     pub unsafe fn unlock(&self) {
         let prev = self.locked.fetch_sub(1, Release);
 
-        // If the previous value was 1, then this was a "fast path" unlock, so no
-        // need to involve the Ticktimer server
+        // 如果之前的值是 1，那么这是一次「快速路径」（fast path）解锁，因此无需
+        // 牵涉 Ticktimer 服务器。
         if prev == 1 {
             return;
         }
 
-        // If it was 0, then something has gone seriously wrong and the counter
-        // has just wrapped around.
+        // 如果之前的值是 0，那么出了严重错误，计数器刚刚发生了环绕（wrap around）。
         if prev == 0 {
             panic!("mutex lock count underflowed");
         }
 
-        // Unblock one thread that is waiting on this message.
+        // 解除阻塞一个正在等待这条 message 的线程。
         blocking_scalar(ticktimer_server(), TicktimerScalar::UnlockMutex(self.index()).into())
             .expect("failure to send UnlockMutex command");
     }
@@ -100,8 +96,8 @@ impl Mutex {
 
 impl Drop for Mutex {
     fn drop(&mut self) {
-        // If there was Mutex contention, then we involved the ticktimer. Free
-        // the resources associated with this Mutex as it is deallocated.
+        // 如果曾经发生过 Mutex 争用，那么我们就牵涉过 ticktimer。在这个 Mutex 被
+        // 释放（deallocate）时，释放与之关联的资源。
         if self.contended.load(Relaxed) {
             blocking_scalar(ticktimer_server(), TicktimerScalar::FreeMutex(self.index()).into())
                 .ok();

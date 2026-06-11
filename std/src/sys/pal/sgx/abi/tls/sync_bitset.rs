@@ -6,7 +6,7 @@ use crate::iter::{Enumerate, Peekable};
 use crate::slice::Iter;
 use crate::sync::atomic::{Atomic, AtomicUsize, Ordering};
 
-/// A bitset that can be used synchronously.
+/// 一个可以同步使用的 bitset（位集合）。
 pub(super) struct SyncBitset([Atomic<usize>; TLS_KEYS_BITSET_SIZE]);
 
 pub(super) const SYNC_BITSET_INIT: SyncBitset =
@@ -18,7 +18,7 @@ impl SyncBitset {
         (self.0[hi].load(Ordering::Relaxed) & lo) != 0
     }
 
-    /// Not atomic.
+    /// 非原子操作。
     pub fn iter(&self) -> SyncBitsetIter<'_> {
         SyncBitsetIter { iter: self.0.iter().enumerate().peekable(), elem_idx: 0 }
     }
@@ -28,8 +28,8 @@ impl SyncBitset {
         self.0[hi].fetch_and(!lo, Ordering::Relaxed);
     }
 
-    /// Sets any unset bit. Not atomic. Returns `None` if all bits were
-    /// observed to be set.
+    /// 设置任意一个未置位的 bit。非原子操作。如果观察到所有 bit 都已被置位，
+    /// 则返回 `None`。
     pub fn set(&self) -> Option<usize> {
         'elems: for (idx, elem) in self.0.iter().enumerate() {
             let mut current = elem.load(Ordering::Relaxed);

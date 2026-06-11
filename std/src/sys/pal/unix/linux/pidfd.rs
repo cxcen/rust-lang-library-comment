@@ -26,7 +26,7 @@ impl PidFd {
     pub(crate) fn pid(&self) -> io::Result<u32> {
         use crate::sys::weak::weak;
 
-        // since kernel 6.13
+        // 自内核 6.13 起支持
         // https://lore.kernel.org/all/20241010155401.2268522-1-luca.boccassi@gmail.com/
         let mut pidfd_info: libc::pidfd_info = unsafe { crate::mem::zeroed() };
         pidfd_info.mask = libc::PIDFD_INFO_PID as u64;
@@ -34,7 +34,7 @@ impl PidFd {
         {
             Ok(_) => {}
             Err(e) if matches!(e.raw_os_error(), Some(libc::EINVAL | libc::ENOTTY)) => {
-                // kernel doesn't support that ioctl, try the glibc helper that looks at procfs
+                // 内核不支持该 ioctl，尝试改用会去读 procfs 的 glibc 辅助函数
                 weak!(
                     fn pidfd_getpid(pidfd: RawFd) -> libc::pid_t;
                 );
@@ -51,7 +51,7 @@ impl PidFd {
     }
 
     fn exit_for_reaped_child(&self) -> io::Result<ExitStatus> {
-        // since kernel 6.15
+        // 自内核 6.15 起支持
         // https://lore.kernel.org/linux-fsdevel/20250305-work-pidfs-kill_on_last_close-v3-0-c8c3d8361705@kernel.org/T/
         let mut pidfd_info: libc::pidfd_info = unsafe { crate::mem::zeroed() };
         pidfd_info.mask = libc::PIDFD_INFO_EXIT as u64;
@@ -66,7 +66,7 @@ impl PidFd {
         });
         match r {
             Err(waitid_err) if waitid_err.raw_os_error() == Some(libc::ECHILD) => {
-                // already reaped
+                // 子进程已被回收（reaped）
                 match self.exit_for_reaped_child() {
                     Ok(exit_status) => return Ok(Some(exit_status)),
                     Err(_) => return Err(waitid_err),

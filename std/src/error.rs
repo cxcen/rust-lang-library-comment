@@ -1,6 +1,13 @@
 #![doc = include_str!("../../core/src/error.md")]
 #![stable(feature = "rust1", since = "1.0.0")]
 
+//! 实现说明：`Error` trait 本身以及泛型成员访问相关的 `Request`/`request_ref`/
+//! `request_value` 都定义在 `core::error` 中，这里直接重导出（re-export），因此
+//! `std::error::Error` 与 `core::error::Error` 是同一个 trait。std 在此基础上做的
+//! “扩展”是新增了依赖运行时（如分配、回溯 `Backtrace`）的能力——本文件中定义的
+//! [`Report`] 错误报告器即属于这部分：它沿着 `Error::source` 形成的错误源链向下
+//! 遍历，并能整合 `Backtrace`，这些都无法在不依赖 std 的 `core` 中实现。
+
 #[stable(feature = "rust1", since = "1.0.0")]
 pub use core::error::Error;
 #[unstable(feature = "error_generic_member_access", issue = "99301")]
@@ -9,15 +16,15 @@ pub use core::error::{Request, request_ref, request_value};
 use crate::backtrace::Backtrace;
 use crate::fmt::{self, Write};
 
-/// An error reporter that prints an error and its sources.
+/// 一个错误报告器，负责打印某个错误及其错误源链（sources）。
 ///
-/// Report also exposes configuration options for formatting the error sources, either entirely on a
-/// single line, or in multi-line format with each source on a new line.
+/// `Report` 还提供了一些格式化配置项，可以把错误源链全部排在同一行，或者采用
+/// 多行格式、每个错误源单独占一行。
 ///
-/// `Report` only requires that the wrapped error implement `Error`. It doesn't require that the
-/// wrapped error be `Send`, `Sync`, or `'static`.
+/// `Report` 只要求被包裹的错误实现 `Error`，并不要求它是 `Send`、`Sync` 或
+/// `'static`。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```rust
 /// #![feature(error_reporter)]
@@ -64,16 +71,17 @@ use crate::fmt::{self, Write};
 /// }
 /// ```
 ///
-/// This example produces the following output:
+/// 这个例子产生如下输出：
 ///
 /// ```console
 /// Error: SuperError is here!: SuperErrorSideKick is here!
 /// ```
 ///
-/// ## Output consistency
+/// ## 输出一致性（Output consistency）
 ///
-/// Report prints the same output via `Display` and `Debug`, so it works well with
-/// [`Result::unwrap`]/[`Result::expect`] which print their `Err` variant via `Debug`:
+/// `Report` 通过 `Display` 和 `Debug` 产生完全相同的输出，因此它能与
+/// [`Result::unwrap`]/[`Result::expect`] 很好地配合——后者通过 `Debug` 打印其
+/// `Err` 变体：
 ///
 /// ```should_panic
 /// #![feature(error_reporter)]
@@ -109,7 +117,7 @@ use crate::fmt::{self, Write};
 /// get_super_error().map_err(Report::new).unwrap();
 /// ```
 ///
-/// This example produces the following output:
+/// 这个例子产生如下输出：
 ///
 /// ```console
 /// thread 'main' panicked at src/error.rs:34:40:
@@ -117,11 +125,10 @@ use crate::fmt::{self, Write};
 /// note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 /// ```
 ///
-/// ## Return from `main`
+/// ## 从 `main` 返回（Return from `main`）
 ///
-/// `Report` also implements `From` for all types that implement [`Error`]; this when combined with
-/// the `Debug` output means `Report` is an ideal starting place for formatting errors returned
-/// from `main`.
+/// `Report` 还为所有实现了 [`Error`] 的类型实现了 `From`；这一点与它的 `Debug`
+/// 输出结合起来，使 `Report` 成为格式化 `main` 返回错误的理想起点。
 ///
 /// ```should_panic
 /// #![feature(error_reporter)]
@@ -160,15 +167,15 @@ use crate::fmt::{self, Write};
 /// }
 /// ```
 ///
-/// This example produces the following output:
+/// 这个例子产生如下输出：
 ///
 /// ```console
 /// Error: SuperError is here!: SuperErrorSideKick is here!
 /// ```
 ///
-/// **Note**: `Report`s constructed via `?` and `From` will be configured to use the single line
-/// output format. If you want to make sure your `Report`s are pretty printed and include backtrace
-/// you will need to manually convert and enable those flags.
+/// **注意**：通过 `?` 和 `From` 构造出来的 `Report` 会被配置为使用单行输出格式。
+/// 如果你想确保 `Report` 以美化（pretty）方式打印并包含回溯信息，就需要手动进行
+/// 转换并开启相应的标志位。
 ///
 /// ```should_panic
 /// #![feature(error_reporter)]
@@ -209,7 +216,7 @@ use crate::fmt::{self, Write};
 /// }
 /// ```
 ///
-/// This example produces the following output:
+/// 这个例子产生如下输出：
 ///
 /// ```console
 /// Error: SuperError is here!
@@ -219,11 +226,11 @@ use crate::fmt::{self, Write};
 /// ```
 #[unstable(feature = "error_reporter", issue = "90172")]
 pub struct Report<E = Box<dyn Error>> {
-    /// The error being reported.
+    /// 正在被报告的那个错误。
     error: E,
-    /// Whether a backtrace should be included as part of the report.
+    /// 报告中是否应当包含回溯（backtrace）信息。
     show_backtrace: bool,
-    /// Whether the report should be pretty-printed.
+    /// 报告是否应当以美化（pretty-printed）方式输出。
     pretty: bool,
 }
 
@@ -231,7 +238,7 @@ impl<E> Report<E>
 where
     Report<E>: From<E>,
 {
-    /// Creates a new `Report` from an input error.
+    /// 由一个输入错误创建一个新的 `Report`。
     #[unstable(feature = "error_reporter", issue = "90172")]
     pub fn new(error: E) -> Report<E> {
         Self::from(error)
@@ -239,9 +246,9 @@ where
 }
 
 impl<E> Report<E> {
-    /// Enable pretty-printing the report across multiple lines.
+    /// 启用跨多行的美化打印（pretty-printing）。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```rust
     /// #![feature(error_reporter)]
@@ -276,7 +283,7 @@ impl<E> Report<E> {
     /// eprintln!("Error: {report:?}");
     /// ```
     ///
-    /// This example produces the following output:
+    /// 这个例子产生如下输出：
     ///
     /// ```console
     /// Error: SuperError is here!
@@ -285,8 +292,8 @@ impl<E> Report<E> {
     ///       SuperErrorSideKick is here!
     /// ```
     ///
-    /// When there are multiple source errors the causes will be numbered in order of iteration
-    /// starting from the outermost error.
+    /// 当存在多个错误源时，这些“起因（causes）”会按照从最外层错误开始的遍历顺序
+    /// 依次编号。
     ///
     /// ```rust
     /// #![feature(error_reporter)]
@@ -337,7 +344,7 @@ impl<E> Report<E> {
     /// eprintln!("Error: {report:?}");
     /// ```
     ///
-    /// This example produces the following output:
+    /// 这个例子产生如下输出：
     ///
     /// ```console
     /// Error: SuperError is here!
@@ -352,13 +359,12 @@ impl<E> Report<E> {
         self
     }
 
-    /// Display backtrace if available when using pretty output format.
+    /// 在使用美化输出格式时，如果能取得回溯信息则将其展示出来。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// **Note**: Report will search for the first `Backtrace` it can find starting from the
-    /// outermost error. In this example it will display the backtrace from the second error in the
-    /// sources, `SuperErrorSideKick`.
+    /// **注意**：`Report` 会从最外层错误开始查找它能找到的第一个 `Backtrace`。在
+    /// 本例中，它将展示错误源链中第二个错误 `SuperErrorSideKick` 上的回溯。
     ///
     /// ```rust
     /// #![feature(error_reporter)]
@@ -400,7 +406,7 @@ impl<E> Report<E> {
     ///     }
     /// }
     ///
-    /// // The rest of the example is unchanged ...
+    /// // 本例的其余部分保持不变 ...
     /// # impl fmt::Display for SuperErrorSideKick {
     /// #     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     /// #         write!(f, "SuperErrorSideKick is here!")
@@ -413,7 +419,7 @@ impl<E> Report<E> {
     /// eprintln!("Error: {report:?}");
     /// ```
     ///
-    /// This example produces something similar to the following output:
+    /// 这个例子产生的输出类似于下面这样：
     ///
     /// ```console
     /// Error: SuperError is here!
@@ -447,8 +453,7 @@ where
     E: Error,
 {
     fn backtrace(&self) -> Option<&Backtrace> {
-        // have to grab the backtrace on the first error directly since that error may not be
-        // 'static
+        // 必须直接从第一个错误上抓取回溯，因为该错误可能不是 'static 的
         let backtrace = request_ref(&self.error);
         let backtrace = backtrace.or_else(|| {
             self.error
@@ -459,7 +464,7 @@ where
         backtrace
     }
 
-    /// Format the report as a single line.
+    /// 将报告格式化为单行。
     #[unstable(feature = "error_reporter", issue = "90172")]
     fn fmt_singleline(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.error)?;
@@ -473,7 +478,7 @@ where
         Ok(())
     }
 
-    /// Format the report as multiple lines, with each error cause on its own line.
+    /// 将报告格式化为多行，每个错误起因（cause）单独占一行。
     #[unstable(feature = "error_reporter", issue = "90172")]
     fn fmt_multiline(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let error = &self.error;
@@ -526,8 +531,8 @@ where
     }
 }
 
-// This type intentionally outputs the same format for `Display` and `Debug`for
-// situations where you unwrap a `Report` or return it from main.
+// 该类型有意让 `Display` 和 `Debug` 输出完全相同的格式，以适配你对 `Report`
+// 做 unwrap、或把它从 main 返回的场景。
 #[unstable(feature = "error_reporter", issue = "90172")]
 impl<E> fmt::Debug for Report<E>
 where
@@ -538,7 +543,7 @@ where
     }
 }
 
-/// Wrapper type for indenting the inner source.
+/// 包装类型：用于对内部错误源（source）的输出进行缩进。
 struct Indented<'a, D> {
     inner: &'a mut D,
 }

@@ -8,7 +8,7 @@ pub struct Instant(abi::SYSTIM);
 
 impl Instant {
     pub fn now() -> Instant {
-        // Safety: The provided pointer is valid
+        // Safety: 提供的指针是有效的
         unsafe {
             let mut out = MaybeUninit::uninit();
             expect_success(abi::get_tim(out.as_mut_ptr()), &"get_tim");
@@ -18,30 +18,30 @@ impl Instant {
 
     pub fn checked_sub_instant(&self, other: &Instant) -> Option<Duration> {
         self.0.checked_sub(other.0).map(|ticks| {
-            // `SYSTIM` is measured in microseconds
+            // `SYSTIM` 以微秒为单位
             Duration::from_micros(ticks)
         })
     }
 
     pub fn checked_add_duration(&self, other: &Duration) -> Option<Instant> {
-        // `SYSTIM` is measured in microseconds
+        // `SYSTIM` 以微秒为单位
         let ticks = other.as_micros();
 
         Some(Instant(self.0.checked_add(ticks.try_into().ok()?)?))
     }
 
     pub fn checked_sub_duration(&self, other: &Duration) -> Option<Instant> {
-        // `SYSTIM` is measured in microseconds
+        // `SYSTIM` 以微秒为单位
         let ticks = other.as_micros();
 
         Some(Instant(self.0.checked_sub(ticks.try_into().ok()?)?))
     }
 }
 
-/// Split `Duration` into zero or more `RELTIM`s.
+/// 将 `Duration` 拆分为零个或多个 `RELTIM`。
 #[inline]
 pub fn dur2reltims(dur: Duration) -> impl Iterator<Item = abi::RELTIM> {
-    // `RELTIM` is microseconds
+    // `RELTIM` 以微秒为单位
     let mut ticks = dur.as_micros();
 
     crate::iter::from_fn(move || {
@@ -56,10 +56,10 @@ pub fn dur2reltims(dur: Duration) -> impl Iterator<Item = abi::RELTIM> {
     })
 }
 
-/// Split `Duration` into one or more `TMO`s.
+/// 将 `Duration` 拆分为一个或多个 `TMO`。
 #[inline]
 fn dur2tmos(dur: Duration) -> impl Iterator<Item = abi::TMO> {
-    // `TMO` is microseconds
+    // `TMO` 以微秒为单位
     let mut ticks = dur.as_micros();
     let mut end = false;
 
@@ -76,7 +76,7 @@ fn dur2tmos(dur: Duration) -> impl Iterator<Item = abi::TMO> {
     })
 }
 
-/// Split `Duration` into one or more API calls with timeout.
+/// 将 `Duration` 拆分为一个或多个带超时的 API 调用。
 #[inline]
 pub fn with_tmos(dur: Duration, mut f: impl FnMut(abi::TMO) -> abi::ER) -> abi::ER {
     let mut er = abi::E_TMOUT;
@@ -89,13 +89,13 @@ pub fn with_tmos(dur: Duration, mut f: impl FnMut(abi::TMO) -> abi::ER) -> abi::
     er
 }
 
-/// Split `Duration` into one or more API calls with timeout. This function can
-/// handle spurious wakeups.
+/// 将 `Duration` 拆分为一个或多个带超时的 API 调用。此函数能够处理虚假唤醒
+/// （spurious wakeup）。
 #[inline]
 pub fn with_tmos_strong(dur: Duration, mut f: impl FnMut(abi::TMO) -> abi::ER) -> abi::ER {
-    // `TMO` and `SYSTIM` are microseconds.
-    // Clamp at `SYSTIM::MAX` for performance reasons. This shouldn't cause
-    // a problem in practice. (`u64::MAX` μs ≈ 584942 years)
+    // `TMO` 与 `SYSTIM` 都以微秒为单位。
+    // 出于性能原因，钳制在 `SYSTIM::MAX`。这在实践中不应造成问题。
+    // （`u64::MAX` μs ≈ 584942 年）
     let ticks = dur.as_micros().min(abi::SYSTIM::MAX as u128) as abi::SYSTIM;
 
     let start = Instant::now().0;

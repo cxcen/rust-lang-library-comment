@@ -31,17 +31,17 @@ mod child_pipe;
 pub use self::child_pipe::{ChildPipe, read_output};
 
 ////////////////////////////////////////////////////////////////////////////////
-// Command
+// 命令（Command）
 ////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Clone, Debug, Eq)]
 #[doc(hidden)]
 pub struct EnvKey {
     os_string: OsString,
-    // This stores a UTF-16 encoded string to workaround the mismatch between
-    // Rust's OsString (WTF-8) and the Windows API string type (UTF-16).
-    // Normally converting on every API call is acceptable but here
-    // `c::CompareStringOrdinal` will be called for every use of `==`.
+    // 它存储一个 UTF-16 编码的字符串，以绕开 Rust 的 OsString（WTF-8）
+    // 与 Windows API 字符串类型（UTF-16）之间的不匹配。
+    // 通常在每次 API 调用时进行转换是可以接受的，但在这里
+    // `c::CompareStringOrdinal` 会在每次使用 `==` 时被调用。
     utf16: Vec<u16>,
 }
 
@@ -51,21 +51,19 @@ impl EnvKey {
     }
 }
 
-// Comparing Windows environment variable keys[1] are behaviorally the
-// composition of two operations[2]:
+// 比较 Windows 环境变量的键[1]，在行为上等价于两个操作的组合[2]：
 //
-// 1. Case-fold both strings. This is done using a language-independent
-// uppercase mapping that's unique to Windows (albeit based on data from an
-// older Unicode spec). It only operates on individual UTF-16 code units so
-// surrogates are left unchanged. This uppercase mapping can potentially change
-// between Windows versions.
+// 1. 对两个字符串都做大小写折叠（case-fold）。这是使用一个与语言无关的、
+// Windows 独有的大写映射来完成的（尽管它基于较旧的 Unicode 规范的数据）。
+// 它只对单个 UTF-16 码元进行操作，因此代理项（surrogates）保持不变。
+// 这个大写映射在不同的 Windows 版本之间有可能发生变化。
 //
-// 2. Perform an ordinal comparison of the strings. A comparison using ordinal
-// is just a comparison based on the numerical value of each UTF-16 code unit[3].
+// 2. 对字符串执行序数（ordinal）比较。使用序数的比较，仅仅是基于每个 UTF-16 码元
+// 的数值进行的比较[3]。
 //
-// Because the case-folding mapping is unique to Windows and not guaranteed to
-// be stable, we ask the OS to compare the strings for us. This is done by
-// calling `CompareStringOrdinal`[4] with `bIgnoreCase` set to `TRUE`.
+// 由于这个大小写折叠映射是 Windows 独有的、且不保证稳定，我们请求操作系统来替我们
+// 比较这两个字符串。这是通过把 `bIgnoreCase` 设为 `TRUE` 来调用
+// `CompareStringOrdinal`[4] 完成的。
 //
 // [1] https://docs.microsoft.com/en-us/dotnet/standard/base-types/best-practices-strings#choosing-a-stringcomparison-member-for-your-method-call
 // [2] https://docs.microsoft.com/en-us/dotnet/standard/base-types/best-practices-strings#stringtoupper-and-stringtolower
@@ -85,7 +83,7 @@ impl Ord for EnvKey {
                 c::CSTR_LESS_THAN => cmp::Ordering::Less,
                 c::CSTR_EQUAL => cmp::Ordering::Equal,
                 c::CSTR_GREATER_THAN => cmp::Ordering::Greater,
-                // `CompareStringOrdinal` should never fail so long as the parameters are correct.
+                // 只要参数正确，`CompareStringOrdinal` 应当永远不会失败。
                 _ => panic!("comparing environment keys failed: {}", Error::last_os_error()),
             }
         }
@@ -120,8 +118,8 @@ impl PartialEq<str> for EnvKey {
     }
 }
 
-// Environment variable keys should preserve their original case even though
-// they are compared using a caseless string mapping.
+// 环境变量的键应当保留其原始的大小写，即便它们是使用一种不区分大小写的字符串映射
+// 来进行比较的。
 impl From<OsString> for EnvKey {
     fn from(k: OsString) -> Self {
         EnvKey { utf16: k.encode_wide().collect(), os_string: k }
@@ -289,7 +287,7 @@ impl Command {
         let program = resolve_exe(&self.program, || env::var_os("PATH"), child_paths)?;
         let has_bat_extension = |program: &[u16]| {
             matches!(
-                // Case insensitive "ends_with" of UTF-16 encoded ".bat" or ".cmd"
+                // 对 UTF-16 编码的 ".bat" 或 ".cmd" 进行不区分大小写的 "ends_with"
                 program.len().checked_sub(4).and_then(|i| program.get(i..)),
                 Some([46, 98 | 66, 97 | 65, 116 | 84] | [46, 99 | 67, 109 | 77, 100 | 68])
             )
@@ -299,7 +297,7 @@ impl Command {
         } else {
             fill_utf16_buf(
                 |buffer, size| unsafe {
-                    // resolve the path so we can test the final file name.
+                    // 解析（resolve）该路径，以便我们可以测试最终的文件名。
                     c::GetFullPathNameW(program.as_ptr(), size, buffer, ptr::null_mut())
                 },
                 |program| has_bat_extension(program),
@@ -314,9 +312,9 @@ impl Command {
             let cmd_str = make_command_line(&self.program, &self.args, self.force_quotes_enabled)?;
             (program, cmd_str)
         };
-        cmd_str.push(0); // add null terminator
+        cmd_str.push(0); // 添加 null 终止符
 
-        // stolen from the libuv code.
+        // 偷师自（stolen from）libuv 的代码。
         let mut flags = self.flags | c::CREATE_UNICODE_ENVIRONMENT;
         if self.detach {
             flags |= c::DETACHED_PROCESS | c::CREATE_NEW_PROCESS_GROUP;
@@ -327,14 +325,12 @@ impl Command {
         let (dirp, _data) = make_dirp(self.cwd.as_ref())?;
         let mut pi = zeroed_process_information();
 
-        // Prepare all stdio handles to be inherited by the child. This
-        // currently involves duplicating any existing ones with the ability to
-        // be inherited by child processes. Note, however, that once an
-        // inheritable handle is created, *any* spawned child will inherit that
-        // handle. We only want our own child to inherit this handle, so we wrap
-        // the remaining portion of this spawn in a mutex.
+        // 准备好所有的 stdio 句柄，使其能被子进程继承。这目前涉及把任何已存在的句柄
+        // 复制（duplicate）为可被子进程继承的句柄。然而要注意，一旦创建了一个可继承的
+        // 句柄，*任何* 被 spawn 的子进程都会继承那个句柄。我们只希望我们自己的子进程继承
+        // 这个句柄，因此我们把本次 spawn 的剩余部分包裹在一个互斥锁（mutex）里。
         //
-        // For more information, msdn also has an article about this race:
+        // 想了解更多信息，msdn 也有一篇关于这种竞态（race）的文章：
         // https://support.microsoft.com/kb/315939
         static CREATE_PROCESS_LOCK: Mutex<()> = Mutex::new(());
 
@@ -352,10 +348,10 @@ impl Command {
 
         let mut si = zeroed_startupinfo();
 
-        // If at least one of stdin, stdout or stderr are set (i.e. are non null)
-        // then set the `hStd` fields in `STARTUPINFO`.
-        // Otherwise skip this and allow the OS to apply its default behavior.
-        // This provides more consistent behavior between Win7 and Win8+.
+        // 如果 stdin、stdout 或 stderr 中至少有一个被设置了（即非 null），
+        // 那么就设置 `STARTUPINFO` 中的 `hStd` 字段。
+        // 否则就跳过这一步，让操作系统应用它的默认行为。
+        // 这能在 Win7 与 Win8+ 之间提供更一致的行为。
         let is_set = |stdio: &Handle| !stdio.as_raw_handle().is_null();
         if is_set(&stderr) || is_set(&stdout) || is_set(&stdin) {
             si.dwFlags |= c::STARTF_USESTDHANDLES;
@@ -397,9 +393,9 @@ impl Command {
 
             si_ex = c::STARTUPINFOEXW {
                 StartupInfo: si,
-                // SAFETY: Casting this `*const` pointer to a `*mut` pointer is "safe"
-                // here because windows does not internally mutate the attribute list.
-                // Ideally this should be reflected in the interface of the `windows-sys` crate.
+                // SAFETY: 在这里把这个 `*const` 指针转换为 `*mut` 指针是“安全的”，
+                // 因为 windows 在内部不会改变（mutate）该属性列表（attribute list）。
+                // 理想情况下，这一点应当反映在 `windows-sys` crate 的接口中。
                 lpAttributeList: proc_thread_attribute_list.as_ptr().cast::<c_void>().cast_mut(),
             };
             si_ptr = (&raw mut si_ex) as _;
@@ -449,29 +445,29 @@ impl fmt::Debug for Command {
     }
 }
 
-// Resolve `exe_path` to the executable name.
+// 把 `exe_path` 解析为可执行文件名。
 //
-// * If the path is simply a file name then use the paths given by `search_paths` to find the executable.
-// * Otherwise use the `exe_path` as given.
+// * 如果该路径只是一个文件名，那么就使用 `search_paths` 给出的路径来查找该可执行文件。
+// * 否则，按原样使用 `exe_path`。
 //
-// This function may also append `.exe` to the name. The rationale for doing so is as follows:
+// 本函数也可能会向名称追加 `.exe`。这样做的理由如下：
 //
-// It is a very strong convention that Windows executables have the `exe` extension.
-// In Rust, it is common to omit this extension.
-// Therefore this functions first assumes `.exe` was intended.
-// It falls back to the plain file name if a full path is given and the extension is omitted
-// or if only a file name is given and it already contains an extension.
+// Windows 可执行文件带有 `exe` 扩展名，这是一个非常强的约定。
+// 在 Rust 中，省略这个扩展名很常见。
+// 因此本函数首先假定用户本意是想带上 `.exe`。
+// 如果给出的是完整路径但省略了扩展名，或者只给出文件名且它已经包含扩展名，
+// 那么它会回退到使用纯文件名。
 fn resolve_exe<'a>(
     exe_path: &'a OsStr,
     parent_paths: impl FnOnce() -> Option<OsString>,
     child_paths: Option<&OsStr>,
 ) -> io::Result<Vec<u16>> {
-    // Early return if there is no filename.
+    // 如果没有文件名，则提前返回。
     if exe_path.is_empty() || path::has_trailing_slash(exe_path) {
         return Err(io::const_error!(io::ErrorKind::InvalidInput, "program path has no file name"));
     }
-    // Test if the file name has the `exe` extension.
-    // This does a case-insensitive `ends_with`.
+    // 测试文件名是否带有 `exe` 扩展名。
+    // 它执行的是不区分大小写的 `ends_with`。
     let has_exe_suffix = if exe_path.len() >= EXE_SUFFIX.len() {
         exe_path.as_encoded_bytes()[exe_path.len() - EXE_SUFFIX.len()..]
             .eq_ignore_ascii_case(EXE_SUFFIX.as_bytes())
@@ -479,33 +475,33 @@ fn resolve_exe<'a>(
         false
     };
 
-    // If `exe_path` is an absolute path or a sub-path then don't search `PATH` for it.
+    // 如果 `exe_path` 是绝对路径或子路径（sub-path），那么就不要在 `PATH` 中查找它。
     if !path::is_file_name(exe_path) {
         if has_exe_suffix {
-            // The application name is a path to a `.exe` file.
-            // Let `CreateProcessW` figure out if it exists or not.
+            // 应用程序名称是一个指向 `.exe` 文件的路径。
+            // 让 `CreateProcessW` 去判断它是否存在。
             return args::to_user_path(Path::new(exe_path));
         }
         let mut path = PathBuf::from(exe_path);
 
-        // Append `.exe` if not already there.
+        // 如果还没有 `.exe`，就追加上去。
         path = path::append_suffix(path, EXE_SUFFIX.as_ref());
         if let Some(path) = program_exists(&path) {
             return Ok(path);
         } else {
-            // It's ok to use `set_extension` here because the intent is to
-            // remove the extension that was just added.
+            // 在这里使用 `set_extension` 是没问题的，因为意图就是
+            // 移除刚刚添加上去的那个扩展名。
             path.set_extension("");
             return args::to_user_path(&path);
         }
     } else {
         ensure_no_nuls(exe_path)?;
-        // From the `CreateProcessW` docs:
-        // > If the file name does not contain an extension, .exe is appended.
-        // Note that this rule only applies when searching paths.
+        // 摘自 `CreateProcessW` 的文档：
+        // > 如果文件名不包含扩展名，则会追加 .exe。
+        // 注意，此规则仅在搜索路径时适用。
         let has_extension = exe_path.as_encoded_bytes().contains(&b'.');
 
-        // Search the directories given by `search_paths`.
+        // 在 `search_paths` 给出的目录中进行搜索。
         let result = search_paths(parent_paths, child_paths, |mut path| {
             path.push(exe_path);
             if !has_extension {
@@ -517,12 +513,12 @@ fn resolve_exe<'a>(
             return Ok(path);
         }
     }
-    // If we get here then the executable cannot be found.
+    // 如果我们走到了这里，那就说明找不到该可执行文件。
     Err(io::const_error!(io::ErrorKind::NotFound, "program not found"))
 }
 
-// Calls `f` for every path that should be used to find an executable.
-// Returns once `f` returns the path to an executable or all paths have been searched.
+// 对每一个应当用于查找可执行文件的路径调用 `f`。
+// 一旦 `f` 返回某个可执行文件的路径、或所有路径都已被搜索过，就返回。
 fn search_paths<Paths, Exists>(
     parent_paths: Paths,
     child_paths: Option<&OsStr>,
@@ -532,8 +528,8 @@ where
     Paths: FnOnce() -> Option<OsString>,
     Exists: FnMut(PathBuf) -> Option<Vec<u16>>,
 {
-    // 1. Child paths
-    // This is for consistency with Rust's historic behavior.
+    // 1. 子路径（Child paths）
+    // 这是为了与 Rust 历史上的行为保持一致。
     if let Some(paths) = child_paths {
         for path in env::split_paths(paths).filter(|p| !p.as_os_str().is_empty()) {
             if let Some(path) = exists(path) {
@@ -542,7 +538,7 @@ where
         }
     }
 
-    // 2. Application path
+    // 2. 应用程序路径（Application path）
     if let Ok(mut app_path) = env::current_exe() {
         app_path.pop();
         if let Some(path) = exists(app_path) {
@@ -550,8 +546,8 @@ where
         }
     }
 
-    // 3 & 4. System paths
-    // SAFETY: This uses `fill_utf16_buf` to safely call the OS functions.
+    // 3 和 4. 系统路径（System paths）
+    // SAFETY: 它使用 `fill_utf16_buf` 来安全地调用相应的操作系统函数。
     unsafe {
         if let Ok(Some(path)) = fill_utf16_buf(
             |buf, size| c::GetSystemDirectoryW(buf, size),
@@ -570,7 +566,7 @@ where
         }
     }
 
-    // 5. Parent paths
+    // 5. 父路径（Parent paths）
     if let Some(parent_paths) = parent_paths() {
         for path in env::split_paths(&parent_paths).filter(|p| !p.as_os_str().is_empty()) {
             if let Some(path) = exists(path) {
@@ -581,14 +577,14 @@ where
     None
 }
 
-/// Checks if a file exists without following symlinks.
+/// 在不跟随符号链接的情况下检查某个文件是否存在。
 fn program_exists(path: &Path) -> Option<Vec<u16>> {
     unsafe {
         let path = args::to_user_path(path).ok()?;
-        // Getting attributes using `GetFileAttributesW` does not follow symlinks
-        // and it will almost always be successful if the link exists.
-        // There are some exceptions for special system files (e.g. the pagefile)
-        // but these are not executable.
+        // 使用 `GetFileAttributesW` 获取属性不会跟随符号链接，
+        // 而且只要链接存在，它几乎总会成功。
+        // 对于某些特殊的系统文件（例如页面文件 pagefile）有一些例外，
+        // 但那些文件不是可执行文件。
         if c::GetFileAttributesW(path.as_ptr()) == c::INVALID_FILE_ATTRIBUTES {
             None
         } else {
@@ -603,10 +599,10 @@ impl Stdio {
             Ok(io) => unsafe {
                 let io = Handle::from_raw_handle(io);
                 let ret = io.duplicate(0, true, c::DUPLICATE_SAME_ACCESS);
-                let _ = io.into_raw_handle(); // Don't close the handle
+                let _ = io.into_raw_handle(); // 不要关闭该句柄
                 ret
             },
-            // If no stdio handle is available, then propagate the null value.
+            // 如果没有可用的 stdio 句柄，则把这个 null 值传播下去。
             Err(..) => unsafe { Ok(Handle::from_raw_handle(ptr::null_mut())) },
         };
         match *self {
@@ -628,9 +624,8 @@ impl Stdio {
 
             Stdio::Handle(ref handle) => handle.duplicate(0, true, c::DUPLICATE_SAME_ACCESS),
 
-            // Open up a reference to NUL with appropriate read/write
-            // permissions as well as the ability to be inherited to child
-            // processes (as this is about to be inherited).
+            // 打开一个对 NUL 的引用，赋予其适当的读/写权限，以及可被子进程继承的能力
+            //（因为它即将被继承）。
             Stdio::Null => {
                 let mut opts = OpenOptions::new();
                 opts.read(stdio_id == c::STD_INPUT_HANDLE);
@@ -673,14 +668,13 @@ impl From<io::Stderr> for Stdio {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// Processes
+// 进程（Processes）
 ////////////////////////////////////////////////////////////////////////////////
 
-/// A value representing a child process.
+/// 一个表示子进程的值。
 ///
-/// The lifetime of this value is linked to the lifetime of the actual
-/// process - the Process destructor calls self.finish() which waits
-/// for the process to terminate.
+/// 这个值的生命周期与实际进程的生命周期相关联——Process 的析构函数会调用
+/// self.finish()，它会等待该进程终止。
 pub struct Process {
     handle: Handle,
     main_thread_handle: Handle,
@@ -691,9 +685,9 @@ impl Process {
         let result = unsafe { c::TerminateProcess(self.handle.as_raw_handle(), 1) };
         if result == c::FALSE {
             let error = api::get_last_error();
-            // TerminateProcess returns ERROR_ACCESS_DENIED if the process has already been
-            // terminated (by us, or for any other reason). So check if the process was actually
-            // terminated, and if so, do not return an error.
+            // 如果进程已经被终止（被我们终止，或出于任何其他原因），
+            // TerminateProcess 会返回 ERROR_ACCESS_DENIED。因此要检查该进程是否确实
+            // 已被终止；如果是，就不要返回错误。
             if error != WinError::ACCESS_DENIED || self.try_wait().is_err() {
                 return Err(crate::io::Error::from_raw_os_error(error.code as i32));
             }
@@ -760,7 +754,7 @@ impl ExitStatus {
     }
 }
 
-/// Converts a raw `u32` to a type-safe `ExitStatus` by wrapping it without copying.
+/// 通过包装一个原始的 `u32`（不进行拷贝）来把它转换为类型安全的 `ExitStatus`。
 impl From<u32> for ExitStatus {
     fn from(u: u32) -> ExitStatus {
         ExitStatus(u)
@@ -769,11 +763,9 @@ impl From<u32> for ExitStatus {
 
 impl fmt::Display for ExitStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Windows exit codes with the high bit set typically mean some form of
-        // unhandled exception or warning. In this scenario printing the exit
-        // code in decimal doesn't always make sense because it's a very large
-        // and somewhat gibberish number. The hex code is a bit more
-        // recognizable and easier to search for, so print that.
+        // 设置了高位（high bit）的 Windows 退出码通常意味着某种未处理的异常或警告。
+        // 在这种情况下，以十进制打印退出码并不总是合理，因为它是一个非常大、
+        // 且有点像乱码的数字。十六进制码更易辨认、也更便于搜索，所以打印那个。
         if self.0 & 0x80000000 != 0 {
             write!(f, "exit code: {:#x}", self.0)
         } else {
@@ -854,17 +846,16 @@ fn zeroed_process_information() -> c::PROCESS_INFORMATION {
     }
 }
 
-// Produces a wide string *without terminating null*; returns an error if
-// `prog` or any of the `args` contain a nul.
+// 生成一个宽字符串（wide string）*且不带末尾的 null*；如果 `prog` 或任何 `args`
+// 包含 nul，则返回一个错误。
 fn make_command_line(argv0: &OsStr, args: &[Arg], force_quotes: bool) -> io::Result<Vec<u16>> {
-    // Encode the command and arguments in a command line string such
-    // that the spawned process may recover them using CommandLineToArgvW.
+    // 把命令和参数编码到一个命令行字符串中，使得被 spawn 的进程
+    // 可以用 CommandLineToArgvW 把它们还原（recover）出来。
     let mut cmd: Vec<u16> = Vec::new();
 
-    // Always quote the program name so CreateProcess to avoid ambiguity when
-    // the child process parses its arguments.
-    // Note that quotes aren't escaped here because they can't be used in arg0.
-    // But that's ok because file paths can't contain quotes.
+    // 始终给程序名加上引号，以避免子进程解析其参数时 CreateProcess 产生歧义。
+    // 注意这里不对引号进行转义，因为引号不能用于 arg0。
+    // 不过这没关系，因为文件路径不能包含引号。
     cmd.push(b'"' as u16);
     cmd.extend(argv0.encode_wide());
     cmd.push(b'"' as u16);
@@ -876,7 +867,7 @@ fn make_command_line(argv0: &OsStr, args: &[Arg], force_quotes: bool) -> io::Res
     Ok(cmd)
 }
 
-// Get `cmd.exe` for use with bat scripts, encoded as a UTF-16 string.
+// 获取用于运行 bat 脚本的 `cmd.exe`，编码为 UTF-16 字符串。
 fn command_prompt() -> io::Result<Vec<u16>> {
     let mut system: Vec<u16> =
         fill_utf16_buf(|buf, size| unsafe { c::GetSystemDirectoryW(buf, size) }, |buf| buf.into())?;
@@ -885,14 +876,12 @@ fn command_prompt() -> io::Result<Vec<u16>> {
 }
 
 fn make_envp(maybe_env: Option<BTreeMap<EnvKey, OsString>>) -> io::Result<(*mut c_void, Vec<u16>)> {
-    // On Windows we pass an "environment block" which is not a char**, but
-    // rather a concatenation of null-terminated k=v\0 sequences, with a final
-    // \0 to terminate.
+    // 在 Windows 上，我们传入一个 "environment block"（环境块），它不是 char**，
+    // 而是若干以 null 结尾的 k=v\0 序列的拼接，并以一个末尾的 \0 来终止。
     if let Some(env) = maybe_env {
         let mut blk = Vec::new();
 
-        // If there are no environment variables to set then signal this by
-        // pushing a null.
+        // 如果没有要设置的环境变量，就通过 push 一个 null 来表明这一点。
         if env.is_empty() {
             blk.push(0);
         }
@@ -915,22 +904,22 @@ fn make_dirp(d: Option<&OsString>) -> io::Result<(*const u16, Vec<u16>)> {
     match d {
         Some(dir) => {
             let mut dir_str: Vec<u16> = ensure_no_nuls(dir)?.encode_wide().chain([0]).collect();
-            // Try to remove the `\\?\` prefix, if any.
-            // This is necessary because the current directory does not support verbatim paths.
-            // However. this can only be done if it doesn't change how the path will be resolved.
+            // 尝试移除 `\\?\` 前缀（如果有的话）。
+            // 这是必要的，因为当前目录（current directory）不支持 verbatim 路径。
+            // 然而，只有在这样做不会改变路径的解析方式时，才能这么做。
             let ptr = if dir_str.starts_with(utf16!(r"\\?\UNC")) {
-                // Turn the `C` in `UNC` into a `\` so we can then use `\\rest\of\path`.
+                // 把 `UNC` 中的 `C` 变成 `\`，这样我们就可以使用 `\\rest\of\path`。
                 let start = r"\\?\UN".len();
                 dir_str[start] = b'\\' as u16;
                 if path::is_absolute_exact(&dir_str[start..]) {
                     dir_str[start..].as_ptr()
                 } else {
-                    // Revert the above change.
+                    // 撤销上面的更改。
                     dir_str[start] = b'C' as u16;
                     dir_str.as_ptr()
                 }
             } else if dir_str.starts_with(utf16!(r"\\?\")) {
-                // Strip the leading `\\?\`
+                // 去掉开头的 `\\?\`
                 let start = r"\\?\".len();
                 if path::is_absolute_exact(&dir_str[start..]) {
                     dir_str[start..].as_ptr()

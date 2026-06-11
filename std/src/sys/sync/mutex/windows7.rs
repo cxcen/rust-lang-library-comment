@@ -1,18 +1,16 @@
-//! System Mutexes
+//! 系统 Mutex
 //!
-//! The Windows implementation of mutexes is a little odd and it might not be
-//! immediately obvious what's going on. The primary oddness is that SRWLock is
-//! used instead of CriticalSection, and this is done because:
+//! Windows 的 mutex 实现有点奇怪，初看可能不太容易明白发生了什么。最主要的怪异
+//! 之处在于：这里用的是 SRWLock 而不是 CriticalSection，之所以这么做是因为：
 //!
-//! 1. SRWLock is several times faster than CriticalSection according to
-//!    benchmarks performed on both Windows 8 and Windows 7.
+//! 1. 根据在 Windows 8 和 Windows 7 上都做过的基准测试，SRWLock 比 CriticalSection
+//!    快好几倍。
 //!
-//! 2. CriticalSection allows recursive locking while SRWLock deadlocks. The
-//!    Unix implementation deadlocks so consistency is preferred. See #19962 for
-//!    more details.
+//! 2. CriticalSection 允许递归加锁，而 SRWLock 会死锁。Unix 的实现也是死锁，
+//!    所以这里更倾向于保持一致性。详见 #19962。
 //!
-//! 3. While CriticalSection is fair and SRWLock is not, the current Rust policy
-//!    is that there are no guarantees of fairness.
+//! 3. 虽然 CriticalSection 是公平的而 SRWLock 不是，但当前 Rust 的策略是
+//!    不对公平性做任何保证。
 
 use crate::cell::UnsafeCell;
 use crate::sys::c;

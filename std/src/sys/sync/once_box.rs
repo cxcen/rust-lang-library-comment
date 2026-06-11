@@ -1,9 +1,8 @@
-//! A racily-initialized alternative to `OnceLock<Box<T>>`.
+//! 一个可竞争初始化（racily-initialized）的 `OnceLock<Box<T>>` 替代实现。
 //!
-//! This is used to implement synchronization primitives that need allocation,
-//! like the pthread versions.
+//! 它被用来实现那些需要分配内存的同步原语，例如基于 pthread 的版本。
 
-#![allow(dead_code)] // Only used on some platforms.
+#![allow(dead_code)] // 仅在部分平台上使用。
 
 use crate::mem::replace;
 use crate::pin::Pin;
@@ -21,23 +20,21 @@ impl<T> OnceBox<T> {
         Self { ptr: AtomicPtr::new(null_mut()) }
     }
 
-    /// Gets access to the value, assuming it is already initialized and this
-    /// initialization has been observed by the current thread.
+    /// 在「值已经初始化，且该初始化已被当前线程观测到」的前提下访问该值。
     ///
-    /// Since all modifications to the pointer have already been observed, the
-    /// pointer load in this function can be performed with relaxed ordering,
-    /// potentially allowing the optimizer to turn code like this:
+    /// 由于对指针的所有修改都已经被观测到，本函数中的指针 load 可以使用
+    /// relaxed 内存序，从而让优化器有机会把这样的代码：
     /// ```rust, ignore
     /// once_box.get_or_init(|| Box::pin(42));
     /// unsafe { once_box.get_unchecked() }
     /// ```
-    /// into
+    /// 优化成：
     /// ```rust, ignore
     /// once_box.get_or_init(|| Box::pin(42))
     /// ```
     ///
-    /// # Safety
-    /// This causes undefined behavior if the assumption above is violated.
+    /// # 安全性(Safety）
+    /// 若上述前提被违反，则会导致未定义行为。
     #[inline]
     pub unsafe fn get_unchecked(&self) -> Pin<&T> {
         unsafe { Pin::new_unchecked(&*self.ptr.load(Relaxed)) }
@@ -64,8 +61,8 @@ impl<T> OnceBox<T> {
         match self.ptr.compare_exchange(null_mut(), new_ptr, Release, Acquire) {
             Ok(_) => unsafe { Pin::new_unchecked(&*new_ptr) },
             Err(ptr) => {
-                // Lost the race to another thread.
-                // Drop the value we created, and use the one from the other thread instead.
+                // 在与另一个线程的竞争中落败。
+                // 丢弃我们自己创建的值，转而使用另一个线程创建的那个。
                 drop(unsafe { Box::from_raw(new_ptr) });
                 unsafe { Pin::new_unchecked(&*ptr) }
             }

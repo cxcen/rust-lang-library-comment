@@ -4,7 +4,7 @@ pub use super::common::Args;
 use crate::ffi::{CStr, OsStr, OsString};
 use crate::os::wasi::ffi::OsStrExt;
 
-/// Returns the command line arguments
+/// 返回命令行参数
 pub fn args() -> Args {
     Args::new(maybe_args().unwrap_or(Vec::new()))
 }

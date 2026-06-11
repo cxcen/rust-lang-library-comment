@@ -82,8 +82,8 @@ impl FromRawFd for process::Stdio {
 
 #[stable(feature = "io_safety", since = "1.63.0")]
 impl From<OwnedFd> for process::Stdio {
-    /// Takes ownership of a file descriptor and returns a [`Stdio`](process::Stdio)
-    /// that can attach a stream to it.
+    /// 获取一个文件描述符的所有权，并返回一个可以把流附加（attach）到它上面的
+    /// [`Stdio`](process::Stdio)。
     #[inline]
     fn from(fd: OwnedFd) -> process::Stdio {
         let fd = sys::fd::FileDesc::from_inner(fd);
@@ -150,17 +150,16 @@ impl AsFd for crate::process::ChildStdin {
 
 #[stable(feature = "io_safety", since = "1.63.0")]
 impl From<crate::process::ChildStdin> for OwnedFd {
-    /// Takes ownership of a [`ChildStdin`](crate::process::ChildStdin)'s file descriptor.
+    /// 获取一个 [`ChildStdin`](crate::process::ChildStdin) 的文件描述符的所有权。
     #[inline]
     fn from(child_stdin: crate::process::ChildStdin) -> OwnedFd {
         child_stdin.into_inner().into_inner()
     }
 }
 
-/// Creates a `ChildStdin` from the provided `OwnedFd`.
+/// 从提供的 `OwnedFd` 创建一个 `ChildStdin`。
 ///
-/// The provided file descriptor must point to a pipe
-/// with the `CLOEXEC` flag set.
+/// 所提供的文件描述符必须指向一个设置了 `CLOEXEC` 标志的管道（pipe）。
 #[stable(feature = "child_stream_from_fd", since = "1.74.0")]
 impl From<OwnedFd> for process::ChildStdin {
     #[inline]
@@ -180,17 +179,16 @@ impl AsFd for crate::process::ChildStdout {
 
 #[stable(feature = "io_safety", since = "1.63.0")]
 impl From<crate::process::ChildStdout> for OwnedFd {
-    /// Takes ownership of a [`ChildStdout`](crate::process::ChildStdout)'s file descriptor.
+    /// 获取一个 [`ChildStdout`](crate::process::ChildStdout) 的文件描述符的所有权。
     #[inline]
     fn from(child_stdout: crate::process::ChildStdout) -> OwnedFd {
         child_stdout.into_inner().into_inner()
     }
 }
 
-/// Creates a `ChildStdout` from the provided `OwnedFd`.
+/// 从提供的 `OwnedFd` 创建一个 `ChildStdout`。
 ///
-/// The provided file descriptor must point to a pipe
-/// with the `CLOEXEC` flag set.
+/// 所提供的文件描述符必须指向一个设置了 `CLOEXEC` 标志的管道（pipe）。
 #[stable(feature = "child_stream_from_fd", since = "1.74.0")]
 impl From<OwnedFd> for process::ChildStdout {
     #[inline]
@@ -210,17 +208,16 @@ impl AsFd for crate::process::ChildStderr {
 
 #[stable(feature = "io_safety", since = "1.63.0")]
 impl From<crate::process::ChildStderr> for OwnedFd {
-    /// Takes ownership of a [`ChildStderr`](crate::process::ChildStderr)'s file descriptor.
+    /// 获取一个 [`ChildStderr`](crate::process::ChildStderr) 的文件描述符的所有权。
     #[inline]
     fn from(child_stderr: crate::process::ChildStderr) -> OwnedFd {
         child_stderr.into_inner().into_inner()
     }
 }
 
-/// Creates a `ChildStderr` from the provided `OwnedFd`.
+/// 从提供的 `OwnedFd` 创建一个 `ChildStderr`。
 ///
-/// The provided file descriptor must point to a pipe
-/// with the `CLOEXEC` flag set.
+/// 所提供的文件描述符必须指向一个设置了 `CLOEXEC` 标志的管道（pipe）。
 #[stable(feature = "child_stream_from_fd", since = "1.74.0")]
 impl From<OwnedFd> for process::ChildStderr {
     #[inline]

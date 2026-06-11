@@ -1,4 +1,4 @@
-//! Owned and borrowed Unix-like file descriptors.
+//! 拥有所有权的、以及借用的类 Unix 文件描述符。
 
 #![stable(feature = "io_safety", since = "1.63.0")]
 #![deny(unsafe_op_in_unsafe_fn)]
@@ -25,25 +25,19 @@ use crate::{fmt, io};
 
 type ValidRawFd = core::num::niche_types::NotAllOnes<RawFd>;
 
-/// A borrowed file descriptor.
+/// 一个借用的文件描述符。
 ///
-/// This has a lifetime parameter to tie it to the lifetime of something that owns the file
-/// descriptor. For the duration of that lifetime, it is guaranteed that nobody will close the file
-/// descriptor.
+/// 它带有一个生命周期参数，用来把自身与某个拥有该文件描述符的对象的生命周期绑定在一起。
+/// 在该生命周期持续期间，保证不会有任何人关闭这个文件描述符。
 ///
-/// This uses `repr(transparent)` and has the representation of a host file
-/// descriptor, so it can be used in FFI in places where a file descriptor is
-/// passed as an argument, it is not captured or consumed, and it never has the
-/// value `-1`.
+/// 它使用 `repr(transparent)` 且具有与宿主文件描述符相同的表示形式，因此可以在 FFI 中
+/// 用于以下场景：文件描述符作为实参传入、不会被捕获或消耗、且其值永远不为 `-1`。
 ///
-/// This type does not have a [`ToOwned`][crate::borrow::ToOwned]
-/// implementation. Calling `.to_owned()` on a variable of this type will call
-/// it on `&BorrowedFd` and use `Clone::clone()` like `ToOwned` does for all
-/// types implementing `Clone`. The result will be descriptor borrowed under
-/// the same lifetime.
+/// 该类型没有 [`ToOwned`][crate::borrow::ToOwned] 实现。对该类型的变量调用 `.to_owned()`
+/// 会改为在 `&BorrowedFd` 上调用，并像 `ToOwned` 对所有实现了 `Clone` 的类型所做的那样
+/// 使用 `Clone::clone()`。其结果将是一个在相同生命周期下借用的描述符。
 ///
-/// To obtain an [`OwnedFd`], you can use [`BorrowedFd::try_clone_to_owned`]
-/// instead, but this is not supported on all platforms.
+/// 若要获得 [`OwnedFd`]，可改用 [`BorrowedFd::try_clone_to_owned`]，但并非所有平台都支持该方法。
 #[derive(Copy, Clone)]
 #[repr(transparent)]
 #[rustc_nonnull_optimization_guaranteed]
@@ -53,17 +47,14 @@ pub struct BorrowedFd<'fd> {
     _phantom: PhantomData<&'fd OwnedFd>,
 }
 
-/// An owned file descriptor.
+/// 一个拥有所有权的文件描述符。
 ///
-/// This closes the file descriptor on drop. It is guaranteed that nobody else will close the file
-/// descriptor.
+/// 它会在 drop 时关闭该文件描述符。保证不会有其他任何人关闭这个文件描述符。
 ///
-/// This uses `repr(transparent)` and has the representation of a host file
-/// descriptor, so it can be used in FFI in places where a file descriptor is
-/// passed as a consumed argument or returned as an owned value, and it never
-/// has the value `-1`.
+/// 它使用 `repr(transparent)` 且具有与宿主文件描述符相同的表示形式，因此可以在 FFI 中
+/// 用于以下场景：文件描述符作为被消耗的实参传入、或作为拥有所有权的值返回，且其值永远不为 `-1`。
 ///
-/// You can use [`AsFd::as_fd`] to obtain a [`BorrowedFd`].
+/// 你可以使用 [`AsFd::as_fd`] 来获得一个 [`BorrowedFd`]。
 #[repr(transparent)]
 #[rustc_nonnull_optimization_guaranteed]
 #[stable(feature = "io_safety", since = "1.63.0")]
@@ -72,16 +63,15 @@ pub struct OwnedFd {
 }
 
 impl BorrowedFd<'_> {
-    /// Returns a `BorrowedFd` holding the given raw file descriptor.
+    /// 返回一个持有给定裸文件描述符的 `BorrowedFd`。
     ///
     /// # Safety
     ///
-    /// The resource pointed to by `fd` must remain open for the duration of
-    /// the returned `BorrowedFd`.
+    /// `fd` 所指向的资源必须在返回的 `BorrowedFd` 的整个存续期间保持打开状态。
     ///
     /// # Panics
     ///
-    /// Panics if the raw file descriptor has the value `-1`.
+    /// 如果该裸文件描述符的值为 `-1`，则会 panic。
     #[inline]
     #[track_caller]
     #[rustc_const_stable(feature = "io_safety", since = "1.63.0")]
@@ -92,8 +82,8 @@ impl BorrowedFd<'_> {
 }
 
 impl OwnedFd {
-    /// Creates a new `OwnedFd` instance that shares the same underlying file
-    /// description as the existing `OwnedFd` instance.
+    /// 创建一个新的 `OwnedFd` 实例，它与现有的 `OwnedFd` 实例共享同一个底层的
+    /// 打开文件描述（file description）。
     #[stable(feature = "io_safety", since = "1.63.0")]
     pub fn try_clone(&self) -> io::Result<Self> {
         self.as_fd().try_clone_to_owned()
@@ -101,8 +91,8 @@ impl OwnedFd {
 }
 
 impl BorrowedFd<'_> {
-    /// Creates a new `OwnedFd` instance that shares the same underlying file
-    /// description as the existing `BorrowedFd` instance.
+    /// 创建一个新的 `OwnedFd` 实例，它与现有的 `BorrowedFd` 实例共享同一个底层的
+    /// 打开文件描述（file description）。
     #[cfg(not(any(
         target_arch = "wasm32",
         target_os = "hermit",
@@ -111,34 +101,32 @@ impl BorrowedFd<'_> {
     )))]
     #[stable(feature = "io_safety", since = "1.63.0")]
     pub fn try_clone_to_owned(&self) -> io::Result<OwnedFd> {
-        // We want to atomically duplicate this file descriptor and set the
-        // CLOEXEC flag, and currently that's done via F_DUPFD_CLOEXEC. This
-        // is a POSIX flag that was added to Linux in 2.6.24.
+        // 我们希望原子地复制此文件描述符并设置 CLOEXEC 标志，目前这通过
+        // F_DUPFD_CLOEXEC 完成。这是一个 POSIX 标志，于 2.6.24 版本加入 Linux。
         #[cfg(not(any(target_os = "espidf", target_os = "vita")))]
         let cmd = libc::F_DUPFD_CLOEXEC;
 
-        // For ESP-IDF, F_DUPFD is used instead, because the CLOEXEC semantics
-        // will never be supported, as this is a bare metal framework with
-        // no capabilities for multi-process execution. While F_DUPFD is also
-        // not supported yet, it might be (currently it returns ENOSYS).
+        // 对于 ESP-IDF，改用 F_DUPFD，因为 CLOEXEC 语义永远不会被支持——
+        // 它是一个没有多进程执行能力的裸机框架。虽然 F_DUPFD 目前也尚未支持，
+        // 但将来可能会支持（目前它返回 ENOSYS）。
         #[cfg(any(target_os = "espidf", target_os = "vita"))]
         let cmd = libc::F_DUPFD;
 
-        // Avoid using file descriptors below 3 as they are used for stdio
+        // 避免使用 3 以下的文件描述符，因为它们被 stdio 占用
         let fd = cvt(unsafe { libc::fcntl(self.as_raw_fd(), cmd, 3) })?;
         Ok(unsafe { OwnedFd::from_raw_fd(fd) })
     }
 
-    /// Creates a new `OwnedFd` instance that shares the same underlying file
-    /// description as the existing `BorrowedFd` instance.
+    /// 创建一个新的 `OwnedFd` 实例，它与现有的 `BorrowedFd` 实例共享同一个底层的
+    /// 打开文件描述（file description）。
     #[cfg(any(target_arch = "wasm32", target_os = "hermit", target_os = "trusty"))]
     #[stable(feature = "io_safety", since = "1.63.0")]
     pub fn try_clone_to_owned(&self) -> io::Result<OwnedFd> {
         Err(io::Error::UNSUPPORTED_PLATFORM)
     }
 
-    /// Creates a new `OwnedFd` instance that shares the same underlying file
-    /// description as the existing `BorrowedFd` instance.
+    /// 创建一个新的 `OwnedFd` 实例，它与现有的 `BorrowedFd` 实例共享同一个底层的
+    /// 打开文件描述（file description）。
     #[cfg(target_os = "motor")]
     #[stable(feature = "io_safety", since = "1.63.0")]
     pub fn try_clone_to_owned(&self) -> io::Result<OwnedFd> {
@@ -173,18 +161,18 @@ impl IntoRawFd for OwnedFd {
 
 #[stable(feature = "io_safety", since = "1.63.0")]
 impl FromRawFd for OwnedFd {
-    /// Constructs a new instance of `Self` from the given raw file descriptor.
+    /// 从给定的裸文件描述符构造一个新的 `Self` 实例。
     ///
     /// # Safety
     ///
-    /// The resource pointed to by `fd` must be open and suitable for assuming
-    /// [ownership][io-safety]. The resource must not require any cleanup other than `close`.
+    /// `fd` 所指向的资源必须处于打开状态，且适合被假定[拥有所有权][io-safety]。
+    /// 该资源除 `close` 之外不得要求任何其他清理操作。
     ///
     /// [io-safety]: io#io-safety
     ///
     /// # Panics
     ///
-    /// Panics if the raw file descriptor has the value `-1`.
+    /// 如果该裸文件描述符的值为 `-1`，则会 panic。
     #[inline]
     #[track_caller]
     unsafe fn from_raw_fd(fd: RawFd) -> Self {
@@ -197,17 +185,15 @@ impl Drop for OwnedFd {
     #[inline]
     fn drop(&mut self) {
         unsafe {
-            // Note that errors are ignored when closing a file descriptor. According to POSIX 2024,
-            // we can and indeed should retry `close` on `EINTR`
-            // (https://pubs.opengroup.org/onlinepubs/9799919799.2024edition/functions/close.html),
-            // but it is not clear yet how well widely-used implementations are conforming with this
-            // mandate since older versions of POSIX left the state of the FD after an `EINTR`
-            // unspecified. Ignoring errors is "fine" because some of the major Unices (in
-            // particular, Linux) do make sure to always close the FD, even when `close()` is
-            // interrupted, and the scenario is rare to begin with. If we retried on a
-            // not-POSIX-compliant implementation, the consequences could be really bad since we may
-            // close the wrong FD. Helpful link to an epic discussion by POSIX workgroup that led to
-            // the latest POSIX wording: http://austingroupbugs.net/view.php?id=529
+            // 注意，关闭文件描述符时错误会被忽略。根据 POSIX 2024，我们可以、
+            // 而且确实应当在 `EINTR` 时重试 `close`
+            // (https://pubs.opengroup.org/onlinepubs/9799919799.2024edition/functions/close.html)，
+            // 但目前尚不清楚广泛使用的实现对这一要求的遵循程度如何，因为旧版 POSIX
+            // 把 `EINTR` 之后 FD 的状态留作未指定。忽略错误是“可以接受的”，因为某些主要的
+            // Unix 系统（特别是 Linux）确实保证总是关闭该 FD，即便 `close()` 被中断；
+            // 而且这种情形本身就很罕见。如果我们在一个不符合 POSIX 的实现上重试，后果
+            // 可能非常糟糕，因为我们可能会关闭错误的 FD。这里有一个指向 POSIX 工作组那场
+            // 最终促成最新 POSIX 措辞的精彩讨论的有用链接：http://austingroupbugs.net/view.php?id=529
             #[cfg(not(target_os = "hermit"))]
             {
                 #[cfg(unix)]
@@ -252,16 +238,15 @@ macro_rules! impl_is_terminal {
 
 impl_is_terminal!(BorrowedFd<'_>, OwnedFd);
 
-/// A trait to borrow the file descriptor from an underlying object.
+/// 用于从底层对象借用文件描述符的 trait。
 ///
-/// This is only available on unix platforms and must be imported in order to
-/// call the method. Windows platforms have a corresponding `AsHandle` and
-/// `AsSocket` set of traits.
+/// 该 trait 仅在 unix 平台上可用，且必须导入后才能调用其方法。Windows 平台有对应的
+/// `AsHandle` 与 `AsSocket` 系列 trait。
 #[stable(feature = "io_safety", since = "1.63.0")]
 pub trait AsFd {
-    /// Borrows the file descriptor.
+    /// 借用该文件描述符。
     ///
-    /// # Example
+    /// # 示例
     ///
     /// ```rust,no_run
     /// use std::fs::File;
@@ -306,9 +291,8 @@ impl AsFd for BorrowedFd<'_> {
 impl AsFd for OwnedFd {
     #[inline]
     fn as_fd(&self) -> BorrowedFd<'_> {
-        // Safety: `OwnedFd` and `BorrowedFd` have the same validity
-        // invariants, and the `BorrowedFd` is bounded by the lifetime
-        // of `&self`.
+        // Safety: `OwnedFd` 与 `BorrowedFd` 具有相同的有效性
+        // 不变量，且该 `BorrowedFd` 受 `&self` 的生命周期约束。
         unsafe { BorrowedFd::borrow_raw(self.as_raw_fd()) }
     }
 }
@@ -325,7 +309,7 @@ impl AsFd for fs::File {
 #[stable(feature = "io_safety", since = "1.63.0")]
 #[cfg(not(target_os = "trusty"))]
 impl From<fs::File> for OwnedFd {
-    /// Takes ownership of a [`File`](fs::File)'s underlying file descriptor.
+    /// 取得一个 [`File`](fs::File) 底层文件描述符的所有权。
     #[inline]
     fn from(file: fs::File) -> OwnedFd {
         file.into_inner().into_inner().into_inner()
@@ -335,8 +319,7 @@ impl From<fs::File> for OwnedFd {
 #[stable(feature = "io_safety", since = "1.63.0")]
 #[cfg(not(target_os = "trusty"))]
 impl From<OwnedFd> for fs::File {
-    /// Returns a [`File`](fs::File) that takes ownership of the given
-    /// file descriptor.
+    /// 返回一个取得给定文件描述符所有权的 [`File`](fs::File)。
     #[inline]
     fn from(owned_fd: OwnedFd) -> Self {
         Self::from_inner(FromInner::from_inner(FromInner::from_inner(owned_fd)))
@@ -355,7 +338,7 @@ impl AsFd for crate::net::TcpStream {
 #[stable(feature = "io_safety", since = "1.63.0")]
 #[cfg(not(target_os = "trusty"))]
 impl From<crate::net::TcpStream> for OwnedFd {
-    /// Takes ownership of a [`TcpStream`](crate::net::TcpStream)'s socket file descriptor.
+    /// 取得一个 [`TcpStream`](crate::net::TcpStream) 的套接字文件描述符的所有权。
     #[inline]
     fn from(tcp_stream: crate::net::TcpStream) -> OwnedFd {
         tcp_stream.into_inner().into_socket().into_inner().into_inner().into()
@@ -385,7 +368,7 @@ impl AsFd for crate::net::TcpListener {
 #[stable(feature = "io_safety", since = "1.63.0")]
 #[cfg(not(target_os = "trusty"))]
 impl From<crate::net::TcpListener> for OwnedFd {
-    /// Takes ownership of a [`TcpListener`](crate::net::TcpListener)'s socket file descriptor.
+    /// 取得一个 [`TcpListener`](crate::net::TcpListener) 的套接字文件描述符的所有权。
     #[inline]
     fn from(tcp_listener: crate::net::TcpListener) -> OwnedFd {
         tcp_listener.into_inner().into_socket().into_inner().into_inner().into()
@@ -415,7 +398,7 @@ impl AsFd for crate::net::UdpSocket {
 #[stable(feature = "io_safety", since = "1.63.0")]
 #[cfg(not(target_os = "trusty"))]
 impl From<crate::net::UdpSocket> for OwnedFd {
-    /// Takes ownership of a [`UdpSocket`](crate::net::UdpSocket)'s file descriptor.
+    /// 取得一个 [`UdpSocket`](crate::net::UdpSocket) 的文件描述符的所有权。
     #[inline]
     fn from(udp_socket: crate::net::UdpSocket) -> OwnedFd {
         udp_socket.into_inner().into_socket().into_inner().into_inner().into()
@@ -434,7 +417,7 @@ impl From<OwnedFd> for crate::net::UdpSocket {
 }
 
 #[stable(feature = "asfd_ptrs", since = "1.64.0")]
-/// This impl allows implementing traits that require `AsFd` on Arc.
+/// 此 impl 使得可以在 Arc 上实现那些要求 `AsFd` 的 trait。
 /// ```
 /// # #[cfg(any(unix, target_os = "wasi"))] mod group_cfg {
 /// # #[cfg(target_os = "wasi")]
@@ -492,7 +475,7 @@ impl AsFd for io::Stdin {
 impl<'a> AsFd for io::StdinLock<'a> {
     #[inline]
     fn as_fd(&self) -> BorrowedFd<'_> {
-        // SAFETY: user code should not close stdin out from under the standard library
+        // SAFETY: 用户代码不应在标准库底下把 stdin 关闭
         unsafe { BorrowedFd::borrow_raw(0) }
     }
 }
@@ -509,7 +492,7 @@ impl AsFd for io::Stdout {
 impl<'a> AsFd for io::StdoutLock<'a> {
     #[inline]
     fn as_fd(&self) -> BorrowedFd<'_> {
-        // SAFETY: user code should not close stdout out from under the standard library
+        // SAFETY: 用户代码不应在标准库底下把 stdout 关闭
         unsafe { BorrowedFd::borrow_raw(1) }
     }
 }
@@ -526,7 +509,7 @@ impl AsFd for io::Stderr {
 impl<'a> AsFd for io::StderrLock<'a> {
     #[inline]
     fn as_fd(&self) -> BorrowedFd<'_> {
-        // SAFETY: user code should not close stderr out from under the standard library
+        // SAFETY: 用户代码不应在标准库底下把 stderr 关闭
         unsafe { BorrowedFd::borrow_raw(2) }
     }
 }

@@ -226,8 +226,8 @@ impl TcpListener {
 
         Ok((
             TcpStream::from_inner(unsafe { Socket::from_raw_fd(fd as _) }),
-            // WASI has no concept of SocketAddr yet
-            // return an unspecified IPv4Addr
+            // WASI 目前还没有 SocketAddr 的概念
+            // 返回一个未指定的 IPv4Addr
             SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0),
         ))
     }

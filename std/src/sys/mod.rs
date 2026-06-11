@@ -27,28 +27,28 @@ pub mod sync;
 pub mod thread;
 pub mod thread_local;
 
-// FIXME(117276): remove this, move feature implementations into individual
-//                submodules.
+// FIXME(117276): 移除这一行，把各特性实现迁移到各自独立的
+//                子模块中。
 pub use pal::*;
 
-/// A trait for viewing representations from std types.
+/// 用于查看 std 类型内部表示的 trait（以共享引用方式借出内部表示）。
 #[cfg_attr(not(target_os = "linux"), allow(unused))]
 pub(crate) trait AsInner<Inner: ?Sized> {
     fn as_inner(&self) -> &Inner;
 }
 
-/// A trait for viewing representations from std types.
+/// 用于查看 std 类型内部表示的 trait（以可变引用方式借出内部表示）。
 #[cfg_attr(not(target_os = "linux"), allow(unused))]
 pub(crate) trait AsInnerMut<Inner: ?Sized> {
     fn as_inner_mut(&mut self) -> &mut Inner;
 }
 
-/// A trait for extracting representations from std types.
+/// 用于从 std 类型中提取（按值取出）内部表示的 trait。
 pub(crate) trait IntoInner<Inner> {
     fn into_inner(self) -> Inner;
 }
 
-/// A trait for creating std types from internal representations.
+/// 用于从内部表示构造 std 类型的 trait。
 pub(crate) trait FromInner<Inner> {
     fn from_inner(inner: Inner) -> Self;
 }

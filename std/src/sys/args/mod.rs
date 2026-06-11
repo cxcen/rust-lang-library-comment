@@ -1,4 +1,4 @@
-//! Platform-dependent command line arguments abstraction.
+//! 与平台相关的命令行参数抽象。
 
 #![forbid(unsafe_op_in_unsafe_fn)]
 

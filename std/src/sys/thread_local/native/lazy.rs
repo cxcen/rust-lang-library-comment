@@ -29,7 +29,7 @@ enum State<D> {
 #[allow(missing_debug_implementations)]
 #[repr(C)]
 pub struct Storage<T, D> {
-    // This field must be first, for correctness of `#[rustc_align_static]`
+    // 为了 `#[rustc_align_static]` 的正确性，此字段必须排在第一位
     value: UnsafeCell<MaybeUninit<T>>,
     state: Cell<State<D>>,
 }
@@ -45,15 +45,13 @@ where
         }
     }
 
-    /// Gets a pointer to the TLS value, potentially initializing it with the
-    /// provided parameters. If the TLS variable has been destroyed, a null
-    /// pointer is returned.
+    /// 获取一个指向 TLS 值的指针，必要时用所提供的参数对其进行初始化。
+    /// 如果该 TLS 变量已被销毁，则返回空指针。
     ///
-    /// The resulting pointer may not be used after reentrant inialialization
-    /// or thread destruction has occurred.
+    /// 在发生重入式（reentrant）初始化或线程销毁之后，所得到的指针不可再使用。
     ///
-    /// # Safety
-    /// The `self` reference must remain valid until the TLS destructor is run.
+    /// # 安全性(Safety）
+    /// `self` 引用必须在 TLS 析构函数运行之前一直保持有效。
     #[inline]
     pub unsafe fn get_or_init(&self, i: Option<&mut Option<T>>, f: impl FnOnce() -> T) -> *const T {
         if let State::Alive = self.state.get() {
@@ -63,8 +61,8 @@ where
         }
     }
 
-    /// # Safety
-    /// The `self` reference must remain valid until the TLS destructor is run.
+    /// # 安全性(Safety）
+    /// `self` 引用必须在 TLS 析构函数运行之前一直保持有效。
     #[cold]
     unsafe fn get_or_init_slow(
         &self,
@@ -79,20 +77,17 @@ where
 
         let v = i.and_then(Option::take).unwrap_or_else(f);
 
-        // SAFETY: we cannot be inside a `LocalKey::with` scope, as the initializer
-        // has already returned and the next scope only starts after we return
-        // the pointer. Therefore, there can be no references to the old value,
-        // even if it was initialized. Thus because we are !Sync we have exclusive
-        // access to self.value and may replace it.
+        // SAFETY：我们不可能处于某个 `LocalKey::with` 作用域内部，因为初始化器
+        // 已经返回，而下一个作用域只会在我们返回该指针之后才开始。因此，即使旧值
+        // 曾被初始化，也不可能存在指向它的引用。于是，由于我们是 !Sync 的，
+        // 我们对 self.value 拥有独占访问权，可以替换它。
         let mut old_value = unsafe { self.value.get().replace(MaybeUninit::new(v)) };
         match self.state.replace(State::Alive) {
-            // If the variable is not being recursively initialized, register
-            // the destructor. This might be a noop if the value does not need
-            // destruction.
+            // 如果该变量不是正在被递归初始化，则注册析构函数。如果该值不需要
+            // 销毁，这可能是个 noop（空操作）。
             State::Uninitialized => D::register_dtor(self),
 
-            // Recursive initialization, we only need to drop the old value
-            // as we've already registered the destructor.
+            // 递归初始化的情形，我们只需要 drop 旧值，因为析构函数已经注册过了。
             State::Alive => unsafe { old_value.assume_init_drop() },
 
             State::Destroyed(_) => unreachable!(),
@@ -102,22 +97,19 @@ where
     }
 }
 
-/// Transition an `Alive` TLS variable into the `Destroyed` state, dropping its
-/// value.
+/// 把一个处于 `Alive` 状态的 TLS 变量转移到 `Destroyed` 状态，并 drop 它的值。
 ///
-/// # Safety
-/// * Must only be called at thread destruction.
-/// * `ptr` must point to an instance of `Storage<T, ()>` and be valid for
-///   accessing that instance.
+/// # 安全性(Safety）
+/// * 只能在线程销毁时调用。
+/// * `ptr` 必须指向一个 `Storage<T, ()>` 实例，且对访问该实例有效。
 unsafe extern "C" fn destroy<T>(ptr: *mut u8) {
-    // Print a nice abort message if a panic occurs.
+    // 如果发生 panic，则打印一条友好的 abort 消息。
     abort_on_dtor_unwind(|| {
         let storage = unsafe { &*(ptr as *const Storage<T, ()>) };
         if let State::Alive = storage.state.replace(State::Destroyed(())) {
-            // SAFETY: we ensured the state was Alive so the value was initialized.
-            // We also updated the state to Destroyed to prevent the destructor
-            // from accessing the thread-local variable, as this would violate
-            // the exclusive access provided by &mut T in Drop::drop.
+            // SAFETY：我们已确认状态曾为 Alive，所以该值是已初始化的。
+            // 我们还把状态更新为 Destroyed，以防止析构函数访问该线程本地变量，
+            // 因为那会违反 Drop::drop 中 &mut T 所提供的独占访问。
             unsafe { (*storage.value.get()).assume_init_drop() }
         }
     })

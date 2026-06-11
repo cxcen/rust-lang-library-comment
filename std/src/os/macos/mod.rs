@@ -1,4 +1,4 @@
-//! macOS-specific definitions
+//! macOS 平台特有的定义
 
 #![stable(feature = "raw_ext", since = "1.1.0")]
 
@@ -10,7 +10,7 @@ pub mod fs {
     pub use crate::os::darwin::fs::MetadataExt;
 }
 
-/// macOS-specific raw type definitions
+/// macOS 平台特有的原始类型定义
 #[stable(feature = "raw_ext", since = "1.1.0")]
 #[deprecated(
     since = "1.8.0",

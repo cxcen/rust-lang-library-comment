@@ -19,13 +19,13 @@ impl IncompleteUtf8 {
         IncompleteUtf8 { bytes: [0; 4], len: 0 }
     }
 
-    // Implemented for use in Stdin::read.
+    // 实现它是为了在 Stdin::read 中使用。
     fn read(&mut self, buf: &mut [u8]) -> usize {
-        // Write to buffer until the buffer is full or we run out of bytes.
+        // 持续写入缓冲区，直到缓冲区写满，或者我们的字节用完。
         let to_write = crate::cmp::min(buf.len(), self.len as usize);
         buf[..to_write].copy_from_slice(&self.bytes[..to_write]);
 
-        // Rotate the remaining bytes if not enough remaining space in buffer.
+        // 如果缓冲区中剩余空间不足，则旋转（rotate）剩余的字节。
         if usize::from(self.len) > buf.len() {
             self.bytes.copy_within(to_write.., 0);
             self.len -= to_write as u8;
@@ -48,8 +48,8 @@ impl Stdin {
 
 impl io::Read for Stdin {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        // If there are bytes in the incomplete utf-8, start with those.
-        // (No-op if there is nothing in the buffer.)
+        // 如果不完整的 utf-8 缓冲区中还有字节，就先从那些字节开始。
+        //（如果缓冲区中什么都没有，则为空操作。）
         let mut bytes_copied = self.incomplete_utf8.read(buf);
 
         let stdin: *mut r_efi::protocols::simple_text_input::Protocol = unsafe {
@@ -62,7 +62,7 @@ impl io::Read for Stdin {
         }
 
         let ch = simple_text_input_read(stdin)?;
-        // Only 1 character should be returned.
+        // 应当只返回 1 个字符。
         let mut ch: Vec<Result<char, crate::char::DecodeUtf16Error>> =
             if let Some(x) = self.surrogate.take() {
                 char::decode_utf16([x, ch]).collect()
@@ -79,19 +79,19 @@ impl io::Read for Stdin {
                 self.surrogate = Some(e.unpaired_surrogate());
             }
             Ok(x) => {
-                // This will always be > 0
+                // 这个值将始终 > 0
                 let buf_free_count = buf.len() - bytes_copied;
                 assert!(buf_free_count > 0);
 
                 if buf_free_count >= x.len_utf8() {
-                    // There is enough space in the buffer for the character.
+                    // 缓冲区中有足够的空间容纳该字符。
                     bytes_copied += x.encode_utf8(&mut buf[bytes_copied..]).len();
                 } else {
-                    // There is not enough space in the buffer for the character.
-                    // Store the character in the incomplete buffer.
+                    // 缓冲区中没有足够的空间容纳该字符。
+                    // 把该字符存入不完整缓冲区（incomplete buffer）中。
                     self.incomplete_utf8.len =
                         x.encode_utf8(&mut self.incomplete_utf8.bytes).len() as u8;
-                    // write partial character to buffer.
+                    // 把部分字符写入缓冲区。
                     bytes_copied += self.incomplete_utf8.read(buf);
                 }
             }
@@ -139,7 +139,7 @@ impl io::Write for Stderr {
     }
 }
 
-// UTF-16 character should occupy 4 bytes at most in UTF-8
+// 一个 UTF-16 字符在 UTF-8 中至多占用 4 个字节
 pub const STDIN_BUF_SIZE: usize = 4;
 
 pub fn is_ebadf(err: &io::Error) -> bool {
@@ -158,14 +158,14 @@ fn write(
     protocol: *mut r_efi::protocols::simple_text_output::Protocol,
     buf: &[u8],
 ) -> io::Result<usize> {
-    // Get valid UTF-8 buffer
+    // 获取一个有效的 UTF-8 缓冲区
     let utf8 = match crate::str::from_utf8(buf) {
         Ok(x) => x,
         Err(e) => unsafe { crate::str::from_utf8_unchecked(&buf[..e.valid_up_to()]) },
     };
 
     let mut utf16: Vec<u16> = utf8.encode_utf16().collect();
-    // NULL terminate the string
+    // 用 NULL 为该字符串添加终止符
     utf16.push(0);
 
     unsafe { simple_text_output(protocol, &mut utf16) }?;

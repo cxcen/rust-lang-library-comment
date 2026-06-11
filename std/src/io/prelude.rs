@@ -1,7 +1,7 @@
-//! The I/O Prelude.
+//! I/O 预导入模块（Prelude）。
 //!
-//! The purpose of this module is to alleviate imports of many common I/O traits
-//! by adding a glob import to the top of I/O heavy modules:
+//! 本模块的目的是减轻众多常用 I/O trait 的导入负担：在以 I/O 为主的模块顶部
+//! 添加一行 glob 导入即可：
 //!
 //! ```
 //! # #![allow(unused_imports)]

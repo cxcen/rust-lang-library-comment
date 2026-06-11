@@ -7,14 +7,14 @@ use crate::ptr::NonNull;
 use crate::sync::nonpoison::{TryLockResult, WouldBlock};
 use crate::sys::sync as sys;
 
-/// A reader-writer lock that does not keep track of lock poisoning.
+/// 一种读写锁（reader-writer lock），不追踪锁的中毒（lock poisoning）。
 ///
-/// For more information about reader-writer locks, check out the documentation for the poisoning
-/// variant of this lock (which can be found at [`poison::RwLock`]).
+/// 关于读写锁的更多信息，请查阅本锁的中毒变体的文档（可在 [`poison::RwLock`]
+/// 处找到）。
 ///
 /// [`poison::RwLock`]: crate::sync::poison::RwLock
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// #![feature(nonpoison_rwlock)]
@@ -23,27 +23,27 @@ use crate::sys::sync as sys;
 ///
 /// let lock = RwLock::new(5);
 ///
-/// // many reader locks can be held at once
+/// // 可以同时持有多个读锁（reader lock）
 /// {
 ///     let r1 = lock.read();
 ///     let r2 = lock.read();
 ///     assert_eq!(*r1, 5);
 ///     assert_eq!(*r2, 5);
-/// } // read locks are dropped at this point
+/// } // 读锁在此处被 drop
 ///
-/// // only one write lock may be held, however
+/// // 然而，同一时刻只能持有一个写锁（write lock）
 /// {
 ///     let mut w = lock.write();
 ///     *w += 1;
 ///     assert_eq!(*w, 6);
-/// } // write lock is dropped here
+/// } // 写锁在此处被 drop
 /// ```
 #[unstable(feature = "nonpoison_rwlock", issue = "134645")]
 #[cfg_attr(not(test), rustc_diagnostic_item = "NonPoisonRwLock")]
 pub struct RwLock<T: ?Sized> {
-    /// The inner [`sys::RwLock`] that synchronizes thread access to the protected data.
+    /// 用于同步线程对受保护数据的访问的内部 [`sys::RwLock`]。
     inner: sys::RwLock,
-    /// The lock-protected data.
+    /// 受锁保护的数据。
     data: UnsafeCell<T>,
 }
 
@@ -54,14 +54,12 @@ unsafe impl<T: ?Sized + Send> Send for RwLock<T> {}
 unsafe impl<T: ?Sized + Send + Sync> Sync for RwLock<T> {}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-// Guards
+// 守卫（Guards）
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-/// RAII structure used to release the shared read access of a lock when
-/// dropped.
+/// 一个 RAII 结构体，在被 drop 时释放锁的共享读访问（shared read access）。
 ///
-/// This structure is created by the [`read`] and [`try_read`] methods on
-/// [`RwLock`].
+/// 该结构体由 [`RwLock`] 上的 [`read`] 与 [`try_read`] 方法创建。
 ///
 /// [`read`]: RwLock::read
 /// [`try_read`]: RwLock::try_read
@@ -73,13 +71,13 @@ unsafe impl<T: ?Sized + Send + Sync> Sync for RwLock<T> {}
 #[clippy::has_significant_drop]
 #[cfg_attr(not(test), rustc_diagnostic_item = "NonPoisonRwLockReadGuard")]
 pub struct RwLockReadGuard<'rwlock, T: ?Sized + 'rwlock> {
-    /// A pointer to the data protected by the `RwLock`. Note that we use a pointer here instead of
-    /// `&'rwlock T` to avoid `noalias` violations, because a `RwLockReadGuard` instance only holds
-    /// immutability until it drops, not for its whole scope.
-    /// `NonNull` is preferable over `*const T` to allow for niche optimizations. `NonNull` is also
-    /// covariant over `T`, just like we would have with `&T`.
+    /// 一个指向受 `RwLock` 保护的数据的指针。注意，这里我们用裸指针而非
+    /// `&'rwlock T`，以避免违反 `noalias`，因为一个 `RwLockReadGuard` 实例
+    /// 只在它被 drop 之前保持不可变性（immutability），而非在其整个作用域内。
+    /// 相比 `*const T`，`NonNull` 更可取，因为它允许 niche 优化。`NonNull`
+    /// 同样对 `T` 是协变（covariant）的，正如我们用 `&T` 时那样。
     data: NonNull<T>,
-    /// A reference to the internal [`sys::RwLock`] that we have read-locked.
+    /// 一个指向我们已加读锁的内部 [`sys::RwLock`] 的引用。
     inner_lock: &'rwlock sys::RwLock,
 }
 
@@ -89,11 +87,9 @@ impl<T: ?Sized> !Send for RwLockReadGuard<'_, T> {}
 #[unstable(feature = "nonpoison_rwlock", issue = "134645")]
 unsafe impl<T: ?Sized + Sync> Sync for RwLockReadGuard<'_, T> {}
 
-/// RAII structure used to release the exclusive write access of a lock when
-/// dropped.
+/// 一个 RAII 结构体，在被 drop 时释放锁的独占写访问（exclusive write access）。
 ///
-/// This structure is created by the [`write`] and [`try_write`] methods
-/// on [`RwLock`].
+/// 该结构体由 [`RwLock`] 上的 [`write`] 与 [`try_write`] 方法创建。
 ///
 /// [`write`]: RwLock::write
 /// [`try_write`]: RwLock::try_write
@@ -105,7 +101,7 @@ unsafe impl<T: ?Sized + Sync> Sync for RwLockReadGuard<'_, T> {}
 #[clippy::has_significant_drop]
 #[cfg_attr(not(test), rustc_diagnostic_item = "NonPoisonRwLockWriteGuard")]
 pub struct RwLockWriteGuard<'rwlock, T: ?Sized + 'rwlock> {
-    /// A reference to the [`RwLock`] that we have write-locked.
+    /// 一个指向我们已加写锁的 [`RwLock`] 的引用。
     lock: &'rwlock RwLock<T>,
 }
 
@@ -115,11 +111,10 @@ impl<T: ?Sized> !Send for RwLockWriteGuard<'_, T> {}
 #[unstable(feature = "nonpoison_rwlock", issue = "134645")]
 unsafe impl<T: ?Sized + Sync> Sync for RwLockWriteGuard<'_, T> {}
 
-/// RAII structure used to release the shared read access of a lock when
-/// dropped, which can point to a subfield of the protected data.
+/// 一个 RAII 结构体，在被 drop 时释放锁的共享读访问，它可以指向受保护数据的
+/// 某个子字段。
 ///
-/// This structure is created by the [`map`] and [`filter_map`] methods
-/// on [`RwLockReadGuard`].
+/// 该结构体由 [`RwLockReadGuard`] 上的 [`map`] 与 [`filter_map`] 方法创建。
 ///
 /// [`map`]: RwLockReadGuard::map
 /// [`filter_map`]: RwLockReadGuard::filter_map
@@ -131,13 +126,13 @@ unsafe impl<T: ?Sized + Sync> Sync for RwLockWriteGuard<'_, T> {}
 // #[unstable(feature = "nonpoison_rwlock", issue = "134645")]
 #[clippy::has_significant_drop]
 pub struct MappedRwLockReadGuard<'rwlock, T: ?Sized + 'rwlock> {
-    /// A pointer to the data protected by the `RwLock`. Note that we use a pointer here instead of
-    /// `&'rwlock T` to avoid `noalias` violations, because a `MappedRwLockReadGuard` instance only
-    /// holds immutability until it drops, not for its whole scope.
-    /// `NonNull` is preferable over `*const T` to allow for niche optimizations. `NonNull` is also
-    /// covariant over `T`, just like we would have with `&T`.
+    /// 一个指向受 `RwLock` 保护的数据的指针。注意，这里我们用裸指针而非
+    /// `&'rwlock T`，以避免违反 `noalias`，因为一个 `MappedRwLockReadGuard`
+    /// 实例只在它被 drop 之前保持不可变性，而非在其整个作用域内。
+    /// 相比 `*const T`，`NonNull` 更可取，因为它允许 niche 优化。`NonNull`
+    /// 同样对 `T` 是协变的，正如我们用 `&T` 时那样。
     data: NonNull<T>,
-    /// A reference to the internal [`sys::RwLock`] that we have read-locked.
+    /// 一个指向我们已加读锁的内部 [`sys::RwLock`] 的引用。
     inner_lock: &'rwlock sys::RwLock,
 }
 
@@ -149,11 +144,10 @@ impl<T: ?Sized> !Send for MappedRwLockReadGuard<'_, T> {}
 // #[unstable(feature = "nonpoison_rwlock", issue = "134645")]
 unsafe impl<T: ?Sized + Sync> Sync for MappedRwLockReadGuard<'_, T> {}
 
-/// RAII structure used to release the exclusive write access of a lock when
-/// dropped, which can point to a subfield of the protected data.
+/// 一个 RAII 结构体，在被 drop 时释放锁的独占写访问，它可以指向受保护数据的
+/// 某个子字段。
 ///
-/// This structure is created by the [`map`] and [`filter_map`] methods
-/// on [`RwLockWriteGuard`].
+/// 该结构体由 [`RwLockWriteGuard`] 上的 [`map`] 与 [`filter_map`] 方法创建。
 ///
 /// [`map`]: RwLockWriteGuard::map
 /// [`filter_map`]: RwLockWriteGuard::filter_map
@@ -165,15 +159,15 @@ unsafe impl<T: ?Sized + Sync> Sync for MappedRwLockReadGuard<'_, T> {}
 // #[unstable(feature = "nonpoison_rwlock", issue = "134645")]
 #[clippy::has_significant_drop]
 pub struct MappedRwLockWriteGuard<'rwlock, T: ?Sized + 'rwlock> {
-    /// A pointer to the data protected by the `RwLock`. Note that we use a pointer here instead of
-    /// `&'rwlock T` to avoid `noalias` violations, because a `MappedRwLockWriteGuard` instance only
-    /// holds uniquneness until it drops, not for its whole scope.
-    /// `NonNull` is preferable over `*const T` to allow for niche optimizations.
+    /// 一个指向受 `RwLock` 保护的数据的指针。注意，这里我们用裸指针而非
+    /// `&'rwlock T`，以避免违反 `noalias`，因为一个 `MappedRwLockWriteGuard`
+    /// 实例只在它被 drop 之前保持唯一性（uniqueness），而非在其整个作用域内。
+    /// 相比 `*const T`，`NonNull` 更可取，因为它允许 niche 优化。
     data: NonNull<T>,
-    /// `NonNull` is covariant over `T`, so we add a `PhantomData<&'rwlock mut T>` field here to
-    /// enforce the correct invariance over `T`.
+    /// `NonNull` 对 `T` 是协变的，所以我们在这里加一个 `PhantomData<&'rwlock mut T>`
+    /// 字段，以强制对 `T` 施加正确的不变性（invariance）。
     _variance: PhantomData<&'rwlock mut T>,
-    /// A reference to the internal [`sys::RwLock`] that we have write-locked.
+    /// 一个指向我们已加写锁的内部 [`sys::RwLock`] 的引用。
     inner_lock: &'rwlock sys::RwLock,
 }
 
@@ -186,13 +180,13 @@ impl<T: ?Sized> !Send for MappedRwLockWriteGuard<'_, T> {}
 unsafe impl<T: ?Sized + Sync> Sync for MappedRwLockWriteGuard<'_, T> {}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-// Implementations
+// 各项实现（Implementations）
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 impl<T> RwLock<T> {
-    /// Creates a new instance of an `RwLock<T>` which is unlocked.
+    /// 创建一个新的、处于未锁定状态的 `RwLock<T>` 实例。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(nonpoison_rwlock)]
@@ -207,9 +201,9 @@ impl<T> RwLock<T> {
         RwLock { inner: sys::RwLock::new(), data: UnsafeCell::new(t) }
     }
 
-    /// Returns the contained value by cloning it.
+    /// 通过克隆返回其中所含的值。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(nonpoison_rwlock)]
@@ -230,9 +224,9 @@ impl<T> RwLock<T> {
         self.read().clone()
     }
 
-    /// Sets the contained value.
+    /// 设置其中所含的值。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(nonpoison_rwlock)]
@@ -250,17 +244,17 @@ impl<T> RwLock<T> {
     // #[unstable(feature = "nonpoison_rwlock", issue = "134645")]
     pub fn set(&self, value: T) {
         if mem::needs_drop::<T>() {
-            // If the contained value has a non-trivial destructor, we
-            // call that destructor after the lock has been released.
+            // 如果所含的值带有非平凡的析构函数，我们就在锁已被释放之后再调用
+            // 该析构函数（避免持锁期间执行可能较慢的 drop）。
             drop(self.replace(value))
         } else {
             *self.write() = value;
         }
     }
 
-    /// Replaces the contained value with `value`, and returns the old contained value.
+    /// 用 `value` 替换其中所含的值，并返回旧的值。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(nonpoison_rwlock)]
@@ -282,23 +276,20 @@ impl<T> RwLock<T> {
 }
 
 impl<T: ?Sized> RwLock<T> {
-    /// Locks this `RwLock` with shared read access, blocking the current thread
-    /// until it can be acquired.
+    /// 以共享读访问（shared read access）锁定这个 `RwLock`，阻塞当前线程直到
+    /// 能够获取为止。
     ///
-    /// The calling thread will be blocked until there are no more writers which
-    /// hold the lock. There may be other readers currently inside the lock when
-    /// this method returns. This method does not provide any guarantees with
-    /// respect to the ordering of whether contentious readers or writers will
-    /// acquire the lock first.
+    /// 调用线程将被阻塞，直到不再有写者（writer）持有该锁。本方法返回时，可能
+    /// 仍有其他读者（reader）正处于锁内。对于「相互争用的读者与写者谁会先获取
+    /// 到锁」这一点，本方法不提供任何顺序保证。
     ///
-    /// Returns an RAII guard which will release this thread's shared access
-    /// once it is dropped.
+    /// 返回一个 RAII 守卫，一经 drop 便会释放本线程的共享访问。
     ///
     /// # Panics
     ///
-    /// This function might panic when called if the lock is already held by the current thread.
+    /// 如果该锁已被当前线程持有，调用本函数时可能 panic。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(nonpoison_rwlock)]
@@ -326,23 +317,22 @@ impl<T: ?Sized> RwLock<T> {
         }
     }
 
-    /// Attempts to acquire this `RwLock` with shared read access.
+    /// 尝试以共享读访问获取这个 `RwLock`。
     ///
-    /// If the access could not be granted at this time, then `Err` is returned.
-    /// Otherwise, an RAII guard is returned which will release the shared access
-    /// when it is dropped.
+    /// 如果此刻无法授予该访问，则返回 `Err`。否则返回一个 RAII 守卫，它一经
+    /// drop 便会释放该共享访问。
     ///
-    /// This function does not block.
+    /// 本函数不会阻塞。
     ///
-    /// This function does not provide any guarantees with respect to the ordering
-    /// of whether contentious readers or writers will acquire the lock first.
+    /// 对于「相互争用的读者与写者谁会先获取到锁」这一点，本函数不提供任何
+    /// 顺序保证。
     ///
     /// # Errors
     ///
-    /// This function will return the [`WouldBlock`] error if the `RwLock` could
-    /// not be acquired because it was already locked exclusively.
+    /// 如果因这个 `RwLock` 已被以独占方式锁定而无法获取它，本函数将返回
+    /// [`WouldBlock`] 错误。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(nonpoison_rwlock)]
@@ -364,20 +354,18 @@ impl<T: ?Sized> RwLock<T> {
         }
     }
 
-    /// Locks this `RwLock` with exclusive write access, blocking the current
-    /// thread until it can be acquired.
+    /// 以独占写访问（exclusive write access）锁定这个 `RwLock`，阻塞当前线程
+    /// 直到能够获取为止。
     ///
-    /// This function will not return while other writers or other readers
-    /// currently have access to the lock.
+    /// 当其他写者或其他读者当前正访问该锁时，本函数不会返回。
     ///
-    /// Returns an RAII guard which will drop the write access of this `RwLock`
-    /// when dropped.
+    /// 返回一个 RAII 守卫，一经 drop 便会释放这个 `RwLock` 的写访问。
     ///
     /// # Panics
     ///
-    /// This function might panic when called if the lock is already held by the current thread.
+    /// 如果该锁已被当前线程持有，调用本函数时可能 panic。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(nonpoison_rwlock)]
@@ -400,25 +388,24 @@ impl<T: ?Sized> RwLock<T> {
         }
     }
 
-    /// Attempts to lock this `RwLock` with exclusive write access.
+    /// 尝试以独占写访问锁定这个 `RwLock`。
     ///
-    /// If the lock could not be acquired at this time, then `Err` is returned.
-    /// Otherwise, an RAII guard is returned which will release the lock when
-    /// it is dropped.
+    /// 如果此刻无法获取该锁，则返回 `Err`。否则返回一个 RAII 守卫，它一经
+    /// drop 便会释放该锁。
     ///
-    /// This function does not block.
+    /// 本函数不会阻塞。
     ///
-    /// This function does not provide any guarantees with respect to the ordering
-    /// of whether contentious readers or writers will acquire the lock first.
+    /// 对于「相互争用的读者与写者谁会先获取到锁」这一点，本函数不提供任何
+    /// 顺序保证。
     ///
     /// # Errors
     ///
-    /// This function will return the [`WouldBlock`] error if the `RwLock` could
-    /// not be acquired because it was already locked.
+    /// 如果因这个 `RwLock` 已被锁定而无法获取它，本函数将返回 [`WouldBlock`]
+    /// 错误。
     ///
     /// [`WouldBlock`]: WouldBlock
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(nonpoison_rwlock)]
@@ -440,9 +427,9 @@ impl<T: ?Sized> RwLock<T> {
         }
     }
 
-    /// Consumes this `RwLock`, returning the underlying data.
+    /// 消耗这个 `RwLock`，返回其底层数据。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(nonpoison_rwlock)]
@@ -464,14 +451,14 @@ impl<T: ?Sized> RwLock<T> {
         self.data.into_inner()
     }
 
-    /// Returns a mutable reference to the underlying data.
+    /// 返回底层数据的可变引用。
     ///
-    /// Since this call borrows the `RwLock` mutably, no actual locking needs to
-    /// take place -- the mutable borrow statically guarantees no new locks can be acquired
-    /// while this reference exists. Note that this method does not clear any previously abandoned
-    /// locks (e.g., via [`forget()`] on a [`RwLockReadGuard`] or [`RwLockWriteGuard`]).
+    /// 由于本调用以可变方式借用 `RwLock`，无需进行任何实际的加锁——可变借用
+    /// 在静态层面即保证：当这个引用存在期间，不可能获取任何新的锁。注意，本
+    /// 方法不会清除任何先前被遗弃（abandoned）的锁（例如通过对
+    /// [`RwLockReadGuard`] 或 [`RwLockWriteGuard`] 调用 [`forget()`]）。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(nonpoison_rwlock)]
@@ -487,26 +474,22 @@ impl<T: ?Sized> RwLock<T> {
         self.data.get_mut()
     }
 
-    /// Returns a raw pointer to the underlying data.
+    /// 返回底层数据的裸指针（raw pointer）。
     ///
-    /// The returned pointer is always non-null and properly aligned, but it is
-    /// the user's responsibility to ensure that any reads and writes through it
-    /// are properly synchronized to avoid data races, and that it is not read
-    /// or written through after the lock is dropped.
+    /// 返回的指针总是非空且对齐良好的，但用户有责任确保：通过它进行的任何
+    /// 读写都已正确同步以避免数据竞争，并且在该锁被 drop 之后不再通过它读写。
     #[unstable(feature = "rwlock_data_ptr", issue = "140368")]
     // #[unstable(feature = "nonpoison_rwlock", issue = "134645")]
     pub const fn data_ptr(&self) -> *mut T {
         self.data.get()
     }
 
-    /// Locks this `RwLock` with shared read access to the underlying data by passing
-    /// a reference to the given closure.
+    /// 以对底层数据的共享读访问锁定这个 `RwLock`，并把一个引用传给给定闭包。
     ///
-    /// This method acquires the lock, calls the provided closure with a reference
-    /// to the data, and returns the result of the closure. The lock is released after
-    /// the closure completes, even if it panics.
+    /// 本方法获取锁，以指向数据的引用调用所提供的闭包，并返回该闭包的结果。
+    /// 即使闭包 panic，锁也会在闭包完成后被释放。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(lock_value_accessors, nonpoison_rwlock)]
@@ -527,14 +510,13 @@ impl<T: ?Sized> RwLock<T> {
         f(&self.read())
     }
 
-    /// Locks this `RwLock` with exclusive write access to the underlying data by passing
-    /// a mutable reference to the given closure.
+    /// 以对底层数据的独占写访问锁定这个 `RwLock`，并把一个可变引用传给给定
+    /// 闭包。
     ///
-    /// This method acquires the lock, calls the provided closure with a mutable reference
-    /// to the data, and returns the result of the closure. The lock is released after
-    /// the closure completes, even if it panics.
+    /// 本方法获取锁，以指向数据的可变引用调用所提供的闭包，并返回该闭包的
+    /// 结果。即使闭包 panic，锁也会在闭包完成后被释放。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(lock_value_accessors, nonpoison_rwlock)]
@@ -580,7 +562,7 @@ impl<T: ?Sized + fmt::Debug> fmt::Debug for RwLock<T> {
 
 #[unstable(feature = "nonpoison_rwlock", issue = "134645")]
 impl<T: Default> Default for RwLock<T> {
-    /// Creates a new `RwLock<T>`, with the `Default` value for T.
+    /// 用 T 的 `Default` 值创建一个新的 `RwLock<T>`。
     fn default() -> RwLock<T> {
         RwLock::new(Default::default())
     }
@@ -588,21 +570,21 @@ impl<T: Default> Default for RwLock<T> {
 
 #[unstable(feature = "nonpoison_rwlock", issue = "134645")]
 impl<T> From<T> for RwLock<T> {
-    /// Creates a new instance of an `RwLock<T>` which is unlocked.
-    /// This is equivalent to [`RwLock::new`].
+    /// 创建一个新的、处于未锁定状态的 `RwLock<T>` 实例。
+    /// 这等价于 [`RwLock::new`]。
     fn from(t: T) -> Self {
         RwLock::new(t)
     }
 }
 
 impl<'rwlock, T: ?Sized> RwLockReadGuard<'rwlock, T> {
-    /// Creates a new instance of `RwLockReadGuard<T>` from a `RwLock<T>`.
+    /// 从一个 `RwLock<T>` 创建一个新的 `RwLockReadGuard<T>` 实例。
     ///
     /// # Safety
     ///
-    /// This function is safe if and only if the same thread has successfully and safely called
-    /// `lock.inner.read()`, `lock.inner.try_read()`, or `lock.inner.downgrade()` before
-    /// instantiating this object.
+    /// 当且仅当同一线程在实例化本对象之前，已成功且安全地调用过
+    /// `lock.inner.read()`、`lock.inner.try_read()` 或 `lock.inner.downgrade()`
+    /// 时，本函数才是安全的。
     unsafe fn new(lock: &'rwlock RwLock<T>) -> RwLockReadGuard<'rwlock, T> {
         RwLockReadGuard {
             data: unsafe { NonNull::new_unchecked(lock.data.get()) },
@@ -610,19 +592,18 @@ impl<'rwlock, T: ?Sized> RwLockReadGuard<'rwlock, T> {
         }
     }
 
-    /// Makes a [`MappedRwLockReadGuard`] for a component of the borrowed data, e.g.
-    /// an enum variant.
+    /// 为被借用数据的某个组成部分（例如某个枚举变体）制作一个
+    /// [`MappedRwLockReadGuard`]。
     ///
-    /// The `RwLock` is already locked for reading, so this cannot fail.
+    /// 此时 `RwLock` 已被加读锁，因此本操作不会失败。
     ///
-    /// This is an associated function that needs to be used as
-    /// `RwLockReadGuard::map(...)`. A method would interfere with methods of
-    /// the same name on the contents of the `RwLockReadGuard` used through
-    /// `Deref`.
+    /// 这是一个关联函数，需以 `RwLockReadGuard::map(...)` 的形式使用。若设计
+    /// 为方法，则会与通过 `Deref` 访问的 `RwLockReadGuard` 内容上同名的方法
+    /// 相冲突。
     ///
     /// # Panics
     ///
-    /// If the closure panics, the guard will be dropped (unlocked).
+    /// 如果该闭包 panic，守卫将被 drop（解锁）。
     #[unstable(feature = "mapped_lock_guards", issue = "117108")]
     // #[unstable(feature = "nonpoison_rwlock", issue = "134645")]
     pub fn map<U, F>(orig: Self, f: F) -> MappedRwLockReadGuard<'rwlock, U>
@@ -630,29 +611,26 @@ impl<'rwlock, T: ?Sized> RwLockReadGuard<'rwlock, T> {
         F: FnOnce(&T) -> &U,
         U: ?Sized,
     {
-        // SAFETY: the conditions of `RwLockReadGuard::new` were satisfied when the original guard
-        // was created, and have been upheld throughout `map` and/or `filter_map`.
-        // The signature of the closure guarantees that it will not "leak" the lifetime of the
-        // reference passed to it. If the closure panics, the guard will be dropped.
+        // SAFETY: 创建原始守卫时，`RwLockReadGuard::new` 的各项条件均已满足，且在
+        // 整个 `map` 与/或 `filter_map` 过程中始终得到维持。该闭包的签名保证
+        // 它不会「泄漏」传给它的引用的生命周期。如果该闭包 panic，守卫会被 drop。
         let data = NonNull::from(f(unsafe { orig.data.as_ref() }));
         let orig = ManuallyDrop::new(orig);
         MappedRwLockReadGuard { data, inner_lock: &orig.inner_lock }
     }
 
-    /// Makes a [`MappedRwLockReadGuard`] for a component of the borrowed data. The
-    /// original guard is returned as an `Err(...)` if the closure returns
-    /// `None`.
+    /// 为被借用数据的某个组成部分制作一个 [`MappedRwLockReadGuard`]。如果该
+    /// 闭包返回 `None`，则把原始守卫作为 `Err(...)` 返回。
     ///
-    /// The `RwLock` is already locked for reading, so this cannot fail.
+    /// 此时 `RwLock` 已被加读锁，因此本操作不会失败。
     ///
-    /// This is an associated function that needs to be used as
-    /// `RwLockReadGuard::filter_map(...)`. A method would interfere with methods
-    /// of the same name on the contents of the `RwLockReadGuard` used through
-    /// `Deref`.
+    /// 这是一个关联函数，需以 `RwLockReadGuard::filter_map(...)` 的形式使用。
+    /// 若设计为方法，则会与通过 `Deref` 访问的 `RwLockReadGuard` 内容上同名的
+    /// 方法相冲突。
     ///
     /// # Panics
     ///
-    /// If the closure panics, the guard will be dropped (unlocked).
+    /// 如果该闭包 panic，守卫将被 drop（解锁）。
     #[unstable(feature = "mapped_lock_guards", issue = "117108")]
     // #[unstable(feature = "nonpoison_rwlock", issue = "134645")]
     pub fn filter_map<U, F>(orig: Self, f: F) -> Result<MappedRwLockReadGuard<'rwlock, U>, Self>
@@ -660,10 +638,9 @@ impl<'rwlock, T: ?Sized> RwLockReadGuard<'rwlock, T> {
         F: FnOnce(&T) -> Option<&U>,
         U: ?Sized,
     {
-        // SAFETY: the conditions of `RwLockReadGuard::new` were satisfied when the original guard
-        // was created, and have been upheld throughout `map` and/or `filter_map`.
-        // The signature of the closure guarantees that it will not "leak" the lifetime of the
-        // reference passed to it. If the closure panics, the guard will be dropped.
+        // SAFETY: 创建原始守卫时，`RwLockReadGuard::new` 的各项条件均已满足，且在
+        // 整个 `map` 与/或 `filter_map` 过程中始终得到维持。该闭包的签名保证
+        // 它不会「泄漏」传给它的引用的生命周期。如果该闭包 panic，守卫会被 drop。
         match f(unsafe { orig.data.as_ref() }) {
             Some(data) => {
                 let data = NonNull::from(data);
@@ -676,27 +653,29 @@ impl<'rwlock, T: ?Sized> RwLockReadGuard<'rwlock, T> {
 }
 
 impl<'rwlock, T: ?Sized> RwLockWriteGuard<'rwlock, T> {
-    /// Creates a new instance of `RwLockWriteGuard<T>` from a `RwLock<T>`.
+    /// 从一个 `RwLock<T>` 创建一个新的 `RwLockWriteGuard<T>` 实例。
     ///
     /// # Safety
     ///
-    /// This function is safe if and only if the same thread has successfully and safely called
-    /// `lock.inner.write()`, `lock.inner.try_write()`, or `lock.inner.try_upgrade` before
-    /// instantiating this object.
+    /// 当且仅当同一线程在实例化本对象之前，已成功且安全地调用过
+    /// `lock.inner.write()`、`lock.inner.try_write()` 或 `lock.inner.try_upgrade`
+    /// 时，本函数才是安全的。
     unsafe fn new(lock: &'rwlock RwLock<T>) -> RwLockWriteGuard<'rwlock, T> {
         RwLockWriteGuard { lock }
     }
 
-    /// Downgrades a write-locked `RwLockWriteGuard` into a read-locked [`RwLockReadGuard`].
+    /// 把一个加了写锁的 `RwLockWriteGuard` 降级（downgrade）为一个加了读锁的
+    /// [`RwLockReadGuard`]。
     ///
-    /// Since we have the `RwLockWriteGuard`, the [`RwLock`] must already be locked for writing, so
-    /// this method cannot fail.
+    /// 既然我们持有 `RwLockWriteGuard`，那么 [`RwLock`] 必定已被加了写锁，
+    /// 因此本方法不会失败。
     ///
-    /// After downgrading, other readers will be allowed to read the protected data.
+    /// 降级之后，其他读者将被允许读取受保护的数据。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// `downgrade` takes ownership of the `RwLockWriteGuard` and returns a [`RwLockReadGuard`].
+    /// `downgrade` 取得 `RwLockWriteGuard` 的所有权，并返回一个
+    /// [`RwLockReadGuard`]。
     ///
     /// ```
     /// #![feature(nonpoison_rwlock)]
@@ -712,9 +691,9 @@ impl<'rwlock, T: ?Sized> RwLockWriteGuard<'rwlock, T> {
     /// assert_eq!(42, *read_guard);
     /// ```
     ///
-    /// `downgrade` will _atomically_ change the state of the [`RwLock`] from exclusive mode into
-    /// shared mode. This means that it is impossible for another writing thread to get in between a
-    /// thread calling `downgrade` and any reads it performs after downgrading.
+    /// `downgrade` 会 _原子地_ 把 [`RwLock`] 的状态从独占模式（exclusive mode）
+    /// 转为共享模式（shared mode）。这意味着：在一个线程调用 `downgrade` 与它
+    /// 降级后执行的任何读取之间，另一个写线程不可能插进来。
     ///
     /// ```
     /// #![feature(nonpoison_rwlock)]
@@ -724,12 +703,12 @@ impl<'rwlock, T: ?Sized> RwLockWriteGuard<'rwlock, T> {
     ///
     /// let rw = Arc::new(RwLock::new(1));
     ///
-    /// // Put the lock in write mode.
+    /// // 把锁置于写模式。
     /// let mut main_write_guard = rw.write();
     ///
     /// let rw_clone = rw.clone();
     /// let evil_handle = std::thread::spawn(move || {
-    ///     // This will not return until the main thread drops the `main_read_guard`.
+    ///     // 在主线程 drop 掉 `main_read_guard` 之前，这一句不会返回。
     ///     let mut evil_guard = rw_clone.write();
     ///
     ///     assert_eq!(*evil_guard, 2);
@@ -738,10 +717,10 @@ impl<'rwlock, T: ?Sized> RwLockWriteGuard<'rwlock, T> {
     ///
     /// *main_write_guard = 2;
     ///
-    /// // Atomically downgrade the write guard into a read guard.
+    /// // 原子地把写守卫降级为读守卫。
     /// let main_read_guard = RwLockWriteGuard::downgrade(main_write_guard);
     ///
-    /// // Since `downgrade` is atomic, the writer thread cannot have changed the protected data.
+    /// // 由于 `downgrade` 是原子的，那个写线程不可能改变受保护的数据。
     /// assert_eq!(*main_read_guard, 2, "`downgrade` was not atomic");
     /// #
     /// # drop(main_read_guard);
@@ -754,30 +733,29 @@ impl<'rwlock, T: ?Sized> RwLockWriteGuard<'rwlock, T> {
     pub fn downgrade(s: Self) -> RwLockReadGuard<'rwlock, T> {
         let lock = s.lock;
 
-        // We don't want to call the destructor since that calls `write_unlock`.
+        // 我们不想调用析构函数，因为那会调用 `write_unlock`。
         forget(s);
 
-        // SAFETY: We take ownership of a write guard, so we must already have the `RwLock` in write
-        // mode, satisfying the `downgrade` contract.
+        // SAFETY: 我们取得了一个写守卫的所有权，所以我们必定已经把 `RwLock`
+        // 置于写模式，满足了 `downgrade` 的契约。
         unsafe { lock.inner.downgrade() };
 
-        // SAFETY: We have just successfully called `downgrade`, so we fulfill the safety contract.
+        // SAFETY: 我们刚刚成功调用了 `downgrade`，因此满足了安全性契约。
         unsafe { RwLockReadGuard::new(lock) }
     }
 
-    /// Makes a [`MappedRwLockWriteGuard`] for a component of the borrowed data, e.g.
-    /// an enum variant.
+    /// 为被借用数据的某个组成部分（例如某个枚举变体）制作一个
+    /// [`MappedRwLockWriteGuard`]。
     ///
-    /// The `RwLock` is already locked for writing, so this cannot fail.
+    /// 此时 `RwLock` 已被加写锁，因此本操作不会失败。
     ///
-    /// This is an associated function that needs to be used as
-    /// `RwLockWriteGuard::map(...)`. A method would interfere with methods of
-    /// the same name on the contents of the `RwLockWriteGuard` used through
-    /// `Deref`.
+    /// 这是一个关联函数，需以 `RwLockWriteGuard::map(...)` 的形式使用。若设计
+    /// 为方法，则会与通过 `Deref` 访问的 `RwLockWriteGuard` 内容上同名的方法
+    /// 相冲突。
     ///
     /// # Panics
     ///
-    /// If the closure panics, the guard will be dropped (unlocked).
+    /// 如果该闭包 panic，守卫将被 drop（解锁）。
     #[unstable(feature = "mapped_lock_guards", issue = "117108")]
     // #[unstable(feature = "nonpoison_rwlock", issue = "134645")]
     pub fn map<U, F>(orig: Self, f: F) -> MappedRwLockWriteGuard<'rwlock, U>
@@ -785,29 +763,26 @@ impl<'rwlock, T: ?Sized> RwLockWriteGuard<'rwlock, T> {
         F: FnOnce(&mut T) -> &mut U,
         U: ?Sized,
     {
-        // SAFETY: the conditions of `RwLockWriteGuard::new` were satisfied when the original guard
-        // was created, and have been upheld throughout `map` and/or `filter_map`.
-        // The signature of the closure guarantees that it will not "leak" the lifetime of the
-        // reference passed to it. If the closure panics, the guard will be dropped.
+        // SAFETY: 创建原始守卫时，`RwLockWriteGuard::new` 的各项条件均已满足，且在
+        // 整个 `map` 与/或 `filter_map` 过程中始终得到维持。该闭包的签名保证
+        // 它不会「泄漏」传给它的引用的生命周期。如果该闭包 panic，守卫会被 drop。
         let data = NonNull::from(f(unsafe { &mut *orig.lock.data.get() }));
         let orig = ManuallyDrop::new(orig);
         MappedRwLockWriteGuard { data, inner_lock: &orig.lock.inner, _variance: PhantomData }
     }
 
-    /// Makes a [`MappedRwLockWriteGuard`] for a component of the borrowed data. The
-    /// original guard is returned as an `Err(...)` if the closure returns
-    /// `None`.
+    /// 为被借用数据的某个组成部分制作一个 [`MappedRwLockWriteGuard`]。如果该
+    /// 闭包返回 `None`，则把原始守卫作为 `Err(...)` 返回。
     ///
-    /// The `RwLock` is already locked for writing, so this cannot fail.
+    /// 此时 `RwLock` 已被加写锁，因此本操作不会失败。
     ///
-    /// This is an associated function that needs to be used as
-    /// `RwLockWriteGuard::filter_map(...)`. A method would interfere with methods
-    /// of the same name on the contents of the `RwLockWriteGuard` used through
-    /// `Deref`.
+    /// 这是一个关联函数，需以 `RwLockWriteGuard::filter_map(...)` 的形式使用。
+    /// 若设计为方法，则会与通过 `Deref` 访问的 `RwLockWriteGuard` 内容上同名的
+    /// 方法相冲突。
     ///
     /// # Panics
     ///
-    /// If the closure panics, the guard will be dropped (unlocked).
+    /// 如果该闭包 panic，守卫将被 drop（解锁）。
     #[unstable(feature = "mapped_lock_guards", issue = "117108")]
     // #[unstable(feature = "nonpoison_rwlock", issue = "134645")]
     pub fn filter_map<U, F>(orig: Self, f: F) -> Result<MappedRwLockWriteGuard<'rwlock, U>, Self>
@@ -815,10 +790,9 @@ impl<'rwlock, T: ?Sized> RwLockWriteGuard<'rwlock, T> {
         F: FnOnce(&mut T) -> Option<&mut U>,
         U: ?Sized,
     {
-        // SAFETY: the conditions of `RwLockWriteGuard::new` were satisfied when the original guard
-        // was created, and have been upheld throughout `map` and/or `filter_map`.
-        // The signature of the closure guarantees that it will not "leak" the lifetime of the
-        // reference passed to it. If the closure panics, the guard will be dropped.
+        // SAFETY: 创建原始守卫时，`RwLockWriteGuard::new` 的各项条件均已满足，且在
+        // 整个 `map` 与/或 `filter_map` 过程中始终得到维持。该闭包的签名保证
+        // 它不会「泄漏」传给它的引用的生命周期。如果该闭包 panic，守卫会被 drop。
         match f(unsafe { &mut *orig.lock.data.get() }) {
             Some(data) => {
                 let data = NonNull::from(data);
@@ -835,19 +809,18 @@ impl<'rwlock, T: ?Sized> RwLockWriteGuard<'rwlock, T> {
 }
 
 impl<'rwlock, T: ?Sized> MappedRwLockReadGuard<'rwlock, T> {
-    /// Makes a [`MappedRwLockReadGuard`] for a component of the borrowed data,
-    /// e.g. an enum variant.
+    /// 为被借用数据的某个组成部分（例如某个枚举变体）制作一个
+    /// [`MappedRwLockReadGuard`]。
     ///
-    /// The `RwLock` is already locked for reading, so this cannot fail.
+    /// 此时 `RwLock` 已被加读锁，因此本操作不会失败。
     ///
-    /// This is an associated function that needs to be used as
-    /// `MappedRwLockReadGuard::map(...)`. A method would interfere with
-    /// methods of the same name on the contents of the `MappedRwLockReadGuard`
-    /// used through `Deref`.
+    /// 这是一个关联函数，需以 `MappedRwLockReadGuard::map(...)` 的形式使用。
+    /// 若设计为方法，则会与通过 `Deref` 访问的 `MappedRwLockReadGuard` 内容上
+    /// 同名的方法相冲突。
     ///
     /// # Panics
     ///
-    /// If the closure panics, the guard will be dropped (unlocked).
+    /// 如果该闭包 panic，守卫将被 drop（解锁）。
     #[unstable(feature = "mapped_lock_guards", issue = "117108")]
     // #[unstable(feature = "nonpoison_rwlock", issue = "134645")]
     pub fn map<U, F>(orig: Self, f: F) -> MappedRwLockReadGuard<'rwlock, U>
@@ -855,29 +828,26 @@ impl<'rwlock, T: ?Sized> MappedRwLockReadGuard<'rwlock, T> {
         F: FnOnce(&T) -> &U,
         U: ?Sized,
     {
-        // SAFETY: the conditions of `RwLockReadGuard::new` were satisfied when the original guard
-        // was created, and have been upheld throughout `map` and/or `filter_map`.
-        // The signature of the closure guarantees that it will not "leak" the lifetime of the
-        // reference passed to it. If the closure panics, the guard will be dropped.
+        // SAFETY: 创建原始守卫时，`RwLockReadGuard::new` 的各项条件均已满足，且在
+        // 整个 `map` 与/或 `filter_map` 过程中始终得到维持。该闭包的签名保证
+        // 它不会「泄漏」传给它的引用的生命周期。如果该闭包 panic，守卫会被 drop。
         let data = NonNull::from(f(unsafe { orig.data.as_ref() }));
         let orig = ManuallyDrop::new(orig);
         MappedRwLockReadGuard { data, inner_lock: &orig.inner_lock }
     }
 
-    /// Makes a [`MappedRwLockReadGuard`] for a component of the borrowed data.
-    /// The original guard is returned as an `Err(...)` if the closure returns
-    /// `None`.
+    /// 为被借用数据的某个组成部分制作一个 [`MappedRwLockReadGuard`]。如果该
+    /// 闭包返回 `None`，则把原始守卫作为 `Err(...)` 返回。
     ///
-    /// The `RwLock` is already locked for reading, so this cannot fail.
+    /// 此时 `RwLock` 已被加读锁，因此本操作不会失败。
     ///
-    /// This is an associated function that needs to be used as
-    /// `MappedRwLockReadGuard::filter_map(...)`. A method would interfere with
-    /// methods of the same name on the contents of the `MappedRwLockReadGuard`
-    /// used through `Deref`.
+    /// 这是一个关联函数，需以 `MappedRwLockReadGuard::filter_map(...)` 的形式
+    /// 使用。若设计为方法，则会与通过 `Deref` 访问的 `MappedRwLockReadGuard`
+    /// 内容上同名的方法相冲突。
     ///
     /// # Panics
     ///
-    /// If the closure panics, the guard will be dropped (unlocked).
+    /// 如果该闭包 panic，守卫将被 drop（解锁）。
     #[unstable(feature = "mapped_lock_guards", issue = "117108")]
     // #[unstable(feature = "nonpoison_rwlock", issue = "134645")]
     pub fn filter_map<U, F>(orig: Self, f: F) -> Result<MappedRwLockReadGuard<'rwlock, U>, Self>
@@ -885,10 +855,9 @@ impl<'rwlock, T: ?Sized> MappedRwLockReadGuard<'rwlock, T> {
         F: FnOnce(&T) -> Option<&U>,
         U: ?Sized,
     {
-        // SAFETY: the conditions of `RwLockReadGuard::new` were satisfied when the original guard
-        // was created, and have been upheld throughout `map` and/or `filter_map`.
-        // The signature of the closure guarantees that it will not "leak" the lifetime of the
-        // reference passed to it. If the closure panics, the guard will be dropped.
+        // SAFETY: 创建原始守卫时，`RwLockReadGuard::new` 的各项条件均已满足，且在
+        // 整个 `map` 与/或 `filter_map` 过程中始终得到维持。该闭包的签名保证
+        // 它不会「泄漏」传给它的引用的生命周期。如果该闭包 panic，守卫会被 drop。
         match f(unsafe { orig.data.as_ref() }) {
             Some(data) => {
                 let data = NonNull::from(data);
@@ -901,19 +870,18 @@ impl<'rwlock, T: ?Sized> MappedRwLockReadGuard<'rwlock, T> {
 }
 
 impl<'rwlock, T: ?Sized> MappedRwLockWriteGuard<'rwlock, T> {
-    /// Makes a [`MappedRwLockWriteGuard`] for a component of the borrowed data,
-    /// e.g. an enum variant.
+    /// 为被借用数据的某个组成部分（例如某个枚举变体）制作一个
+    /// [`MappedRwLockWriteGuard`]。
     ///
-    /// The `RwLock` is already locked for writing, so this cannot fail.
+    /// 此时 `RwLock` 已被加写锁，因此本操作不会失败。
     ///
-    /// This is an associated function that needs to be used as
-    /// `MappedRwLockWriteGuard::map(...)`. A method would interfere with
-    /// methods of the same name on the contents of the `MappedRwLockWriteGuard`
-    /// used through `Deref`.
+    /// 这是一个关联函数，需以 `MappedRwLockWriteGuard::map(...)` 的形式使用。
+    /// 若设计为方法，则会与通过 `Deref` 访问的 `MappedRwLockWriteGuard` 内容上
+    /// 同名的方法相冲突。
     ///
     /// # Panics
     ///
-    /// If the closure panics, the guard will be dropped (unlocked).
+    /// 如果该闭包 panic，守卫将被 drop（解锁）。
     #[unstable(feature = "mapped_lock_guards", issue = "117108")]
     // #[unstable(feature = "nonpoison_rwlock", issue = "134645")]
     pub fn map<U, F>(mut orig: Self, f: F) -> MappedRwLockWriteGuard<'rwlock, U>
@@ -921,29 +889,26 @@ impl<'rwlock, T: ?Sized> MappedRwLockWriteGuard<'rwlock, T> {
         F: FnOnce(&mut T) -> &mut U,
         U: ?Sized,
     {
-        // SAFETY: the conditions of `RwLockWriteGuard::new` were satisfied when the original guard
-        // was created, and have been upheld throughout `map` and/or `filter_map`.
-        // The signature of the closure guarantees that it will not "leak" the lifetime of the
-        // reference passed to it. If the closure panics, the guard will be dropped.
+        // SAFETY: 创建原始守卫时，`RwLockWriteGuard::new` 的各项条件均已满足，且在
+        // 整个 `map` 与/或 `filter_map` 过程中始终得到维持。该闭包的签名保证
+        // 它不会「泄漏」传给它的引用的生命周期。如果该闭包 panic，守卫会被 drop。
         let data = NonNull::from(f(unsafe { orig.data.as_mut() }));
         let orig = ManuallyDrop::new(orig);
         MappedRwLockWriteGuard { data, inner_lock: orig.inner_lock, _variance: PhantomData }
     }
 
-    /// Makes a [`MappedRwLockWriteGuard`] for a component of the borrowed data.
-    /// The original guard is returned as an `Err(...)` if the closure returns
-    /// `None`.
+    /// 为被借用数据的某个组成部分制作一个 [`MappedRwLockWriteGuard`]。如果该
+    /// 闭包返回 `None`，则把原始守卫作为 `Err(...)` 返回。
     ///
-    /// The `RwLock` is already locked for writing, so this cannot fail.
+    /// 此时 `RwLock` 已被加写锁，因此本操作不会失败。
     ///
-    /// This is an associated function that needs to be used as
-    /// `MappedRwLockWriteGuard::filter_map(...)`. A method would interfere with
-    /// methods of the same name on the contents of the `MappedRwLockWriteGuard`
-    /// used through `Deref`.
+    /// 这是一个关联函数，需以 `MappedRwLockWriteGuard::filter_map(...)` 的形式
+    /// 使用。若设计为方法，则会与通过 `Deref` 访问的 `MappedRwLockWriteGuard`
+    /// 内容上同名的方法相冲突。
     ///
     /// # Panics
     ///
-    /// If the closure panics, the guard will be dropped (unlocked).
+    /// 如果该闭包 panic，守卫将被 drop（解锁）。
     #[unstable(feature = "mapped_lock_guards", issue = "117108")]
     // #[unstable(feature = "nonpoison_rwlock", issue = "134645")]
     pub fn filter_map<U, F>(
@@ -954,10 +919,9 @@ impl<'rwlock, T: ?Sized> MappedRwLockWriteGuard<'rwlock, T> {
         F: FnOnce(&mut T) -> Option<&mut U>,
         U: ?Sized,
     {
-        // SAFETY: the conditions of `RwLockWriteGuard::new` were satisfied when the original guard
-        // was created, and have been upheld throughout `map` and/or `filter_map`.
-        // The signature of the closure guarantees that it will not "leak" the lifetime of the
-        // reference passed to it. If the closure panics, the guard will be dropped.
+        // SAFETY: 创建原始守卫时，`RwLockWriteGuard::new` 的各项条件均已满足，且在
+        // 整个 `map` 与/或 `filter_map` 过程中始终得到维持。该闭包的签名保证
+        // 它不会「泄漏」传给它的引用的生命周期。如果该闭包 panic，守卫会被 drop。
         match f(unsafe { orig.data.as_mut() }) {
             Some(data) => {
                 let data = NonNull::from(data);
@@ -976,7 +940,7 @@ impl<'rwlock, T: ?Sized> MappedRwLockWriteGuard<'rwlock, T> {
 #[unstable(feature = "nonpoison_rwlock", issue = "134645")]
 impl<T: ?Sized> Drop for RwLockReadGuard<'_, T> {
     fn drop(&mut self) {
-        // SAFETY: the conditions of `RwLockReadGuard::new` were satisfied when created.
+        // SAFETY: 创建该守卫时，`RwLockReadGuard::new` 的各项条件均已满足。
         unsafe {
             self.inner_lock.read_unlock();
         }
@@ -986,7 +950,7 @@ impl<T: ?Sized> Drop for RwLockReadGuard<'_, T> {
 #[unstable(feature = "nonpoison_rwlock", issue = "134645")]
 impl<T: ?Sized> Drop for RwLockWriteGuard<'_, T> {
     fn drop(&mut self) {
-        // SAFETY: the conditions of `RwLockWriteGuard::new` were satisfied when created.
+        // SAFETY: 创建该守卫时，`RwLockWriteGuard::new` 的各项条件均已满足。
         unsafe {
             self.lock.inner.write_unlock();
         }
@@ -997,8 +961,8 @@ impl<T: ?Sized> Drop for RwLockWriteGuard<'_, T> {
 // #[unstable(feature = "nonpoison_rwlock", issue = "134645")]
 impl<T: ?Sized> Drop for MappedRwLockReadGuard<'_, T> {
     fn drop(&mut self) {
-        // SAFETY: the conditions of `RwLockReadGuard::new` were satisfied when the original guard
-        // was created, and have been upheld throughout `map` and/or `filter_map`.
+        // SAFETY: 创建原始守卫时，`RwLockReadGuard::new` 的各项条件均已满足，且在
+        // 整个 `map` 与/或 `filter_map` 过程中始终得到维持。
         unsafe {
             self.inner_lock.read_unlock();
         }
@@ -1009,8 +973,8 @@ impl<T: ?Sized> Drop for MappedRwLockReadGuard<'_, T> {
 // #[unstable(feature = "nonpoison_rwlock", issue = "134645")]
 impl<T: ?Sized> Drop for MappedRwLockWriteGuard<'_, T> {
     fn drop(&mut self) {
-        // SAFETY: the conditions of `RwLockWriteGuard::new` were satisfied when the original guard
-        // was created, and have been upheld throughout `map` and/or `filter_map`.
+        // SAFETY: 创建原始守卫时，`RwLockWriteGuard::new` 的各项条件均已满足，且在
+        // 整个 `map` 与/或 `filter_map` 过程中始终得到维持。
         unsafe {
             self.inner_lock.write_unlock();
         }
@@ -1022,7 +986,7 @@ impl<T: ?Sized> Deref for RwLockReadGuard<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &T {
-        // SAFETY: the conditions of `RwLockReadGuard::new` were satisfied when created.
+        // SAFETY: 创建该守卫时，`RwLockReadGuard::new` 的各项条件均已满足。
         unsafe { self.data.as_ref() }
     }
 }
@@ -1032,7 +996,7 @@ impl<T: ?Sized> Deref for RwLockWriteGuard<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &T {
-        // SAFETY: the conditions of `RwLockWriteGuard::new` were satisfied when created.
+        // SAFETY: 创建该守卫时，`RwLockWriteGuard::new` 的各项条件均已满足。
         unsafe { &*self.lock.data.get() }
     }
 }
@@ -1040,7 +1004,7 @@ impl<T: ?Sized> Deref for RwLockWriteGuard<'_, T> {
 #[unstable(feature = "nonpoison_rwlock", issue = "134645")]
 impl<T: ?Sized> DerefMut for RwLockWriteGuard<'_, T> {
     fn deref_mut(&mut self) -> &mut T {
-        // SAFETY: the conditions of `RwLockWriteGuard::new` were satisfied when created.
+        // SAFETY: 创建该守卫时，`RwLockWriteGuard::new` 的各项条件均已满足。
         unsafe { &mut *self.lock.data.get() }
     }
 }
@@ -1051,8 +1015,8 @@ impl<T: ?Sized> Deref for MappedRwLockReadGuard<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &T {
-        // SAFETY: the conditions of `RwLockReadGuard::new` were satisfied when the original guard
-        // was created, and have been upheld throughout `map` and/or `filter_map`.
+        // SAFETY: 创建原始守卫时，`RwLockReadGuard::new` 的各项条件均已满足，且在
+        // 整个 `map` 与/或 `filter_map` 过程中始终得到维持。
         unsafe { self.data.as_ref() }
     }
 }
@@ -1063,8 +1027,8 @@ impl<T: ?Sized> Deref for MappedRwLockWriteGuard<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &T {
-        // SAFETY: the conditions of `RwLockWriteGuard::new` were satisfied when the original guard
-        // was created, and have been upheld throughout `map` and/or `filter_map`.
+        // SAFETY: 创建原始守卫时，`RwLockWriteGuard::new` 的各项条件均已满足，且在
+        // 整个 `map` 与/或 `filter_map` 过程中始终得到维持。
         unsafe { self.data.as_ref() }
     }
 }
@@ -1073,8 +1037,8 @@ impl<T: ?Sized> Deref for MappedRwLockWriteGuard<'_, T> {
 // #[unstable(feature = "nonpoison_rwlock", issue = "134645")]
 impl<T: ?Sized> DerefMut for MappedRwLockWriteGuard<'_, T> {
     fn deref_mut(&mut self) -> &mut T {
-        // SAFETY: the conditions of `RwLockWriteGuard::new` were satisfied when the original guard
-        // was created, and have been upheld throughout `map` and/or `filter_map`.
+        // SAFETY: 创建原始守卫时，`RwLockWriteGuard::new` 的各项条件均已满足，且在
+        // 整个 `map` 与/或 `filter_map` 过程中始终得到维持。
         unsafe { self.data.as_mut() }
     }
 }

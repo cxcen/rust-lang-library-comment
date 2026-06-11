@@ -1,16 +1,15 @@
-//! ABI definitions for symbols exported by risc0-zkvm-platform.
+//! 由 risc0-zkvm-platform 导出的符号的 ABI 定义。
 
-// Included here so we don't have to depend on risc0-zkvm-platform.
+// 在此处包含这些定义，以免我们必须依赖 risc0-zkvm-platform。
 //
-// FIXME: Should we move this to the "libc" crate?  It seems like other
-// architectures put a lot of this kind of stuff there.  But there's
-// currently no risc0 fork of the libc crate, so we'd either have to
-// fork it or upstream it.
+// FIXME: 我们是否应该把这部分移动到 "libc" crate？看起来其他架构
+// 都把很多这类东西放在那里。但目前还没有 risc0 版本的 libc crate fork，
+// 因此我们要么得 fork 它，要么得把它上游化（upstream）。
 
 #![allow(dead_code)]
 pub const DIGEST_WORDS: usize = 8;
 
-/// Standard IO file descriptors for use with sys_read and sys_write.
+/// 用于配合 sys_read 和 sys_write 使用的标准 IO 文件描述符。
 pub mod fileno {
     pub const STDIN: u32 = 0;
     pub const STDOUT: u32 = 1;
@@ -19,7 +18,7 @@ pub mod fileno {
 }
 
 unsafe extern "C" {
-    // Wrappers around syscalls provided by risc0-zkvm-platform:
+    // 对 risc0-zkvm-platform 所提供系统调用的封装：
     pub fn sys_halt();
     pub fn sys_output(output_id: u32, output_value: u32);
     pub fn sys_sha_compress(
@@ -49,7 +48,7 @@ unsafe extern "C" {
     pub fn sys_argc() -> usize;
     pub fn sys_argv(out_words: *mut u32, out_nwords: usize, arg_index: usize) -> usize;
 
-    // Allocate memory from global HEAP.
+    // 从全局 HEAP 中分配内存。
     pub fn sys_alloc_words(nwords: usize) -> *mut u32;
     pub fn sys_alloc_aligned(nwords: usize, align: usize) -> *mut u8;
 }

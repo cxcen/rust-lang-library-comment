@@ -1,4 +1,4 @@
-#![allow(fuzzy_provenance_casts)] // FIXME: this module systematically confuses pointers and integers
+#![allow(fuzzy_provenance_casts)] // FIXME: 这个模块系统性地混用了指针和整数
 
 pub use super::common::Env;
 use crate::collections::HashMap;
@@ -7,11 +7,11 @@ use crate::io;
 use crate::sync::atomic::{Atomic, AtomicUsize, Ordering};
 use crate::sync::{Mutex, Once};
 
-// Specifying linkage/symbol name is solely to ensure a single instance between this crate and its unit tests
+// 指定 linkage/符号名仅仅是为了确保本 crate 与其单元测试之间共用同一个实例
 #[cfg_attr(test, linkage = "available_externally")]
 #[unsafe(export_name = "_ZN16__rust_internals3std3sys3pal3sgx2os3ENVE")]
 static ENV: Atomic<usize> = AtomicUsize::new(0);
-// Specifying linkage/symbol name is solely to ensure a single instance between this crate and its unit tests
+// 指定 linkage/符号名仅仅是为了确保本 crate 与其单元测试之间共用同一个实例
 #[cfg_attr(test, linkage = "available_externally")]
 #[unsafe(export_name = "_ZN16__rust_internals3std3sys3pal3sgx2os8ENV_INITE")]
 static ENV_INIT: Once = Once::new();

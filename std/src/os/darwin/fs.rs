@@ -1,4 +1,4 @@
-//! Darwin-specific extension traits to [`fs`].
+//! 针对 [`fs`] 的 Darwin 平台特有扩展 trait。
 //!
 //! [`fs`]: crate::fs
 #![stable(feature = "metadata_ext", since = "1.1.0")]
@@ -8,17 +8,16 @@ use crate::sealed::Sealed;
 use crate::sys::{AsInner, AsInnerMut, IntoInner};
 use crate::time::SystemTime;
 
-/// OS-specific extensions to [`fs::Metadata`].
+/// 针对 [`fs::Metadata`] 的 OS 平台特有扩展。
 ///
 /// [`fs::Metadata`]: crate::fs::Metadata
 #[stable(feature = "metadata_ext", since = "1.1.0")]
 pub trait MetadataExt {
-    /// Gain a reference to the underlying `stat` structure which contains
-    /// the raw information returned by the OS.
+    /// 获取底层 `stat` 结构的引用，其中包含 OS 返回的原始信息。
     ///
-    /// The contents of the returned `stat` are **not** consistent across
-    /// Unix platforms. The `os::unix::fs::MetadataExt` trait contains the
-    /// cross-Unix abstractions contained within the raw stat.
+    /// 返回的 `stat` 内容在各个 Unix 平台之间**并不**一致。
+    /// `os::unix::fs::MetadataExt` trait 则包含从原始 stat 中
+    /// 提炼出的、跨 Unix 通用的抽象。
     #[stable(feature = "metadata_ext", since = "1.1.0")]
     #[deprecated(
         since = "1.8.0",
@@ -26,7 +25,7 @@ pub trait MetadataExt {
                 methods of this trait"
     )]
     #[allow(deprecated)]
-    // Only available on macOS and iOS, since they were stably exposed there.
+    // 仅在 macOS 和 iOS 上可用，因为它们当初是在这两个平台上稳定暴露的。
     #[cfg(any(doc, target_os = "macos", target_os = "ios"))]
     #[doc(cfg(any(target_os = "macos", target_os = "ios")))]
     fn as_raw_stat(&self) -> &super::raw::stat;
@@ -155,10 +154,10 @@ impl MetadataExt for Metadata {
     }
 }
 
-/// OS-specific extensions to [`fs::FileTimes`].
+/// 针对 [`fs::FileTimes`] 的 OS 平台特有扩展。
 #[stable(feature = "file_set_times", since = "1.75.0")]
 pub trait FileTimesExt: Sealed {
-    /// Set the creation time of a file.
+    /// 设置文件的创建时间。
     #[stable(feature = "file_set_times", since = "1.75.0")]
     fn set_created(self, t: SystemTime) -> Self;
 }

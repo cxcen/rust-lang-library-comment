@@ -1,25 +1,23 @@
-// NOTE: Code in this file is heavily based on work done in PR 13 from the tokio-uds repository on
-//       GitHub.
+// 注意：本文件中的代码大量基于 GitHub 上 tokio-uds 仓库 PR 13 所完成的工作。
 //
-//       For reference, the link is here: https://github.com/tokio-rs/tokio-uds/pull/13
-//       Credit to Martin Habovštiak (GitHub username Kixunil) and contributors for this work.
+//       供参考，链接在此：https://github.com/tokio-rs/tokio-uds/pull/13
+//       感谢 Martin Habovštiak（GitHub 用户名 Kixunil）及各贡献者所做的这项工作。
 
 use libc::{gid_t, pid_t, uid_t};
 
-/// Credentials for a UNIX process for credentials passing.
+/// 用于凭据传递（credentials passing）的 UNIX 进程凭据。
 #[unstable(feature = "peer_credentials_unix_socket", issue = "42839")]
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct UCred {
-    /// The UID part of the peer credential. This is the effective UID of the process at the domain
-    /// socket's endpoint.
+    /// 对端凭据中的 UID 部分。这是位于域套接字（domain socket）端点处的进程的
+    /// 有效 UID（effective UID）。
     pub uid: uid_t,
-    /// The GID part of the peer credential. This is the effective GID of the process at the domain
-    /// socket's endpoint.
+    /// 对端凭据中的 GID 部分。这是位于域套接字（domain socket）端点处的进程的
+    /// 有效 GID（effective GID）。
     pub gid: gid_t,
-    /// The PID part of the peer credential. This field is optional because the PID part of the
-    /// peer credentials is not supported on every platform. On platforms where the mechanism to
-    /// discover the PID exists, this field will be populated to the PID of the process at the
-    /// domain socket's endpoint. Otherwise, it will be set to None.
+    /// 对端凭据中的 PID 部分。此字段是可选的，因为对端凭据中的 PID 部分并非在每个平台上
+    /// 都受支持。在存在发现 PID 机制的平台上，此字段将被填充为位于域套接字端点处的进程的
+    /// PID。否则，它将被设置为 None。
     pub pid: Option<pid_t>,
 }
 
@@ -48,7 +46,7 @@ mod impl_linux {
     pub fn peer_cred(socket: &UnixStream) -> io::Result<UCred> {
         let ucred_size = size_of::<ucred>();
 
-        // Trivial sanity checks.
+        // 简单的合理性检查。
         assert!(size_of::<u32>() <= size_of::<usize>());
         assert!(ucred_size <= u32::MAX as usize);
 

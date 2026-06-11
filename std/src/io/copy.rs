@@ -9,31 +9,28 @@ use crate::sys::io::{CopyState, kernel_copy};
 #[cfg(test)]
 mod tests;
 
-/// Copies the entire contents of a reader into a writer.
+/// 把一个 reader 的全部内容复制到一个 writer 中。
 ///
-/// This function will continuously read data from `reader` and then
-/// write it into `writer` in a streaming fashion until `reader`
-/// returns EOF.
+/// 本函数会以流式（streaming）的方式持续地从 `reader` 读取数据、再把它写入 `writer`，
+/// 直到 `reader` 返回 EOF。
 ///
-/// On success, the total number of bytes that were copied from
-/// `reader` to `writer` is returned.
+/// 成功时，返回从 `reader` 复制到 `writer` 的字节总数。
 ///
-/// If you want to copy the contents of one file to another and you’re
-/// working with filesystem paths, see the [`fs::copy`] function.
+/// 如果你想把一个文件的内容复制到另一个文件、并且正在使用文件系统路径，请参见
+/// [`fs::copy`] 函数。
 ///
 /// [`fs::copy`]: crate::fs::copy
 ///
 /// # Errors
 ///
-/// This function will return an error immediately if any call to [`read`] or
-/// [`write`] returns an error. All instances of [`ErrorKind::Interrupted`] are
-/// handled by this function and the underlying operation is retried.
+/// 一旦对 [`read`] 或 [`write`] 的任何调用返回错误，本函数会立即返回该错误。所有
+/// [`ErrorKind::Interrupted`] 都会由本函数处理，并对底层操作进行重试。
 ///
 /// [`read`]: Read::read
 /// [`write`]: Write::write
 /// [`ErrorKind::Interrupted`]: crate::io::ErrorKind::Interrupted
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use std::io;
@@ -49,13 +46,13 @@ mod tests;
 /// }
 /// ```
 ///
-/// # Platform-specific behavior
+/// # 平台特定行为（Platform-specific behavior）
 ///
-/// On Linux (including Android), this function uses `copy_file_range(2)`,
-/// `sendfile(2)` or `splice(2)` syscalls to move data directly between file
-/// descriptors if possible.
+/// 在 Linux（包括 Android）上，如果可能，本函数会使用 `copy_file_range(2)`、
+/// `sendfile(2)` 或 `splice(2)` 系统调用，在文件描述符之间直接搬运数据（即内核级的零拷贝
+/// 优化路径，避免数据往返用户态）。
 ///
-/// Note that platform-specific behavior [may change in the future][changes].
+/// 注意：平台特定行为[将来可能会改变][changes]。
 ///
 /// [changes]: crate::io#platform-specific-behavior
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -72,8 +69,8 @@ where
     }
 }
 
-/// The userspace read-write-loop implementation of `io::copy` that is used when
-/// OS-specific specializations for copy offloading are not available or not applicable.
+/// `io::copy` 的用户态“读-写循环”实现，当面向特定 OS 的“复制卸载（copy offloading）”特化
+/// 不可用或不适用时，就使用它。
 fn generic_copy<R: ?Sized, W: ?Sized>(reader: &mut R, writer: &mut W) -> Result<u64>
 where
     R: Read,
@@ -89,9 +86,7 @@ where
     BufferedWriterSpec::copy_from(writer, reader)
 }
 
-/// Specialization of the read-write loop that reuses the internal
-/// buffer of a BufReader. If there's no buffer then the writer side
-/// should be used instead.
+/// “读-写循环”的特化，它复用 BufReader 的内部缓冲。如果没有缓冲，就应当改用 writer 那一侧。
 trait BufferedReaderSpec {
     fn buffer_size(&self) -> usize;
 
@@ -115,8 +110,7 @@ where
 
 impl BufferedReaderSpec for &[u8] {
     fn buffer_size(&self) -> usize {
-        // prefer this specialization since the source "buffer" is all we'll ever need,
-        // even if it's small
+        // 优先选用这个特化，因为源“缓冲”就是我们所需的全部内容——哪怕它很小
         usize::MAX
     }
 
@@ -130,8 +124,7 @@ impl BufferedReaderSpec for &[u8] {
 
 impl<A: Allocator> BufferedReaderSpec for VecDeque<u8, A> {
     fn buffer_size(&self) -> usize {
-        // prefer this specialization since the source "buffer" is all we'll ever need,
-        // even if it's small
+        // 优先选用这个特化，因为源“缓冲”就是我们所需的全部内容——哪怕它很小
         usize::MAX
     }
 
@@ -158,10 +151,10 @@ where
         let mut len = 0;
 
         loop {
-            // Hack: this relies on `impl Read for BufReader` always calling fill_buf
-            // if the buffer is empty, even for empty slices.
-            // It can't be called directly here since specialization prevents us
-            // from adding I: Read
+            // Hack：这依赖于 `impl Read for BufReader` 在缓冲为空时总会调用 fill_buf
+            // 这一行为——即便传入的是空切片也是如此。
+            // 这里无法直接调用 fill_buf，因为特化（specialization）机制使我们无法再添加
+            // I: Read 这一约束
             match self.read(&mut []) {
                 Ok(_) => {}
                 Err(e) if e.is_interrupted() => continue,
@@ -172,11 +165,9 @@ where
                 return Ok(len);
             }
 
-            // In case the writer side is a BufWriter then its write_all
-            // implements an optimization that passes through large
-            // buffers to the underlying writer. That code path is #[cold]
-            // but we're still avoiding redundant memcopies when doing
-            // a copy between buffered inputs and outputs.
+            // 如果 writer 那一侧是 BufWriter，那么它的 write_all 实现了一项优化：会把大块
+            // 缓冲直接透传给底层 writer。那条代码路径是 #[cold] 的，但我们在“缓冲输入”与
+            // “缓冲输出”之间做复制时，仍然借此避免了多余的 memcopy。
             to.write_all(buf)?;
             len += buf.len() as u64;
             self.discard_buffer();
@@ -184,8 +175,7 @@ where
     }
 }
 
-/// Specialization of the read-write loop that either uses a stack buffer
-/// or reuses the internal buffer of a BufWriter
+/// “读-写循环”的特化，它要么使用一块栈上缓冲，要么复用 BufWriter 的内部缓冲。
 trait BufferedWriterSpec: Write {
     fn buffer_size(&self) -> usize;
 
@@ -221,7 +211,7 @@ impl<I: Write + ?Sized> BufferedWriterSpec for BufWriter<I> {
             let mut read_buf: BorrowedBuf<'_> = buf.spare_capacity_mut().into();
 
             unsafe {
-                // SAFETY: init is either 0 or the init_len from the previous iteration.
+                // SAFETY: init 要么是 0，要么是上一轮迭代得到的 init_len。
                 read_buf.set_init(init);
             }
 
@@ -238,18 +228,17 @@ impl<I: Write + ?Sized> BufferedWriterSpec for BufWriter<I> {
                         init = read_buf.init_len() - bytes_read;
                         len += bytes_read as u64;
 
-                        // SAFETY: BorrowedBuf guarantees all of its filled bytes are init
+                        // SAFETY: BorrowedBuf 保证它所有已填充的字节都是已初始化的
                         unsafe { buf.set_len(buf.len() + bytes_read) };
 
-                        // Read again if the buffer still has enough capacity, as BufWriter itself would do
-                        // This will occur if the reader returns short reads
+                        // 如果缓冲仍有足够容量，就再读一次，正如 BufWriter 自身会做的那样。
+                        // 当 reader 返回短读（short reads）时就会发生这种情况
                     }
                     Err(ref e) if e.is_interrupted() => {}
                     Err(e) => return Err(e),
                 }
             } else {
-                // All the bytes that were already in the buffer are initialized,
-                // treat them as such when the buffer is flushed.
+                // 缓冲中原本就有的所有字节都是已初始化的，在刷新缓冲时按此对待它们。
                 init += buf.len();
 
                 self.flush_buf()?;

@@ -71,9 +71,9 @@ pub fn panic_output() -> Option<impl io::Write> {
 
 fn write(fd: i32, buf: &[u8]) -> io::Result<usize> {
     let iov = libc::iovec { iov_base: buf.as_ptr() as *mut _, iov_len: buf.len() };
-    // SAFETY: syscall, safe arguments.
+    // SAFETY: 系统调用，参数安全。
     let ret = unsafe { libc::writev(fd, &iov, 1) };
-    // This check includes ret < 0, since the length is at most isize::MAX.
+    // 这个检查包含了 ret < 0 的情况，因为长度至多为 isize::MAX。
     if ret as usize > iov.iov_len {
         return Err(io::Error::last_os_error());
     }
@@ -83,7 +83,7 @@ fn write(fd: i32, buf: &[u8]) -> io::Result<usize> {
 fn write_vectored(fd: i32, bufs: &[IoSlice<'_>]) -> io::Result<usize> {
     let iov = bufs.as_ptr() as *const libc::iovec;
     let len = cmp::min(bufs.len(), libc::c_int::MAX as usize) as libc::c_int;
-    // SAFETY: syscall, safe arguments.
+    // SAFETY: 系统调用，参数安全。
     let ret = unsafe { libc::writev(fd, iov, len) };
     if ret < 0 {
         return Err(io::Error::last_os_error());

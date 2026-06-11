@@ -4,25 +4,25 @@ use crate::alloc::{GlobalAlloc, Layout, System};
 unsafe impl GlobalAlloc for System {
     #[inline]
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        // SAFETY: same requirements as in GlobalAlloc::alloc.
+        // SAFETY: 与 GlobalAlloc::alloc 中的要求相同。
         moto_rt::alloc::alloc(layout)
     }
 
     #[inline]
     unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
-        // SAFETY: same requirements as in GlobalAlloc::alloc_zeroed.
+        // SAFETY: 与 GlobalAlloc::alloc_zeroed 中的要求相同。
         moto_rt::alloc::alloc_zeroed(layout)
     }
 
     #[inline]
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        // SAFETY: same requirements as in GlobalAlloc::dealloc.
+        // SAFETY: 与 GlobalAlloc::dealloc 中的要求相同。
         unsafe { moto_rt::alloc::dealloc(ptr, layout) }
     }
 
     #[inline]
     unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
-        // SAFETY: same requirements as in GlobalAlloc::realloc.
+        // SAFETY: 与 GlobalAlloc::realloc 中的要求相同。
         unsafe { moto_rt::alloc::realloc(ptr, layout, new_size) }
     }
 }

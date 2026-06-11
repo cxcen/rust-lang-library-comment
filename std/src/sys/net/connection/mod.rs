@@ -36,7 +36,7 @@ cfg_select! {
 }
 
 #[cfg_attr(
-    // Make sure that this is used on some platforms at least.
+    // 确保该函数至少在某些平台上被使用。
     not(any(target_os = "linux", target_os = "windows")),
     allow(dead_code)
 )]

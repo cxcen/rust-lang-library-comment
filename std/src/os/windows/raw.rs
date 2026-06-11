@@ -1,4 +1,4 @@
-//! Windows-specific primitives.
+//! Windows 平台特定的原语。
 
 #![stable(feature = "raw_ext", since = "1.1.0")]
 

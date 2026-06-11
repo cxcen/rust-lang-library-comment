@@ -4,24 +4,24 @@ use crate::sealed::Sealed;
 use crate::sys::os_str::Buf;
 use crate::sys::{AsInner, FromInner, IntoInner};
 
-// Note: this file is currently reused in other `std::os::{platform}::ffi` modules to reduce duplication.
-// Keep this in mind when applying changes to this file that only apply to `unix`.
+// 注意：本文件目前在其他 `std::os::{platform}::ffi` 模块中被复用，以减少重复。
+// 当对本文件应用仅适用于 `unix` 的改动时，请记住这一点。
 
-/// Platform-specific extensions to [`OsString`].
+/// 针对 [`OsString`] 的平台特有扩展。
 ///
-/// This trait is sealed: it cannot be implemented outside the standard library.
-/// This is so that future additional methods are not breaking changes.
+/// 该 trait 是封闭的（sealed）：它不能在标准库之外被实现。
+/// 这样做是为了让未来新增的方法不会成为破坏性变更（breaking changes）。
 #[stable(feature = "rust1", since = "1.0.0")]
 pub trait OsStringExt: Sealed {
-    /// Creates an [`OsString`] from a byte vector.
+    /// 从一个字节向量创建 [`OsString`]。
     ///
-    /// See the module documentation for an example.
+    /// 示例参见模块文档。
     #[stable(feature = "rust1", since = "1.0.0")]
     fn from_vec(vec: Vec<u8>) -> Self;
 
-    /// Yields the underlying byte vector of this [`OsString`].
+    /// 取出此 [`OsString`] 底层的字节向量。
     ///
-    /// See the module documentation for an example.
+    /// 示例参见模块文档。
     #[stable(feature = "rust1", since = "1.0.0")]
     fn into_vec(self) -> Vec<u8>;
 }
@@ -38,21 +38,21 @@ impl OsStringExt for OsString {
     }
 }
 
-/// Platform-specific extensions to [`OsStr`].
+/// 针对 [`OsStr`] 的平台特有扩展。
 ///
-/// This trait is sealed: it cannot be implemented outside the standard library.
-/// This is so that future additional methods are not breaking changes.
+/// 该 trait 是封闭的（sealed）：它不能在标准库之外被实现。
+/// 这样做是为了让未来新增的方法不会成为破坏性变更（breaking changes）。
 #[stable(feature = "rust1", since = "1.0.0")]
 pub trait OsStrExt: Sealed {
     #[stable(feature = "rust1", since = "1.0.0")]
-    /// Creates an [`OsStr`] from a byte slice.
+    /// 从一个字节切片创建 [`OsStr`]。
     ///
-    /// See the module documentation for an example.
+    /// 示例参见模块文档。
     fn from_bytes(slice: &[u8]) -> &Self;
 
-    /// Gets the underlying byte view of the [`OsStr`] slice.
+    /// 获取 [`OsStr`] 切片底层的字节视图。
     ///
-    /// See the module documentation for an example.
+    /// 示例参见模块文档。
     #[stable(feature = "rust1", since = "1.0.0")]
     fn as_bytes(&self) -> &[u8];
 }

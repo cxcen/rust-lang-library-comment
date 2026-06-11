@@ -1,13 +1,11 @@
 #[cfg(test)]
 mod tests;
 
-// On 64-bit platforms, `io::Error` may use a bit-packed representation to
-// reduce size. However, this representation assumes that error codes are
-// always 32-bit wide.
+// 在 64 位平台上，`io::Error` 可能使用一种位压缩表示来缩减自身大小。然而，这种表示假定
+// 错误码总是 32 位宽的。
 //
-// This assumption is invalid on 64-bit UEFI, where error codes are 64-bit.
-// Therefore, the packed representation is explicitly disabled for UEFI
-// targets, and the unpacked representation must be used instead.
+// 这个假定在 64 位 UEFI 上并不成立，那里的错误码是 64 位的。因此，对于 UEFI 目标平台，
+// 这种压缩表示被显式禁用，必须改用未压缩表示。
 #[cfg(all(target_pointer_width = "64", not(target_os = "uefi")))]
 mod repr_bitpacked;
 #[cfg(all(target_pointer_width = "64", not(target_os = "uefi")))]
@@ -20,28 +18,25 @@ use repr_unpacked::Repr;
 
 use crate::{error, fmt, result, sys};
 
-/// A specialized [`Result`] type for I/O operations.
+/// 用于 I/O 操作的特化 [`Result`] 类型。
 ///
-/// This type is broadly used across [`std::io`] for any operation which may
-/// produce an error.
+/// 这个类型在整个 [`std::io`] 中被广泛用于任何可能产生错误的操作。
 ///
-/// This type alias is generally used to avoid writing out [`io::Error`] directly and
-/// is otherwise a direct mapping to [`Result`].
+/// 这个类型别名通常用来避免直接写出 [`io::Error`]，除此之外它就是 [`Result`] 的一个直接映射。
 ///
-/// While usual Rust style is to import types directly, aliases of [`Result`]
-/// often are not, to make it easier to distinguish between them. [`Result`] is
-/// generally assumed to be [`std::result::Result`][`Result`], and so users of this alias
-/// will generally use `io::Result` instead of shadowing the [prelude]'s import
-/// of [`std::result::Result`][`Result`].
+/// 尽管 Rust 的惯常风格是直接导入类型，但 [`Result`] 的别名往往不这样做，以便更容易区分它们。
+/// [`Result`] 一般被默认认为是 [`std::result::Result`][`Result`]，因此本别名的使用者通常会写
+/// `io::Result`，而不是去遮蔽（shadow）[预导入模块][prelude]里对
+/// [`std::result::Result`][`Result`] 的导入。
 ///
 /// [`std::io`]: crate::io
 /// [`io::Error`]: Error
 /// [`Result`]: crate::result::Result
 /// [prelude]: crate::prelude
 ///
-/// # Examples
+/// # 示例
 ///
-/// A convenience function that bubbles an `io::Result` to its caller:
+/// 一个把 `io::Result` 向上冒泡给调用方的便捷函数：
 ///
 /// ```
 /// use std::io;
@@ -58,12 +53,10 @@ use crate::{error, fmt, result, sys};
 #[doc(search_unbox)]
 pub type Result<T> = result::Result<T, Error>;
 
-/// The error type for I/O operations of the [`Read`], [`Write`], [`Seek`], and
-/// associated traits.
+/// [`Read`]、[`Write`]、[`Seek`] 等相关 trait 进行 I/O 操作时所用的错误类型。
 ///
-/// Errors mostly originate from the underlying OS, but custom instances of
-/// `Error` can be created with crafted error messages and a particular value of
-/// [`ErrorKind`].
+/// 错误大多源自底层操作系统，但也可以通过精心构造的错误消息和特定的 [`ErrorKind`] 值，
+/// 创建出自定义的 `Error` 实例。
 ///
 /// [`Read`]: crate::io::Read
 /// [`Write`]: crate::io::Write
@@ -80,7 +73,7 @@ impl fmt::Debug for Error {
     }
 }
 
-/// Common errors constants for use in std
+/// std 内部使用的常见错误常量。
 #[allow(dead_code)]
 impl Error {
     pub(crate) const INVALID_UTF8: Self =
@@ -109,7 +102,7 @@ impl Error {
 
 #[stable(feature = "rust1", since = "1.0.0")]
 impl From<alloc::ffi::NulError> for Error {
-    /// Converts a [`alloc::ffi::NulError`] into a [`Error`].
+    /// 把一个 [`alloc::ffi::NulError`] 转换成 [`Error`]。
     fn from(_: alloc::ffi::NulError) -> Error {
         const_error!(ErrorKind::InvalidInput, "data provided contains a nul byte")
     }
@@ -117,18 +110,16 @@ impl From<alloc::ffi::NulError> for Error {
 
 #[stable(feature = "io_error_from_try_reserve", since = "1.78.0")]
 impl From<alloc::collections::TryReserveError> for Error {
-    /// Converts `TryReserveError` to an error with [`ErrorKind::OutOfMemory`].
+    /// 把 `TryReserveError` 转换成一个带 [`ErrorKind::OutOfMemory`] 的错误。
     ///
-    /// `TryReserveError` won't be available as the error `source()`,
-    /// but this may change in the future.
+    /// `TryReserveError` 不会作为错误的 `source()` 提供出来，但这一点未来可能改变。
     fn from(_: alloc::collections::TryReserveError) -> Error {
-        // ErrorData::Custom allocates, which isn't great for handling OOM errors.
+        // ErrorData::Custom 会进行分配，这对于处理 OOM（内存耗尽）错误来说并不理想。
         ErrorKind::OutOfMemory.into()
     }
 }
 
-// Only derive debug in tests, to make sure it
-// doesn't accidentally get printed.
+// 只在测试中 derive Debug，以确保它不会被意外打印出来。
 #[cfg_attr(test, derive(Debug))]
 enum ErrorData<C> {
     Os(RawOsError),
@@ -137,31 +128,25 @@ enum ErrorData<C> {
     Custom(C),
 }
 
-/// The type of raw OS error codes returned by [`Error::raw_os_error`].
+/// [`Error::raw_os_error`] 所返回的原始 OS 错误码类型。
 ///
-/// This is an [`i32`] on all currently supported platforms, but platforms
-/// added in the future (such as UEFI) may use a different primitive type like
-/// [`usize`]. Use `as`or [`into`] conversions where applicable to ensure maximum
-/// portability.
+/// 在目前所有受支持的平台上这都是 [`i32`]，但未来新增的平台（例如 UEFI）可能使用别的原生类型，
+/// 比如 [`usize`]。在适用之处使用 `as` 或 [`into`] 转换，以确保最大的可移植性。
 ///
 /// [`into`]: Into::into
 #[unstable(feature = "raw_os_error_ty", issue = "107792")]
 pub type RawOsError = sys::io::RawOsError;
 
-// `#[repr(align(4))]` is probably redundant, it should have that value or
-// higher already. We include it just because repr_bitpacked.rs's encoding
-// requires an alignment >= 4 (note that `#[repr(align)]` will not reduce the
-// alignment required by the struct, only increase it).
+// `#[repr(align(4))]` 多半是冗余的，它本来就应该已经有这个对齐值或更高。我们加上它仅仅是因为
+// repr_bitpacked.rs 的编码要求对齐 >= 4（注意 `#[repr(align)]` 不会降低结构体所需的对齐，
+// 只会提高它）。
 //
-// If we add more variants to ErrorData, this can be increased to 8, but it
-// should probably be behind `#[cfg_attr(target_pointer_width = "64", ...)]` or
-// whatever cfg we're using to enable the `repr_bitpacked` code, since only the
-// that version needs the alignment, and 8 is higher than the alignment we'll
-// have on 32 bit platforms.
+// 如果我们给 ErrorData 添加更多变体，这个值可以提高到 8，但那样大概应该放在
+// `#[cfg_attr(target_pointer_width = "64", ...)]`（或者我们用来启用 `repr_bitpacked` 代码的
+// 任何 cfg）之后，因为只有那个版本需要该对齐，而 8 比我们在 32 位平台上将拥有的对齐更高。
 //
-// (For the sake of being explicit: the alignment requirement here only matters
-// if `error/repr_bitpacked.rs` is in use — for the unpacked repr it doesn't
-// matter at all)
+// （为了说清楚：这里的对齐要求只有在使用 `error/repr_bitpacked.rs` 时才有意义——对于未压缩表示
+// 它完全无关紧要）
 #[doc(hidden)]
 #[unstable(feature = "io_const_error_internals", issue = "none")]
 #[repr(align(4))]
@@ -171,12 +156,11 @@ pub struct SimpleMessage {
     pub message: &'static str,
 }
 
-/// Creates a new I/O error from a known kind of error and a string literal.
+/// 从一个已知的错误种类和一个字符串字面量创建一个新的 I/O 错误。
 ///
-/// Contrary to [`Error::new`], this macro does not allocate and can be used in
-/// `const` contexts.
+/// 与 [`Error::new`] 不同，这个宏不进行分配，并且可以在 `const` 上下文中使用。
 ///
-/// # Example
+/// # 示例
 /// ```
 /// #![feature(io_const_error)]
 /// use std::io::{const_error, Error, ErrorKind};
@@ -196,9 +180,8 @@ pub macro const_error($kind:expr, $message:expr $(,)?) {
     ))
 }
 
-// As with `SimpleMessage`: `#[repr(align(4))]` here is just because
-// repr_bitpacked's encoding requires it. In practice it almost certainly be
-// already be this high or higher.
+// 与 `SimpleMessage` 一样：这里的 `#[repr(align(4))]` 仅仅是因为 repr_bitpacked 的编码要求它。
+// 实际上它几乎可以肯定本来就已经是这个对齐或更高了。
 #[derive(Debug)]
 #[repr(align(4))]
 struct Custom {
@@ -206,250 +189,222 @@ struct Custom {
     error: Box<dyn error::Error + Send + Sync>,
 }
 
-/// A list specifying general categories of I/O error.
+/// 列举 I/O 错误的若干大类的清单。
 ///
-/// This list is intended to grow over time and it is not recommended to
-/// exhaustively match against it.
+/// 这份清单预计会随着时间增长，因此不建议对它做穷尽式匹配。
 ///
-/// It is used with the [`io::Error`] type.
+/// 它与 [`io::Error`] 类型搭配使用。
 ///
 /// [`io::Error`]: Error
 ///
-/// # Handling errors and matching on `ErrorKind`
+/// # 处理错误与对 `ErrorKind` 进行匹配
 ///
-/// In application code, use `match` for the `ErrorKind` values you are
-/// expecting; use `_` to match "all other errors".
+/// 在应用代码中，对你预期会遇到的 `ErrorKind` 值使用 `match`；用 `_` 来匹配「所有其他错误」。
 ///
-/// In comprehensive and thorough tests that want to verify that a test doesn't
-/// return any known incorrect error kind, you may want to cut-and-paste the
-/// current full list of errors from here into your test code, and then match
-/// `_` as the correct case. This seems counterintuitive, but it will make your
-/// tests more robust. In particular, if you want to verify that your code does
-/// produce an unrecognized error kind, the robust solution is to check for all
-/// the recognized error kinds and fail in those cases.
+/// 在那些追求全面、彻底、想要验证测试不会返回任何已知的错误种类的测试中，你可能想把当前这份
+/// 完整的错误清单从这里复制粘贴到你的测试代码里，然后把 `_` 当作正确的情况来匹配。这看起来
+/// 有违直觉，但它会让你的测试更健壮。具体来说，如果你想验证你的代码确实会产生一个无法识别的
+/// 错误种类，那么健壮的做法就是检查所有已识别的错误种类，并在命中这些情况时让测试失败。
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[stable(feature = "rust1", since = "1.0.0")]
 #[cfg_attr(not(test), rustc_diagnostic_item = "io_errorkind")]
 #[allow(deprecated)]
 #[non_exhaustive]
 pub enum ErrorKind {
-    /// An entity was not found, often a file.
+    /// 未找到某个实体，通常是文件。
     #[stable(feature = "rust1", since = "1.0.0")]
     NotFound,
-    /// The operation lacked the necessary privileges to complete.
+    /// 该操作缺少完成所需的必要权限。
     #[stable(feature = "rust1", since = "1.0.0")]
     PermissionDenied,
-    /// The connection was refused by the remote server.
+    /// 连接被远端服务器拒绝。
     #[stable(feature = "rust1", since = "1.0.0")]
     ConnectionRefused,
-    /// The connection was reset by the remote server.
+    /// 连接被远端服务器重置。
     #[stable(feature = "rust1", since = "1.0.0")]
     ConnectionReset,
-    /// The remote host is not reachable.
+    /// 无法到达远端主机。
     #[stable(feature = "io_error_a_bit_more", since = "1.83.0")]
     HostUnreachable,
-    /// The network containing the remote host is not reachable.
+    /// 无法到达包含远端主机的网络。
     #[stable(feature = "io_error_a_bit_more", since = "1.83.0")]
     NetworkUnreachable,
-    /// The connection was aborted (terminated) by the remote server.
+    /// 连接被远端服务器中止（终止）。
     #[stable(feature = "rust1", since = "1.0.0")]
     ConnectionAborted,
-    /// The network operation failed because it was not connected yet.
+    /// 网络操作失败，因为尚未连接。
     #[stable(feature = "rust1", since = "1.0.0")]
     NotConnected,
-    /// A socket address could not be bound because the address is already in
-    /// use elsewhere.
+    /// 无法绑定某个套接字地址，因为该地址已在别处被占用。
     #[stable(feature = "rust1", since = "1.0.0")]
     AddrInUse,
-    /// A nonexistent interface was requested or the requested address was not
-    /// local.
+    /// 请求了一个不存在的网络接口，或者请求的地址不是本地地址。
     #[stable(feature = "rust1", since = "1.0.0")]
     AddrNotAvailable,
-    /// The system's networking is down.
+    /// 系统的网络已关闭。
     #[stable(feature = "io_error_a_bit_more", since = "1.83.0")]
     NetworkDown,
-    /// The operation failed because a pipe was closed.
+    /// 操作失败，因为管道已被关闭。
     #[stable(feature = "rust1", since = "1.0.0")]
     BrokenPipe,
-    /// An entity already exists, often a file.
+    /// 某个实体已存在，通常是文件。
     #[stable(feature = "rust1", since = "1.0.0")]
     AlreadyExists,
-    /// The operation needs to block to complete, but the blocking operation was
-    /// requested to not occur.
+    /// 操作需要阻塞才能完成，但调用方要求不要发生阻塞。
     #[stable(feature = "rust1", since = "1.0.0")]
     WouldBlock,
-    /// A filesystem object is, unexpectedly, not a directory.
+    /// 一个文件系统对象出乎意料地不是目录。
     ///
-    /// For example, a filesystem path was specified where one of the intermediate directory
-    /// components was, in fact, a plain file.
+    /// 例如，指定了一个文件系统路径，而其中某个中间目录组件实际上是一个普通文件。
     #[stable(feature = "io_error_a_bit_more", since = "1.83.0")]
     NotADirectory,
-    /// The filesystem object is, unexpectedly, a directory.
+    /// 该文件系统对象出乎意料地是一个目录。
     ///
-    /// A directory was specified when a non-directory was expected.
+    /// 在期望非目录的地方指定了一个目录。
     #[stable(feature = "io_error_a_bit_more", since = "1.83.0")]
     IsADirectory,
-    /// A non-empty directory was specified where an empty directory was expected.
+    /// 在期望空目录的地方指定了一个非空目录。
     #[stable(feature = "io_error_a_bit_more", since = "1.83.0")]
     DirectoryNotEmpty,
-    /// The filesystem or storage medium is read-only, but a write operation was attempted.
+    /// 文件系统或存储介质是只读的，却尝试了一次写操作。
     #[stable(feature = "io_error_a_bit_more", since = "1.83.0")]
     ReadOnlyFilesystem,
-    /// Loop in the filesystem or IO subsystem; often, too many levels of symbolic links.
+    /// 文件系统或 IO 子系统中存在循环；常见情况是符号链接的层级过多。
     ///
-    /// There was a loop (or excessively long chain) resolving a filesystem object
-    /// or file IO object.
+    /// 在解析某个文件系统对象或文件 IO 对象时出现了循环（或过长的链）。
     ///
-    /// On Unix this is usually the result of a symbolic link loop; or, of exceeding the
-    /// system-specific limit on the depth of symlink traversal.
+    /// 在 Unix 上，这通常是符号链接循环的结果；或者是超出了系统特定的符号链接遍历深度限制。
     #[unstable(feature = "io_error_more", issue = "86442")]
     FilesystemLoop,
-    /// Stale network file handle.
+    /// 失效的网络文件句柄。
     ///
-    /// With some network filesystems, notably NFS, an open file (or directory) can be invalidated
-    /// by problems with the network or server.
+    /// 在某些网络文件系统中（尤其是 NFS），一个已打开的文件（或目录）可能因为网络或服务器的问题
+    /// 而失效。
     #[stable(feature = "io_error_a_bit_more", since = "1.83.0")]
     StaleNetworkFileHandle,
-    /// A parameter was incorrect.
+    /// 某个参数不正确。
     #[stable(feature = "rust1", since = "1.0.0")]
     InvalidInput,
-    /// Data not valid for the operation were encountered.
+    /// 遇到了对该操作而言无效的数据。
     ///
-    /// Unlike [`InvalidInput`], this typically means that the operation
-    /// parameters were valid, however the error was caused by malformed
-    /// input data.
+    /// 与 [`InvalidInput`] 不同，这通常意味着操作的参数本身是有效的，但错误是由格式不正确的
+    /// 输入数据引起的。
     ///
-    /// For example, a function that reads a file into a string will error with
-    /// `InvalidData` if the file's contents are not valid UTF-8.
+    /// 例如，一个把文件读入字符串的函数，如果文件内容不是有效的 UTF-8，就会以 `InvalidData`
+    /// 报错。
     ///
     /// [`InvalidInput`]: ErrorKind::InvalidInput
     #[stable(feature = "io_invalid_data", since = "1.2.0")]
     InvalidData,
-    /// The I/O operation's timeout expired, causing it to be canceled.
+    /// I/O 操作的超时已到期，导致它被取消。
     #[stable(feature = "rust1", since = "1.0.0")]
     TimedOut,
-    /// An error returned when an operation could not be completed because a
-    /// call to [`write`] returned [`Ok(0)`].
+    /// 当某个操作因为对 [`write`] 的调用返回了 [`Ok(0)`] 而无法完成时返回的错误。
     ///
-    /// This typically means that an operation could only succeed if it wrote a
-    /// particular number of bytes but only a smaller number of bytes could be
-    /// written.
+    /// 这通常意味着：某个操作只有在写入了特定数量的字节时才能成功，但实际只能写入更少的字节。
     ///
     /// [`write`]: crate::io::Write::write
     /// [`Ok(0)`]: Ok
     #[stable(feature = "rust1", since = "1.0.0")]
     WriteZero,
-    /// The underlying storage (typically, a filesystem) is full.
+    /// 底层存储（通常是文件系统）已满。
     ///
-    /// This does not include out of quota errors.
+    /// 这不包括超出配额的错误。
     #[stable(feature = "io_error_a_bit_more", since = "1.83.0")]
     StorageFull,
-    /// Seek on unseekable file.
+    /// 在不可寻位（seek）的文件上执行 seek。
     ///
-    /// Seeking was attempted on an open file handle which is not suitable for seeking - for
-    /// example, on Unix, a named pipe opened with `File::open`.
+    /// 在一个不适合寻位的已打开文件句柄上尝试了 seek——例如在 Unix 上，对用 `File::open` 打开的
+    /// 命名管道执行 seek。
     #[stable(feature = "io_error_a_bit_more", since = "1.83.0")]
     NotSeekable,
-    /// Filesystem quota or some other kind of quota was exceeded.
+    /// 超出了文件系统配额或某种其他类型的配额。
     #[stable(feature = "io_error_quota_exceeded", since = "1.85.0")]
     QuotaExceeded,
-    /// File larger than allowed or supported.
+    /// 文件大于允许或支持的大小。
     ///
-    /// This might arise from a hard limit of the underlying filesystem or file access API, or from
-    /// an administratively imposed resource limitation.  Simple disk full, and out of quota, have
-    /// their own errors.
+    /// 这可能源于底层文件系统或文件访问 API 的硬性限制，或者源于管理上施加的资源限制。简单的磁盘
+    /// 已满和超出配额各自有专门的错误。
     #[stable(feature = "io_error_a_bit_more", since = "1.83.0")]
     FileTooLarge,
-    /// Resource is busy.
+    /// 资源正忙。
     #[stable(feature = "io_error_a_bit_more", since = "1.83.0")]
     ResourceBusy,
-    /// Executable file is busy.
+    /// 可执行文件正忙。
     ///
-    /// An attempt was made to write to a file which is also in use as a running program.  (Not all
-    /// operating systems detect this situation.)
+    /// 尝试写入一个同时正作为运行中程序使用的文件。（并非所有操作系统都能检测到这种情况。）
     #[stable(feature = "io_error_a_bit_more", since = "1.83.0")]
     ExecutableFileBusy,
-    /// Deadlock (avoided).
+    /// 死锁（已避免）。
     ///
-    /// A file locking operation would result in deadlock.  This situation is typically detected, if
-    /// at all, on a best-effort basis.
+    /// 某个文件加锁操作会导致死锁。这种情况通常以尽力而为（best-effort）的方式被检测出来——如果
+    /// 能被检测到的话。
     #[stable(feature = "io_error_a_bit_more", since = "1.83.0")]
     Deadlock,
-    /// Cross-device or cross-filesystem (hard) link or rename.
+    /// 跨设备或跨文件系统的（硬）链接或重命名。
     #[stable(feature = "io_error_crosses_devices", since = "1.85.0")]
     CrossesDevices,
-    /// Too many (hard) links to the same filesystem object.
+    /// 指向同一个文件系统对象的（硬）链接过多。
     ///
-    /// The filesystem does not support making so many hardlinks to the same file.
+    /// 文件系统不支持对同一个文件创建这么多硬链接。
     #[stable(feature = "io_error_a_bit_more", since = "1.83.0")]
     TooManyLinks,
-    /// A filename was invalid.
+    /// 某个文件名无效。
     ///
-    /// This error can also occur if a length limit for a name was exceeded.
+    /// 如果名字超出了长度限制，也可能发生这个错误。
     #[stable(feature = "io_error_invalid_filename", since = "1.87.0")]
     InvalidFilename,
-    /// Program argument list too long.
+    /// 程序参数列表过长。
     ///
-    /// When trying to run an external program, a system or process limit on the size of the
-    /// arguments would have been exceeded.
+    /// 在尝试运行外部程序时，参数大小将会超出系统或进程对其的限制。
     #[stable(feature = "io_error_a_bit_more", since = "1.83.0")]
     ArgumentListTooLong,
-    /// This operation was interrupted.
+    /// 该操作被中断。
     ///
-    /// Interrupted operations can typically be retried.
+    /// 被中断的操作通常可以重试。
     #[stable(feature = "rust1", since = "1.0.0")]
     Interrupted,
 
-    /// This operation is unsupported on this platform.
+    /// 该操作在本平台上不受支持。
     ///
-    /// This means that the operation can never succeed.
+    /// 这意味着该操作永远不可能成功。
     #[stable(feature = "unsupported_error", since = "1.53.0")]
     Unsupported,
 
-    // ErrorKinds which are primarily categorisations for OS error
-    // codes should be added above.
+    // 那些主要作为 OS 错误码归类的 ErrorKind 应当添加在上面。
     //
-    /// An error returned when an operation could not be completed because an
-    /// "end of file" was reached prematurely.
+    /// 当某个操作因为过早到达「文件结尾」（end of file）而无法完成时返回的错误。
     ///
-    /// This typically means that an operation could only succeed if it read a
-    /// particular number of bytes but only a smaller number of bytes could be
-    /// read.
+    /// 这通常意味着：某个操作只有在读取了特定数量的字节时才能成功，但实际只能读到更少的字节。
     #[stable(feature = "read_exact", since = "1.6.0")]
     UnexpectedEof,
 
-    /// An operation could not be completed, because it failed
-    /// to allocate enough memory.
+    /// 某个操作无法完成，因为它未能分配到足够的内存。
     #[stable(feature = "out_of_memory_error", since = "1.54.0")]
     OutOfMemory,
 
-    /// The operation was partially successful and needs to be checked
-    /// later on due to not blocking.
+    /// 由于非阻塞，该操作只部分成功，需要在稍后再行检查。
     #[unstable(feature = "io_error_inprogress", issue = "130840")]
     InProgress,
 
-    // "Unusual" error kinds which do not correspond simply to (sets
-    // of) OS error codes, should be added just above this comment.
-    // `Other` and `Uncategorized` should remain at the end:
+    // 那些不能简单地对应到（某组）OS 错误码的「非寻常」错误种类，应当添加在紧靠此注释的上方。
+    // `Other` 和 `Uncategorized` 应当保持在末尾：
     //
-    /// A custom error that does not fall under any other I/O error kind.
+    /// 一个不属于任何其他 I/O 错误种类的自定义错误。
     ///
-    /// This can be used to construct your own [`Error`]s that do not match any
-    /// [`ErrorKind`].
+    /// 这可用于构造你自己的、不匹配任何 [`ErrorKind`] 的 [`Error`]。
     ///
-    /// This [`ErrorKind`] is not used by the standard library.
+    /// 标准库不会使用这个 [`ErrorKind`]。
     ///
-    /// Errors from the standard library that do not fall under any of the I/O
-    /// error kinds cannot be `match`ed on, and will only match a wildcard (`_`) pattern.
-    /// New [`ErrorKind`]s might be added in the future for some of those.
+    /// 标准库中那些不属于任何 I/O 错误种类的错误无法被 `match`，只会匹配通配符（`_`）模式。
+    /// 未来可能会为其中一些错误添加新的 [`ErrorKind`]。
     #[stable(feature = "rust1", since = "1.0.0")]
     Other,
 
-    /// Any I/O error from the standard library that's not part of this list.
+    /// 标准库中任何不属于此清单的 I/O 错误。
     ///
-    /// Errors that are `Uncategorized` now may move to a different or a new
-    /// [`ErrorKind`] variant in the future. It is not recommended to match
-    /// an error against `Uncategorized`; use a wildcard match (`_`) instead.
+    /// 现在归为 `Uncategorized` 的错误，将来可能移动到另一个或新的 [`ErrorKind`] 变体。不建议
+    /// 把错误与 `Uncategorized` 进行匹配；请改用通配符匹配（`_`）。
     #[unstable(feature = "io_error_uncategorized", issue = "none")]
     #[doc(hidden)]
     Uncategorized,
@@ -509,11 +464,11 @@ impl ErrorKind {
 
 #[stable(feature = "io_errorkind_display", since = "1.60.0")]
 impl fmt::Display for ErrorKind {
-    /// Shows a human-readable description of the `ErrorKind`.
+    /// 展示对该 `ErrorKind` 的一段人类可读的描述。
     ///
-    /// This is similar to `impl Display for Error`, but doesn't require first converting to Error.
+    /// 这类似于 `impl Display for Error`，但不需要先转换成 Error。
     ///
-    /// # Examples
+    /// # 示例
     /// ```
     /// use std::io::ErrorKind;
     /// assert_eq!("entity not found", ErrorKind::NotFound.to_string());
@@ -523,15 +478,15 @@ impl fmt::Display for ErrorKind {
     }
 }
 
-/// Intended for use for errors not exposed to the user, where allocating onto
-/// the heap (for normal construction via Error::new) is too costly.
+/// 供那些不暴露给用户的错误使用——对这些错误而言，在堆上分配（即通过 Error::new 进行常规构造）
+/// 代价过高。
 #[stable(feature = "io_error_from_errorkind", since = "1.14.0")]
 impl From<ErrorKind> for Error {
-    /// Converts an [`ErrorKind`] into an [`Error`].
+    /// 把一个 [`ErrorKind`] 转换成 [`Error`]。
     ///
-    /// This conversion creates a new error with a simple representation of error kind.
+    /// 这个转换会创建一个新错误，其中带有错误种类的简单表示。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::io::{Error, ErrorKind};
@@ -547,29 +502,26 @@ impl From<ErrorKind> for Error {
 }
 
 impl Error {
-    /// Creates a new I/O error from a known kind of error as well as an
-    /// arbitrary error payload.
+    /// 从一个已知的错误种类以及一个任意的错误载荷创建一个新的 I/O 错误。
     ///
-    /// This function is used to generically create I/O errors which do not
-    /// originate from the OS itself. The `error` argument is an arbitrary
-    /// payload which will be contained in this [`Error`].
+    /// 这个函数用于泛型地创建那些并非源自 OS 本身的 I/O 错误。`error` 参数是一个任意载荷，
+    /// 它将被包含在这个 [`Error`] 中。
     ///
-    /// Note that this function allocates memory on the heap.
-    /// If no extra payload is required, use the `From` conversion from
-    /// `ErrorKind`.
+    /// 注意，这个函数会在堆上分配内存。如果不需要额外载荷，请使用从 `ErrorKind` 而来的 `From`
+    /// 转换。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::io::{Error, ErrorKind};
     ///
-    /// // errors can be created from strings
+    /// // 错误可以从字符串创建
     /// let custom_error = Error::new(ErrorKind::Other, "oh no!");
     ///
-    /// // errors can also be created from other errors
+    /// // 错误也可以从其他错误创建
     /// let custom_error2 = Error::new(ErrorKind::Interrupted, custom_error);
     ///
-    /// // creating an error without payload (and without memory allocation)
+    /// // 创建一个不带载荷（也不进行内存分配）的错误
     /// let eof_error = Error::from(ErrorKind::UnexpectedEof);
     /// ```
     #[stable(feature = "rust1", since = "1.0.0")]
@@ -582,21 +534,20 @@ impl Error {
         Self::_new(kind, error.into())
     }
 
-    /// Creates a new I/O error from an arbitrary error payload.
+    /// 从一个任意的错误载荷创建一个新的 I/O 错误。
     ///
-    /// This function is used to generically create I/O errors which do not
-    /// originate from the OS itself. It is a shortcut for [`Error::new`]
-    /// with [`ErrorKind::Other`].
+    /// 这个函数用于泛型地创建那些并非源自 OS 本身的 I/O 错误。它是带 [`ErrorKind::Other`] 的
+    /// [`Error::new`] 的一个快捷方式。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::io::Error;
     ///
-    /// // errors can be created from strings
+    /// // 错误可以从字符串创建
     /// let custom_error = Error::other("oh no!");
     ///
-    /// // errors can also be created from other errors
+    /// // 错误也可以从其他错误创建
     /// let custom_error2 = Error::other(custom_error);
     /// ```
     #[stable(feature = "io_error_other", since = "1.74.0")]
@@ -611,16 +562,15 @@ impl Error {
         Error { repr: Repr::new_custom(Box::new(Custom { kind, error })) }
     }
 
-    /// Creates a new I/O error from a known kind of error as well as a constant
-    /// message.
+    /// 从一个已知的错误种类以及一条常量消息创建一个新的 I/O 错误。
     ///
-    /// This function does not allocate.
+    /// 这个函数不进行分配。
     ///
-    /// You should not use this directly, and instead use the `const_error!`
-    /// macro: `io::const_error!(ErrorKind::Something, "some_message")`.
+    /// 你不应直接使用它，而应使用 `const_error!` 宏：
+    /// `io::const_error!(ErrorKind::Something, "some_message")`。
     ///
-    /// This function should maybe change to `from_static_message<const MSG: &'static
-    /// str>(kind: ErrorKind)` in the future, when const generics allow that.
+    /// 将来当 const 泛型允许时，这个函数也许应当改为
+    /// `from_static_message<const MSG: &'static str>(kind: ErrorKind)`。
     #[inline]
     #[doc(hidden)]
     #[unstable(feature = "io_const_error_internals", issue = "none")]
@@ -628,18 +578,15 @@ impl Error {
         Self { repr: Repr::new_simple_message(msg) }
     }
 
-    /// Returns an error representing the last OS error which occurred.
+    /// 返回一个表示最近发生的 OS 错误的错误。
     ///
-    /// This function reads the value of `errno` for the target platform (e.g.
-    /// `GetLastError` on Windows) and will return a corresponding instance of
-    /// [`Error`] for the error code.
+    /// 这个函数会读取目标平台上 `errno` 的值（例如 Windows 上的 `GetLastError`），并为该错误码
+    /// 返回一个相应的 [`Error`] 实例。
     ///
-    /// This should be called immediately after a call to a platform function,
-    /// otherwise the state of the error value is indeterminate. In particular,
-    /// other standard library functions may call platform functions that may
-    /// (or may not) reset the error value even if they succeed.
+    /// 它应当在调用某个平台函数之后立即被调用，否则错误值的状态是不确定的。具体来说，其他标准库
+    /// 函数可能会调用一些平台函数，这些平台函数即便成功也可能（也可能不会）重置错误值。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::io::Error;
@@ -656,11 +603,11 @@ impl Error {
         Error::from_raw_os_error(sys::io::errno())
     }
 
-    /// Creates a new instance of an [`Error`] from a particular OS error code.
+    /// 从一个特定的 OS 错误码创建一个新的 [`Error`] 实例。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// On Linux:
+    /// 在 Linux 上：
     ///
     /// ```
     /// # if cfg!(target_os = "linux") {
@@ -671,7 +618,7 @@ impl Error {
     /// # }
     /// ```
     ///
-    /// On Windows:
+    /// 在 Windows 上：
     ///
     /// ```
     /// # if cfg!(windows) {
@@ -688,16 +635,15 @@ impl Error {
         Error { repr: Repr::new_os(code) }
     }
 
-    /// Returns the OS error that this error represents (if any).
+    /// 返回这个错误所表示的 OS 错误（如果有的话）。
     ///
-    /// If this [`Error`] was constructed via [`last_os_error`] or
-    /// [`from_raw_os_error`], then this function will return [`Some`], otherwise
-    /// it will return [`None`].
+    /// 如果这个 [`Error`] 是通过 [`last_os_error`] 或 [`from_raw_os_error`] 构造的，那么这个函数
+    /// 将返回 [`Some`]，否则将返回 [`None`]。
     ///
     /// [`last_os_error`]: Error::last_os_error
     /// [`from_raw_os_error`]: Error::from_raw_os_error
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::io::{Error, ErrorKind};
@@ -711,9 +657,9 @@ impl Error {
     /// }
     ///
     /// fn main() {
-    ///     // Will print "raw OS error: ...".
+    ///     // 将打印 "raw OS error: ..."。
     ///     print_os_error(&Error::last_os_error());
-    ///     // Will print "Not an OS error".
+    ///     // 将打印 "Not an OS error"。
     ///     print_os_error(&Error::new(ErrorKind::Other, "oh no!"));
     /// }
     /// ```
@@ -729,14 +675,13 @@ impl Error {
         }
     }
 
-    /// Returns a reference to the inner error wrapped by this error (if any).
+    /// 返回对这个错误所包装的内层错误的引用（如果有的话）。
     ///
-    /// If this [`Error`] was constructed via [`new`] then this function will
-    /// return [`Some`], otherwise it will return [`None`].
+    /// 如果这个 [`Error`] 是通过 [`new`] 构造的，那么这个函数将返回 [`Some`]，否则将返回 [`None`]。
     ///
     /// [`new`]: Error::new
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::io::{Error, ErrorKind};
@@ -750,9 +695,9 @@ impl Error {
     /// }
     ///
     /// fn main() {
-    ///     // Will print "No inner error".
+    ///     // 将打印 "No inner error"。
     ///     print_error(&Error::last_os_error());
-    ///     // Will print "Inner error: ...".
+    ///     // 将打印 "Inner error: ..."。
     ///     print_error(&Error::new(ErrorKind::Other, "oh no!"));
     /// }
     /// ```
@@ -768,15 +713,13 @@ impl Error {
         }
     }
 
-    /// Returns a mutable reference to the inner error wrapped by this error
-    /// (if any).
+    /// 返回对这个错误所包装的内层错误的可变引用（如果有的话）。
     ///
-    /// If this [`Error`] was constructed via [`new`] then this function will
-    /// return [`Some`], otherwise it will return [`None`].
+    /// 如果这个 [`Error`] 是通过 [`new`] 构造的，那么这个函数将返回 [`Some`]，否则将返回 [`None`]。
     ///
     /// [`new`]: Error::new
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::io::{Error, ErrorKind};
@@ -824,9 +767,9 @@ impl Error {
     /// }
     ///
     /// fn main() {
-    ///     // Will print "No inner error".
+    ///     // 将打印 "No inner error"。
     ///     print_error(&change_error(Error::last_os_error()));
-    ///     // Will print "Inner error: ...".
+    ///     // 将打印 "Inner error: ..."。
     ///     print_error(&change_error(Error::new(ErrorKind::Other, MyError::new())));
     /// }
     /// ```
@@ -842,16 +785,15 @@ impl Error {
         }
     }
 
-    /// Consumes the `Error`, returning its inner error (if any).
+    /// 消耗这个 `Error`，返回其内层错误（如果有的话）。
     ///
-    /// If this [`Error`] was constructed via [`new`] or [`other`],
-    /// then this function will return [`Some`],
-    /// otherwise it will return [`None`].
+    /// 如果这个 [`Error`] 是通过 [`new`] 或 [`other`] 构造的，那么这个函数将返回 [`Some`]，
+    /// 否则将返回 [`None`]。
     ///
     /// [`new`]: Error::new
     /// [`other`]: Error::other
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::io::{Error, ErrorKind};
@@ -865,9 +807,9 @@ impl Error {
     /// }
     ///
     /// fn main() {
-    ///     // Will print "No inner error".
+    ///     // 将打印 "No inner error"。
     ///     print_error(Error::last_os_error());
-    ///     // Will print "Inner error: ...".
+    ///     // 将打印 "Inner error: ..."。
     ///     print_error(Error::new(ErrorKind::Other, "oh no!"));
     /// }
     /// ```
@@ -883,21 +825,18 @@ impl Error {
         }
     }
 
-    /// Attempts to downcast the custom boxed error to `E`.
+    /// 尝试把自定义的、装箱的错误向下转型（downcast）为 `E`。
     ///
-    /// If this [`Error`] contains a custom boxed error,
-    /// then it would attempt downcasting on the boxed error,
-    /// otherwise it will return [`Err`].
+    /// 如果这个 [`Error`] 包含一个自定义的装箱错误，那么它会尝试对该装箱错误进行向下转型，
+    /// 否则将返回 [`Err`]。
     ///
-    /// If the custom boxed error has the same type as `E`, it will return [`Ok`],
-    /// otherwise it will also return [`Err`].
+    /// 如果该自定义装箱错误的类型与 `E` 相同，它将返回 [`Ok`]，否则同样会返回 [`Err`]。
     ///
-    /// This method is meant to be a convenience routine for calling
-    /// `Box<dyn Error + Sync + Send>::downcast` on the custom boxed error, returned by
-    /// [`Error::into_inner`].
+    /// 这个方法旨在作为一个便捷例程，用于对由 [`Error::into_inner`] 返回的自定义装箱错误调用
+    /// `Box<dyn Error + Sync + Send>::downcast`。
     ///
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::fmt;
@@ -936,16 +875,16 @@ impl Error {
     ///
     /// # fn main() {
     /// let e = E::SomeOtherVariant;
-    /// // Convert it to an io::Error
+    /// // 把它转换成一个 io::Error
     /// let io_error = io::Error::from(e);
-    /// // Cast it back to the original variant
+    /// // 再把它转回原来的变体
     /// let e = E::from(io_error);
     /// assert!(matches!(e, E::SomeOtherVariant));
     ///
     /// let io_error = io::Error::from(io::ErrorKind::AlreadyExists);
-    /// // Convert it to E
+    /// // 把它转换成 E
     /// let e = E::from(io_error);
-    /// // Cast it back to the original variant
+    /// // 再把它转回原来的变体
     /// let io_error = io::Error::from(e);
     /// assert_eq!(io_error.kind(), io::ErrorKind::AlreadyExists);
     /// assert!(io_error.get_ref().is_none());
@@ -965,7 +904,7 @@ impl Error {
             {
                 Ok(*err)
             } else {
-                // Safety: We have just checked that the condition is true
+                // 安全性：我们刚刚检查过该条件为真
                 unsafe { crate::hint::unreachable_unchecked() }
             }
         } else {
@@ -973,16 +912,14 @@ impl Error {
         }
     }
 
-    /// Returns the corresponding [`ErrorKind`] for this error.
+    /// 返回这个错误所对应的 [`ErrorKind`]。
     ///
-    /// This may be a value set by Rust code constructing custom `io::Error`s,
-    /// or if this `io::Error` was sourced from the operating system,
-    /// it will be a value inferred from the system's error encoding.
-    /// See [`last_os_error`] for more details.
+    /// 这可能是由构造自定义 `io::Error` 的 Rust 代码所设置的值；或者，如果这个 `io::Error`
+    /// 源自操作系统，它将是一个从系统的错误编码推断出来的值。详见 [`last_os_error`]。
     ///
     /// [`last_os_error`]: Error::last_os_error
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::io::{Error, ErrorKind};
@@ -992,10 +929,10 @@ impl Error {
     /// }
     ///
     /// fn main() {
-    ///     // As no error has (visibly) occurred, this may print anything!
-    ///     // It likely prints a placeholder for unidentified (non-)errors.
+    ///     // 由于（显式上）没有发生任何错误，这可能打印任何内容！
+    ///     // 它很可能会打印一个表示「未识别的（非）错误」的占位值。
     ///     print_error(Error::last_os_error());
-    ///     // Will print "AddrInUse".
+    ///     // 将打印 "AddrInUse"。
     ///     print_error(Error::new(ErrorKind::AddrInUse, "oh no!"));
     /// }
     /// ```

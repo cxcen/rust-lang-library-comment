@@ -1,4 +1,4 @@
-//! NetBSD-specific networking functionality.
+//! NetBSD 平台特有的网络功能。
 
 #![unstable(feature = "unix_socket_ancillary_data", issue = "76915")]
 
@@ -8,25 +8,25 @@ use crate::os::unix::net;
 use crate::sealed::Sealed;
 use crate::sys::AsInner;
 
-/// NetBSD-specific functionality for `AF_UNIX` sockets [`UnixDatagram`]
-/// and [`UnixStream`].
+/// 针对 `AF_UNIX` 套接字 [`UnixDatagram`] 与 [`UnixStream`] 的
+/// NetBSD 平台特有功能。
 ///
 /// [`UnixDatagram`]: net::UnixDatagram
 /// [`UnixStream`]: net::UnixStream
 #[unstable(feature = "unix_socket_ancillary_data", issue = "76915")]
 pub trait UnixSocketExt: Sealed {
-    /// Query the current setting of socket option `LOCAL_CREDS`.
+    /// 查询套接字选项 `LOCAL_CREDS` 的当前设置。
     #[unstable(feature = "unix_socket_ancillary_data", issue = "76915")]
     fn local_creds(&self) -> io::Result<bool>;
 
-    /// Enable or disable socket option `LOCAL_CREDS`.
+    /// 启用或禁用套接字选项 `LOCAL_CREDS`。
     ///
-    /// This option enables the credentials of the sending process to be
-    /// received as a control message in [`AncillaryData`].
+    /// 该选项使得发送方进程的凭据（credentials）能够作为控制消息（control message）
+    /// 在 [`AncillaryData`] 中被接收。
     ///
     /// [`AncillaryData`]: net::AncillaryData
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// #![feature(unix_socket_ancillary_data)]
@@ -42,12 +42,12 @@ pub trait UnixSocketExt: Sealed {
     #[unstable(feature = "unix_socket_ancillary_data", issue = "76915")]
     fn set_local_creds(&self, local_creds: bool) -> io::Result<()>;
 
-    /// Gets a filter name if one had been set previously on the socket.
+    /// 获取此前若在套接字上设置过的过滤器（filter）名称。
     #[unstable(feature = "acceptfilter", issue = "121891")]
     fn acceptfilter(&self) -> io::Result<&CStr>;
 
-    /// Set or disable a filter on the socket to filter incoming connections
-    /// to defer it before accept(2)
+    /// 在套接字上设置或禁用过滤器，用于过滤传入连接，
+    /// 以便在 accept(2) 之前对其进行延迟（defer）处理
     #[unstable(feature = "acceptfilter", issue = "121891")]
     fn set_acceptfilter(&self, name: &CStr) -> io::Result<()>;
 }

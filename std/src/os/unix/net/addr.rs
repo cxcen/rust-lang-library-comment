@@ -8,7 +8,7 @@ use crate::sealed::Sealed;
 use crate::sys::cvt;
 use crate::{fmt, io, mem, ptr};
 
-// FIXME(#43348): Make libc adapt #[doc(cfg(...))] so we don't need these fake definitions here?
+// FIXME(#43348): 让 libc 适配 #[doc(cfg(...))]，这样我们就不需要在此放置这些伪定义？
 #[cfg(not(unix))]
 #[allow(non_camel_case_types)]
 mod libc {
@@ -24,7 +24,7 @@ mod libc {
 const SUN_PATH_OFFSET: usize = mem::offset_of!(libc::sockaddr_un, sun_path);
 
 pub(super) fn sockaddr_un(path: &Path) -> io::Result<(libc::sockaddr_un, libc::socklen_t)> {
-    // SAFETY: All zeros is a valid representation for `sockaddr_un`.
+    // SAFETY: 全零是 `sockaddr_un` 的一个有效表示。
     let mut addr: libc::sockaddr_un = unsafe { mem::zeroed() };
     addr.sun_family = libc::AF_UNIX as libc::sa_family_t;
 
@@ -43,10 +43,8 @@ pub(super) fn sockaddr_un(path: &Path) -> io::Result<(libc::sockaddr_un, libc::s
             "path must be shorter than SUN_LEN",
         ));
     }
-    // SAFETY: `bytes` and `addr.sun_path` are not overlapping and
-    // both point to valid memory.
-    // NOTE: We zeroed the memory above, so the path is already null
-    // terminated.
+    // SAFETY: `bytes` 与 `addr.sun_path` 不重叠，且二者都指向有效内存。
+    // 注意：我们在上面已将内存清零，因此该路径已经以 null 结尾。
     unsafe {
         ptr::copy_nonoverlapping(bytes.as_ptr(), addr.sun_path.as_mut_ptr().cast(), bytes.len())
     };
@@ -65,9 +63,9 @@ enum AddressKind<'a> {
     Abstract(&'a ByteStr),
 }
 
-/// An address associated with a Unix socket.
+/// 与某个 Unix 套接字关联的地址。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use std::os::unix::net::UnixListener;
@@ -106,8 +104,8 @@ impl SocketAddr {
         mut len: libc::socklen_t,
     ) -> io::Result<SocketAddr> {
         if cfg!(target_os = "openbsd") {
-            // on OpenBSD, getsockname(2) returns the actual size of the socket address,
-            // and not the len of the content. Figure out the length for ourselves.
+            // 在 OpenBSD 上，getsockname(2) 返回的是套接字地址的实际大小，
+            // 而非其内容的长度。我们自己来计算这个长度。
             // https://marc.info/?l=openbsd-bugs&m=170105481926736&w=2
             let sun_path: &[u8] =
                 unsafe { mem::transmute::<&[libc::c_char], &[u8]>(&addr.sun_path) };
@@ -116,9 +114,9 @@ impl SocketAddr {
         }
 
         if len == 0 {
-            // When there is a datagram from unnamed unix socket
-            // linux returns zero bytes of address
-            len = SUN_PATH_OFFSET as libc::socklen_t; // i.e., zero-length address
+            // 当存在一个来自未命名 unix 套接字的数据报时，
+            // linux 返回零字节的地址
+            len = SUN_PATH_OFFSET as libc::socklen_t; // 即长度为零的地址
         } else if addr.sun_family != libc::AF_UNIX as libc::sa_family_t {
             return Err(io::const_error!(
                 io::ErrorKind::InvalidInput,
@@ -129,14 +127,13 @@ impl SocketAddr {
         Ok(SocketAddr { addr, len })
     }
 
-    /// Constructs a `SockAddr` with the family `AF_UNIX` and the provided path.
+    /// 用家族 `AF_UNIX` 与所提供的路径构造一个 `SockAddr`。
     ///
     /// # Errors
     ///
-    /// Returns an error if the path is longer than `SUN_LEN` or if it contains
-    /// NULL bytes.
+    /// 如果路径长度超过 `SUN_LEN`，或它包含 NULL 字节，则返回错误。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::os::unix::net::SocketAddr;
@@ -149,7 +146,7 @@ impl SocketAddr {
     /// # }
     /// ```
     ///
-    /// Creating a `SocketAddr` with a NULL byte results in an error.
+    /// 用一个 NULL 字节创建 `SocketAddr` 会导致错误。
     ///
     /// ```
     /// use std::os::unix::net::SocketAddr;
@@ -164,11 +161,11 @@ impl SocketAddr {
         sockaddr_un(path.as_ref()).map(|(addr, len)| SocketAddr { addr, len })
     }
 
-    /// Returns `true` if the address is unnamed.
+    /// 如果该地址是未命名的（unnamed），则返回 `true`。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// A named address:
+    /// 一个有名字的地址：
     ///
     /// ```no_run
     /// use std::os::unix::net::UnixListener;
@@ -181,7 +178,7 @@ impl SocketAddr {
     /// }
     /// ```
     ///
-    /// An unnamed address:
+    /// 一个未命名的地址：
     ///
     /// ```
     /// use std::os::unix::net::UnixDatagram;
@@ -199,11 +196,11 @@ impl SocketAddr {
         matches!(self.address(), AddressKind::Unnamed)
     }
 
-    /// Returns the contents of this address if it is a `pathname` address.
+    /// 如果该地址是 `pathname`（路径名）地址，则返回其内容。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// With a pathname:
+    /// 带有路径名时：
     ///
     /// ```no_run
     /// use std::os::unix::net::UnixListener;
@@ -217,7 +214,7 @@ impl SocketAddr {
     /// }
     /// ```
     ///
-    /// Without a pathname:
+    /// 不带路径名时：
     ///
     /// ```
     /// use std::os::unix::net::UnixDatagram;
@@ -239,7 +236,7 @@ impl SocketAddr {
         let len = self.len as usize - SUN_PATH_OFFSET;
         let path = unsafe { mem::transmute::<&[libc::c_char], &[u8]>(&self.addr.sun_path) };
 
-        // macOS seems to return a len of 16 and a zeroed sun_path for unnamed addresses
+        // 对于未命名地址，macOS 似乎会返回长度 16 与一段清零的 sun_path
         if len == 0
             || (cfg!(not(any(target_os = "linux", target_os = "android", target_os = "cygwin")))
                 && self.addr.sun_path[0] == 0)

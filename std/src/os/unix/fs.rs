@@ -1,4 +1,4 @@
-//! Unix-specific extensions to primitives in the [`std::fs`] module.
+//! 针对 [`std::fs`] 模块中各基础类型的 Unix 特有扩展。
 //!
 //! [`std::fs`]: crate::fs
 
@@ -8,7 +8,7 @@
 use io::{Read, Write};
 
 use super::platform::fs::MetadataExt as _;
-// Used for `File::read` on intra-doc links
+// 用于文档内链接中的 `File::read`
 use crate::ffi::OsStr;
 use crate::fs::{self, OpenOptions, Permissions};
 use crate::io::BorrowedCursor;
@@ -18,28 +18,26 @@ use crate::sealed::Sealed;
 use crate::sys::{AsInner, AsInnerMut, FromInner};
 use crate::{io, sys};
 
-// Tests for this module
+// 本模块的测试
 #[cfg(test)]
 mod tests;
 
-/// Unix-specific extensions to [`fs::File`].
+/// 针对 [`fs::File`] 的 Unix 特有扩展。
 #[stable(feature = "file_offset", since = "1.15.0")]
 pub trait FileExt {
-    /// Reads a number of bytes starting from a given offset.
+    /// 从给定偏移量开始读取若干字节。
     ///
-    /// Returns the number of bytes read.
+    /// 返回读取的字节数。
     ///
-    /// The offset is relative to the start of the file and thus independent
-    /// from the current cursor.
+    /// 偏移量相对于文件起始处，因此与当前游标（cursor）无关。
     ///
-    /// The current file cursor is not affected by this function.
+    /// 当前文件游标不受此函数影响。
     ///
-    /// Note that similar to [`File::read`], it is not an error to return with a
-    /// short read.
+    /// 注意，与 [`File::read`] 类似，发生短读（short read）并返回不算错误。
     ///
     /// [`File::read`]: fs::File::read
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::io;
@@ -50,7 +48,7 @@ pub trait FileExt {
     ///     let mut buf = [0u8; 8];
     ///     let file = File::open("foo.txt")?;
     ///
-    ///     // We now read 8 bytes from the offset 10.
+    ///     // 我们现在从偏移量 10 处读取 8 个字节。
     ///     let num_bytes_read = file.read_at(&mut buf, 10)?;
     ///     println!("read {num_bytes_read} bytes: {buf:?}");
     ///     Ok(())
@@ -59,45 +57,39 @@ pub trait FileExt {
     #[stable(feature = "file_offset", since = "1.15.0")]
     fn read_at(&self, buf: &mut [u8], offset: u64) -> io::Result<usize>;
 
-    /// Like `read_at`, except that it reads into a slice of buffers.
+    /// 与 `read_at` 类似，但它读取到一个缓冲区切片中。
     ///
-    /// Data is copied to fill each buffer in order, with the final buffer
-    /// written to possibly being only partially filled. This method must behave
-    /// equivalently to a single call to read with concatenated buffers.
+    /// 数据被依次复制以填充每个缓冲区，最后一个被写入的缓冲区可能只被部分填充。
+    /// 此方法的行为必须等同于对拼接后的缓冲区进行一次 read 调用。
     #[unstable(feature = "unix_file_vectored_at", issue = "89517")]
     fn read_vectored_at(&self, bufs: &mut [io::IoSliceMut<'_>], offset: u64) -> io::Result<usize> {
         io::default_read_vectored(|b| self.read_at(b, offset), bufs)
     }
 
-    /// Reads the exact number of bytes required to fill `buf` from the given offset.
+    /// 从给定偏移量开始读取恰好填满 `buf` 所需数量的字节。
     ///
-    /// The offset is relative to the start of the file and thus independent
-    /// from the current cursor.
+    /// 偏移量相对于文件起始处，因此与当前游标（cursor）无关。
     ///
-    /// The current file cursor is not affected by this function.
+    /// 当前文件游标不受此函数影响。
     ///
-    /// Similar to [`io::Read::read_exact`] but uses [`read_at`] instead of `read`.
+    /// 与 [`io::Read::read_exact`] 类似，但使用 [`read_at`] 而非 `read`。
     ///
     /// [`read_at`]: FileExt::read_at
     ///
     /// # Errors
     ///
-    /// If this function encounters an error of the kind
-    /// [`io::ErrorKind::Interrupted`] then the error is ignored and the operation
-    /// will continue.
+    /// 如果此函数遇到类型为 [`io::ErrorKind::Interrupted`] 的错误，则该错误会被忽略，
+    /// 操作将继续。
     ///
-    /// If this function encounters an "end of file" before completely filling
-    /// the buffer, it returns an error of the kind [`io::ErrorKind::UnexpectedEof`].
-    /// The contents of `buf` are unspecified in this case.
+    /// 如果此函数在完全填满缓冲区之前遇到“文件结束（end of file）”，它会返回一个
+    /// 类型为 [`io::ErrorKind::UnexpectedEof`] 的错误。此情况下 `buf` 的内容未指定。
     ///
-    /// If any other read error is encountered then this function immediately
-    /// returns. The contents of `buf` are unspecified in this case.
+    /// 如果遇到任何其他读取错误，此函数会立即返回。此情况下 `buf` 的内容未指定。
     ///
-    /// If this function returns an error, it is unspecified how many bytes it
-    /// has read, but it will never read more than would be necessary to
-    /// completely fill the buffer.
+    /// 如果此函数返回错误，它已读取了多少字节是未指定的，但它绝不会读取超过完全填满
+    /// 缓冲区所需的字节数。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::io;
@@ -108,7 +100,7 @@ pub trait FileExt {
     ///     let mut buf = [0u8; 8];
     ///     let file = File::open("foo.txt")?;
     ///
-    ///     // We now read exactly 8 bytes from the offset 10.
+    ///     // 我们现在从偏移量 10 处恰好读取 8 个字节。
     ///     file.read_exact_at(&mut buf, 10)?;
     ///     println!("read {} bytes: {:?}", buf.len(), buf);
     ///     Ok(())
@@ -131,13 +123,13 @@ pub trait FileExt {
         if !buf.is_empty() { Err(io::Error::READ_EXACT_EOF) } else { Ok(()) }
     }
 
-    /// Reads some bytes starting from a given offset into the buffer.
+    /// 从给定偏移量开始读取一些字节到缓冲区中。
     ///
-    /// This equivalent to the [`read_at`](FileExt::read_at) method, except that it is passed a
-    /// [`BorrowedCursor`] rather than `&mut [u8]` to allow use with uninitialized buffers. The new
-    /// data will be appended to any existing contents of `buf`.
+    /// 这等价于 [`read_at`](FileExt::read_at) 方法，区别在于它接收一个
+    /// [`BorrowedCursor`] 而非 `&mut [u8]`，以允许配合未初始化的缓冲区使用。新数据
+    /// 将被追加到 `buf` 已有的任何内容之后。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// #![feature(core_io_borrowed_buf)]
@@ -152,7 +144,7 @@ pub trait FileExt {
     /// fn main() -> io::Result<()> {
     ///     let mut file = File::open("pi.txt")?;
     ///
-    ///     // Read some bytes starting from offset 2
+    ///     // 从偏移量 2 开始读取一些字节
     ///     let mut buf: [MaybeUninit<u8>; 10] = [MaybeUninit::uninit(); 10];
     ///     let mut buf = BorrowedBuf::from(buf.as_mut_slice());
     ///     file.read_buf_at(buf.unfilled(), 2)?;
@@ -167,13 +159,13 @@ pub trait FileExt {
         io::default_read_buf(|b| self.read_at(b, offset), buf)
     }
 
-    /// Reads the exact number of bytes required to fill the buffer from a given offset.
+    /// 从给定偏移量开始读取恰好填满缓冲区所需数量的字节。
     ///
-    /// This is equivalent to the [`read_exact_at`](FileExt::read_exact_at) method, except that it
-    /// is passed a [`BorrowedCursor`] rather than `&mut [u8]` to allow use with uninitialized
-    /// buffers. The new data will be appended to any existing contents of `buf`.
+    /// 这等价于 [`read_exact_at`](FileExt::read_exact_at) 方法，区别在于它接收一个
+    /// [`BorrowedCursor`] 而非 `&mut [u8]`，以允许配合未初始化的缓冲区使用。新数据
+    /// 将被追加到 `buf` 已有的任何内容之后。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// #![feature(core_io_borrowed_buf)]
@@ -188,7 +180,7 @@ pub trait FileExt {
     /// fn main() -> io::Result<()> {
     ///     let mut file = File::open("pi.txt")?;
     ///
-    ///     // Read exactly 10 bytes starting from offset 2
+    ///     // 从偏移量 2 开始恰好读取 10 个字节
     ///     let mut buf: [MaybeUninit<u8>; 10] = [MaybeUninit::uninit(); 10];
     ///     let mut buf = BorrowedBuf::from(buf.as_mut_slice());
     ///     file.read_buf_exact_at(buf.unfilled(), 2)?;
@@ -216,30 +208,24 @@ pub trait FileExt {
         Ok(())
     }
 
-    /// Writes a number of bytes starting from a given offset.
+    /// 从给定偏移量开始写入若干字节。
     ///
-    /// Returns the number of bytes written.
+    /// 返回写入的字节数。
     ///
-    /// The offset is relative to the start of the file and thus independent
-    /// from the current cursor.
+    /// 偏移量相对于文件起始处，因此与当前游标（cursor）无关。
     ///
-    /// The current file cursor is not affected by this function.
+    /// 当前文件游标不受此函数影响。
     ///
-    /// When writing beyond the end of the file, the file is appropriately
-    /// extended and the intermediate bytes are initialized with the value 0.
+    /// 当写入超过文件末尾时，文件会被相应地扩展，中间的字节会被初始化为值 0。
     ///
-    /// Note that similar to [`File::write`], it is not an error to return a
-    /// short write.
+    /// 注意，与 [`File::write`] 类似，发生短写（short write）并返回不算错误。
     ///
     /// # Bug
-    /// On some systems, `write_at` utilises [`pwrite64`] to write to files.
-    /// However, this syscall has a [bug] where files opened with the `O_APPEND`
-    /// flag fail to respect the offset parameter, always appending to the end
-    /// of the file instead.
+    /// 在某些系统上，`write_at` 借助 [`pwrite64`] 来写入文件。然而，该系统调用存在一个
+    /// [bug]：以 `O_APPEND` 标志打开的文件不遵守 offset 参数，总是改为追加到文件末尾。
     ///
-    /// It is possible to inadvertently set this flag, like in the example below.
-    /// Therefore, it is important to be vigilant while changing options to mitigate
-    /// unexpected behavior.
+    /// 可能会在无意中设置该标志，正如下面的示例所示。因此，在更改选项时务必保持警惕，
+    /// 以减轻意外行为。
     ///
     /// ```no_run
     /// use std::fs::File;
@@ -247,13 +233,13 @@ pub trait FileExt {
     /// use std::os::unix::prelude::FileExt;
     ///
     /// fn main() -> io::Result<()> {
-    ///     // Open a file with the append option (sets the `O_APPEND` flag)
+    ///     // 以 append 选项打开一个文件（会设置 `O_APPEND` 标志）
     ///     let file = File::options().append(true).open("foo.txt")?;
     ///
-    ///     // We attempt to write at offset 10; instead appended to EOF
+    ///     // 我们尝试在偏移量 10 处写入；却被追加到了 EOF
     ///     file.write_at(b"sushi", 10)?;
     ///
-    ///     // foo.txt is 5 bytes long instead of 15
+    ///     // foo.txt 长 5 字节而非 15 字节
     ///     Ok(())
     /// }
     /// ```
@@ -262,7 +248,7 @@ pub trait FileExt {
     /// [`pwrite64`]: https://man7.org/linux/man-pages/man2/pwrite.2.html
     /// [bug]: https://man7.org/linux/man-pages/man2/pwrite.2.html#BUGS
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs::File;
@@ -272,7 +258,7 @@ pub trait FileExt {
     /// fn main() -> io::Result<()> {
     ///     let file = File::create("foo.txt")?;
     ///
-    ///     // We now write at the offset 10.
+    ///     // 我们现在在偏移量 10 处写入。
     ///     file.write_at(b"sushi", 10)?;
     ///     Ok(())
     /// }
@@ -280,38 +266,34 @@ pub trait FileExt {
     #[stable(feature = "file_offset", since = "1.15.0")]
     fn write_at(&self, buf: &[u8], offset: u64) -> io::Result<usize>;
 
-    /// Like `write_at`, except that it writes from a slice of buffers.
+    /// 与 `write_at` 类似，但它从一个缓冲区切片写入。
     ///
-    /// Data is copied from each buffer in order, with the final buffer read
-    /// from possibly being only partially consumed. This method must behave as
-    /// a call to `write_at` with the buffers concatenated would.
+    /// 数据被依次从每个缓冲区复制，最后一个被读取的缓冲区可能只被部分消耗。
+    /// 此方法的行为必须等同于对拼接后的缓冲区进行一次 `write_at` 调用。
     #[unstable(feature = "unix_file_vectored_at", issue = "89517")]
     fn write_vectored_at(&self, bufs: &[io::IoSlice<'_>], offset: u64) -> io::Result<usize> {
         io::default_write_vectored(|b| self.write_at(b, offset), bufs)
     }
 
-    /// Attempts to write an entire buffer starting from a given offset.
+    /// 尝试从给定偏移量开始写入整个缓冲区。
     ///
-    /// The offset is relative to the start of the file and thus independent
-    /// from the current cursor.
+    /// 偏移量相对于文件起始处，因此与当前游标（cursor）无关。
     ///
-    /// The current file cursor is not affected by this function.
+    /// 当前文件游标不受此函数影响。
     ///
-    /// This method will continuously call [`write_at`] until there is no more data
-    /// to be written or an error of non-[`io::ErrorKind::Interrupted`] kind is
-    /// returned. This method will not return until the entire buffer has been
-    /// successfully written or such an error occurs. The first error that is
-    /// not of [`io::ErrorKind::Interrupted`] kind generated from this method will be
-    /// returned.
+    /// 此方法将持续调用 [`write_at`]，直到没有更多数据需要写入，或返回了一个非
+    /// [`io::ErrorKind::Interrupted`] 类型的错误。在整个缓冲区被成功写入或发生此类
+    /// 错误之前，此方法不会返回。此方法产生的第一个非 [`io::ErrorKind::Interrupted`]
+    /// 类型的错误将被返回。
     ///
     /// # Errors
     ///
-    /// This function will return the first error of
-    /// non-[`io::ErrorKind::Interrupted`] kind that [`write_at`] returns.
+    /// 此函数将返回 [`write_at`] 所返回的第一个非 [`io::ErrorKind::Interrupted`]
+    /// 类型的错误。
     ///
     /// [`write_at`]: FileExt::write_at
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs::File;
@@ -321,7 +303,7 @@ pub trait FileExt {
     /// fn main() -> io::Result<()> {
     ///     let file = File::open("foo.txt")?;
     ///
-    ///     // We now write at the offset 10.
+    ///     // 我们现在在偏移量 10 处写入。
     ///     file.write_all_at(b"sushi", 10)?;
     ///     Ok(())
     /// }
@@ -364,9 +346,9 @@ impl FileExt for fs::File {
     }
 }
 
-/// Unix-specific extensions to [`fs::Permissions`].
+/// 针对 [`fs::Permissions`] 的 Unix 特有扩展。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```no_run
 /// use std::fs::{File, Permissions};
@@ -376,7 +358,7 @@ impl FileExt for fs::File {
 /// fn main() -> IoResult<()> {
 ///     let name = "test_file_for_permissions";
 ///
-///     // make sure file does not exist
+///     // 确保文件不存在
 ///     let _ = std::fs::remove_file(name);
 ///     assert_eq!(
 ///         File::open(name).unwrap_err().kind(),
@@ -384,36 +366,36 @@ impl FileExt for fs::File {
 ///         "file already exists"
 ///     );
 ///
-///     // full read/write/execute mode bits for owner of file
-///     // that we want to add to existing mode bits
+///     // 文件所有者的完整读/写/执行模式位（mode bits），
+///     // 这些是我们想要添加到现有模式位上的
 ///     let my_mode = 0o700;
 ///
-///     // create new file with specified permissions
+///     // 以指定权限创建新文件
 ///     {
 ///         let file = File::create(name)?;
 ///         let mut permissions = file.metadata()?.permissions();
 ///         eprintln!("Current permissions: {:o}", permissions.mode());
 ///
-///         // make sure new permissions are not already set
+///         // 确保新权限尚未被设置
 ///         assert!(
 ///             permissions.mode() & my_mode != my_mode,
 ///             "permissions already set"
 ///         );
 ///
-///         // either use `set_mode` to change an existing Permissions struct
+///         // 要么使用 `set_mode` 来更改一个现有的 Permissions 结构体
 ///         permissions.set_mode(permissions.mode() | my_mode);
 ///
-///         // or use `from_mode` to construct a new Permissions struct
+///         // 要么使用 `from_mode` 来构造一个新的 Permissions 结构体
 ///         permissions = Permissions::from_mode(permissions.mode() | my_mode);
 ///
-///         // write new permissions to file
+///         // 将新权限写入文件
 ///         file.set_permissions(permissions)?;
 ///     }
 ///
 ///     let permissions = File::open(name)?.metadata()?.permissions();
 ///     eprintln!("New permissions: {:o}", permissions.mode());
 ///
-///     // assert new permissions were set
+///     // 断言新权限已被设置
 ///     assert_eq!(
 ///         permissions.mode() & my_mode,
 ///         my_mode,
@@ -427,27 +409,27 @@ impl FileExt for fs::File {
 /// use std::fs::Permissions;
 /// use std::os::unix::fs::PermissionsExt;
 ///
-/// // read/write for owner and read for others
+/// // 所有者可读/写，其他人可读
 /// let my_mode = 0o644;
 /// let mut permissions = Permissions::from_mode(my_mode);
 /// assert_eq!(permissions.mode(), my_mode);
 ///
-/// // read/write/execute for owner
+/// // 所有者可读/写/执行
 /// let other_mode = 0o700;
 /// permissions.set_mode(other_mode);
 /// assert_eq!(permissions.mode(), other_mode);
 /// ```
 #[stable(feature = "fs_ext", since = "1.1.0")]
 pub trait PermissionsExt {
-    /// Returns the mode permission bits
+    /// 返回 mode 权限位（mode permission bits）
     #[stable(feature = "fs_ext", since = "1.1.0")]
     fn mode(&self) -> u32;
 
-    /// Sets the mode permission bits.
+    /// 设置 mode 权限位（mode permission bits）。
     #[stable(feature = "fs_ext", since = "1.1.0")]
     fn set_mode(&mut self, mode: u32);
 
-    /// Creates a new instance from the given mode permission bits.
+    /// 从给定的 mode 权限位创建一个新实例。
     #[stable(feature = "fs_ext", since = "1.1.0")]
     #[cfg_attr(not(test), rustc_diagnostic_item = "permissions_from_mode")]
     fn from_mode(mode: u32) -> Self;
@@ -468,18 +450,16 @@ impl PermissionsExt for Permissions {
     }
 }
 
-/// Unix-specific extensions to [`fs::OpenOptions`].
+/// 针对 [`fs::OpenOptions`] 的 Unix 特有扩展。
 #[stable(feature = "fs_ext", since = "1.1.0")]
 pub trait OpenOptionsExt {
-    /// Sets the mode bits that a new file will be created with.
+    /// 设置创建新文件时所用的 mode 位（mode bits）。
     ///
-    /// If a new file is created as part of an `OpenOptions::open` call then this
-    /// specified `mode` will be used as the permission bits for the new file.
-    /// If no `mode` is set, the default of `0o666` will be used.
-    /// The operating system masks out bits with the system's `umask`, to produce
-    /// the final permissions.
+    /// 如果作为 `OpenOptions::open` 调用的一部分创建了新文件，那么这个指定的 `mode`
+    /// 将被用作新文件的权限位。如果未设置 `mode`，则使用默认值 `0o666`。
+    /// 操作系统会用系统的 `umask` 把某些位掩去，从而产生最终的权限。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs::OpenOptions;
@@ -487,22 +467,22 @@ pub trait OpenOptionsExt {
     ///
     /// # fn main() {
     /// let mut options = OpenOptions::new();
-    /// options.mode(0o644); // Give read/write for owner and read for others.
+    /// options.mode(0o644); // 给予所有者读/写权限，给予其他人读权限。
     /// let file = options.open("foo.txt");
     /// # }
     /// ```
     #[stable(feature = "fs_ext", since = "1.1.0")]
     fn mode(&mut self, mode: u32) -> &mut Self;
 
-    /// Pass custom flags to the `flags` argument of `open`.
+    /// 向 `open` 的 `flags` 参数传入自定义标志。
     ///
-    /// The bits that define the access mode are masked out with `O_ACCMODE`, to
-    /// ensure they do not interfere with the access mode set by Rust's options.
+    /// 定义访问模式（access mode）的那些位会被 `O_ACCMODE` 掩去，以确保它们不会干扰由
+    /// Rust 的选项所设置的访问模式。
     ///
-    /// Custom flags can only set flags, not remove flags set by Rust's options.
-    /// This function overwrites any previously-set custom flags.
+    /// 自定义标志只能设置标志，而不能移除由 Rust 的选项所设置的标志。
+    /// 此函数会覆盖任何先前设置的自定义标志。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// # mod libc { pub const O_NOFOLLOW: i32 = 0; }
@@ -533,12 +513,12 @@ impl OpenOptionsExt for OpenOptions {
     }
 }
 
-/// Unix-specific extensions to [`fs::Metadata`].
+/// 针对 [`fs::Metadata`] 的 Unix 特有扩展。
 #[stable(feature = "metadata_ext", since = "1.1.0")]
 pub trait MetadataExt {
-    /// Returns the ID of the device containing the file.
+    /// 返回包含该文件的设备的 ID。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::io;
@@ -553,9 +533,9 @@ pub trait MetadataExt {
     /// ```
     #[stable(feature = "metadata_ext", since = "1.1.0")]
     fn dev(&self) -> u64;
-    /// Returns the inode number.
+    /// 返回 inode 号。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs;
@@ -570,9 +550,9 @@ pub trait MetadataExt {
     /// ```
     #[stable(feature = "metadata_ext", since = "1.1.0")]
     fn ino(&self) -> u64;
-    /// Returns the rights applied to this file.
+    /// 返回应用于该文件的权限（rights）。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs;
@@ -591,9 +571,9 @@ pub trait MetadataExt {
     /// ```
     #[stable(feature = "metadata_ext", since = "1.1.0")]
     fn mode(&self) -> u32;
-    /// Returns the number of hard links pointing to this file.
+    /// 返回指向该文件的硬链接（hard links）数量。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs;
@@ -608,9 +588,9 @@ pub trait MetadataExt {
     /// ```
     #[stable(feature = "metadata_ext", since = "1.1.0")]
     fn nlink(&self) -> u64;
-    /// Returns the user ID of the owner of this file.
+    /// 返回该文件所有者的用户 ID。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs;
@@ -625,9 +605,9 @@ pub trait MetadataExt {
     /// ```
     #[stable(feature = "metadata_ext", since = "1.1.0")]
     fn uid(&self) -> u32;
-    /// Returns the group ID of the owner of this file.
+    /// 返回该文件所有者的组 ID。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs;
@@ -642,9 +622,9 @@ pub trait MetadataExt {
     /// ```
     #[stable(feature = "metadata_ext", since = "1.1.0")]
     fn gid(&self) -> u32;
-    /// Returns the device ID of this file (if it is a special one).
+    /// 返回该文件的设备 ID（如果它是一个特殊文件）。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs;
@@ -659,9 +639,9 @@ pub trait MetadataExt {
     /// ```
     #[stable(feature = "metadata_ext", since = "1.1.0")]
     fn rdev(&self) -> u64;
-    /// Returns the total size of this file in bytes.
+    /// 返回该文件以字节为单位的总大小。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs;
@@ -676,9 +656,9 @@ pub trait MetadataExt {
     /// ```
     #[stable(feature = "metadata_ext", since = "1.1.0")]
     fn size(&self) -> u64;
-    /// Returns the last access time of the file, in seconds since Unix Epoch.
+    /// 返回该文件的上次访问时间，以自 Unix Epoch 以来的秒数表示。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs;
@@ -693,11 +673,11 @@ pub trait MetadataExt {
     /// ```
     #[stable(feature = "metadata_ext", since = "1.1.0")]
     fn atime(&self) -> i64;
-    /// Returns the last access time of the file, in nanoseconds since [`atime`].
+    /// 返回该文件的上次访问时间，以自 [`atime`] 以来的纳秒数表示。
     ///
     /// [`atime`]: MetadataExt::atime
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs;
@@ -712,9 +692,9 @@ pub trait MetadataExt {
     /// ```
     #[stable(feature = "metadata_ext", since = "1.1.0")]
     fn atime_nsec(&self) -> i64;
-    /// Returns the last modification time of the file, in seconds since Unix Epoch.
+    /// 返回该文件的上次修改时间，以自 Unix Epoch 以来的秒数表示。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs;
@@ -729,11 +709,11 @@ pub trait MetadataExt {
     /// ```
     #[stable(feature = "metadata_ext", since = "1.1.0")]
     fn mtime(&self) -> i64;
-    /// Returns the last modification time of the file, in nanoseconds since [`mtime`].
+    /// 返回该文件的上次修改时间，以自 [`mtime`] 以来的纳秒数表示。
     ///
     /// [`mtime`]: MetadataExt::mtime
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs;
@@ -748,9 +728,9 @@ pub trait MetadataExt {
     /// ```
     #[stable(feature = "metadata_ext", since = "1.1.0")]
     fn mtime_nsec(&self) -> i64;
-    /// Returns the last status change time of the file, in seconds since Unix Epoch.
+    /// 返回该文件的上次状态变更时间，以自 Unix Epoch 以来的秒数表示。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs;
@@ -765,11 +745,11 @@ pub trait MetadataExt {
     /// ```
     #[stable(feature = "metadata_ext", since = "1.1.0")]
     fn ctime(&self) -> i64;
-    /// Returns the last status change time of the file, in nanoseconds since [`ctime`].
+    /// 返回该文件的上次状态变更时间，以自 [`ctime`] 以来的纳秒数表示。
     ///
     /// [`ctime`]: MetadataExt::ctime
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs;
@@ -784,9 +764,9 @@ pub trait MetadataExt {
     /// ```
     #[stable(feature = "metadata_ext", since = "1.1.0")]
     fn ctime_nsec(&self) -> i64;
-    /// Returns the block size for filesystem I/O.
+    /// 返回文件系统 I/O 的块大小（block size）。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs;
@@ -801,11 +781,11 @@ pub trait MetadataExt {
     /// ```
     #[stable(feature = "metadata_ext", since = "1.1.0")]
     fn blksize(&self) -> u64;
-    /// Returns the number of blocks allocated to the file, in 512-byte units.
+    /// 返回分配给该文件的块（block）数量，以 512 字节为单位。
     ///
-    /// Please note that this may be smaller than `st_size / 512` when the file has holes.
+    /// 请注意，当文件存在空洞（holes）时，这可能小于 `st_size / 512`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs;
@@ -881,15 +861,14 @@ impl MetadataExt for fs::Metadata {
     }
 }
 
-/// Unix-specific extensions for [`fs::FileType`].
+/// 针对 [`fs::FileType`] 的 Unix 特有扩展。
 ///
-/// Adds support for special Unix file types such as block/character devices,
-/// pipes, and sockets.
+/// 增加了对诸如块设备/字符设备、管道（pipe）和套接字（socket）等特殊 Unix 文件类型的支持。
 #[stable(feature = "file_type_ext", since = "1.5.0")]
 pub trait FileTypeExt {
-    /// Returns `true` if this file type is a block device.
+    /// 如果此文件类型是块设备（block device），则返回 `true`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs;
@@ -905,9 +884,9 @@ pub trait FileTypeExt {
     /// ```
     #[stable(feature = "file_type_ext", since = "1.5.0")]
     fn is_block_device(&self) -> bool;
-    /// Returns `true` if this file type is a char device.
+    /// 如果此文件类型是字符设备（char device），则返回 `true`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs;
@@ -923,9 +902,9 @@ pub trait FileTypeExt {
     /// ```
     #[stable(feature = "file_type_ext", since = "1.5.0")]
     fn is_char_device(&self) -> bool;
-    /// Returns `true` if this file type is a fifo.
+    /// 如果此文件类型是 fifo，则返回 `true`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs;
@@ -941,9 +920,9 @@ pub trait FileTypeExt {
     /// ```
     #[stable(feature = "file_type_ext", since = "1.5.0")]
     fn is_fifo(&self) -> bool;
-    /// Returns `true` if this file type is a socket.
+    /// 如果此文件类型是套接字（socket），则返回 `true`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs;
@@ -977,13 +956,12 @@ impl FileTypeExt for fs::FileType {
     }
 }
 
-/// Unix-specific extension methods for [`fs::DirEntry`].
+/// 针对 [`fs::DirEntry`] 的 Unix 特有扩展方法。
 #[stable(feature = "dir_entry_ext", since = "1.1.0")]
 pub trait DirEntryExt {
-    /// Returns the underlying `d_ino` field in the contained `dirent`
-    /// structure.
+    /// 返回所含 `dirent` 结构体中底层的 `d_ino` 字段。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::fs;
@@ -992,7 +970,7 @@ pub trait DirEntryExt {
     /// if let Ok(entries) = fs::read_dir(".") {
     ///     for entry in entries {
     ///         if let Ok(entry) = entry {
-    ///             // Here, `entry` is a `DirEntry`.
+    ///             // 这里，`entry` 是一个 `DirEntry`。
     ///             println!("{:?}: {}", entry.file_name(), entry.ino());
     ///         }
     ///     }
@@ -1009,12 +987,12 @@ impl DirEntryExt for fs::DirEntry {
     }
 }
 
-/// Sealed Unix-specific extension methods for [`fs::DirEntry`].
+/// 针对 [`fs::DirEntry`] 的、封闭的（sealed）Unix 特有扩展方法。
 #[unstable(feature = "dir_entry_ext2", issue = "85573")]
 pub trait DirEntryExt2: Sealed {
-    /// Returns a reference to the underlying `OsStr` of this entry's filename.
+    /// 返回对此条目文件名底层 `OsStr` 的引用。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(dir_entry_ext2)]
@@ -1035,7 +1013,7 @@ pub trait DirEntryExt2: Sealed {
     fn file_name_ref(&self) -> &OsStr;
 }
 
-/// Allows extension traits within `std`.
+/// 允许 `std` 内部使用的扩展 trait。
 #[unstable(feature = "sealed", issue = "none")]
 impl Sealed for fs::DirEntry {}
 
@@ -1046,11 +1024,11 @@ impl DirEntryExt2 for fs::DirEntry {
     }
 }
 
-/// Creates a new symbolic link on the filesystem.
+/// 在文件系统上创建一个新的符号链接（symbolic link）。
 ///
-/// The `link` path will be a symbolic link pointing to the `original` path.
+/// `link` 路径将是一个指向 `original` 路径的符号链接。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```no_run
 /// use std::os::unix::fs;
@@ -1065,13 +1043,12 @@ pub fn symlink<P: AsRef<Path>, Q: AsRef<Path>>(original: P, link: Q) -> io::Resu
     sys::fs::symlink(original.as_ref(), link.as_ref())
 }
 
-/// Unix-specific extensions to [`fs::DirBuilder`].
+/// 针对 [`fs::DirBuilder`] 的 Unix 特有扩展。
 #[stable(feature = "dir_builder", since = "1.6.0")]
 pub trait DirBuilderExt {
-    /// Sets the mode to create new directories with. This option defaults to
-    /// 0o777.
+    /// 设置创建新目录时所用的 mode。此选项默认为 0o777。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs::DirBuilder;
@@ -1092,23 +1069,22 @@ impl DirBuilderExt for fs::DirBuilder {
     }
 }
 
-/// Change the owner and group of the specified path.
+/// 更改指定路径的所有者（owner）与所属组（group）。
 ///
-/// Specifying either the uid or gid as `None` will leave it unchanged.
+/// 把 uid 或 gid 指定为 `None` 将使其保持不变。
 ///
-/// Changing the owner typically requires privileges, such as root or a specific capability.
-/// Changing the group typically requires either being the owner and a member of the group, or
-/// having privileges.
+/// 更改所有者通常需要特权，例如 root 或某项特定的 capability。
+/// 更改所属组通常要么需要是该文件的所有者且为该组的成员，要么需要拥有特权。
 ///
-/// Be aware that changing owner clears the `suid` and `sgid` permission bits in most cases
-/// according to POSIX, usually even if the user is root. The sgid is not cleared when
-/// the file is non-group-executable. See: <https://www.man7.org/linux/man-pages/man2/chown.2.html>
-/// This call may also clear file capabilities, if there was any.
+/// 请注意，根据 POSIX，在大多数情况下更改所有者会清除 `suid` 与 `sgid` 权限位，
+/// 通常即便用户是 root 也是如此。当文件对组不可执行（non-group-executable）时，sgid
+/// 不会被清除。参见：<https://www.man7.org/linux/man-pages/man2/chown.2.html>
+/// 如果存在文件 capabilities，此调用也可能将其清除。
 ///
-/// If called on a symbolic link, this will change the owner and group of the link target. To
-/// change the owner and group of the link itself, see [`lchown`].
+/// 如果在符号链接上调用，这将更改链接目标（link target）的所有者与所属组。若要更改
+/// 链接本身的所有者与所属组，参见 [`lchown`]。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```no_run
 /// use std::os::unix::fs;
@@ -1123,11 +1099,11 @@ pub fn chown<P: AsRef<Path>>(dir: P, uid: Option<u32>, gid: Option<u32>) -> io::
     sys::fs::chown(dir.as_ref(), uid.unwrap_or(u32::MAX), gid.unwrap_or(u32::MAX))
 }
 
-/// Change the owner and group of the file referenced by the specified open file descriptor.
+/// 更改由指定的已打开文件描述符所引用的文件的所有者与所属组。
 ///
-/// For semantics and required privileges, see [`chown`].
+/// 关于语义与所需特权，参见 [`chown`]。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```no_run
 /// use std::os::unix::fs;
@@ -1143,12 +1119,12 @@ pub fn fchown<F: AsFd>(fd: F, uid: Option<u32>, gid: Option<u32>) -> io::Result<
     sys::fs::fchown(fd.as_fd().as_raw_fd(), uid.unwrap_or(u32::MAX), gid.unwrap_or(u32::MAX))
 }
 
-/// Change the owner and group of the specified path, without dereferencing symbolic links.
+/// 更改指定路径的所有者与所属组，且不对符号链接解引用（dereferencing）。
 ///
-/// Identical to [`chown`], except that if called on a symbolic link, this will change the owner
-/// and group of the link itself rather than the owner and group of the link target.
+/// 与 [`chown`] 相同，区别在于如果在符号链接上调用，这将更改链接本身的所有者与所属组，
+/// 而非链接目标的所有者与所属组。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```no_run
 /// use std::os::unix::fs;
@@ -1163,14 +1139,14 @@ pub fn lchown<P: AsRef<Path>>(dir: P, uid: Option<u32>, gid: Option<u32>) -> io:
     sys::fs::lchown(dir.as_ref(), uid.unwrap_or(u32::MAX), gid.unwrap_or(u32::MAX))
 }
 
-/// Change the root directory of the current process to the specified path.
+/// 将当前进程的根目录更改为指定路径。
 ///
-/// This typically requires privileges, such as root or a specific capability.
+/// 这通常需要特权，例如 root 或某项特定的 capability。
 ///
-/// This does not change the current working directory; you should call
-/// [`std::env::set_current_dir`][`crate::env::set_current_dir`] afterwards.
+/// 这不会更改当前工作目录；之后你应当调用
+/// [`std::env::set_current_dir`][`crate::env::set_current_dir`]。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```no_run
 /// use std::os::unix::fs;
@@ -1178,7 +1154,7 @@ pub fn lchown<P: AsRef<Path>>(dir: P, uid: Option<u32>, gid: Option<u32>) -> io:
 /// fn main() -> std::io::Result<()> {
 ///     fs::chroot("/sandbox")?;
 ///     std::env::set_current_dir("/")?;
-///     // continue working in sandbox
+///     // 在沙箱中继续工作
 ///     Ok(())
 /// }
 /// ```
@@ -1188,9 +1164,9 @@ pub fn chroot<P: AsRef<Path>>(dir: P) -> io::Result<()> {
     sys::fs::chroot(dir.as_ref())
 }
 
-/// Create a FIFO special file at the specified path with the specified mode.
+/// 在指定路径以指定 mode 创建一个 FIFO 特殊文件。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```no_run
 /// # #![feature(unix_mkfifo)]

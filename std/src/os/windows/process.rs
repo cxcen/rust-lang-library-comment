@@ -1,4 +1,4 @@
-//! Windows-specific extensions to primitives in the [`std::process`] module.
+//! Windows 平台对 [`std::process`] 模块中各原语的特定扩展。
 //!
 //! [`std::process`]: crate::process
 
@@ -24,8 +24,7 @@ impl FromRawHandle for process::Stdio {
 
 #[stable(feature = "io_safety", since = "1.63.0")]
 impl From<OwnedHandle> for process::Stdio {
-    /// Takes ownership of a handle and returns a [`Stdio`](process::Stdio)
-    /// that can attach a stream to it.
+    /// 接管一个 handle 的所有权，返回一个能把流附着到它上面的 [`Stdio`](process::Stdio)。
     fn from(handle: OwnedHandle) -> process::Stdio {
         let handle = sys::handle::Handle::from_inner(handle);
         let io = sys::process::Stdio::Handle(handle);
@@ -58,7 +57,7 @@ impl IntoRawHandle for process::Child {
 
 #[stable(feature = "io_safety", since = "1.63.0")]
 impl From<process::Child> for OwnedHandle {
-    /// Takes ownership of a [`Child`](process::Child)'s process handle.
+    /// 接管一个 [`Child`](process::Child) 进程 handle 的所有权。
     fn from(child: process::Child) -> OwnedHandle {
         child.into_inner().into_handle().into_inner()
     }
@@ -109,10 +108,9 @@ impl IntoRawHandle for process::ChildStderr {
     }
 }
 
-/// Creates a `ChildStdin` from the provided `OwnedHandle`.
+/// 从所提供的 `OwnedHandle` 创建一个 `ChildStdin`。
 ///
-/// The provided handle must be asynchronous, as reading and
-/// writing from and to it is implemented using asynchronous APIs.
+/// 所提供的 handle 必须是异步（asynchronous）的，因为对它的读写是用异步 API 实现的。
 #[stable(feature = "child_stream_from_fd", since = "1.74.0")]
 impl From<OwnedHandle> for process::ChildStdin {
     fn from(handle: OwnedHandle) -> process::ChildStdin {
@@ -122,10 +120,9 @@ impl From<OwnedHandle> for process::ChildStdin {
     }
 }
 
-/// Creates a `ChildStdout` from the provided `OwnedHandle`.
+/// 从所提供的 `OwnedHandle` 创建一个 `ChildStdout`。
 ///
-/// The provided handle must be asynchronous, as reading and
-/// writing from and to it is implemented using asynchronous APIs.
+/// 所提供的 handle 必须是异步（asynchronous）的，因为对它的读写是用异步 API 实现的。
 #[stable(feature = "child_stream_from_fd", since = "1.74.0")]
 impl From<OwnedHandle> for process::ChildStdout {
     fn from(handle: OwnedHandle) -> process::ChildStdout {
@@ -135,10 +132,9 @@ impl From<OwnedHandle> for process::ChildStdout {
     }
 }
 
-/// Creates a `ChildStderr` from the provided `OwnedHandle`.
+/// 从所提供的 `OwnedHandle` 创建一个 `ChildStderr`。
 ///
-/// The provided handle must be asynchronous, as reading and
-/// writing from and to it is implemented using asynchronous APIs.
+/// 所提供的 handle 必须是异步（asynchronous）的，因为对它的读写是用异步 API 实现的。
 #[stable(feature = "child_stream_from_fd", since = "1.74.0")]
 impl From<OwnedHandle> for process::ChildStderr {
     fn from(handle: OwnedHandle) -> process::ChildStderr {
@@ -148,14 +144,13 @@ impl From<OwnedHandle> for process::ChildStderr {
     }
 }
 
-/// Windows-specific extensions to [`process::ExitStatus`].
+/// Windows 平台对 [`process::ExitStatus`] 的特定扩展。
 ///
-/// This trait is sealed: it cannot be implemented outside the standard library.
-/// This is so that future additional methods are not breaking changes.
+/// 本 trait 是密封的（sealed）：无法在标准库之外被实现。这样一来，将来新增方法就不会
+/// 构成破坏性变更（breaking change）。
 #[stable(feature = "exit_status_from", since = "1.12.0")]
 pub trait ExitStatusExt: Sealed {
-    /// Creates a new `ExitStatus` from the raw underlying `u32` return value of
-    /// a process.
+    /// 从某个进程底层的裸 `u32` 返回值创建一个新的 `ExitStatus`。
     #[stable(feature = "exit_status_from", since = "1.12.0")]
     fn from_raw(raw: u32) -> Self;
 }
@@ -167,54 +162,50 @@ impl ExitStatusExt for process::ExitStatus {
     }
 }
 
-/// Windows-specific extensions to the [`process::Command`] builder.
+/// Windows 平台对 [`process::Command`] 构造器（builder）的特定扩展。
 ///
-/// This trait is sealed: it cannot be implemented outside the standard library.
-/// This is so that future additional methods are not breaking changes.
+/// 本 trait 是密封的（sealed）：无法在标准库之外被实现。这样一来，将来新增方法就不会
+/// 构成破坏性变更（breaking change）。
 #[stable(feature = "windows_process_extensions", since = "1.16.0")]
 pub trait CommandExt: Sealed {
-    /// Sets the [process creation flags][1] to be passed to `CreateProcess`.
+    /// 设置要传递给 `CreateProcess` 的[进程创建标志（process creation flags）][1]。
     ///
-    /// These will always be ORed with `CREATE_UNICODE_ENVIRONMENT`.
+    /// 这些标志将始终与 `CREATE_UNICODE_ENVIRONMENT` 进行按位或（OR）运算。
     ///
     /// [1]: https://docs.microsoft.com/en-us/windows/win32/procthread/process-creation-flags
     #[stable(feature = "windows_process_extensions", since = "1.16.0")]
     fn creation_flags(&mut self, flags: u32) -> &mut process::Command;
 
-    /// Sets the field `wShowWindow` of [STARTUPINFO][1] that is passed to `CreateProcess`.
-    /// Allowed values are the ones listed in
+    /// 设置传递给 `CreateProcess` 的 [STARTUPINFO][1] 的 `wShowWindow` 字段。
+    /// 允许的取值是下列文档中所列的那些：
     /// <https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-showwindow>
     ///
     /// [1]: <https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/ns-processthreadsapi-startupinfow>
     #[unstable(feature = "windows_process_extensions_show_window", issue = "127544")]
     fn show_window(&mut self, cmd_show: u16) -> &mut process::Command;
 
-    /// Forces all arguments to be wrapped in quote (`"`) characters.
+    /// 强制把所有参数都用引号（`"`）字符包裹起来。
     ///
-    /// This is useful for passing arguments to [MSYS2/Cygwin][1] based
-    /// executables: these programs will expand unquoted arguments containing
-    /// wildcard characters (`?` and `*`) by searching for any file paths
-    /// matching the wildcard pattern.
+    /// 这在向基于 [MSYS2/Cygwin][1] 的可执行程序传递参数时很有用：这些程序会通过搜索任何
+    /// 匹配该通配符模式的文件路径，来展开未加引号、含有通配符字符（`?` 和 `*`）的参数。
     ///
-    /// Adding quotes has no effect when passing arguments to programs
-    /// that use [msvcrt][2]. This includes programs built with both
-    /// MinGW and MSVC.
+    /// 在向使用 [msvcrt][2] 的程序传递参数时，加引号没有任何效果。这包括用 MinGW 和 MSVC
+    /// 构建的程序。
     ///
     /// [1]: <https://github.com/msys2/MSYS2-packages/issues/2176>
     /// [2]: <https://msdn.microsoft.com/en-us/library/17w5ykft.aspx>
     #[unstable(feature = "windows_process_extensions_force_quotes", issue = "82227")]
     fn force_quotes(&mut self, enabled: bool) -> &mut process::Command;
 
-    /// Append literal text to the command line without any quoting or escaping.
+    /// 把字面文本（literal text）追加到命令行中，不做任何加引号或转义处理。
     ///
-    /// This is useful for passing arguments to applications that don't follow
-    /// the standard C run-time escaping rules, such as `cmd.exe /c`.
+    /// 这在向那些不遵循标准 C 运行时转义规则的应用程序传递参数时很有用，例如 `cmd.exe /c`。
     ///
     /// # Batch files
     ///
-    /// Note the `cmd /c` command line has slightly different escaping rules than batch files
-    /// themselves. If possible, it may be better to write complex arguments to a temporary
-    /// `.bat` file, with appropriate escaping, and simply run that using:
+    /// 注意 `cmd /c` 的命令行所用的转义规则与批处理文件（batch file）本身的略有不同。
+    /// 如果可能，更好的做法或许是把复杂参数连同适当的转义一起写入一个临时的 `.bat` 文件，
+    /// 然后直接用下面的方式运行它：
     ///
     /// ```no_run
     /// # use std::process::Command;
@@ -225,12 +216,12 @@ pub trait CommandExt: Sealed {
     ///
     /// # Example
     ///
-    /// Run a batch script using both trusted and untrusted arguments.
+    /// 同时使用可信参数和不可信参数来运行一个批处理脚本。
     ///
     /// ```no_run
     /// #[cfg(windows)]
-    /// // `my_script_path` is a path to known bat file.
-    /// // `user_name` is an untrusted name given by the user.
+    /// // `my_script_path` 是指向已知 bat 文件的路径。
+    /// // `user_name` 是由用户给出的不可信名字。
     /// fn run_script(
     ///     my_script_path: &str,
     ///     user_name: &str,
@@ -239,25 +230,24 @@ pub trait CommandExt: Sealed {
     ///     use std::os::windows::process::CommandExt;
     ///     use std::process::Command;
     ///
-    ///     // Create the command line, making sure to quote the script path.
-    ///     // This assumes the fixed arguments have been tested to work with the script we're using.
+    ///     // 构造命令行，注意一定要把脚本路径用引号括起来。
+    ///     // 这里假定那些固定参数已经过测试，确认能与我们所用的脚本配合工作。
     ///     let mut cmd_args = format!(r#""{my_script_path}" "--features=[a,b,c]""#);
     ///
-    ///     // Make sure the user name is safe. In particular we need to be
-    ///     // cautious of ascii symbols that cmd may interpret specially.
-    ///     // Here we only allow alphanumeric characters.
+    ///     // 确保用户名是安全的。尤其需要警惕那些 cmd 可能会做特殊解释的 ascii 符号。
+    ///     // 这里我们只允许字母数字字符。
     ///     if !user_name.chars().all(|c| c.is_alphanumeric()) {
     ///         return Err(Error::new(ErrorKind::InvalidInput, "invalid user name"));
     ///     }
     ///
-    ///     // now we have validated the user name, let's add that too.
+    ///     // 现在我们已校验了用户名，把它也加进去。
     ///     cmd_args.push_str(" --user ");
     ///     cmd_args.push_str(user_name);
     ///
-    ///     // call cmd.exe and return the output
+    ///     // 调用 cmd.exe 并返回其输出
     ///     Command::new("cmd.exe")
     ///         .arg("/c")
-    ///         // surround the entire command in an extra pair of quotes, as required by cmd.exe.
+    ///         // 按 cmd.exe 的要求，用额外一对引号把整条命令包裹起来。
     ///         .raw_arg(&format!("\"{cmd_args}\""))
     ///         .output()
     /// }
@@ -265,18 +255,14 @@ pub trait CommandExt: Sealed {
     #[stable(feature = "windows_process_extensions_raw_arg", since = "1.62.0")]
     fn raw_arg<S: AsRef<OsStr>>(&mut self, text_to_append_as_is: S) -> &mut process::Command;
 
-    /// When [`process::Command`] creates pipes, request that our side is always async.
+    /// 当 [`process::Command`] 创建管道（pipe）时，要求我方这一端始终是异步的。
     ///
-    /// By default [`process::Command`] may choose to use pipes where both ends
-    /// are opened for synchronous read or write operations. By using
-    /// `async_pipes(true)`, this behavior is overridden so that our side is
-    /// always async.
+    /// 默认情况下，[`process::Command`] 可能会选择使用两端都以同步读写操作打开的管道。
+    /// 通过使用 `async_pipes(true)`，这一行为会被覆盖，使得我方这一端始终是异步的。
     ///
-    /// This is important because if doing async I/O a pipe or a file has to be
-    /// opened for async access.
+    /// 这一点很重要，因为若要进行异步 I/O，管道或文件必须以异步访问方式打开。
     ///
-    /// The end of the pipe sent to the child process will always be synchronous
-    /// regardless of this option.
+    /// 无论本选项如何设置，发送给子进程的那一端管道将始终是同步的。
     ///
     /// # Example
     ///
@@ -296,18 +282,14 @@ pub trait CommandExt: Sealed {
     #[unstable(feature = "windows_process_extensions_async_pipes", issue = "98289")]
     fn async_pipes(&mut self, always_async: bool) -> &mut process::Command;
 
-    /// Executes the command as a child process with the given
-    /// [`ProcThreadAttributeList`], returning a handle to it.
+    /// 用给定的 [`ProcThreadAttributeList`] 把该命令作为子进程执行，返回指向它的 handle。
     ///
-    /// This method enables the customization of attributes for the spawned
-    /// child process on Windows systems.
-    /// Attributes offer extended configurability for process creation,
-    /// but their usage can be intricate and potentially unsafe.
+    /// 本方法允许在 Windows 系统上对所派生子进程的各项属性（attribute）进行定制。
+    /// 属性为进程创建提供了扩展的可配置性，但其用法可能错综复杂，且有潜在的 unsafe 性。
     ///
     /// # Note
     ///
-    /// By default, stdin, stdout, and stderr are inherited from the parent
-    /// process.
+    /// 默认情况下，stdin、stdout 和 stderr 从父进程继承而来。
     ///
     /// # Example
     ///
@@ -345,36 +327,34 @@ pub trait CommandExt: Sealed {
         attribute_list: &ProcThreadAttributeList<'_>,
     ) -> io::Result<process::Child>;
 
-    /// When true, sets the `STARTF_RUNFULLSCREEN` flag on the [STARTUPINFO][1] struct before passing it to `CreateProcess`.
+    /// 当为 true 时，在把 [STARTUPINFO][1] 结构体传递给 `CreateProcess` 之前，在其上设置 `STARTF_RUNFULLSCREEN` 标志。
     ///
     /// [1]: https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/ns-processthreadsapi-startupinfoa
     #[unstable(feature = "windows_process_extensions_startupinfo", issue = "141010")]
     fn startupinfo_fullscreen(&mut self, enabled: bool) -> &mut process::Command;
 
-    /// When true, sets the `STARTF_UNTRUSTEDSOURCE` flag on the [STARTUPINFO][1] struct before passing it to `CreateProcess`.
+    /// 当为 true 时，在把 [STARTUPINFO][1] 结构体传递给 `CreateProcess` 之前，在其上设置 `STARTF_UNTRUSTEDSOURCE` 标志。
     ///
     /// [1]: https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/ns-processthreadsapi-startupinfoa
     #[unstable(feature = "windows_process_extensions_startupinfo", issue = "141010")]
     fn startupinfo_untrusted_source(&mut self, enabled: bool) -> &mut process::Command;
 
-    /// When specified, sets the following flags on the [STARTUPINFO][1] struct before passing it to `CreateProcess`:
-    /// - If `Some(true)`, sets `STARTF_FORCEONFEEDBACK`
-    /// - If `Some(false)`, sets `STARTF_FORCEOFFFEEDBACK`
-    /// - If `None`, does not set any flags
+    /// 当指定时，在把 [STARTUPINFO][1] 结构体传递给 `CreateProcess` 之前，在其上设置以下标志：
+    /// - 如果是 `Some(true)`，设置 `STARTF_FORCEONFEEDBACK`
+    /// - 如果是 `Some(false)`，设置 `STARTF_FORCEOFFFEEDBACK`
+    /// - 如果是 `None`，不设置任何标志
     ///
     /// [1]: https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/ns-processthreadsapi-startupinfoa
     #[unstable(feature = "windows_process_extensions_startupinfo", issue = "141010")]
     fn startupinfo_force_feedback(&mut self, enabled: Option<bool>) -> &mut process::Command;
 
-    /// If this flag is set to `true`, each inheritable handle in the calling
-    /// process is inherited by the new process. If the flag is `false`, the
-    /// handles are not inherited.
+    /// 如果该标志被设置为 `true`，则调用进程中每个可继承（inheritable）的 handle 都会被新
+    /// 进程继承。如果该标志为 `false`，则这些 handle 不会被继承。
     ///
-    /// The default value for this flag is `true`.
+    /// 该标志的默认值为 `true`。
     ///
-    /// **Note** that inherited handles have the same value and access rights
-    /// as the original handles. For additional discussion of inheritable handles,
-    /// see the [Remarks][1] section of the `CreateProcessW` documentation.
+    /// **注意**：被继承的 handle 与原始 handle 具有相同的值和访问权限。关于可继承 handle
+    /// 的更多讨论，参见 `CreateProcessW` 文档的 [Remarks][1] 一节。
     ///
     /// [1]: https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessw#remarks
     #[unstable(feature = "windows_process_extensions_inherit_handles", issue = "146407")]
@@ -404,10 +384,9 @@ impl CommandExt for process::Command {
     }
 
     fn async_pipes(&mut self, always_async: bool) -> &mut process::Command {
-        // FIXME: This currently has an intentional no-op implementation.
-        // For the time being our side of the pipes will always be async.
-        // Once the ecosystem has adjusted, we may then be able to start making
-        // use of synchronous pipes within the standard library.
+        // FIXME: 当前这是一个有意为之的空操作（no-op）实现。
+        // 目前，我方这一端的管道将始终是异步的。
+        // 一旦生态系统完成了相应调整，我们或许就能开始在标准库内部使用同步管道。
         let _ = always_async;
         self
     }
@@ -444,7 +423,7 @@ impl CommandExt for process::Command {
 
 #[unstable(feature = "windows_process_extensions_main_thread_handle", issue = "96723")]
 pub trait ChildExt: Sealed {
-    /// Extracts the main thread raw handle, without taking ownership
+    /// 提取主线程的裸 handle，且不取得其所有权
     #[unstable(feature = "windows_process_extensions_main_thread_handle", issue = "96723")]
     fn main_thread_handle(&self) -> BorrowedHandle<'_>;
 }
@@ -456,18 +435,16 @@ impl ChildExt for process::Child {
     }
 }
 
-/// Windows-specific extensions to [`process::ExitCode`].
+/// Windows 平台对 [`process::ExitCode`] 的特定扩展。
 ///
-/// This trait is sealed: it cannot be implemented outside the standard library.
-/// This is so that future additional methods are not breaking changes.
+/// 本 trait 是密封的（sealed）：无法在标准库之外被实现。这样一来，将来新增方法就不会
+/// 构成破坏性变更（breaking change）。
 #[unstable(feature = "windows_process_exit_code_from", issue = "111688")]
 pub trait ExitCodeExt: Sealed {
-    /// Creates a new `ExitCode` from the raw underlying `u32` return value of
-    /// a process.
+    /// 从某个进程底层的裸 `u32` 返回值创建一个新的 `ExitCode`。
     ///
-    /// The exit code should not be 259, as this conflicts with the `STILL_ACTIVE`
-    /// macro returned from the `GetExitCodeProcess` function to signal that the
-    /// process has yet to run to completion.
+    /// 该退出码不应为 259，因为这会与 `GetExitCodeProcess` 函数返回的 `STILL_ACTIVE`
+    /// 宏相冲突——后者用于表示进程尚未运行至完成。
     #[unstable(feature = "windows_process_exit_code_from", issue = "111688")]
     fn from_raw(raw: u32) -> Self;
 }
@@ -479,7 +456,7 @@ impl ExitCodeExt for process::ExitCode {
     }
 }
 
-/// A wrapper around windows [`ProcThreadAttributeList`][1].
+/// 对 windows 的 [`ProcThreadAttributeList`][1] 的封装。
 ///
 /// [1]: <https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-initializeprocthreadattributelist>
 #[derive(Debug)]
@@ -491,12 +468,12 @@ pub struct ProcThreadAttributeList<'a> {
 
 #[unstable(feature = "windows_process_extensions_raw_attribute", issue = "114854")]
 impl<'a> ProcThreadAttributeList<'a> {
-    /// Creates a new builder for constructing a [`ProcThreadAttributeList`].
+    /// 创建一个用于构造 [`ProcThreadAttributeList`] 的新构造器（builder）。
     pub fn build() -> ProcThreadAttributeListBuilder<'a> {
         ProcThreadAttributeListBuilder::new()
     }
 
-    /// Returns a pointer to the underling attribute list.
+    /// 返回指向底层属性列表的指针。
     #[doc(hidden)]
     pub fn as_ptr(&self) -> *const MaybeUninit<u8> {
         self.attribute_list.as_ptr()
@@ -505,10 +482,9 @@ impl<'a> ProcThreadAttributeList<'a> {
 
 #[unstable(feature = "windows_process_extensions_raw_attribute", issue = "114854")]
 impl<'a> Drop for ProcThreadAttributeList<'a> {
-    /// Deletes the attribute list.
+    /// 删除该属性列表。
     ///
-    /// This method calls [`DeleteProcThreadAttributeList`][1] to delete the
-    /// underlying attribute list.
+    /// 本方法调用 [`DeleteProcThreadAttributeList`][1] 来删除底层的属性列表。
     ///
     /// [1]: <https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-deleteprocthreadattributelist>
     fn drop(&mut self) {
@@ -517,7 +493,7 @@ impl<'a> Drop for ProcThreadAttributeList<'a> {
     }
 }
 
-/// Builder for constructing a [`ProcThreadAttributeList`].
+/// 用于构造 [`ProcThreadAttributeList`] 的构造器（builder）。
 #[derive(Clone, Debug)]
 #[unstable(feature = "windows_process_extensions_raw_attribute", issue = "114854")]
 pub struct ProcThreadAttributeListBuilder<'a> {
@@ -534,23 +510,20 @@ impl<'a> ProcThreadAttributeListBuilder<'a> {
         }
     }
 
-    /// Sets an attribute on the attribute list.
+    /// 在属性列表上设置一个属性。
     ///
-    /// The `attribute` parameter specifies the raw attribute to be set, while
-    /// the `value` parameter holds the value associated with that attribute.
-    /// Please refer to the [Windows documentation][1] for a list of valid attributes.
+    /// `attribute` 参数指定要设置的裸属性，而 `value` 参数则持有与该属性关联的值。
+    /// 关于有效属性的列表，请参阅 [Windows 文档][1]。
     ///
     /// # Note
     ///
-    /// The maximum number of attributes is the value of [`u32::MAX`]. If this
-    /// limit is exceeded, the call to [`Self::finish`] will return an `Error`
-    /// indicating that the maximum number of attributes has been exceeded.
+    /// 属性的最大数量为 [`u32::MAX`] 的值。如果超出此上限，对 [`Self::finish`] 的调用将
+    /// 返回一个 `Error`，表示已超出属性的最大数量。
     ///
     /// # Safety Note
     ///
-    /// Remember that improper use of attributes can lead to undefined behavior
-    /// or security vulnerabilities. Always consult the documentation and ensure
-    /// proper attribute values are used.
+    /// 请记住，对属性的不当使用可能导致未定义行为（undefined behavior）或安全漏洞。
+    /// 务必查阅文档，并确保使用了正确的属性值。
     ///
     /// [1]: <https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-updateprocthreadattribute#parameters>
     pub fn attribute<T>(self, attribute: usize, value: &'a T) -> Self {
@@ -559,17 +532,14 @@ impl<'a> ProcThreadAttributeListBuilder<'a> {
         }
     }
 
-    /// Sets a raw attribute on the attribute list.
+    /// 在属性列表上设置一个裸属性。
     ///
-    /// This function is useful for setting attributes with pointers or sizes
-    /// that cannot be derived directly from their values.
+    /// 本函数适用于设置那些指针或大小无法直接从其值推导出来的属性。
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// This function is marked as `unsafe` because it deals with raw pointers
-    /// and sizes. It is the responsibility of the caller to ensure the value
-    /// lives longer than the resulting [`ProcThreadAttributeList`] as well as
-    /// the validity of the size parameter.
+    /// 本函数被标记为 `unsafe`，因为它涉及裸指针和大小。调用者有责任确保该值的存活时间
+    /// 长于所得到的 [`ProcThreadAttributeList`]，并确保 size 参数的有效性。
     ///
     /// # Example
     ///
@@ -648,17 +618,15 @@ impl<'a> ProcThreadAttributeListBuilder<'a> {
         self
     }
 
-    /// Finalizes the construction of the `ProcThreadAttributeList`.
+    /// 完成 `ProcThreadAttributeList` 的构造。
     ///
     /// # Errors
     ///
-    /// Returns an error if the maximum number of attributes is exceeded
-    /// or if there is an I/O error during initialization.
+    /// 如果超出了属性的最大数量，或者在初始化过程中发生 I/O 错误，则返回一个错误。
     pub fn finish(&self) -> io::Result<ProcThreadAttributeList<'a>> {
-        // To initialize our ProcThreadAttributeList, we need to determine
-        // how many bytes to allocate for it. The Windows API simplifies this
-        // process by allowing us to call `InitializeProcThreadAttributeList`
-        // with a null pointer to retrieve the required size.
+        // 为了初始化我们的 ProcThreadAttributeList，需要确定要为它分配多少字节。
+        // Windows API 简化了这一过程：它允许我们用一个 null 指针来调用
+        // `InitializeProcThreadAttributeList`，从而取回所需的大小。
         let mut required_size = 0;
         let Ok(attribute_count) = self.attributes.len().try_into() else {
             return Err(io::const_error!(
@@ -677,8 +645,8 @@ impl<'a> ProcThreadAttributeListBuilder<'a> {
 
         let mut attribute_list = vec![MaybeUninit::uninit(); required_size].into_boxed_slice();
 
-        // Once we've allocated the necessary memory, it's safe to invoke
-        // `InitializeProcThreadAttributeList` to properly initialize the list.
+        // 一旦分配了所需的内存，再调用 `InitializeProcThreadAttributeList` 来正确地初始化
+        // 该列表就是安全的了。
         sys::cvt(unsafe {
             sys::c::InitializeProcThreadAttributeList(
                 attribute_list.as_mut_ptr().cast::<c_void>(),
@@ -688,10 +656,9 @@ impl<'a> ProcThreadAttributeListBuilder<'a> {
             )
         })?;
 
-        // # Add our attributes to the buffer.
-        // It's theoretically possible for the attribute count to exceed a u32
-        // value. Therefore, we ensure that we don't add more attributes than
-        // the buffer was initialized for.
+        // # 把我们的属性加入到缓冲区中。
+        // 理论上属性数量有可能超过一个 u32 的值。因此，我们要确保所添加的属性数量不超过
+        // 缓冲区初始化时所针对的数量。
         for (&attribute, value) in self.attributes.iter().take(attribute_count as usize) {
             sys::cvt(unsafe {
                 sys::c::UpdateProcThreadAttribute(
@@ -710,7 +677,7 @@ impl<'a> ProcThreadAttributeListBuilder<'a> {
     }
 }
 
-/// Wrapper around the value data to be used as a Process Thread Attribute.
+/// 对要用作进程线程属性（Process Thread Attribute）的值数据的封装。
 #[derive(Clone, Debug)]
 struct ProcThreadAttributeValue {
     ptr: *const c_void,

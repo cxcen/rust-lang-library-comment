@@ -2,11 +2,11 @@ use crate::sys::pal::waitqueue::{SpinMutex, WaitQueue, WaitVariable, try_lock_or
 use crate::sys::sync::OnceBox;
 
 pub struct Mutex {
-    // FIXME: `UnsafeList` is not movable.
+    // FIXME: `UnsafeList` 不可移动（not movable）。
     inner: OnceBox<SpinMutex<WaitVariable<bool>>>,
 }
 
-// Implementation according to “Operating Systems: Three Easy Pieces”, chapter 28
+// 实现依据《Operating Systems: Three Easy Pieces》第 28 章
 impl Mutex {
     pub const fn new() -> Mutex {
         Mutex { inner: OnceBox::new() }
@@ -20,25 +20,24 @@ impl Mutex {
     pub fn lock(&self) {
         let mut guard = self.get().lock();
         if *guard.lock_var() {
-            // Another thread has the lock, wait
+            // 另一个线程持有该锁，等待
             WaitQueue::wait(guard, || {})
-        // Another thread has passed the lock to us
+        // 另一个线程已经把锁传递给了我们
         } else {
-            // We are just now obtaining the lock
+            // 我们正是此刻获得该锁
             *guard.lock_var_mut() = true;
         }
     }
 
     #[inline]
     pub unsafe fn unlock(&self) {
-        // SAFETY: the mutex was locked by the current thread, so it has been
-        // initialized already.
+        // SAFETY: 该 mutex 是被当前线程加锁的，所以它已经初始化过了。
         let guard = unsafe { self.inner.get_unchecked().get_ref().lock() };
         if let Err(mut guard) = WaitQueue::notify_one(guard) {
-            // No other waiters, unlock
+            // 没有其他等待者，解锁
             *guard.lock_var_mut() = false;
         } else {
-            // There was a thread waiting, just pass the lock
+            // 当时有一个线程在等待，直接把锁传递过去
         }
     }
 
@@ -46,10 +45,10 @@ impl Mutex {
     pub fn try_lock(&self) -> bool {
         let mut guard = try_lock_or_false!(self.get());
         if *guard.lock_var() {
-            // Another thread has the lock
+            // 另一个线程持有该锁
             false
         } else {
-            // We are just now obtaining the lock
+            // 我们正是此刻获得该锁
             *guard.lock_var_mut() = true;
             true
         }

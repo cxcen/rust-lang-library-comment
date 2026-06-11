@@ -6,12 +6,12 @@ use crate::{fmt, io};
 
 const NSEC_PER_SEC: u64 = 1_000_000_000;
 pub const UNIX_EPOCH: SystemTime = SystemTime { t: Timespec::zero() };
-#[allow(dead_code)] // Used for pthread condvar timeouts
+#[allow(dead_code)] // 用于 pthread condvar 超时
 pub const TIMESPEC_MAX: libc::timespec =
     libc::timespec { tv_sec: <libc::time_t>::MAX, tv_nsec: 1_000_000_000 - 1 };
 
-// This additional constant is only used when calling
-// `libc::pthread_cond_timedwait`.
+// 这个额外的常量仅在调用
+// `libc::pthread_cond_timedwait` 时使用。
 #[cfg(target_os = "nto")]
 pub(in crate::sys) const TIMESPEC_MAX_CAPPED: libc::timespec = libc::timespec {
     tv_sec: (u64::MAX / NSEC_PER_SEC) as i64,
@@ -68,9 +68,9 @@ impl fmt::Debug for SystemTime {
 impl Timespec {
     const MAX: Timespec = unsafe { Self::new_unchecked(i64::MAX, 1_000_000_000 - 1) };
 
-    // As described below, on Apple OS, dates before epoch are represented differently.
-    // This is not an issue here however, because we are using tv_sec = i64::MIN,
-    // which will cause the compatibility wrapper to not be executed at all.
+    // 如下文所述，在 Apple OS 上，纪元（epoch）之前的日期表示方式不同。
+    // 不过这在这里并不构成问题，因为我们使用的是 tv_sec = i64::MIN，
+    // 它会导致那个兼容性包装逻辑根本不会被执行。
     const MIN: Timespec = unsafe { Self::new_unchecked(i64::MIN, 0) };
 
     const unsafe fn new_unchecked(tv_sec: i64, tv_nsec: i64) -> Timespec {
@@ -82,18 +82,17 @@ impl Timespec {
     }
 
     const fn new(tv_sec: i64, tv_nsec: i64) -> Result<Timespec, io::Error> {
-        // On Apple OS, dates before epoch are represented differently than on other
-        // Unix platforms: e.g. 1/10th of a second before epoch is represented as `seconds=-1`
-        // and `nanoseconds=100_000_000` on other platforms, but is `seconds=0` and
-        // `nanoseconds=-900_000_000` on Apple OS.
+        // 在 Apple OS 上，纪元（epoch）之前的日期表示方式与其他 Unix 平台不同：
+        // 例如纪元前 1/10 秒，在其他平台上表示为 `seconds=-1` 且
+        // `nanoseconds=100_000_000`，但在 Apple OS 上表示为 `seconds=0` 且
+        // `nanoseconds=-900_000_000`。
         //
-        // To compensate, we first detect this special case by checking if both
-        // seconds and nanoseconds are in range, and then correct the value for seconds
-        // and nanoseconds to match the common unix representation.
+        // 为补偿这一点，我们先通过检查 seconds 和 nanoseconds 是否都在范围内来检测
+        // 这一特殊情况，然后再校正 seconds 和 nanoseconds 的值，使其与常见的 unix
+        // 表示一致。
         //
-        // Please note that Apple OS nonetheless accepts the standard unix format when
-        // setting file times, which makes this compensation round-trippable and generally
-        // transparent.
+        // 请注意，Apple OS 在设置文件时间时同样接受标准 unix 格式，这使得本补偿可以
+        // 往返一致（round-trippable），并且通常是透明的。
         #[cfg(target_vendor = "apple")]
         let (tv_sec, tv_nsec) =
             if (tv_sec <= 0 && tv_sec > i64::MIN) && (tv_nsec < 0 && tv_nsec > -1_000_000_000) {
@@ -112,7 +111,7 @@ impl Timespec {
         use crate::mem::MaybeUninit;
         use crate::sys::cvt;
 
-        // Try to use 64-bit time in preparation for Y2038.
+        // 为应对 Y2038 问题，尽量使用 64 位时间。
         #[cfg(all(
             target_os = "linux",
             target_env = "gnu",
@@ -122,8 +121,8 @@ impl Timespec {
         {
             use crate::sys::weak::weak;
 
-            // __clock_gettime64 was added to 32-bit arches in glibc 2.34,
-            // and it handles both vDSO calls and ENOSYS fallbacks itself.
+            // __clock_gettime64 在 glibc 2.34 中被加入到 32 位架构，
+            // 它会自行处理 vDSO 调用以及 ENOSYS 回退。
             weak!(
                 fn __clock_gettime64(
                     clockid: libc::clockid_t,
@@ -146,7 +145,7 @@ impl Timespec {
     }
 
     pub fn sub_timespec(&self, other: &Timespec) -> Result<Duration, Duration> {
-        // When a >= b, the difference fits in u64.
+        // 当 a >= b 时，差值能放进 u64。
         fn sub_ge_to_unsigned(a: i64, b: i64) -> u64 {
             debug_assert!(a >= b);
             a.wrapping_sub(b).cast_unsigned()
@@ -159,7 +158,7 @@ impl Timespec {
                     self.tv_nsec.as_inner() - other.tv_nsec.as_inner(),
                 )
             } else {
-                // Following sequence of assertions explain why `self.tv_sec - 1` does not underflow.
+                // 下面这一连串断言解释了为何 `self.tv_sec - 1` 不会下溢。
                 debug_assert!(self.tv_nsec < other.tv_nsec);
                 debug_assert!(self.tv_sec > other.tv_sec);
                 debug_assert!(self.tv_sec > i64::MIN);
@@ -181,8 +180,7 @@ impl Timespec {
     pub fn checked_add_duration(&self, other: &Duration) -> Option<Timespec> {
         let mut secs = self.tv_sec.checked_add_unsigned(other.as_secs())?;
 
-        // Nano calculations can't overflow because nanos are <1B which fit
-        // in a u32.
+        // 纳秒的计算不会溢出，因为纳秒数小于 10 亿，能放进 u32。
         let mut nsec = other.subsec_nanos() + self.tv_nsec.as_inner();
         if nsec >= NSEC_PER_SEC as u32 {
             nsec -= NSEC_PER_SEC as u32;
@@ -194,7 +192,7 @@ impl Timespec {
     pub fn checked_sub_duration(&self, other: &Duration) -> Option<Timespec> {
         let mut secs = self.tv_sec.checked_sub_unsigned(other.as_secs())?;
 
-        // Similar to above, nanos can't overflow.
+        // 与上面类似，纳秒不会溢出。
         let mut nsec = self.tv_nsec.as_inner() as i32 - other.subsec_nanos() as i32;
         if nsec < 0 {
             nsec += NSEC_PER_SEC as i32;
@@ -211,11 +209,11 @@ impl Timespec {
         })
     }
 
-    // On QNX Neutrino, the maximum timespec for e.g. pthread_cond_timedwait
-    // is 2^64 nanoseconds
+    // 在 QNX Neutrino 上，例如 pthread_cond_timedwait 的最大 timespec
+    // 是 2^64 纳秒
     #[cfg(target_os = "nto")]
     pub(in crate::sys) fn to_timespec_capped(&self) -> Option<libc::timespec> {
-        // Check if timeout in nanoseconds would fit into an u64
+        // 检查以纳秒为单位的超时是否能放进 u64
         if (self.tv_nsec.as_inner() as u64)
             .checked_add((self.tv_sec as u64).checked_mul(NSEC_PER_SEC)?)
             .is_none()
@@ -277,15 +275,13 @@ impl Instant {
     pub fn now() -> Instant {
         // https://pubs.opengroup.org/onlinepubs/9799919799/functions/clock_getres.html
         //
-        // CLOCK_UPTIME_RAW   clock that increments monotonically, in the same man-
-        //                    ner as CLOCK_MONOTONIC_RAW, but that does not incre-
-        //                    ment while the system is asleep.  The returned value
-        //                    is identical to the result of mach_absolute_time()
-        //                    after the appropriate mach_timebase conversion is
-        //                    applied.
+        // CLOCK_UPTIME_RAW   一个单调递增的时钟，与 CLOCK_MONOTONIC_RAW 的方式相同，
+        //                    但在系统处于睡眠状态时不会递增。其返回值与对
+        //                    mach_absolute_time() 的结果施加适当的 mach_timebase
+        //                    转换后的结果一致。
         //
-        // Instant on macos was historically implemented using mach_absolute_time;
-        // we preserve this value domain out of an abundance of caution.
+        // macos 上的 Instant 历史上是用 mach_absolute_time 实现的；
+        // 出于格外谨慎，我们保留这个值域（value domain）。
         Instant { t: Timespec::now(Self::CLOCK_ID) }
     }
 

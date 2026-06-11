@@ -1,4 +1,4 @@
-#![allow(fuzzy_provenance_casts)] // FIXME: this module systematically confuses pointers and integers
+#![allow(fuzzy_provenance_casts)] // FIXME: 本模块系统性地混淆了指针与整数
 
 use crate::ffi::OsString;
 use crate::num::NonZero;
@@ -10,7 +10,7 @@ use crate::sys::pal::abi::usercalls::alloc;
 use crate::sys::pal::abi::usercalls::raw::ByteBuffer;
 use crate::{fmt, slice};
 
-// Specifying linkage/symbol name is solely to ensure a single instance between this crate and its unit tests
+// 指定 linkage/符号名，纯粹是为了确保本 crate 与其单元测试之间共用同一个实例
 #[cfg_attr(test, linkage = "available_externally")]
 #[unsafe(export_name = "_ZN16__rust_internals3std3sys3sgx4args4ARGSE")]
 static ARGS: Atomic<usize> = AtomicUsize::new(0);

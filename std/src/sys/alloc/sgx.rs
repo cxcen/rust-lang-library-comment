@@ -4,14 +4,12 @@ use crate::sync::atomic::{Atomic, AtomicBool, Ordering};
 use crate::sys::pal::abi::mem as sgx_mem;
 use crate::sys::pal::waitqueue::SpinMutex;
 
-// Using a SpinMutex because we never want to exit the enclave waiting for the
-// allocator.
+// 使用 SpinMutex，因为我们绝不希望为了等待分配器而退出 enclave（飞地）。
 //
-// The current allocator here is the `dlmalloc` crate which we've got included
-// in the rust-lang/rust repository as a submodule. The crate is a port of
-// dlmalloc.c from C to Rust.
+// 这里目前使用的分配器是 `dlmalloc` crate，它作为子模块（submodule）被收录在
+// rust-lang/rust 仓库中。该 crate 是把 dlmalloc.c 从 C 移植到 Rust 的产物。
 //
-// Specifying linkage/symbol name is solely to ensure a single instance between this crate and its unit tests
+// 指定 linkage/符号名，纯粹是为了确保本 crate 与其单元测试之间共用同一个实例
 #[cfg_attr(test, linkage = "available_externally")]
 #[unsafe(export_name = "_ZN16__rust_internals3std3sys5alloc3sgx8DLMALLOCE")]
 static DLMALLOC: SpinMutex<dlmalloc::Dlmalloc<Sgx>> =
@@ -20,11 +18,11 @@ static DLMALLOC: SpinMutex<dlmalloc::Dlmalloc<Sgx>> =
 struct Sgx;
 
 unsafe impl dlmalloc::Allocator for Sgx {
-    /// Allocs system resources
+    /// 分配系统资源
     fn alloc(&self, _size: usize) -> (*mut u8, usize, u32) {
         static INIT: Atomic<bool> = AtomicBool::new(false);
 
-        // No ordering requirement since this function is protected by the global lock.
+        // 无需顺序（ordering）要求，因为本函数受全局锁保护。
         if !INIT.swap(true, Ordering::Relaxed) {
             (sgx_mem::heap_base() as _, sgx_mem::heap_size(), 0)
         } else {
@@ -61,31 +59,31 @@ unsafe impl dlmalloc::Allocator for Sgx {
 unsafe impl GlobalAlloc for System {
     #[inline]
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        // SAFETY: the caller must uphold the safety contract for `malloc`
+        // SAFETY: 调用者必须遵守 `malloc` 的安全契约
         unsafe { DLMALLOC.lock().malloc(layout.size(), layout.align()) }
     }
 
     #[inline]
     unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
-        // SAFETY: the caller must uphold the safety contract for `malloc`
+        // SAFETY: 调用者必须遵守 `malloc` 的安全契约
         unsafe { DLMALLOC.lock().calloc(layout.size(), layout.align()) }
     }
 
     #[inline]
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        // SAFETY: the caller must uphold the safety contract for `malloc`
+        // SAFETY: 调用者必须遵守 `malloc` 的安全契约
         unsafe { DLMALLOC.lock().free(ptr, layout.size(), layout.align()) }
     }
 
     #[inline]
     unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
-        // SAFETY: the caller must uphold the safety contract for `malloc`
+        // SAFETY: 调用者必须遵守 `malloc` 的安全契约
         unsafe { DLMALLOC.lock().realloc(ptr, layout.size(), layout.align(), new_size) }
     }
 }
 
-// The following functions are needed by libunwind. These symbols are named
-// in pre-link args for the target specification, so keep that in sync.
+// 以下这些函数是 libunwind 所需要的。这些符号名在目标平台规格说明
+// （target specification）的 pre-link args 中被引用，所以要保持二者同步。
 #[cfg(not(test))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn __rust_c_alloc(size: usize, align: usize) -> *mut u8 {

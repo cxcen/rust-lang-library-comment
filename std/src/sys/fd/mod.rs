@@ -1,4 +1,4 @@
-//! Platform-dependent file descriptor abstraction.
+//! 与平台相关的文件描述符抽象。
 
 #![forbid(unsafe_op_in_unsafe_fn)]
 

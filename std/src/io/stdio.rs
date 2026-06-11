@@ -19,77 +19,66 @@ use crate::thread::AccessError;
 type LocalStream = Arc<Mutex<Vec<u8>>>;
 
 thread_local! {
-    /// Used by the test crate to capture the output of the print macros and panics.
+    /// 供 test crate 使用，用于捕获 print 宏和 panic 的输出。
     static OUTPUT_CAPTURE: Cell<Option<LocalStream>> = const {
         Cell::new(None)
     }
 }
 
-/// Flag to indicate OUTPUT_CAPTURE is used.
+/// 用于指示 OUTPUT_CAPTURE 是否被使用的标志。
 ///
-/// If it is None and was never set on any thread, this flag is set to false,
-/// and OUTPUT_CAPTURE can be safely ignored on all threads, saving some time
-/// and memory registering an unused thread local.
+/// 如果它为 None 且从未在任何线程上被设置过，则该标志为 false，于是在所有线程上都可以安全地
+/// 忽略 OUTPUT_CAPTURE，从而省去注册一个未被使用的线程局部变量所需的时间和内存。
 ///
-/// Note about memory ordering: This contains information about whether a
-/// thread local variable might be in use. Although this is a global flag, the
-/// memory ordering between threads does not matter: we only want this flag to
-/// have a consistent order between set_output_capture and print_to *within
-/// the same thread*. Within the same thread, things always have a perfectly
-/// consistent order. So Ordering::Relaxed is fine.
+/// 关于内存序（memory ordering）的说明：本标志携带的是“某个线程局部变量是否可能正在被使用”
+/// 这一信息。尽管它是一个全局标志，但线程之间的内存序无关紧要：我们只希望该标志在
+/// *同一个线程内部* 的 set_output_capture 与 print_to 之间保持一致的顺序。而在同一个线程
+/// 内部，一切本来就有完全一致的顺序。所以用 Ordering::Relaxed 就够了。
 static OUTPUT_CAPTURE_USED: Atomic<bool> = AtomicBool::new(false);
 
-/// A handle to a raw instance of the standard input stream of this process.
+/// 指向本进程标准输入流的一个“原始（raw）”实例的句柄。
 ///
-/// This handle is not synchronized or buffered in any fashion. Constructed via
-/// the `std::io::stdio::stdin_raw` function.
+/// 这个句柄不做任何同步或缓冲。通过 `std::io::stdio::stdin_raw` 函数构造。
 struct StdinRaw(stdio::Stdin);
 
-/// A handle to a raw instance of the standard output stream of this process.
+/// 指向本进程标准输出流的一个“原始（raw）”实例的句柄。
 ///
-/// This handle is not synchronized or buffered in any fashion. Constructed via
-/// the `std::io::stdio::stdout_raw` function.
+/// 这个句柄不做任何同步或缓冲。通过 `std::io::stdio::stdout_raw` 函数构造。
 struct StdoutRaw(stdio::Stdout);
 
-/// A handle to a raw instance of the standard output stream of this process.
+/// 指向本进程标准输出流的一个“原始（raw）”实例的句柄。
 ///
-/// This handle is not synchronized or buffered in any fashion. Constructed via
-/// the `std::io::stdio::stderr_raw` function.
+/// 这个句柄不做任何同步或缓冲。通过 `std::io::stdio::stderr_raw` 函数构造。
 struct StderrRaw(stdio::Stderr);
 
-/// Constructs a new raw handle to the standard input of this process.
+/// 构造一个指向本进程标准输入的新“原始”句柄。
 ///
-/// The returned handle does not interact with any other handles created nor
-/// handles returned by `std::io::stdin`. Data buffered by the `std::io::stdin`
-/// handles is **not** available to raw handles returned from this function.
+/// 返回的句柄既不与任何其他已创建的句柄交互，也不与 `std::io::stdin` 返回的句柄交互。被
+/// `std::io::stdin` 句柄缓冲的数据**不**会提供给本函数返回的原始句柄。
 ///
-/// The returned handle has no external synchronization or buffering.
+/// 返回的句柄没有任何外部同步或缓冲。
 #[unstable(feature = "libstd_sys_internals", issue = "none")]
 const fn stdin_raw() -> StdinRaw {
     StdinRaw(stdio::Stdin::new())
 }
 
-/// Constructs a new raw handle to the standard output stream of this process.
+/// 构造一个指向本进程标准输出流的新“原始”句柄。
 ///
-/// The returned handle does not interact with any other handles created nor
-/// handles returned by `std::io::stdout`. Note that data is buffered by the
-/// `std::io::stdout` handles so writes which happen via this raw handle may
-/// appear before previous writes.
+/// 返回的句柄既不与任何其他已创建的句柄交互，也不与 `std::io::stdout` 返回的句柄交互。注意
+/// 数据会被 `std::io::stdout` 句柄缓冲，所以经由这个原始句柄发生的写入可能会出现在先前那些
+/// 写入之前。
 ///
-/// The returned handle has no external synchronization or buffering layered on
-/// top.
+/// 返回的句柄在其之上没有叠加任何外部同步或缓冲。
 #[unstable(feature = "libstd_sys_internals", issue = "none")]
 const fn stdout_raw() -> StdoutRaw {
     StdoutRaw(stdio::Stdout::new())
 }
 
-/// Constructs a new raw handle to the standard error stream of this process.
+/// 构造一个指向本进程标准错误流的新“原始”句柄。
 ///
-/// The returned handle does not interact with any other handles created nor
-/// handles returned by `std::io::stderr`.
+/// 返回的句柄既不与任何其他已创建的句柄交互，也不与 `std::io::stderr` 返回的句柄交互。
 ///
-/// The returned handle has no external synchronization or buffering layered on
-/// top.
+/// 返回的句柄在其之上没有叠加任何外部同步或缓冲。
 #[unstable(feature = "libstd_sys_internals", issue = "none")]
 const fn stderr_raw() -> StderrRaw {
     StderrRaw(stdio::Stderr::new())
@@ -207,40 +196,37 @@ fn handle_ebadf<T>(r: io::Result<T>, default: impl FnOnce() -> io::Result<T>) ->
     }
 }
 
-/// A handle to the standard input stream of a process.
+/// 指向某个进程标准输入流的句柄。
 ///
-/// Each handle is a shared reference to a global buffer of input data to this
-/// process. A handle can be `lock`'d to gain full access to [`BufRead`] methods
-/// (e.g., `.lines()`). Reads to this handle are otherwise locked with respect
-/// to other reads.
+/// 每个句柄都是对“本进程全局输入数据缓冲”的一个共享引用。可以对句柄调用 `lock`，以获得对
+/// [`BufRead`] 方法（如 `.lines()`）的完整访问。除此之外，对这个句柄的读取相对于其他读取
+/// 来说也是加锁的（即全局锁保护了并发读取）。
 ///
-/// This handle implements the `Read` trait, but beware that concurrent reads
-/// of `Stdin` must be executed with care.
+/// 这个句柄实现了 `Read` trait，但要当心：对 `Stdin` 的并发读取必须小心进行（多个读取者
+/// 共享同一全局缓冲，且各自加锁，处理不当可能造成死锁或数据交错）。
 ///
-/// Created by the [`io::stdin`] method.
+/// 由 [`io::stdin`] 方法创建。
 ///
 /// [`io::stdin`]: stdin
 ///
-/// ### Note: Windows Portability Considerations
+/// ### 注意：Windows 可移植性方面的考量
 ///
-/// When operating in a console, the Windows implementation of this stream does not support
-/// non-UTF-8 byte sequences. Attempting to read bytes that are not valid UTF-8 will return
-/// an error.
+/// 在控制台中运行时，本流的 Windows 实现不支持非 UTF-8 的字节序列。尝试读取非合法 UTF-8 的
+/// 字节将返回一个错误。
 ///
-/// In a process with a detached console, such as one using
-/// `#![windows_subsystem = "windows"]`, or in a child process spawned from such a process,
-/// the contained handle will be null. In such cases, the standard library's `Read` and
-/// `Write` will do nothing and silently succeed. All other I/O operations, via the
-/// standard library or via raw Windows API calls, will fail.
+/// 在一个分离了控制台（detached console）的进程中——例如使用了
+/// `#![windows_subsystem = "windows"]` 的进程，或从这样的进程派生出的子进程——其中所含的
+/// 句柄将为 null。在这种情况下，标准库的 `Read` 和 `Write` 将什么都不做并静默地成功返回。
+/// 而所有其他 I/O 操作，无论是经由标准库还是经由原始的 Windows API 调用，都将失败。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```no_run
 /// use std::io;
 ///
 /// fn main() -> io::Result<()> {
 ///     let mut buffer = String::new();
-///     let stdin = io::stdin(); // We get `Stdin` here.
+///     let stdin = io::stdin(); // 我们在这里得到 `Stdin`。
 ///     stdin.read_line(&mut buffer)?;
 ///     Ok(())
 /// }
@@ -251,35 +237,32 @@ pub struct Stdin {
     inner: &'static Mutex<BufReader<StdinRaw>>,
 }
 
-/// A locked reference to the [`Stdin`] handle.
+/// 对 [`Stdin`] 句柄的一个已加锁引用。
 ///
-/// This handle implements both the [`Read`] and [`BufRead`] traits, and
-/// is constructed via the [`Stdin::lock`] method.
+/// 这个句柄同时实现了 [`Read`] 和 [`BufRead`] traits，通过 [`Stdin::lock`] 方法构造。
 ///
-/// ### Note: Windows Portability Considerations
+/// ### 注意：Windows 可移植性方面的考量
 ///
-/// When operating in a console, the Windows implementation of this stream does not support
-/// non-UTF-8 byte sequences. Attempting to read bytes that are not valid UTF-8 will return
-/// an error.
+/// 在控制台中运行时，本流的 Windows 实现不支持非 UTF-8 的字节序列。尝试读取非合法 UTF-8 的
+/// 字节将返回一个错误。
 ///
-/// In a process with a detached console, such as one using
-/// `#![windows_subsystem = "windows"]`, or in a child process spawned from such a process,
-/// the contained handle will be null. In such cases, the standard library's `Read` and
-/// `Write` will do nothing and silently succeed. All other I/O operations, via the
-/// standard library or via raw Windows API calls, will fail.
+/// 在一个分离了控制台（detached console）的进程中——例如使用了
+/// `#![windows_subsystem = "windows"]` 的进程，或从这样的进程派生出的子进程——其中所含的
+/// 句柄将为 null。在这种情况下，标准库的 `Read` 和 `Write` 将什么都不做并静默地成功返回。
+/// 而所有其他 I/O 操作，无论是经由标准库还是经由原始的 Windows API 调用，都将失败。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```no_run
 /// use std::io::{self, BufRead};
 ///
 /// fn main() -> io::Result<()> {
 ///     let mut buffer = String::new();
-///     let stdin = io::stdin(); // We get `Stdin` here.
+///     let stdin = io::stdin(); // 我们在这里得到 `Stdin`。
 ///     {
-///         let mut handle = stdin.lock(); // We get `StdinLock` here.
+///         let mut handle = stdin.lock(); // 我们在这里得到 `StdinLock`。
 ///         handle.read_line(&mut buffer)?;
-///     } // `StdinLock` is dropped here.
+///     } // `StdinLock` 在这里被 drop。
 ///     Ok(())
 /// }
 /// ```
@@ -289,27 +272,24 @@ pub struct StdinLock<'a> {
     inner: MutexGuard<'a, BufReader<StdinRaw>>,
 }
 
-/// Constructs a new handle to the standard input of the current process.
+/// 构造一个指向当前进程标准输入的新句柄。
 ///
-/// Each handle returned is a reference to a shared global buffer whose access
-/// is synchronized via a mutex. If you need more explicit control over
-/// locking, see the [`Stdin::lock`] method.
+/// 返回的每个句柄都是对一个共享全局缓冲的引用，对该缓冲的访问通过一个互斥锁（mutex）来同步。
+/// 如果你需要对加锁有更明确的控制，请参见 [`Stdin::lock`] 方法。
 ///
-/// ### Note: Windows Portability Considerations
+/// ### 注意：Windows 可移植性方面的考量
 ///
-/// When operating in a console, the Windows implementation of this stream does not support
-/// non-UTF-8 byte sequences. Attempting to read bytes that are not valid UTF-8 will return
-/// an error.
+/// 在控制台中运行时，本流的 Windows 实现不支持非 UTF-8 的字节序列。尝试读取非合法 UTF-8 的
+/// 字节将返回一个错误。
 ///
-/// In a process with a detached console, such as one using
-/// `#![windows_subsystem = "windows"]`, or in a child process spawned from such a process,
-/// the contained handle will be null. In such cases, the standard library's `Read` and
-/// `Write` will do nothing and silently succeed. All other I/O operations, via the
-/// standard library or via raw Windows API calls, will fail.
+/// 在一个分离了控制台（detached console）的进程中——例如使用了
+/// `#![windows_subsystem = "windows"]` 的进程，或从这样的进程派生出的子进程——其中所含的
+/// 句柄将为 null。在这种情况下，标准库的 `Read` 和 `Write` 将什么都不做并静默地成功返回。
+/// 而所有其他 I/O 操作，无论是经由标准库还是经由原始的 Windows API 调用，都将失败。
 ///
-/// # Examples
+/// # 示例
 ///
-/// Using implicit synchronization:
+/// 使用隐式同步：
 ///
 /// ```no_run
 /// use std::io;
@@ -321,7 +301,7 @@ pub struct StdinLock<'a> {
 /// }
 /// ```
 ///
-/// Using explicit synchronization:
+/// 使用显式同步：
 ///
 /// ```no_run
 /// use std::io::{self, BufRead};
@@ -347,14 +327,12 @@ pub fn stdin() -> Stdin {
 }
 
 impl Stdin {
-    /// Locks this handle to the standard input stream, returning a readable
-    /// guard.
+    /// 锁定这个指向标准输入流的句柄，返回一个可读的守卫（guard）。
     ///
-    /// The lock is released when the returned lock goes out of scope. The
-    /// returned guard also implements the [`Read`] and [`BufRead`] traits for
-    /// accessing the underlying data.
+    /// 当返回的锁离开作用域时，锁会被释放。返回的守卫同时也实现了 [`Read`] 和 [`BufRead`]
+    /// traits，以便访问底层数据。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::io::{self, BufRead};
@@ -370,22 +348,19 @@ impl Stdin {
     /// ```
     #[stable(feature = "rust1", since = "1.0.0")]
     pub fn lock(&self) -> StdinLock<'static> {
-        // Locks this handle with 'static lifetime. This depends on the
-        // implementation detail that the underlying `Mutex` is static.
+        // 以 'static 生命周期锁定这个句柄。这依赖于一个实现细节：底层的 `Mutex` 是 static 的。
         StdinLock { inner: self.inner.lock().unwrap_or_else(|e| e.into_inner()) }
     }
 
-    /// Locks this handle and reads a line of input, appending it to the specified buffer.
+    /// 锁定这个句柄并读取一行输入，将其追加到指定的缓冲中。
     ///
-    /// For detailed semantics of this method, see the documentation on
-    /// [`BufRead::read_line`]. In particular:
-    /// * Previous content of the buffer will be preserved. To avoid appending
-    ///   to the buffer, you need to [`clear`] it first.
-    /// * The trailing newline character, if any, is included in the buffer.
+    /// 关于本方法的详细语义，请参见 [`BufRead::read_line`] 的文档。特别地：
+    /// * 缓冲中先前的内容会被保留。要避免追加到缓冲，你需要先 [`clear`] 它。
+    /// * 末尾的换行符（如果有的话）会被包含在缓冲中。
     ///
     /// [`clear`]: String::clear
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::io;
@@ -400,24 +375,22 @@ impl Stdin {
     /// }
     /// ```
     ///
-    /// You can run the example one of two ways:
+    /// 你可以用以下两种方式之一来运行这个示例：
     ///
-    /// - Pipe some text to it, e.g., `printf foo | path/to/executable`
-    /// - Give it text interactively by running the executable directly,
-    ///   in which case it will wait for the Enter key to be pressed before
-    ///   continuing
+    /// - 把一些文本通过管道喂给它，例如 `printf foo | path/to/executable`
+    /// - 直接运行可执行文件、以交互方式给它输入文本，这种情况下它会一直等待，直到按下回车键
+    ///   才继续
     #[stable(feature = "rust1", since = "1.0.0")]
     #[rustc_confusables("get_line")]
     pub fn read_line(&self, buf: &mut String) -> io::Result<usize> {
         self.lock().read_line(buf)
     }
 
-    /// Consumes this handle and returns an iterator over input lines.
+    /// 消耗这个句柄，返回一个遍历输入各行的迭代器。
     ///
-    /// For detailed semantics of this method, see the documentation on
-    /// [`BufRead::lines`].
+    /// 关于本方法的详细语义，请参见 [`BufRead::lines`] 的文档。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::io;
@@ -499,7 +472,7 @@ impl Read for &Stdin {
     }
 }
 
-// only used by platform-dependent io::copy specializations, i.e. unused on some platforms
+// 仅被平台相关的 io::copy 特化使用，因此在某些平台上是未使用的
 #[cfg(any(target_os = "linux", target_os = "android"))]
 impl StdinLock<'_> {
     pub(crate) fn as_mut_buf(&mut self) -> &mut BufReader<impl Read> {
@@ -576,63 +549,55 @@ impl fmt::Debug for StdinLock<'_> {
     }
 }
 
-/// A handle to the global standard output stream of the current process.
+/// 指向当前进程全局标准输出流的句柄。
 ///
-/// Each handle shares a global buffer of data to be written to the standard
-/// output stream. Access is also synchronized via a lock and explicit control
-/// over locking is available via the [`lock`] method.
+/// 每个句柄共享一块“待写入标准输出流的数据”的全局缓冲。访问同样通过一个锁来同步，并且可经由
+/// [`lock`] 方法获得对加锁的显式控制。
 ///
-/// By default, the handle is line-buffered when connected to a terminal, meaning
-/// it flushes automatically when a newline (`\n`) is encountered. For immediate
-/// output, you can manually call the [`flush`] method. When the handle goes out
-/// of scope, the buffer is automatically flushed.
+/// 默认情况下，当连接到终端（terminal）时，该句柄是行缓冲（line-buffered）的，意味着每当
+/// 遇到换行符（`\n`）时它就会自动刷新。若想立即输出，你可以手动调用 [`flush`] 方法。当句柄
+/// 离开作用域时，缓冲会被自动刷新。
 ///
-/// Created by the [`io::stdout`] method.
+/// 由 [`io::stdout`] 方法创建。
 ///
-/// ### Note: Windows Portability Considerations
+/// ### 注意：Windows 可移植性方面的考量
 ///
-/// When operating in a console, the Windows implementation of this stream does not support
-/// non-UTF-8 byte sequences. Attempting to write bytes that are not valid UTF-8 will return
-/// an error.
+/// 在控制台中运行时，本流的 Windows 实现不支持非 UTF-8 的字节序列。尝试写入非合法 UTF-8 的
+/// 字节将返回一个错误。
 ///
-/// In a process with a detached console, such as one using
-/// `#![windows_subsystem = "windows"]`, or in a child process spawned from such a process,
-/// the contained handle will be null. In such cases, the standard library's `Read` and
-/// `Write` will do nothing and silently succeed. All other I/O operations, via the
-/// standard library or via raw Windows API calls, will fail.
+/// 在一个分离了控制台（detached console）的进程中——例如使用了
+/// `#![windows_subsystem = "windows"]` 的进程，或从这样的进程派生出的子进程——其中所含的
+/// 句柄将为 null。在这种情况下，标准库的 `Read` 和 `Write` 将什么都不做并静默地成功返回。
+/// 而所有其他 I/O 操作，无论是经由标准库还是经由原始的 Windows API 调用，都将失败。
 ///
 /// [`lock`]: Stdout::lock
 /// [`flush`]: Write::flush
 /// [`io::stdout`]: stdout
 #[stable(feature = "rust1", since = "1.0.0")]
 pub struct Stdout {
-    // FIXME: this should be LineWriter or BufWriter depending on the state of
-    //        stdout (tty or not). Note that if this is not line buffered it
-    //        should also flush-on-panic or some form of flush-on-abort.
+    // FIXME: 这里应当根据 stdout 的状态（是否为 tty）来选用 LineWriter 或 BufWriter。
+    //        注意，如果它不是行缓冲的，那它还应当做到 flush-on-panic 或某种形式的
+    //        flush-on-abort（在 panic/abort 时刷新）。
     inner: &'static ReentrantLock<RefCell<LineWriter<StdoutRaw>>>,
 }
 
-/// A locked reference to the [`Stdout`] handle.
+/// 对 [`Stdout`] 句柄的一个已加锁引用。
 ///
-/// This handle implements the [`Write`] trait, and is constructed via
-/// the [`Stdout::lock`] method. See its documentation for more.
+/// 这个句柄实现了 [`Write`] trait，通过 [`Stdout::lock`] 方法构造。更多内容见其文档。
 ///
-/// By default, the handle is line-buffered when connected to a terminal, meaning
-/// it flushes automatically when a newline (`\n`) is encountered. For immediate
-/// output, you can manually call the [`flush`] method. When the handle goes out
-/// of scope, the buffer is automatically flushed.
+/// 默认情况下，当连接到终端（terminal）时，该句柄是行缓冲（line-buffered）的，意味着每当
+/// 遇到换行符（`\n`）时它就会自动刷新。若想立即输出，你可以手动调用 [`flush`] 方法。当句柄
+/// 离开作用域时，缓冲会被自动刷新。
 ///
-/// ### Note: Windows Portability Considerations
+/// ### 注意：Windows 可移植性方面的考量
 ///
-/// When operating in a console, the Windows implementation of this stream does not support
-/// non-UTF-8 byte sequences. Attempting to write bytes that are not valid UTF-8 will return
-/// an error.
+/// 在控制台中运行时，本流的 Windows 实现不支持非 UTF-8 的字节序列。尝试写入非合法 UTF-8 的
+/// 字节将返回一个错误。
 ///
-/// In a process with a detached console, such as one using
-/// `#![windows_subsystem = "windows"]`, or in a child process spawned from such a process,
-/// the contained handle will be null. In such cases, the standard library's `Read` and
-/// `Write` will do nothing and silently succeed. All other I/O operations, via the
-/// standard library or via raw Windows API calls, will fail.
+/// 在一个分离了控制台（detached console）的进程中——例如使用了
+/// `#![windows_subsystem = "windows"]` 的进程，或从这样的进程派生出的子进程——其中所含的
+/// 句柄将为 null。在这种情况下，标准库的 `Read` 和 `Write` 将什么都不做并静默地成功返回。
+/// 而所有其他 I/O 操作，无论是经由标准库还是经由原始的 Windows API 调用，都将失败。
 ///
 /// [`flush`]: Write::flush
 #[must_use = "if unused stdout will immediately unlock"]
@@ -643,32 +608,28 @@ pub struct StdoutLock<'a> {
 
 static STDOUT: OnceLock<ReentrantLock<RefCell<LineWriter<StdoutRaw>>>> = OnceLock::new();
 
-/// Constructs a new handle to the standard output of the current process.
+/// 构造一个指向当前进程标准输出的新句柄。
 ///
-/// Each handle returned is a reference to a shared global buffer whose access
-/// is synchronized via a mutex. If you need more explicit control over
-/// locking, see the [`Stdout::lock`] method.
+/// 返回的每个句柄都是对一个共享全局缓冲的引用，对该缓冲的访问通过一个互斥锁（mutex）来同步。
+/// 如果你需要对加锁有更明确的控制，请参见 [`Stdout::lock`] 方法。
 ///
-/// By default, the handle is line-buffered when connected to a terminal, meaning
-/// it flushes automatically when a newline (`\n`) is encountered. For immediate
-/// output, you can manually call the [`flush`] method. When the handle goes out
-/// of scope, the buffer is automatically flushed.
+/// 默认情况下，当连接到终端（terminal）时，该句柄是行缓冲（line-buffered）的，意味着每当
+/// 遇到换行符（`\n`）时它就会自动刷新。若想立即输出，你可以手动调用 [`flush`] 方法。当句柄
+/// 离开作用域时，缓冲会被自动刷新。
 ///
-/// ### Note: Windows Portability Considerations
+/// ### 注意：Windows 可移植性方面的考量
 ///
-/// When operating in a console, the Windows implementation of this stream does not support
-/// non-UTF-8 byte sequences. Attempting to write bytes that are not valid UTF-8 will return
-/// an error.
+/// 在控制台中运行时，本流的 Windows 实现不支持非 UTF-8 的字节序列。尝试写入非合法 UTF-8 的
+/// 字节将返回一个错误。
 ///
-/// In a process with a detached console, such as one using
-/// `#![windows_subsystem = "windows"]`, or in a child process spawned from such a process,
-/// the contained handle will be null. In such cases, the standard library's `Read` and
-/// `Write` will do nothing and silently succeed. All other I/O operations, via the
-/// standard library or via raw Windows API calls, will fail.
+/// 在一个分离了控制台（detached console）的进程中——例如使用了
+/// `#![windows_subsystem = "windows"]` 的进程，或从这样的进程派生出的子进程——其中所含的
+/// 句柄将为 null。在这种情况下，标准库的 `Read` 和 `Write` 将什么都不做并静默地成功返回。
+/// 而所有其他 I/O 操作，无论是经由标准库还是经由原始的 Windows API 调用，都将失败。
 ///
-/// # Examples
+/// # 示例
 ///
-/// Using implicit synchronization:
+/// 使用隐式同步：
 ///
 /// ```no_run
 /// use std::io::{self, Write};
@@ -680,7 +641,7 @@ static STDOUT: OnceLock<ReentrantLock<RefCell<LineWriter<StdoutRaw>>>> = OnceLoc
 /// }
 /// ```
 ///
-/// Using explicit synchronization:
+/// 使用显式同步：
 ///
 /// ```no_run
 /// use std::io::{self, Write};
@@ -695,7 +656,7 @@ static STDOUT: OnceLock<ReentrantLock<RefCell<LineWriter<StdoutRaw>>>> = OnceLoc
 /// }
 /// ```
 ///
-/// Ensuring output is flushed immediately:
+/// 确保输出被立即刷新：
 ///
 /// ```no_run
 /// use std::io::{self, Write};
@@ -703,8 +664,8 @@ static STDOUT: OnceLock<ReentrantLock<RefCell<LineWriter<StdoutRaw>>>> = OnceLoc
 /// fn main() -> io::Result<()> {
 ///     let mut stdout = io::stdout();
 ///     stdout.write_all(b"hello, ")?;
-///     stdout.flush()?;                // Manual flush
-///     stdout.write_all(b"world!\n")?; // Automatically flushed
+///     stdout.flush()?;                // 手动刷新
+///     stdout.write_all(b"world!\n")?; // 自动刷新（因为以换行符结尾）
 ///     Ok(())
 /// }
 /// ```
@@ -720,9 +681,8 @@ pub fn stdout() -> Stdout {
     }
 }
 
-// Flush the data and disable buffering during shutdown
-// by replacing the line writer by one with zero
-// buffering capacity.
+// 在关闭（shutdown）期间，把数据刷新出去并禁用缓冲——做法是用一个缓冲容量为零的 line writer
+// 替换掉原来的 line writer。
 pub fn cleanup() {
     let mut initialized = false;
     let stdout = STDOUT.get_or_init(|| {
@@ -731,10 +691,9 @@ pub fn cleanup() {
     });
 
     if !initialized {
-        // The buffer was previously initialized, overwrite it here.
-        // We use try_lock() instead of lock(), because someone
-        // might have leaked a StdoutLock, which would
-        // otherwise cause a deadlock here.
+        // 缓冲此前已被初始化过，所以在这里把它覆盖掉。
+        // 我们用 try_lock() 而非 lock()，因为可能有人泄漏（leak）了一个 StdoutLock，
+        // 否则那将在这里造成死锁。
         if let Some(lock) = stdout.try_lock() {
             *lock.borrow_mut() = LineWriter::with_capacity(0, stdout_raw());
         }
@@ -742,13 +701,11 @@ pub fn cleanup() {
 }
 
 impl Stdout {
-    /// Locks this handle to the standard output stream, returning a writable
-    /// guard.
+    /// 锁定这个指向标准输出流的句柄，返回一个可写的守卫（guard）。
     ///
-    /// The lock is released when the returned lock goes out of scope. The
-    /// returned guard also implements the `Write` trait for writing data.
+    /// 当返回的锁离开作用域时，锁会被释放。返回的守卫同样实现了 `Write` trait 以便写入数据。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::io::{self, Write};
@@ -763,9 +720,8 @@ impl Stdout {
     /// ```
     #[stable(feature = "rust1", since = "1.0.0")]
     pub fn lock(&self) -> StdoutLock<'static> {
-        // Locks this handle with 'static lifetime. This depends on the
-        // implementation detail that the underlying `ReentrantMutex` is
-        // static.
+        // 以 'static 生命周期锁定这个句柄。这依赖于一个实现细节：底层的 `ReentrantMutex`
+        // 是 static 的。
         StdoutLock { inner: self.inner.lock() }
     }
 }
@@ -871,69 +827,62 @@ impl fmt::Debug for StdoutLock<'_> {
     }
 }
 
-/// A handle to the standard error stream of a process.
+/// 指向某个进程标准错误流的句柄。
 ///
-/// For more information, see the [`io::stderr`] method.
+/// 更多信息，请参见 [`io::stderr`] 方法。
 ///
 /// [`io::stderr`]: stderr
 ///
-/// ### Note: Windows Portability Considerations
+/// ### 注意：Windows 可移植性方面的考量
 ///
-/// When operating in a console, the Windows implementation of this stream does not support
-/// non-UTF-8 byte sequences. Attempting to write bytes that are not valid UTF-8 will return
-/// an error.
+/// 在控制台中运行时，本流的 Windows 实现不支持非 UTF-8 的字节序列。尝试写入非合法 UTF-8 的
+/// 字节将返回一个错误。
 ///
-/// In a process with a detached console, such as one using
-/// `#![windows_subsystem = "windows"]`, or in a child process spawned from such a process,
-/// the contained handle will be null. In such cases, the standard library's `Read` and
-/// `Write` will do nothing and silently succeed. All other I/O operations, via the
-/// standard library or via raw Windows API calls, will fail.
+/// 在一个分离了控制台（detached console）的进程中——例如使用了
+/// `#![windows_subsystem = "windows"]` 的进程，或从这样的进程派生出的子进程——其中所含的
+/// 句柄将为 null。在这种情况下，标准库的 `Read` 和 `Write` 将什么都不做并静默地成功返回。
+/// 而所有其他 I/O 操作，无论是经由标准库还是经由原始的 Windows API 调用，都将失败。
 #[stable(feature = "rust1", since = "1.0.0")]
 pub struct Stderr {
     inner: &'static ReentrantLock<RefCell<StderrRaw>>,
 }
 
-/// A locked reference to the [`Stderr`] handle.
+/// 对 [`Stderr`] 句柄的一个已加锁引用。
 ///
-/// This handle implements the [`Write`] trait and is constructed via
-/// the [`Stderr::lock`] method. See its documentation for more.
+/// 这个句柄实现了 [`Write`] trait，通过 [`Stderr::lock`] 方法构造。更多内容见其文档。
 ///
-/// ### Note: Windows Portability Considerations
+/// ### 注意：Windows 可移植性方面的考量
 ///
-/// When operating in a console, the Windows implementation of this stream does not support
-/// non-UTF-8 byte sequences. Attempting to write bytes that are not valid UTF-8 will return
-/// an error.
+/// 在控制台中运行时，本流的 Windows 实现不支持非 UTF-8 的字节序列。尝试写入非合法 UTF-8 的
+/// 字节将返回一个错误。
 ///
-/// In a process with a detached console, such as one using
-/// `#![windows_subsystem = "windows"]`, or in a child process spawned from such a process,
-/// the contained handle will be null. In such cases, the standard library's `Read` and
-/// `Write` will do nothing and silently succeed. All other I/O operations, via the
-/// standard library or via raw Windows API calls, will fail.
+/// 在一个分离了控制台（detached console）的进程中——例如使用了
+/// `#![windows_subsystem = "windows"]` 的进程，或从这样的进程派生出的子进程——其中所含的
+/// 句柄将为 null。在这种情况下，标准库的 `Read` 和 `Write` 将什么都不做并静默地成功返回。
+/// 而所有其他 I/O 操作，无论是经由标准库还是经由原始的 Windows API 调用，都将失败。
 #[must_use = "if unused stderr will immediately unlock"]
 #[stable(feature = "rust1", since = "1.0.0")]
 pub struct StderrLock<'a> {
     inner: ReentrantLockGuard<'a, RefCell<StderrRaw>>,
 }
 
-/// Constructs a new handle to the standard error of the current process.
+/// 构造一个指向当前进程标准错误的新句柄。
 ///
-/// This handle is not buffered.
+/// 这个句柄是不带缓冲的（即 stderr 无缓冲）。
 ///
-/// ### Note: Windows Portability Considerations
+/// ### 注意：Windows 可移植性方面的考量
 ///
-/// When operating in a console, the Windows implementation of this stream does not support
-/// non-UTF-8 byte sequences. Attempting to write bytes that are not valid UTF-8 will return
-/// an error.
+/// 在控制台中运行时，本流的 Windows 实现不支持非 UTF-8 的字节序列。尝试写入非合法 UTF-8 的
+/// 字节将返回一个错误。
 ///
-/// In a process with a detached console, such as one using
-/// `#![windows_subsystem = "windows"]`, or in a child process spawned from such a process,
-/// the contained handle will be null. In such cases, the standard library's `Read` and
-/// `Write` will do nothing and silently succeed. All other I/O operations, via the
-/// standard library or via raw Windows API calls, will fail.
+/// 在一个分离了控制台（detached console）的进程中——例如使用了
+/// `#![windows_subsystem = "windows"]` 的进程，或从这样的进程派生出的子进程——其中所含的
+/// 句柄将为 null。在这种情况下，标准库的 `Read` 和 `Write` 将什么都不做并静默地成功返回。
+/// 而所有其他 I/O 操作，无论是经由标准库还是经由原始的 Windows API 调用，都将失败。
 ///
-/// # Examples
+/// # 示例
 ///
-/// Using implicit synchronization:
+/// 使用隐式同步：
 ///
 /// ```no_run
 /// use std::io::{self, Write};
@@ -945,7 +894,7 @@ pub struct StderrLock<'a> {
 /// }
 /// ```
 ///
-/// Using explicit synchronization:
+/// 使用显式同步：
 ///
 /// ```no_run
 /// use std::io::{self, Write};
@@ -963,9 +912,8 @@ pub struct StderrLock<'a> {
 #[stable(feature = "rust1", since = "1.0.0")]
 #[cfg_attr(not(test), rustc_diagnostic_item = "io_stderr")]
 pub fn stderr() -> Stderr {
-    // Note that unlike `stdout()` we don't use `at_exit` here to register a
-    // destructor. Stderr is not buffered, so there's no need to run a
-    // destructor for flushing the buffer
+    // 注意，与 `stdout()` 不同，我们在这里不用 `at_exit` 来注册一个析构函数。stderr 是无缓冲
+    // 的，所以没有必要为刷新缓冲而运行一个析构函数
     static INSTANCE: ReentrantLock<RefCell<StderrRaw>> =
         ReentrantLock::new(RefCell::new(stderr_raw()));
 
@@ -973,13 +921,11 @@ pub fn stderr() -> Stderr {
 }
 
 impl Stderr {
-    /// Locks this handle to the standard error stream, returning a writable
-    /// guard.
+    /// 锁定这个指向标准错误流的句柄，返回一个可写的守卫（guard）。
     ///
-    /// The lock is released when the returned lock goes out of scope. The
-    /// returned guard also implements the [`Write`] trait for writing data.
+    /// 当返回的锁离开作用域时，锁会被释放。返回的守卫同样实现了 [`Write`] trait 以便写入数据。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::io::{self, Write};
@@ -995,9 +941,8 @@ impl Stderr {
     /// ```
     #[stable(feature = "rust1", since = "1.0.0")]
     pub fn lock(&self) -> StderrLock<'static> {
-        // Locks this handle with 'static lifetime. This depends on the
-        // implementation detail that the underlying `ReentrantMutex` is
-        // static.
+        // 以 'static 生命周期锁定这个句柄。这依赖于一个实现细节：底层的 `ReentrantMutex`
+        // 是 static 的。
         StderrLock { inner: self.inner.lock() }
     }
 }
@@ -1103,7 +1048,7 @@ impl fmt::Debug for StderrLock<'_> {
     }
 }
 
-/// Sets the thread-local output capture buffer and returns the old one.
+/// 设置线程局部的输出捕获缓冲（output capture buffer），并返回旧的那个。
 #[unstable(
     feature = "internal_output_capture",
     reason = "this function is meant for use in the test crate \
@@ -1118,9 +1063,9 @@ pub fn set_output_capture(sink: Option<LocalStream>) -> Option<LocalStream> {
     )
 }
 
-/// Tries to set the thread-local output capture buffer and returns the old one.
-/// This may fail once thread-local destructors are called. It's used in panic
-/// handling instead of `set_output_capture`.
+/// 尝试设置线程局部的输出捕获缓冲，并返回旧的那个。
+/// 一旦线程局部的析构函数已被调用，这可能会失败。它在 panic 处理中被使用，用以替代
+/// `set_output_capture`。
 #[unstable(
     feature = "internal_output_capture",
     reason = "this function is meant for use in the test crate \
@@ -1132,32 +1077,29 @@ pub fn try_set_output_capture(
     sink: Option<LocalStream>,
 ) -> Result<Option<LocalStream>, AccessError> {
     if sink.is_none() && !OUTPUT_CAPTURE_USED.load(Ordering::Relaxed) {
-        // OUTPUT_CAPTURE is definitely None since OUTPUT_CAPTURE_USED is false.
+        // 由于 OUTPUT_CAPTURE_USED 为 false，OUTPUT_CAPTURE 必定为 None。
         return Ok(None);
     }
     OUTPUT_CAPTURE_USED.store(true, Ordering::Relaxed);
     OUTPUT_CAPTURE.try_with(move |slot| slot.replace(sink))
 }
 
-/// Writes `args` to the capture buffer if enabled and possible, or `global_s`
-/// otherwise. `label` identifies the stream in a panic message.
+/// 如果输出捕获已启用且可用，就把 `args` 写入捕获缓冲；否则写入 `global_s`。
+/// `label` 用于在 panic 消息中标识该流。
 ///
-/// This function is used to print error messages, so it takes extra
-/// care to avoid causing a panic when `OUTPUT_CAPTURE` is unusable.
-/// For instance, if the TLS key for output capturing is already destroyed, or
-/// if the local stream is in use by another thread, it will just fall back to
-/// the global stream.
+/// 本函数用于打印错误消息，因此它会格外小心，以避免在 `OUTPUT_CAPTURE` 不可用时引发 panic。
+/// 例如，如果用于输出捕获的 TLS 键已被销毁，或者本地流正被另一个线程使用，它就会直接回退到
+/// 全局流。
 ///
-/// However, if the actual I/O causes an error, this function does panic.
+/// 不过，如果实际的 I/O 引发了错误，本函数确实会 panic。
 ///
-/// Writing to non-blocking stdout/stderr can cause an error, which will lead
-/// this function to panic.
+/// 向非阻塞（non-blocking）的 stdout/stderr 写入可能引发错误，而那将导致本函数 panic。
 fn print_to<T>(args: fmt::Arguments<'_>, global_s: fn() -> T, label: &str)
 where
     T: Write,
 {
     if print_to_buffer_if_capture_used(args) {
-        // Successfully wrote to capture buffer.
+        // 已成功写入捕获缓冲。
         return;
     }
 
@@ -1169,9 +1111,8 @@ where
 fn print_to_buffer_if_capture_used(args: fmt::Arguments<'_>) -> bool {
     OUTPUT_CAPTURE_USED.load(Ordering::Relaxed)
         && OUTPUT_CAPTURE.try_with(|s| {
-            // Note that we completely remove a local sink to write to in case
-            // our printing recursively panics/prints, so the recursive
-            // panic/print goes to the global sink instead of our local sink.
+            // 注意，我们会把本地输出端（sink）完全取出，以防我们的打印在递归过程中发生
+            // panic/打印——这样，递归的 panic/打印就会走向全局输出端，而不是我们的本地输出端。
             s.take().map(|w| {
                 let _ = w.lock().unwrap_or_else(|e| e.into_inner()).write_fmt(args);
                 s.set(Some(w));
@@ -1179,38 +1120,34 @@ fn print_to_buffer_if_capture_used(args: fmt::Arguments<'_>) -> bool {
         }) == Ok(Some(()))
 }
 
-/// Used by impl Termination for Result to print error after `main` or a test
-/// has returned. Should avoid panicking, although we can't help it if one of
-/// the Display impls inside args decides to.
+/// 供 `impl Termination for Result` 使用，用于在 `main` 或某个测试返回之后打印错误。本函数
+/// 应当避免 panic——尽管如果 args 内部的某个 Display 实现非要 panic，我们也无能为力。
 pub(crate) fn attempt_print_to_stderr(args: fmt::Arguments<'_>) {
     if print_to_buffer_if_capture_used(args) {
         return;
     }
 
-    // Ignore error if the write fails, for example because stderr is already
-    // closed. There is not much point panicking at this point.
+    // 如果写入失败就忽略该错误，例如因为 stderr 已经被关闭。在这一时刻 panic 没有太大意义。
     let _ = stderr().write_fmt(args);
 }
 
-/// Trait to determine if a descriptor/handle refers to a terminal/tty.
+/// 用于判断某个描述符/句柄是否指向一个终端（terminal/tty）的 trait。
 #[stable(feature = "is_terminal", since = "1.70.0")]
 pub trait IsTerminal: crate::sealed::Sealed {
-    /// Returns `true` if the descriptor/handle refers to a terminal/tty.
+    /// 如果该描述符/句柄指向一个终端（terminal/tty），返回 `true`。
     ///
-    /// On platforms where Rust does not know how to detect a terminal yet, this will return
-    /// `false`. This will also return `false` if an unexpected error occurred, such as from
-    /// passing an invalid file descriptor.
+    /// 在 Rust 尚不知如何检测终端的平台上，本方法将返回 `false`。如果发生了意料之外的错误
+    ///（例如传入了一个无效的文件描述符），它也会返回 `false`。
     ///
     /// # Platform-specific behavior
     ///
-    /// On Windows, in addition to detecting consoles, this currently uses some heuristics to
-    /// detect older msys/cygwin/mingw pseudo-terminals based on device name: devices with names
-    /// starting with `msys-` or `cygwin-` and ending in `-pty` will be considered terminals.
-    /// Note that this [may change in the future][changes].
+    /// 在 Windows 上，除了检测控制台之外，本方法目前还使用了一些基于设备名的启发式方法来检测
+    /// 较旧的 msys/cygwin/mingw 伪终端（pseudo-terminal）：设备名以 `msys-` 或 `cygwin-`
+    /// 开头、并以 `-pty` 结尾的，会被视为终端。注意这[将来可能会改变][changes]。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// An example of a type for which `IsTerminal` is implemented is [`Stdin`]:
+    /// 一个实现了 `IsTerminal` 的类型示例是 [`Stdin`]：
     ///
     /// ```no_run
     /// use std::io::{self, IsTerminal, Write};
@@ -1218,7 +1155,7 @@ pub trait IsTerminal: crate::sealed::Sealed {
     /// fn main() -> io::Result<()> {
     ///     let stdin = io::stdin();
     ///
-    ///     // Indicate that the user is prompted for input, if this is a terminal.
+    ///     // 如果这是一个终端，就提示用户输入。
     ///     if stdin.is_terminal() {
     ///         print!("> ");
     ///         io::stdout().flush()?;
@@ -1233,12 +1170,11 @@ pub trait IsTerminal: crate::sealed::Sealed {
     /// }
     /// ```
     ///
-    /// The example can be run in two ways:
+    /// 这个示例可以用两种方式运行：
     ///
-    /// - If you run this example by piping some text to it, e.g. `echo "foo" | path/to/executable`
-    ///   it will print: `Hello foo`.
-    /// - If you instead run the example interactively by running `path/to/executable` directly, it will
-    ///   prompt for input.
+    /// - 如果你通过把一些文本管道喂给它来运行，例如 `echo "foo" | path/to/executable`，
+    ///   它将打印：`Hello foo`。
+    /// - 如果你改为直接运行 `path/to/executable`、以交互方式运行该示例，它将提示你输入。
     ///
     /// [changes]: io#platform-specific-behavior
     /// [`Stdin`]: crate::io::Stdin

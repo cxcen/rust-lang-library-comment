@@ -1,5 +1,5 @@
-// Only used on NetBSD. If other platforms start using id-based parking, use
-// separate modules for each platform.
+// 仅在 NetBSD 上使用。如果其他平台也开始使用基于 id 的 parking，
+// 请为每个平台使用各自独立的模块。
 #![cfg(target_os = "netbsd")]
 
 use libc::{_lwp_park, _lwp_self, _lwp_unpark, CLOCK_MONOTONIC, c_long, lwpid_t, time_t, timespec};
@@ -23,14 +23,13 @@ pub fn park(hint: usize) {
 
 pub fn park_timeout(dur: Duration, hint: usize) {
     let mut timeout = timespec {
-        // Saturate so that the operation will definitely time out
-        // (even if it is after the heat death of the universe).
+        // 做饱和处理，使该操作一定会超时
+        //（即便那是在宇宙热寂之后）。
         tv_sec: dur.as_secs().try_into().ok().unwrap_or(time_t::MAX),
         tv_nsec: dur.subsec_nanos() as c_long,
     };
 
-    // Timeout needs to be mutable since it is modified on NetBSD 9.0 and
-    // above.
+    // timeout 需要是可变的，因为在 NetBSD 9.0 及以上版本它会被修改。
     unsafe {
         _lwp_park(
             CLOCK_MONOTONIC,

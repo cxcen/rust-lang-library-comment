@@ -1,70 +1,58 @@
-//! SGX-specific extensions to general I/O primitives
+//! 针对通用 I/O 基础类型的 SGX 平台特定扩展
 //!
-//! SGX file descriptors behave differently from Unix file descriptors. See the
-//! description of [`TryIntoRawFd`] for more details.
+//! SGX 文件描述符的行为与 Unix 文件描述符不同。更多细节请参阅 [`TryIntoRawFd`] 的说明。
 #![unstable(feature = "sgx_platform", issue = "56975")]
 
 use crate::net;
 pub use crate::sys::abi::usercalls::raw::Fd as RawFd;
 use crate::sys::{self, AsInner, FromInner, IntoInner, TryIntoInner};
 
-/// A trait to extract the raw SGX file descriptor from an underlying
-/// object.
+/// 用于从底层对象中提取原始 SGX 文件描述符的 trait。
 #[unstable(feature = "sgx_platform", issue = "56975")]
 pub trait AsRawFd {
-    /// Extracts the raw file descriptor.
+    /// 提取原始文件描述符。
     ///
-    /// This method does **not** pass ownership of the raw file descriptor
-    /// to the caller. The descriptor is only guaranteed to be valid while
-    /// the original object has not yet been destroyed.
+    /// 本方法**不会**将原始文件描述符的所有权转交给调用方。仅在原始对象尚未被销毁期间，
+    /// 该描述符才保证有效。
     #[unstable(feature = "sgx_platform", issue = "56975")]
     fn as_raw_fd(&self) -> RawFd;
 }
 
-/// A trait to express the ability to construct an object from a raw file
-/// descriptor.
+/// 用于表达从原始文件描述符构造对象之能力的 trait。
 #[unstable(feature = "sgx_platform", issue = "56975")]
 pub trait FromRawFd {
-    /// An associated type that contains relevant metadata for `Self`.
+    /// 一个关联类型，包含 `Self` 的相关元数据。
     type Metadata: Default;
 
-    /// Constructs a new instance of `Self` from the given raw file
-    /// descriptor and metadata.
+    /// 从给定的原始文件描述符和元数据构造一个新的 `Self` 实例。
     ///
-    /// This function is typically used to **consume ownership** of the
-    /// specified file descriptor. When used in this way, the returned object
-    /// will take responsibility for closing it when the object goes out of
-    /// scope.
+    /// 本函数通常用于**取得（consume）**所指定文件描述符的所有权。以这种方式使用时，
+    /// 返回的对象将负责在其离开作用域时关闭该描述符。
     ///
-    /// However, consuming ownership is not strictly required. Use a
-    /// [`From<OwnedFd>::from`] implementation for an API which strictly
-    /// consumes ownership.
+    /// 然而，取得所有权并非严格必需。对于严格取得所有权的 API，请使用
+    /// [`From<OwnedFd>::from`] 实现。
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// The `fd` passed in must be an [owned file descriptor][io-safety];
-    /// in particular, it must be open.
-    // FIXME: say something about `metadata`.
+    /// 传入的 `fd` 必须是一个[拥有所有权的文件描述符][io-safety]；
+    /// 特别地，它必须处于打开状态。
+    // FIXME: 关于 `metadata` 应当补充一些说明。
     ///
     /// [io-safety]: io#io-safety
     #[unstable(feature = "sgx_platform", issue = "56975")]
     unsafe fn from_raw_fd(fd: RawFd, metadata: Self::Metadata) -> Self;
 }
 
-/// A trait to express the ability to consume an object and acquire ownership of
-/// its raw file descriptor.
+/// 用于表达消耗一个对象并取得其原始文件描述符所有权之能力的 trait。
 #[unstable(feature = "sgx_platform", issue = "56975")]
 pub trait TryIntoRawFd: Sized {
-    /// Consumes this object, returning the raw underlying file descriptor, if
-    /// this object is not cloned.
+    /// 消耗此对象，在此对象未被克隆的情况下返回底层的原始文件描述符。
     ///
-    /// This function **transfers ownership** of the underlying file descriptor
-    /// to the caller. Callers are then the unique owners of the file descriptor
-    /// and must close the descriptor once it's no longer needed.
+    /// 本函数将底层文件描述符的所有权**转移（transfer）**给调用方。此后调用方是该文件
+    /// 描述符的唯一所有者，必须在不再需要时关闭该描述符。
     ///
-    /// Unlike other platforms, on SGX, the file descriptor is shared between
-    /// all clones of an object. To avoid race conditions, this function will
-    /// only return `Ok` when called on the final clone.
+    /// 与其他平台不同，在 SGX 上，文件描述符在一个对象的所有克隆之间共享。为避免竞态条件，
+    /// 本函数仅在对最后一个克隆调用时才会返回 `Ok`。
     #[unstable(feature = "sgx_platform", issue = "56975")]
     fn try_into_raw_fd(self) -> Result<RawFd, Self>;
 }
@@ -83,13 +71,13 @@ impl AsRawFd for net::TcpListener {
     }
 }
 
-/// Metadata for `TcpStream`.
+/// `TcpStream` 的元数据。
 #[derive(Debug, Clone, Default)]
 #[unstable(feature = "sgx_platform", issue = "56975")]
 pub struct TcpStreamMetadata {
-    /// Local address of the TCP stream
+    /// TCP 流的本地地址
     pub local_addr: Option<String>,
-    /// Peer address of the TCP stream
+    /// TCP 流的对端地址
     pub peer_addr: Option<String>,
 }
 
@@ -104,11 +92,11 @@ impl FromRawFd for net::TcpStream {
     }
 }
 
-/// Metadata for `TcpListener`.
+/// `TcpListener` 的元数据。
 #[derive(Debug, Clone, Default)]
 #[unstable(feature = "sgx_platform", issue = "56975")]
 pub struct TcpListenerMetadata {
-    /// Local address of the TCP listener
+    /// TCP 监听器的本地地址
     pub local_addr: Option<String>,
 }
 

@@ -7,8 +7,8 @@ pub(crate) macro syscall {
         unsafe fn $name($($param: $t),*) -> $ret {
             weak!(fn $name($($param: $t),*) -> $ret;);
 
-            // Use a weak symbol from libc when possible, allowing `LD_PRELOAD`
-            // interposition, but if it's not found just use a raw syscall.
+            // 尽可能使用 libc 中的弱符号，从而允许 `LD_PRELOAD`
+            // 拦截（interposition）；若该符号未找到，则退回到直接发起裸系统调用。
             if let Some(fun) = $name.get() {
                 unsafe { fun($($param),*) }
             } else {

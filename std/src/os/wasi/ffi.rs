@@ -1,4 +1,4 @@
-//! WASI-specific extensions to primitives in the [`std::ffi`] module
+//! 针对 [`std::ffi`] 模块中各类基础类型的 WASI 平台特定扩展
 //!
 //! [`std::ffi`]: crate::ffi
 

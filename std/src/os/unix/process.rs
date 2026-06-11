@@ -1,4 +1,4 @@
-//! Unix-specific extensions to primitives in the [`std::process`] module.
+//! 针对 [`std::process`] 模块中各基础类型的 Unix 特有扩展。
 //!
 //! [`std::process`]: crate::process
 
@@ -18,8 +18,8 @@ cfg_select! {
         type GroupId = u16;
     }
     target_os = "nto" => {
-        // Both IDs are signed, see `sys/target_nto.h` of the QNX Neutrino SDP.
-        // Only positive values should be used, see e.g.
+        // 两个 ID 都是有符号的，参见 QNX Neutrino SDP 的 `sys/target_nto.h`。
+        // 只应使用正值，参见例如
         // https://www.qnx.com/developers/docs/7.1/#com.qnx.doc.neutrino.lib_ref/topic/s/setuid.html
         type UserId = i32;
         type GroupId = i32;
@@ -30,78 +30,62 @@ cfg_select! {
     }
 }
 
-/// Unix-specific extensions to the [`process::Command`] builder.
+/// 针对 [`process::Command`] 构建器的 Unix 特有扩展。
 ///
-/// This trait is sealed: it cannot be implemented outside the standard library.
-/// This is so that future additional methods are not breaking changes.
+/// 该 trait 是封闭的（sealed）：它不能在标准库之外被实现。
+/// 这样做是为了让未来新增的方法不会成为破坏性变更（breaking changes）。
 #[stable(feature = "rust1", since = "1.0.0")]
 pub trait CommandExt: Sealed {
-    /// Sets the child process's user ID. This translates to a
-    /// `setuid` call in the child process. Failure in the `setuid`
-    /// call will cause the spawn to fail.
+    /// 设置子进程的用户 ID。这会在子进程中转化为一次 `setuid` 调用。
+    /// `setuid` 调用失败将导致派生（spawn）失败。
     ///
     /// # Notes
     ///
-    /// This will also trigger a call to `setgroups(0, NULL)` in the child
-    /// process if no groups have been specified.
-    /// This removes supplementary groups that might have given the child
-    /// unwanted permissions.
+    /// 如果未指定任何组，这还会在子进程中触发一次 `setgroups(0, NULL)` 调用。
+    /// 这会移除那些可能赋予子进程不期望权限的补充组（supplementary groups）。
     #[stable(feature = "rust1", since = "1.0.0")]
     fn uid(&mut self, id: UserId) -> &mut process::Command;
 
-    /// Similar to `uid`, but sets the group ID of the child process. This has
-    /// the same semantics as the `uid` field.
+    /// 与 `uid` 类似，但设置子进程的组 ID。它与 `uid` 字段具有相同的语义。
     #[stable(feature = "rust1", since = "1.0.0")]
     fn gid(&mut self, id: GroupId) -> &mut process::Command;
 
-    /// Sets the supplementary group IDs for the calling process. Translates to
-    /// a `setgroups` call in the child process.
+    /// 设置调用进程的补充组 ID（supplementary group IDs）。这会在子进程中转化为
+    /// 一次 `setgroups` 调用。
     #[unstable(feature = "setgroups", issue = "90747")]
     fn groups(&mut self, groups: &[GroupId]) -> &mut process::Command;
 
-    /// Schedules a closure to be run just before the `exec` function is
-    /// invoked.
+    /// 安排一个闭包，使其恰好在 `exec` 函数被调用之前运行。
     ///
-    /// The closure is allowed to return an I/O error whose OS error code will
-    /// be communicated back to the parent and returned as an error from when
-    /// the spawn was requested.
+    /// 该闭包允许返回一个 I/O 错误，其操作系统错误码将被回传给父进程，并在请求
+    /// 派生（spawn）时作为错误返回。
     ///
-    /// Multiple closures can be registered and they will be called in order of
-    /// their registration. If a closure returns `Err` then no further closures
-    /// will be called and the spawn operation will immediately return with a
-    /// failure.
+    /// 可以注册多个闭包，它们将按注册顺序被调用。如果某个闭包返回 `Err`，则不会
+    /// 再调用后续闭包，且派生操作会立即以失败返回。
     ///
     /// # Notes and Safety
     ///
-    /// This closure will be run in the context of the child process after a
-    /// `fork`. This primarily means that any modifications made to memory on
-    /// behalf of this closure will **not** be visible to the parent process.
-    /// This is often a very constrained environment where normal operations
-    /// like `malloc`, accessing environment variables through [`std::env`]
-    /// or acquiring a mutex are not guaranteed to work (due to
-    /// other threads perhaps still running when the `fork` was run).
+    /// 该闭包将在 `fork` 之后于子进程的上下文中运行。这首先意味着，代表该闭包对内存
+    /// 所做的任何修改对父进程都将**不**可见。这通常是一个受到严格约束的环境，诸如
+    /// `malloc`、通过 [`std::env`] 访问环境变量，或获取互斥锁等常规操作都不保证能够正常
+    /// 工作（因为在执行 `fork` 时，其他线程可能仍在运行）。
     ///
-    /// Note that the list of allocating functions includes [`Error::new`] and
-    /// [`Error::other`]. To signal a non-trivial error, prefer [`panic!`].
+    /// 注意，会进行分配的函数列表包括 [`Error::new`] 与 [`Error::other`]。若要发出一个
+    /// 非平凡的错误信号，请优先使用 [`panic!`]。
     ///
-    /// For further details refer to the [POSIX fork() specification]
-    /// and the equivalent documentation for any targeted
-    /// platform, especially the requirements around *async-signal-safety*.
+    /// 更多细节请参阅 [POSIX fork() specification] 以及任何目标平台的等价文档，
+    /// 尤其是围绕*异步信号安全（async-signal-safety）*的各项要求。
     ///
-    /// This also means that all resources such as file descriptors and
-    /// memory-mapped regions got duplicated. It is your responsibility to make
-    /// sure that the closure does not violate library invariants by making
-    /// invalid use of these duplicates.
+    /// 这还意味着诸如文件描述符与内存映射区域之类的所有资源都被复制了一份。确保该闭包
+    /// 不会通过对这些副本的无效使用而破坏库的不变量，是你的责任。
     ///
-    /// Panicking in the closure is safe only if all the format arguments for the
-    /// panic message can be safely formatted; this is because although
-    /// `Command` calls [`std::panic::always_abort`](crate::panic::always_abort)
-    /// before calling the pre_exec hook, panic will still try to format the
-    /// panic message.
+    /// 仅当 panic 消息的所有格式化参数都能被安全地格式化时，在该闭包中进行 panic 才是
+    /// 安全的；这是因为尽管 `Command` 会在调用 pre_exec 钩子之前先调用
+    /// [`std::panic::always_abort`](crate::panic::always_abort)，panic 仍会尝试
+    /// 格式化 panic 消息。
     ///
-    /// When this closure is run, aspects such as the stdio file descriptors and
-    /// working directory have successfully been changed, so output to these
-    /// locations might not appear where intended.
+    /// 当该闭包运行时，诸如标准 I/O 文件描述符与工作目录等方面已经被成功更改，因此
+    /// 输出到这些位置的内容可能不会出现在预期的地方。
     ///
     /// [POSIX fork() specification]:
     ///     https://pubs.opengroup.org/onlinepubs/9699919799/functions/fork.html
@@ -113,14 +97,13 @@ pub trait CommandExt: Sealed {
     where
         F: FnMut() -> io::Result<()> + Send + Sync + 'static;
 
-    /// Schedules a closure to be run just before the `exec` function is
-    /// invoked.
+    /// 安排一个闭包，使其恰好在 `exec` 函数被调用之前运行。
     ///
-    /// `before_exec` used to be a safe method, but it needs to be unsafe since the closure may only
-    /// perform operations that are *async-signal-safe*. Hence it got deprecated in favor of the
-    /// unsafe [`pre_exec`]. Meanwhile, Rust gained the ability to make an existing safe method
-    /// fully unsafe in a new edition, which is how `before_exec` became `unsafe`. It still also
-    /// remains deprecated; `pre_exec` should be used instead.
+    /// `before_exec` 曾是一个安全方法，但由于该闭包只能执行*异步信号安全
+    ///（async-signal-safe）*的操作，它需要是 unsafe 的。因此它被弃用，转而使用 unsafe 的
+    /// [`pre_exec`]。与此同时，Rust 获得了在新的 edition 中将一个现有安全方法完全标记为
+    /// unsafe 的能力，`before_exec` 正是借此变为 `unsafe`。它目前仍处于弃用状态；
+    /// 应改用 `pre_exec`。
     ///
     /// [`pre_exec`]: CommandExt::pre_exec
     #[stable(feature = "process_exec", since = "1.15.0")]
@@ -133,62 +116,51 @@ pub trait CommandExt: Sealed {
         unsafe { self.pre_exec(f) }
     }
 
-    /// Performs all the required setup by this `Command`, followed by calling
-    /// the `execvp` syscall.
+    /// 执行此 `Command` 所需的全部设置，随后调用 `execvp` 系统调用。
     ///
-    /// On success this function will not return, and otherwise it will return
-    /// an error indicating why the exec (or another part of the setup of the
-    /// `Command`) failed.
+    /// 成功时此函数不会返回，否则它将返回一个错误，指明 exec（或 `Command` 设置的
+    /// 其他某个环节）失败的原因。
     ///
-    /// `exec` not returning has the same implications as calling
-    /// [`process::exit`] – no destructors on the current stack or any other
-    /// thread’s stack will be run. Therefore, it is recommended to only call
-    /// `exec` at a point where it is fine to not run any destructors. Note,
-    /// that the `execvp` syscall independently guarantees that all memory is
-    /// freed and all file descriptors with the `CLOEXEC` option (set by default
-    /// on all file descriptors opened by the standard library) are closed.
+    /// `exec` 不返回这一点与调用 [`process::exit`] 有相同的含义——当前栈或任何其他
+    /// 线程栈上的析构函数都不会运行。因此，建议仅在“不运行任何析构函数也无妨”的位置
+    /// 调用 `exec`。注意，`execvp` 系统调用独立地保证所有内存都会被释放，且所有带有
+    /// `CLOEXEC` 选项（标准库打开的所有文件描述符默认都设置该选项）的文件描述符都会
+    /// 被关闭。
     ///
-    /// This function, unlike `spawn`, will **not** `fork` the process to create
-    /// a new child. Like spawn, however, the default behavior for the stdio
-    /// descriptors will be to inherit them from the current process.
+    /// 与 `spawn` 不同，此函数**不会**对进程进行 `fork` 以创建新的子进程。不过，与 spawn
+    /// 一样，标准 I/O 描述符的默认行为将是从当前进程继承它们。
     ///
     /// # Notes
     ///
-    /// The process may be in a "broken state" if this function returns in
-    /// error. For example the working directory, environment variables, signal
-    /// handling settings, various user/group information, or aspects of stdio
-    /// file descriptors may have changed. If a "transactional spawn" is
-    /// required to gracefully handle errors it is recommended to use the
-    /// cross-platform `spawn` instead.
+    /// 如果此函数以错误返回，进程可能处于“损坏状态（broken state）”。例如工作目录、
+    /// 环境变量、信号处理设置、各种用户/组信息，或标准 I/O 文件描述符的某些方面可能
+    /// 已被更改。如果需要一次“事务式派生（transactional spawn）”来优雅地处理错误，
+    /// 建议改用跨平台的 `spawn`。
     #[stable(feature = "process_exec2", since = "1.9.0")]
     #[must_use]
     fn exec(&mut self) -> io::Error;
 
-    /// Set executable argument
+    /// 设置可执行文件参数
     ///
-    /// Set the first process argument, `argv[0]`, to something other than the
-    /// default executable path.
+    /// 把第一个进程参数 `argv[0]` 设置为默认可执行文件路径之外的某个值。
     #[stable(feature = "process_set_argv0", since = "1.45.0")]
     fn arg0<S>(&mut self, arg: S) -> &mut process::Command
     where
         S: AsRef<OsStr>;
 
-    /// Sets the process group ID (PGID) of the child process. Equivalent to a
-    /// `setpgid` call in the child process, but may be more efficient.
+    /// 设置子进程的进程组 ID（PGID）。等价于在子进程中进行一次 `setpgid` 调用，
+    /// 但可能更高效。
     ///
-    /// Process groups determine which processes receive signals.
+    /// 进程组决定哪些进程会接收信号。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Pressing Ctrl-C in a terminal will send SIGINT to all processes in
-    /// the current foreground process group. By spawning the `sleep`
-    /// subprocess in a new process group, it will not receive SIGINT from the
-    /// terminal.
+    /// 在终端中按下 Ctrl-C 会向当前前台进程组中的所有进程发送 SIGINT。通过在一个新的
+    /// 进程组中派生 `sleep` 子进程，它将不会从终端接收到 SIGINT。
     ///
-    /// The parent process could install a signal handler and manage the
-    /// subprocess on its own terms.
+    /// 父进程可以安装一个信号处理器，并按自己的方式管理该子进程。
     ///
-    /// A process group ID of 0 will use the process ID as the PGID.
+    /// 进程组 ID 为 0 将使用进程 ID 作为 PGID。
     ///
     /// ```no_run
     /// use std::process::Command;
@@ -205,15 +177,13 @@ pub trait CommandExt: Sealed {
     #[stable(feature = "process_set_process_group", since = "1.64.0")]
     fn process_group(&mut self, pgroup: i32) -> &mut process::Command;
 
-    /// Set the root of the child process. This calls `chroot` in the child process before executing
-    /// the command.
+    /// 设置子进程的根目录。这会在执行该命令之前于子进程中调用 `chroot`。
     ///
-    /// This happens before changing to the directory specified with
-    /// [`process::Command::current_dir`], and that directory will be relative to the new root.
+    /// 这发生在切换到由 [`process::Command::current_dir`] 指定的目录之前，且该目录
+    /// 将相对于新的根目录。
     ///
-    /// If no directory has been specified with [`process::Command::current_dir`], this will set the
-    /// directory to `/`, to avoid leaving the current directory outside the chroot. (This is an
-    /// intentional difference from the underlying `chroot` system call.)
+    /// 如果没有用 [`process::Command::current_dir`] 指定任何目录，这将把目录设置为 `/`，
+    /// 以避免把当前目录留在 chroot 之外。（这是与底层 `chroot` 系统调用有意为之的差异。）
     #[unstable(feature = "process_chroot", issue = "141298")]
     fn chroot<P: AsRef<Path>>(&mut self, dir: P) -> &mut process::Command;
 
@@ -247,8 +217,8 @@ impl CommandExt for process::Command {
     }
 
     fn exec(&mut self) -> io::Error {
-        // NOTE: This may *not* be safe to call after `libc::fork`, because it
-        // may allocate. That may be worth fixing at some point in the future.
+        // 注意：在 `libc::fork` 之后调用它可能*不*安全，因为它可能进行分配。
+        // 这一点也许在将来的某个时刻值得修复。
         self.as_inner_mut().exec(sys::process::Stdio::Inherit)
     }
 
@@ -276,62 +246,59 @@ impl CommandExt for process::Command {
     }
 }
 
-/// Unix-specific extensions to [`process::ExitStatus`] and
-/// [`ExitStatusError`](process::ExitStatusError).
+/// 针对 [`process::ExitStatus`] 与
+/// [`ExitStatusError`](process::ExitStatusError) 的 Unix 特有扩展。
 ///
-/// On Unix, `ExitStatus` **does not necessarily represent an exit status**, as
-/// passed to the `_exit` system call or returned by
-/// [`ExitStatus::code()`](crate::process::ExitStatus::code).  It represents **any wait status**
-/// as returned by one of the `wait` family of system
-/// calls.
+/// 在 Unix 上，`ExitStatus` **未必表示一个退出状态（exit status）**——退出状态指
+/// 传给 `_exit` 系统调用、或由 [`ExitStatus::code()`](crate::process::ExitStatus::code)
+/// 返回的那种值。它表示由 `wait` 系列系统调用之一返回的**任意等待状态（wait status）**。
 ///
-/// A Unix wait status (a Rust `ExitStatus`) can represent a Unix exit status, but can also
-/// represent other kinds of process event.
+/// 一个 Unix 等待状态（即 Rust 的 `ExitStatus`）可以表示一个 Unix 退出状态，但也可以
+/// 表示其他种类的进程事件。
 ///
-/// This trait is sealed: it cannot be implemented outside the standard library.
-/// This is so that future additional methods are not breaking changes.
+/// 该 trait 是封闭的（sealed）：它不能在标准库之外被实现。
+/// 这样做是为了让未来新增的方法不会成为破坏性变更（breaking changes）。
 #[stable(feature = "rust1", since = "1.0.0")]
 pub trait ExitStatusExt: Sealed {
-    /// Creates a new `ExitStatus` or `ExitStatusError` from the raw underlying integer status
-    /// value from `wait`
+    /// 从 `wait` 返回的底层裸整数状态值创建一个新的 `ExitStatus` 或 `ExitStatusError`
     ///
-    /// The value should be a **wait status, not an exit status**.
+    /// 该值应当是一个**等待状态（wait status），而非退出状态（exit status）**。
     ///
     /// # Panics
     ///
-    /// Panics on an attempt to make an `ExitStatusError` from a wait status of `0`.
+    /// 尝试从等待状态 `0` 构造 `ExitStatusError` 时会 panic。
     ///
-    /// Making an `ExitStatus` always succeeds and never panics.
+    /// 构造 `ExitStatus` 总是成功，永远不会 panic。
     #[stable(feature = "exit_status_from", since = "1.12.0")]
     fn from_raw(raw: i32) -> Self;
 
-    /// If the process was terminated by a signal, returns that signal.
+    /// 如果进程是被信号终止的，则返回该信号。
     ///
-    /// In other words, if `WIFSIGNALED`, this returns `WTERMSIG`.
+    /// 换句话说，如果 `WIFSIGNALED`，则返回 `WTERMSIG`。
     #[stable(feature = "rust1", since = "1.0.0")]
     fn signal(&self) -> Option<i32>;
 
-    /// If the process was terminated by a signal, says whether it dumped core.
+    /// 如果进程是被信号终止的，则给出它是否转储了核心（dumped core）。
     #[stable(feature = "unix_process_wait_more", since = "1.58.0")]
     fn core_dumped(&self) -> bool;
 
-    /// If the process was stopped by a signal, returns that signal.
+    /// 如果进程是被信号停止（stopped）的，则返回该信号。
     ///
-    /// In other words, if `WIFSTOPPED`, this returns `WSTOPSIG`.  This is only possible if the status came from
-    /// a `wait` system call which was passed `WUNTRACED`, and was then converted into an `ExitStatus`.
+    /// 换句话说，如果 `WIFSTOPPED`，则返回 `WSTOPSIG`。只有当该状态来自一个传入了
+    /// `WUNTRACED` 的 `wait` 系统调用、并随后被转换为 `ExitStatus` 时，这才有可能。
     #[stable(feature = "unix_process_wait_more", since = "1.58.0")]
     fn stopped_signal(&self) -> Option<i32>;
 
-    /// Whether the process was continued from a stopped status.
+    /// 进程是否从停止（stopped）状态被继续（continued）。
     ///
-    /// Ie, `WIFCONTINUED`.  This is only possible if the status came from a `wait` system call
-    /// which was passed `WCONTINUED`, and was then converted into an `ExitStatus`.
+    /// 即 `WIFCONTINUED`。只有当该状态来自一个传入了 `WCONTINUED` 的 `wait` 系统调用、
+    /// 并随后被转换为 `ExitStatus` 时，这才有可能。
     #[stable(feature = "unix_process_wait_more", since = "1.58.0")]
     fn continued(&self) -> bool;
 
-    /// Returns the underlying raw `wait` status.
+    /// 返回底层的裸 `wait` 状态。
     ///
-    /// The returned integer is a **wait status, not an exit status**.
+    /// 返回的整数是一个**等待状态（wait status），而非退出状态（exit status）**。
     #[stable(feature = "unix_process_wait_more", since = "1.58.0")]
     fn into_raw(self) -> i32;
 }
@@ -394,15 +361,14 @@ impl ExitStatusExt for process::ExitStatusError {
 
 #[unstable(feature = "unix_send_signal", issue = "141975")]
 pub trait ChildExt: Sealed {
-    /// Sends a signal to a child process.
+    /// 向子进程发送一个信号。
     ///
     /// # Errors
     ///
-    /// This function will return an error if the signal is invalid. The integer values associated
-    /// with signals are implementation-specific, so it's encouraged to use a crate that provides
-    /// posix bindings.
+    /// 如果信号无效，此函数将返回错误。与信号关联的整数值是实现特定的，因此鼓励使用
+    /// 一个提供 posix 绑定的 crate。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```rust
     /// #![feature(unix_send_signal)]
@@ -441,8 +407,8 @@ impl FromRawFd for process::Stdio {
 
 #[stable(feature = "io_safety", since = "1.63.0")]
 impl From<OwnedFd> for process::Stdio {
-    /// Takes ownership of a file descriptor and returns a [`Stdio`](process::Stdio)
-    /// that can attach a stream to it.
+    /// 取得一个文件描述符的所有权，并返回一个可以将流附加到它上的
+    /// [`Stdio`](process::Stdio)。
     #[inline]
     fn from(fd: OwnedFd) -> process::Stdio {
         let fd = sys::fd::FileDesc::from_inner(fd);
@@ -509,17 +475,16 @@ impl AsFd for crate::process::ChildStdin {
 
 #[stable(feature = "io_safety", since = "1.63.0")]
 impl From<crate::process::ChildStdin> for OwnedFd {
-    /// Takes ownership of a [`ChildStdin`](crate::process::ChildStdin)'s file descriptor.
+    /// 取得一个 [`ChildStdin`](crate::process::ChildStdin) 的文件描述符的所有权。
     #[inline]
     fn from(child_stdin: crate::process::ChildStdin) -> OwnedFd {
         child_stdin.into_inner().into_inner()
     }
 }
 
-/// Creates a `ChildStdin` from the provided `OwnedFd`.
+/// 从所提供的 `OwnedFd` 创建一个 `ChildStdin`。
 ///
-/// The provided file descriptor must point to a pipe
-/// with the `CLOEXEC` flag set.
+/// 所提供的文件描述符必须指向一个设置了 `CLOEXEC` 标志的管道（pipe）。
 #[stable(feature = "child_stream_from_fd", since = "1.74.0")]
 impl From<OwnedFd> for process::ChildStdin {
     #[inline]
@@ -539,17 +504,16 @@ impl AsFd for crate::process::ChildStdout {
 
 #[stable(feature = "io_safety", since = "1.63.0")]
 impl From<crate::process::ChildStdout> for OwnedFd {
-    /// Takes ownership of a [`ChildStdout`](crate::process::ChildStdout)'s file descriptor.
+    /// 取得一个 [`ChildStdout`](crate::process::ChildStdout) 的文件描述符的所有权。
     #[inline]
     fn from(child_stdout: crate::process::ChildStdout) -> OwnedFd {
         child_stdout.into_inner().into_inner()
     }
 }
 
-/// Creates a `ChildStdout` from the provided `OwnedFd`.
+/// 从所提供的 `OwnedFd` 创建一个 `ChildStdout`。
 ///
-/// The provided file descriptor must point to a pipe
-/// with the `CLOEXEC` flag set.
+/// 所提供的文件描述符必须指向一个设置了 `CLOEXEC` 标志的管道（pipe）。
 #[stable(feature = "child_stream_from_fd", since = "1.74.0")]
 impl From<OwnedFd> for process::ChildStdout {
     #[inline]
@@ -569,17 +533,16 @@ impl AsFd for crate::process::ChildStderr {
 
 #[stable(feature = "io_safety", since = "1.63.0")]
 impl From<crate::process::ChildStderr> for OwnedFd {
-    /// Takes ownership of a [`ChildStderr`](crate::process::ChildStderr)'s file descriptor.
+    /// 取得一个 [`ChildStderr`](crate::process::ChildStderr) 的文件描述符的所有权。
     #[inline]
     fn from(child_stderr: crate::process::ChildStderr) -> OwnedFd {
         child_stderr.into_inner().into_inner()
     }
 }
 
-/// Creates a `ChildStderr` from the provided `OwnedFd`.
+/// 从所提供的 `OwnedFd` 创建一个 `ChildStderr`。
 ///
-/// The provided file descriptor must point to a pipe
-/// with the `CLOEXEC` flag set.
+/// 所提供的文件描述符必须指向一个设置了 `CLOEXEC` 标志的管道（pipe）。
 #[stable(feature = "child_stream_from_fd", since = "1.74.0")]
 impl From<OwnedFd> for process::ChildStderr {
     #[inline]
@@ -589,7 +552,7 @@ impl From<OwnedFd> for process::ChildStderr {
     }
 }
 
-/// Returns the OS-assigned process identifier associated with this process's parent.
+/// 返回与此进程的父进程关联的、由操作系统分配的进程标识符。
 #[must_use]
 #[stable(feature = "unix_ppid", since = "1.27.0")]
 pub fn parent_id() -> u32 {

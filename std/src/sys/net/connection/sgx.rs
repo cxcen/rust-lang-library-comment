@@ -64,24 +64,22 @@ impl fmt::Debug for TcpStream {
     }
 }
 
-/// Converts each address in `addr` into a hostname.
+/// 将 `addr` 中的每个地址转换为一个主机名。
 ///
-/// SGX doesn't support DNS resolution but rather accepts hostnames in
-/// the same place as socket addresses. So, to make e.g.
+/// SGX 不支持 DNS 解析，而是在 socket 地址所在的位置直接接受主机名。
+/// 因此，为了让诸如
 /// ```rust
 /// TcpStream::connect("example.com:80")`
 /// ```
-/// work, the DNS lookup returns a special error (`NonIpSockAddr`) instead,
-/// which contains the hostname being looked up. When `.to_socket_addrs()`
-/// fails, we inspect the error and try recover the hostname from it. If that
-/// succeeds, we thus continue with the hostname.
+/// 之类的代码能正常工作，DNS 查询会转而返回一个特殊错误（`NonIpSockAddr`），
+/// 其中包含了正在查询的主机名。当 `.to_socket_addrs()` 失败时，我们检查
+/// 该错误并尝试从中恢复主机名。如果成功，我们便继续使用该主机名。
 ///
-/// This is a terrible hack and leads to buggy code. For instance, when users
-/// use the result of `.to_socket_addrs()` in their own `ToSocketAddrs`
-/// implementation to select from a list of possible URLs, the only URL used
-/// will be that of the last item tried.
-// FIXME: This is a terrible, terrible hack. Fixing this requires Fortanix to
-// add a method for resolving addresses.
+/// 这是一个糟糕的 hack，会导致代码有 bug。例如，当用户在自己的
+/// `ToSocketAddrs` 实现中使用 `.to_socket_addrs()` 的结果，以从一组可能的
+/// URL 列表中进行选择时，唯一被使用的 URL 将是最后尝试的那一项。
+// FIXME: 这是一个极其糟糕的 hack。修复它需要 Fortanix 添加一个用于解析
+// 地址的方法。
 fn each_addr<A: ToSocketAddrs, F, T>(addr: A, mut f: F) -> io::Result<T>
 where
     F: FnMut(&str) -> io::Result<T>,
@@ -91,7 +89,7 @@ where
             let mut last_err = None;
             let mut encoded = String::new();
             for addr in addrs {
-                // Format the IP address as a string, reusing the buffer.
+                // 将 IP 地址格式化为字符串，复用该缓冲区。
                 encoded.clear();
                 write!(encoded, "{}", &addr).unwrap();
 
@@ -116,7 +114,7 @@ where
 fn addr_to_sockaddr(addr: Option<&str>) -> io::Result<SocketAddr> {
     addr.ok_or(io::ErrorKind::AddrNotAvailable)?
         .to_socket_addrs()
-        // unwrap OK: if an iterator is returned, we're guaranteed to get exactly one entry
+        // unwrap OK：如果返回了一个迭代器，那么我们必定恰好得到一个条目
         .map(|mut it| it.next().unwrap())
 }
 
@@ -251,8 +249,8 @@ impl AsInner<Socket> for TcpStream {
     }
 }
 
-// `Inner` includes `peer_addr` so that a `TcpStream` maybe correctly
-// reconstructed if `Socket::try_into_inner` fails.
+// `Inner` 包含 `peer_addr`，以便在 `Socket::try_into_inner` 失败时
+// 能正确地重新构造出一个 `TcpStream`。
 impl IntoInner<(Socket, Option<String>)> for TcpStream {
     fn into_inner(self) -> (Socket, Option<String>) {
         (self.inner, self.peer_addr)

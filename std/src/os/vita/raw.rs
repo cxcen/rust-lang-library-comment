@@ -1,4 +1,4 @@
-//! vita raw type definitions
+//! vita 原始类型定义
 
 #![stable(feature = "raw_ext", since = "1.1.0")]
 #![deprecated(

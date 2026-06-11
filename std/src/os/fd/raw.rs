@@ -1,4 +1,4 @@
-//! Raw Unix-like file descriptors.
+//! 裸（raw）类 Unix 文件描述符。
 
 #![stable(feature = "rust1", since = "1.0.0")]
 
@@ -25,7 +25,7 @@ use crate::os::wasi::io::OwnedFd;
 #[cfg(not(target_os = "trusty"))]
 use crate::sys::{AsInner, FromInner, IntoInner};
 
-/// Raw file descriptors.
+/// 裸文件描述符。
 #[stable(feature = "rust1", since = "1.0.0")]
 #[cfg(all(not(target_os = "hermit"), not(target_os = "motor")))]
 pub type RawFd = raw::c_int;
@@ -33,25 +33,22 @@ pub type RawFd = raw::c_int;
 #[cfg(any(target_os = "hermit", target_os = "motor"))]
 pub type RawFd = i32;
 
-/// A trait to extract the raw file descriptor from an underlying object.
+/// 用于从底层对象中提取裸文件描述符的 trait。
 ///
-/// This is only available on unix and WASI platforms and must be imported in
-/// order to call the method. Windows platforms have a corresponding
-/// `AsRawHandle` and `AsRawSocket` set of traits.
+/// 该 trait 仅在 unix 与 WASI 平台上可用，且必须导入后才能调用其方法。
+/// Windows 平台有对应的 `AsRawHandle` 与 `AsRawSocket` 系列 trait。
 #[stable(feature = "rust1", since = "1.0.0")]
 pub trait AsRawFd {
-    /// Extracts the raw file descriptor.
+    /// 提取裸文件描述符。
     ///
-    /// This function is typically used to **borrow** an owned file descriptor.
-    /// When used in this way, this method does **not** pass ownership of the
-    /// raw file descriptor to the caller, and the file descriptor is only
-    /// guaranteed to be valid while the original object has not yet been
-    /// destroyed.
+    /// 该函数通常用于**借用**一个拥有所有权的文件描述符。以这种方式使用时，
+    /// 本方法**不会**把裸文件描述符的所有权转移给调用方，且该文件描述符
+    /// 仅在原对象尚未被销毁期间保证有效。
     ///
-    /// However, borrowing is not strictly required. See [`AsFd::as_fd`]
-    /// for an API which strictly borrows a file descriptor.
+    /// 然而，借用并非严格必需。若需一个严格执行借用语义的 API，参见
+    /// [`AsFd::as_fd`]。
     ///
-    /// # Example
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs::File;
@@ -60,7 +57,7 @@ pub trait AsRawFd {
     /// use std::os::fd::{AsRawFd, RawFd};
     ///
     /// let mut f = File::open("foo.txt")?;
-    /// // Note that `raw_fd` is only valid as long as `f` exists.
+    /// // 注意 `raw_fd` 仅在 `f` 存在期间有效。
     /// #[cfg(any(unix, target_os = "wasi"))]
     /// let raw_fd: RawFd = f.as_raw_fd();
     /// # Ok::<(), io::Error>(())
@@ -69,30 +66,25 @@ pub trait AsRawFd {
     fn as_raw_fd(&self) -> RawFd;
 }
 
-/// A trait to express the ability to construct an object from a raw file
-/// descriptor.
+/// 用于表达“能够从裸文件描述符构造对象”这一能力的 trait。
 #[stable(feature = "from_raw_os", since = "1.1.0")]
 pub trait FromRawFd {
-    /// Constructs a new instance of `Self` from the given raw file
-    /// descriptor.
+    /// 从给定的裸文件描述符构造一个新的 `Self` 实例。
     ///
-    /// This function is typically used to **consume ownership** of the
-    /// specified file descriptor. When used in this way, the returned object
-    /// will take responsibility for closing it when the object goes out of
-    /// scope.
+    /// 该函数通常用于**取得（consume ownership）**指定文件描述符的所有权。
+    /// 以这种方式使用时，返回的对象将负责在其离开作用域时关闭该描述符。
     ///
-    /// However, consuming ownership is not strictly required. Use a
-    /// [`From<OwnedFd>::from`] implementation for an API which strictly
-    /// consumes ownership.
+    /// 然而，取得所有权并非严格必需。若需一个严格执行所有权取得语义的 API，
+    /// 请使用 [`From<OwnedFd>::from`] 实现。
     ///
     /// # Safety
     ///
-    /// The `fd` passed in must be an [owned file descriptor][io-safety];
-    /// in particular, it must be open.
+    /// 传入的 `fd` 必须是一个[拥有所有权的文件描述符][io-safety]；
+    /// 尤其是，它必须处于打开状态。
     ///
     /// [io-safety]: io#io-safety
     ///
-    /// # Example
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs::File;
@@ -103,8 +95,8 @@ pub trait FromRawFd {
     /// let f = File::open("foo.txt")?;
     /// # #[cfg(any(unix, target_os = "wasi"))]
     /// let raw_fd: RawFd = f.into_raw_fd();
-    /// // SAFETY: no other functions should call `from_raw_fd`, so there
-    /// // is only one owner for the file descriptor.
+    /// // SAFETY: 不应有其他函数调用 `from_raw_fd`，因此该文件描述符
+    /// // 只有一个所有者。
     /// # #[cfg(any(unix, target_os = "wasi"))]
     /// let f = unsafe { File::from_raw_fd(raw_fd) };
     /// # Ok::<(), io::Error>(())
@@ -113,21 +105,19 @@ pub trait FromRawFd {
     unsafe fn from_raw_fd(fd: RawFd) -> Self;
 }
 
-/// A trait to express the ability to consume an object and acquire ownership of
-/// its raw file descriptor.
+/// 用于表达“能够消耗一个对象并获取其裸文件描述符所有权”这一能力的 trait。
 #[stable(feature = "into_raw_os", since = "1.4.0")]
 pub trait IntoRawFd {
-    /// Consumes this object, returning the raw underlying file descriptor.
+    /// 消耗此对象，返回其底层的裸文件描述符。
     ///
-    /// This function is typically used to **transfer ownership** of the underlying
-    /// file descriptor to the caller. When used in this way, callers are then the unique
-    /// owners of the file descriptor and must close it once it's no longer needed.
+    /// 该函数通常用于把底层文件描述符的所有权**转移（transfer ownership）**给
+    /// 调用方。以这种方式使用时，调用方随即成为该文件描述符的唯一所有者，
+    /// 并必须在不再需要它时将其关闭。
     ///
-    /// However, transferring ownership is not strictly required. Use a
-    /// [`Into<OwnedFd>::into`] implementation for an API which strictly
-    /// transfers ownership.
+    /// 然而，转移所有权并非严格必需。若需一个严格执行所有权转移语义的 API，
+    /// 请使用 [`Into<OwnedFd>::into`] 实现。
     ///
-    /// # Example
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs::File;
@@ -242,7 +232,7 @@ impl<'a> AsRawFd for io::StderrLock<'a> {
     }
 }
 
-/// This impl allows implementing traits that require `AsRawFd` on Arc.
+/// 此 impl 使得可以在 Arc 上实现那些要求 `AsRawFd` 的 trait。
 /// ```
 /// # #[cfg(any(unix, target_os = "wasi"))] mod group_cfg {
 /// # #[cfg(target_os = "wasi")]

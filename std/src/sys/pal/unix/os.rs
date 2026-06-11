@@ -1,6 +1,6 @@
-//! Implementation of `std::os` functionality for unix systems
+//! 在 unix 系统上对 `std::os` 功能的实现
 
-#![allow(unused_imports)] // lots of cfg code here
+#![allow(unused_imports)] // 这里有大量 cfg 代码
 
 #[cfg(test)]
 mod tests;
@@ -39,8 +39,7 @@ pub fn getcwd() -> io::Result<PathBuf> {
                 }
             }
 
-            // Trigger the internal buffer resizing logic of `Vec` by requiring
-            // more space than the current capacity.
+            // 通过要求比当前容量更大的空间，触发 `Vec` 内部的缓冲区扩容逻辑。
             let cap = buf.capacity();
             buf.set_len(cap);
             buf.reserve(1);
@@ -59,8 +58,8 @@ pub fn chdir(p: &path::Path) -> io::Result<()> {
     if result == 0 { Ok(()) } else { Err(io::Error::last_os_error()) }
 }
 
-// This can't just be `impl Iterator` because that requires `'a` to be live on
-// drop (see #146045).
+// 这里不能直接写成 `impl Iterator`，因为那要求 `'a` 在 drop 时仍然存活
+//（见 #146045）。
 pub type SplitPaths<'a> = iter::Map<
     slice::Split<'a, u8, impl FnMut(&u8) -> bool + 'static>,
     impl FnMut(&[u8]) -> PathBuf + 'static,
@@ -127,13 +126,13 @@ pub fn current_exe() -> io::Result<PathBuf> {
     if path.is_absolute() {
         return path.canonicalize();
     }
-    // Search PWD to infer current_exe.
+    // 搜索 PWD 以推断 current_exe。
     if let Some(pstr) = path.to_str()
         && pstr.contains("/")
     {
         return getcwd().map(|cwd| cwd.join(path))?.canonicalize();
     }
-    // Search PATH to infer current_exe.
+    // 搜索 PATH 以推断 current_exe。
     if let Some(p) = env::var_os(OsStr::from_bytes("PATH".as_bytes())) {
         for search_path in split_paths(&p) {
             let pb = search_path.join(&path);
@@ -181,7 +180,7 @@ pub fn current_exe() -> io::Result<PathBuf> {
         if sz == 0 {
             return Err(io::Error::last_os_error());
         }
-        v.set_len(sz - 1); // chop off trailing NUL
+        v.set_len(sz - 1); // 砍掉末尾的 NUL
         Ok(PathBuf::from(OsString::from_vec(v)))
     }
 }
@@ -215,7 +214,7 @@ pub fn current_exe() -> io::Result<PathBuf> {
                 ptr::null(),
                 0,
             ))?;
-            path.set_len(path_len - 1); // chop off NUL
+            path.set_len(path_len - 1); // 砍掉 NUL
             Ok(PathBuf::from(OsString::from_vec(path)))
         }
     }
@@ -275,8 +274,8 @@ pub fn current_exe() -> io::Result<PathBuf> {
 #[cfg(target_os = "nto")]
 pub fn current_exe() -> io::Result<PathBuf> {
     let mut e = crate::fs::read("/proc/self/exefile")?;
-    // Current versions of QNX Neutrino provide a null-terminated path.
-    // Ensure the trailing null byte is not returned here.
+    // 当前版本的 QNX Neutrino 会提供一个以 null 结尾的路径。
+    // 确保这里不返回末尾的 null 字节。
     if let Some(0) = e.last() {
         e.pop();
     }
@@ -298,7 +297,7 @@ pub fn current_exe() -> io::Result<PathBuf> {
         if err != 0 {
             return Err(io::Error::last_os_error());
         }
-        v.set_len(sz as usize - 1); // chop off trailing NUL
+        v.set_len(sz as usize - 1); // 砍掉末尾的 NUL
         Ok(PathBuf::from(OsString::from_vec(v)))
     }
 }
@@ -316,8 +315,8 @@ pub fn current_exe() -> io::Result<PathBuf> {
                 let filename = CStr::from_ptr(path).to_bytes();
                 let path = PathBuf::from(<OsStr as OsStrExt>::from_bytes(filename));
 
-                // Prepend a current working directory to the path if
-                // it doesn't contain an absolute pathname.
+                // 如果路径中不包含绝对路径名，
+                // 就在路径前面拼接上当前工作目录。
                 if filename[0] == b'/' { Ok(path) } else { getcwd().map(|cwd| cwd.join(path)) }
             }
         }
@@ -338,7 +337,7 @@ pub fn current_exe() -> io::Result<PathBuf> {
         if result != libc::B_OK {
             Err(io::const_error!(io::ErrorKind::Uncategorized, "error getting executable path"))
         } else {
-            // find_path adds the null terminator.
+            // find_path 会添加 null 结束符。
             let name = CStr::from_ptr(name.as_ptr()).to_bytes();
             Ok(PathBuf::from(OsStr::from_bytes(name)))
         }
@@ -392,7 +391,7 @@ pub fn current_exe() -> io::Result<PathBuf> {
     ))?;
     let path = PathBuf::from(exe_path);
 
-    // Prepend the current working directory to the path if it's not absolute.
+    // 如果路径不是绝对路径，就在前面拼接上当前工作目录。
     if !path.is_absolute() { getcwd().map(|cwd| cwd.join(path)) } else { Ok(path) }
 }
 
@@ -401,58 +400,52 @@ pub fn page_size() -> usize {
     unsafe { libc::sysconf(libc::_SC_PAGESIZE) as usize }
 }
 
-// Returns the value for [`confstr(key, ...)`][posix_confstr]. Currently only
-// used on Darwin, but should work on any unix (in case we need to get
-// `_CS_PATH` or `_CS_V[67]_ENV` in the future).
+// 返回 [`confstr(key, ...)`][posix_confstr] 的值。目前仅在 Darwin 上使用，
+// 但应当能在任何 unix 上工作（以备将来我们需要获取 `_CS_PATH` 或
+// `_CS_V[67]_ENV`）。
 //
 // [posix_confstr]:
 //     https://pubs.opengroup.org/onlinepubs/9699919799/functions/confstr.html
 //
-// FIXME: Support `confstr` in Miri.
+// FIXME: 在 Miri 中支持 `confstr`。
 #[cfg(all(target_vendor = "apple", not(miri)))]
 fn confstr(key: c_int, size_hint: Option<usize>) -> io::Result<OsString> {
     let mut buf: Vec<u8> = Vec::with_capacity(0);
     let mut bytes_needed_including_nul = size_hint
         .unwrap_or_else(|| {
-            // Treat "None" as "do an extra call to get the length". In theory
-            // we could move this into the loop below, but it's hard to do given
-            // that it isn't 100% clear if it's legal to pass 0 for `len` when
-            // the buffer isn't null.
+            // 把 "None" 当作 "额外调用一次以获取长度"。理论上我们可以把这步移到
+            // 下面的循环里，但鉴于尚不能 100% 确定当缓冲区非空时为 `len` 传 0 是否
+            // 合法，这么做不太容易。
             unsafe { libc::confstr(key, core::ptr::null_mut(), 0) }
         })
         .max(1);
-    // If the value returned by `confstr` is greater than the len passed into
-    // it, then the value was truncated, meaning we need to retry. Note that
-    // while `confstr` results don't seem to change for a process, it's unclear
-    // if this is guaranteed anywhere, so looping does seem required.
+    // 如果 `confstr` 返回的值大于传给它的 len，说明该值被截断了，意味着我们需要重试。
+    // 注意，虽然 `confstr` 的结果对一个进程而言似乎不会变化，但尚不清楚这是否在任何
+    // 地方有保证，所以看来确实需要循环。
     while bytes_needed_including_nul > buf.capacity() {
-        // We write into the spare capacity of `buf`. This lets us avoid
-        // changing buf's `len`, which both simplifies `reserve` computation,
-        // allows working with `Vec<u8>` instead of `Vec<MaybeUninit<u8>>`, and
-        // may avoid a copy, since the Vec knows that none of the bytes are needed
-        // when reallocating (well, in theory anyway).
+        // 我们写入 `buf` 的空余容量中。这让我们得以避免改动 buf 的 `len`，既简化了
+        // `reserve` 的计算，又能用 `Vec<u8>` 而非 `Vec<MaybeUninit<u8>>`，并且可能
+        // 避免一次拷贝，因为 Vec 知道在重新分配时这些字节都不需要保留（嗯，至少理论上如此）。
         buf.reserve(bytes_needed_including_nul);
-        // `confstr` returns
-        // - 0 in the case of errors: we break and return an error.
-        // - The number of bytes written, iff the provided buffer is enough to
-        //   hold the entire value: we break and return the data in `buf`.
-        // - Otherwise, the number of bytes needed (including nul): we go
-        //   through the loop again.
+        // `confstr` 返回：
+        // - 出错时返回 0：我们 break 并返回错误。
+        // - 当且仅当提供的缓冲区足以容纳整个值时，返回写入的字节数：我们 break
+        //   并返回 `buf` 中的数据。
+        // - 否则，返回所需的字节数（包含 nul）：我们再走一遍循环。
         bytes_needed_including_nul =
             unsafe { libc::confstr(key, buf.as_mut_ptr().cast::<c_char>(), buf.capacity()) };
     }
-    // `confstr` returns 0 in the case of an error.
+    // `confstr` 出错时返回 0。
     if bytes_needed_including_nul == 0 {
         return Err(io::Error::last_os_error());
     }
-    // Safety: `confstr(..., buf.as_mut_ptr(), buf.capacity())` returned a
-    // non-zero value, meaning `bytes_needed_including_nul` bytes were
-    // initialized.
+    // Safety: `confstr(..., buf.as_mut_ptr(), buf.capacity())` 返回了非零值，
+    // 意味着已初始化了 `bytes_needed_including_nul` 个字节。
     unsafe {
         buf.set_len(bytes_needed_including_nul);
-        // Remove the NUL-terminator.
+        // 移除 NUL 结束符。
         let last_byte = buf.pop();
-        // ... and smoke-check that it *was* a NUL-terminator.
+        // ……并冒烟检查（smoke-check）它确实_是_一个 NUL 结束符。
         assert_eq!(last_byte, Some(0), "`confstr` provided a string which wasn't nul-terminated");
     };
     Ok(OsString::from_vec(buf))
@@ -461,8 +454,8 @@ fn confstr(key: c_int, size_hint: Option<usize>) -> io::Result<OsString> {
 #[cfg(all(target_vendor = "apple", not(miri)))]
 fn darwin_temp_dir() -> PathBuf {
     confstr(libc::_CS_DARWIN_USER_TEMP_DIR, Some(64)).map(PathBuf::from).unwrap_or_else(|_| {
-        // It failed for whatever reason (there are several possible reasons),
-        // so return the global one.
+        // 无论出于何种原因失败了（有好几种可能的原因），
+        // 都返回全局的那个。
         PathBuf::from("/tmp")
     })
 }
@@ -559,8 +552,8 @@ pub fn glibc_version() -> Option<(usize, usize)> {
     }
 }
 
-// Returns Some((major, minor)) if the string is a valid "x.y" version,
-// ignoring any extra dot-separated parts. Otherwise return None.
+// 如果字符串是有效的 "x.y" 版本则返回 Some((major, minor))，
+// 忽略任何额外的以点分隔的部分。否则返回 None。
 #[cfg(all(target_os = "linux", target_env = "gnu"))]
 fn parse_glibc_version(version: &str) -> Option<(usize, usize)> {
     let mut parsed_ints = version.split('.').map(str::parse::<usize>).fuse();

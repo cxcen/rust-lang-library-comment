@@ -79,16 +79,15 @@ pub struct PanicWriter {
 impl io::Write for PanicWriter {
     fn write(&mut self, s: &[u8]) -> core::result::Result<usize, io::Error> {
         for c in s.chunks(size_of::<usize>() * 4) {
-            // Text is grouped into 4x `usize` words. The id is 1100 plus
-            // the number of characters in this message.
-            // Ignore errors since we're already panicking.
+            // 文本被分组为 4 个 `usize` 字（words）。其 id 为 1100 加上
+            // 本条消息中的字符数。
+            // 忽略错误，因为我们已经在 panic 中了。
             try_scalar(self.log, LogScalar::AppendPanicMessage(&c).into()).ok();
         }
 
-        // Serialize the text to the graphics panic handler, only if we were able
-        // to acquire a connection to it. Text length is encoded in the `valid` field,
-        // the data itself in the buffer. Typically several messages are require to
-        // fully transmit the entire panic message.
+        // 仅当我们能够获取到与图形 panic 处理器的连接时，才把文本序列化发送给它。
+        // 文本长度编码在 `valid` 字段中，数据本身则放在缓冲区里。通常需要若干条消息
+        // 才能完整传输整条 panic 消息。
         if let Some(gfx) = self.gfx {
             #[repr(C, align(4096))]
             struct Request([u8; 4096]);
@@ -101,23 +100,22 @@ impl io::Write for PanicWriter {
         Ok(s.len())
     }
 
-    // Tests show that this does not seem to be reliably called at the end of a panic
-    // print, so, we can't rely on this to e.g. trigger a graphics update.
+    // 测试表明，它似乎不会在一次 panic 打印结束时被可靠地调用，
+    // 因此我们不能依赖它来做诸如触发一次图形更新之类的事情。
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
     }
 }
 
 pub fn panic_output() -> Option<impl io::Write> {
-    // Generally this won't fail because every server has already connected, so
-    // this is likely to succeed.
+    // 一般来说这不会失败，因为每个服务器都已经连接过了，因此这很可能会成功。
     let log = log_server();
 
-    // Send the "We're panicking" message (1000).
+    // 发送 "We're panicking"（我们正在 panic）消息（1000）。
     try_scalar(log, LogScalar::BeginPanic.into()).ok();
 
-    // This is will fail in the case that the connection table is full, or if the
-    // graphics server is not running. Most servers do not already have this connection.
+    // 在连接表已满、或图形服务器未运行的情况下，这会失败。
+    // 大多数服务器都还没有建立这个连接。
     let gfx = try_connect("panic-to-screen!");
 
     Some(PanicWriter { log, gfx })

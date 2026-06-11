@@ -19,17 +19,16 @@ use crate::net::{Shutdown, SocketAddr, ToSocketAddrs};
 use crate::sys::{AsInner, FromInner, IntoInner, net as net_imp};
 use crate::time::Duration;
 
-/// A TCP stream between a local and a remote socket.
+/// 本地套接字与远端套接字之间的 TCP 流（stream）。
 ///
-/// After creating a `TcpStream` by either [`connect`]ing to a remote host or
-/// [`accept`]ing a connection on a [`TcpListener`], data can be transmitted
-/// by [reading] and [writing] to it.
+/// 通过 [`connect`] 连接到远端主机，或在 [`TcpListener`] 上 [`accept`] 一个连接，
+/// 即可创建出 `TcpStream`；之后便可对其进行 [reading]（读）和 [writing]（写）来传输
+/// 数据。
 ///
-/// The connection will be closed when the value is dropped. The reading and writing
-/// portions of the connection can also be shut down individually with the [`shutdown`]
-/// method.
+/// 当该值被丢弃（drop）时，连接会被关闭。也可以用 [`shutdown`] 方法单独关闭连接的
+/// 读取部分与写入部分（即半关闭）。
 ///
-/// The Transmission Control Protocol is specified in [IETF RFC 793].
+/// 传输控制协议在 [IETF RFC 793] 中有详细规定。
 ///
 /// [`accept`]: TcpListener::accept
 /// [`connect`]: TcpStream::connect
@@ -38,7 +37,7 @@ use crate::time::Duration;
 /// [`shutdown`]: TcpStream::shutdown
 /// [writing]: Write
 ///
-/// # Examples
+/// # 示例(Examples）
 ///
 /// ```no_run
 /// use std::io::prelude::*;
@@ -50,32 +49,32 @@ use crate::time::Duration;
 ///     stream.write(&[1])?;
 ///     stream.read(&mut [0; 128])?;
 ///     Ok(())
-/// } // the stream is closed here
+/// } // 流在此处被关闭
 /// ```
 ///
-/// # Platform-specific Behavior
+/// # 平台特定行为(Platform-specific Behavior）
 ///
-/// On Unix, writes to the underlying socket in `SOCK_STREAM` mode are made with
-/// `MSG_NOSIGNAL` flag. This suppresses the emission of the  `SIGPIPE` signal when writing
-/// to disconnected socket. In some cases, getting a `SIGPIPE` would trigger process termination.
+/// 在 Unix 上，对处于 `SOCK_STREAM` 模式的底层套接字进行写入时会带上
+/// `MSG_NOSIGNAL` 标志。这会抑制在向已断开的套接字写入时发出 `SIGPIPE` 信号。
+/// 在某些情况下，收到 `SIGPIPE` 会触发进程终止。
 #[stable(feature = "rust1", since = "1.0.0")]
 pub struct TcpStream(net_imp::TcpStream);
 
-/// A TCP socket server, listening for connections.
+/// 一个 TCP 套接字服务器，监听连接。
 ///
-/// After creating a `TcpListener` by [`bind`]ing it to a socket address, it listens
-/// for incoming TCP connections. These can be accepted by calling [`accept`] or by
-/// iterating over the [`Incoming`] iterator returned by [`incoming`][`TcpListener::incoming`].
+/// 通过把 `TcpListener` [`bind`]（绑定）到某个套接字地址来创建它之后，它便会监听
+/// 入站的 TCP 连接。可以通过调用 [`accept`]，或通过遍历
+/// [`incoming`][`TcpListener::incoming`] 返回的 [`Incoming`] 迭代器来接受这些连接。
 ///
-/// The socket will be closed when the value is dropped.
+/// 当该值被丢弃（drop）时，套接字会被关闭。
 ///
-/// The Transmission Control Protocol is specified in [IETF RFC 793].
+/// 传输控制协议在 [IETF RFC 793] 中有详细规定。
 ///
 /// [`accept`]: TcpListener::accept
 /// [`bind`]: TcpListener::bind
 /// [IETF RFC 793]: https://tools.ietf.org/html/rfc793
 ///
-/// # Examples
+/// # 示例(Examples）
 ///
 /// ```no_run
 /// use std::net::{TcpListener, TcpStream};
@@ -87,7 +86,7 @@ pub struct TcpStream(net_imp::TcpStream);
 /// fn main() -> std::io::Result<()> {
 ///     let listener = TcpListener::bind("127.0.0.1:80")?;
 ///
-///     // accept connections and process them serially
+///     // 接受连接并依次串行处理
 ///     for stream in listener.incoming() {
 ///         handle_client(stream?);
 ///     }
@@ -97,10 +96,10 @@ pub struct TcpStream(net_imp::TcpStream);
 #[stable(feature = "rust1", since = "1.0.0")]
 pub struct TcpListener(net_imp::TcpListener);
 
-/// An iterator that infinitely [`accept`]s connections on a [`TcpListener`].
+/// 一个无限地在 [`TcpListener`] 上 [`accept`] 连接的迭代器。
 ///
-/// This `struct` is created by the [`TcpListener::incoming`] method.
-/// See its documentation for more.
+/// 此 `struct` 由 [`TcpListener::incoming`] 方法创建。
+/// 更多信息参见其文档。
 ///
 /// [`accept`]: TcpListener::accept
 #[must_use = "iterators are lazy and do nothing unless consumed"]
@@ -110,10 +109,10 @@ pub struct Incoming<'a> {
     listener: &'a TcpListener,
 }
 
-/// An iterator that infinitely [`accept`]s connections on a [`TcpListener`].
+/// 一个无限地在 [`TcpListener`] 上 [`accept`] 连接的迭代器。
 ///
-/// This `struct` is created by the [`TcpListener::into_incoming`] method.
-/// See its documentation for more.
+/// 此 `struct` 由 [`TcpListener::into_incoming`] 方法创建。
+/// 更多信息参见其文档。
 ///
 /// [`accept`]: TcpListener::accept
 #[derive(Debug)]
@@ -123,20 +122,18 @@ pub struct IntoIncoming {
 }
 
 impl TcpStream {
-    /// Opens a TCP connection to a remote host.
+    /// 打开一条到远端主机的 TCP 连接。
     ///
-    /// `addr` is an address of the remote host. Anything which implements
-    /// [`ToSocketAddrs`] trait can be supplied for the address; see this trait
-    /// documentation for concrete examples.
+    /// `addr` 是远端主机的地址。任何实现了 [`ToSocketAddrs`] trait 的类型都可以作为
+    /// 地址传入；具体示例参见该 trait 的文档。
     ///
-    /// If `addr` yields multiple addresses, `connect` will be attempted with
-    /// each of the addresses until a connection is successful. If none of
-    /// the addresses result in a successful connection, the error returned from
-    /// the last connection attempt (the last address) is returned.
+    /// 如果 `addr` 产出多个地址，`connect` 会逐一尝试这些地址，直到某次连接成功为止。
+    /// 如果所有地址都无法成功建立连接，则返回最后一次连接尝试（即最后一个地址）所返回
+    /// 的错误。
     ///
-    /// # Examples
+    /// # 示例(Examples）
     ///
-    /// Open a TCP connection to `127.0.0.1:8080`:
+    /// 打开一条到 `127.0.0.1:8080` 的 TCP 连接：
     ///
     /// ```no_run
     /// use std::net::TcpStream;
@@ -148,8 +145,8 @@ impl TcpStream {
     /// }
     /// ```
     ///
-    /// Open a TCP connection to `127.0.0.1:8080`. If the connection fails, open
-    /// a TCP connection to `127.0.0.1:8081`:
+    /// 打开一条到 `127.0.0.1:8080` 的 TCP 连接。如果连接失败，则打开一条到
+    /// `127.0.0.1:8081` 的 TCP 连接：
     ///
     /// ```no_run
     /// use std::net::{SocketAddr, TcpStream};
@@ -169,25 +166,23 @@ impl TcpStream {
         net_imp::TcpStream::connect(addr).map(TcpStream)
     }
 
-    /// Opens a TCP connection to a remote host with a timeout.
+    /// 带超时地打开一条到远端主机的 TCP 连接。
     ///
-    /// Unlike `connect`, `connect_timeout` takes a single [`SocketAddr`] since
-    /// timeout must be applied to individual addresses.
+    /// 与 `connect` 不同，`connect_timeout` 只接受单个 [`SocketAddr`]，因为超时必须
+    /// 施加到具体的某个地址上。
     ///
-    /// It is an error to pass a zero `Duration` to this function.
+    /// 向此函数传入零值 `Duration` 是错误的。
     ///
-    /// Unlike other methods on `TcpStream`, this does not correspond to a
-    /// single system call. It instead calls `connect` in nonblocking mode and
-    /// then uses an OS-specific mechanism to await the completion of the
-    /// connection request.
+    /// 与 `TcpStream` 上的其他方法不同，此方法并不对应单个系统调用。它会先以非阻塞
+    /// 模式调用 `connect`，然后使用操作系统特定的机制来等待连接请求完成。
     #[stable(feature = "tcpstream_connect_timeout", since = "1.21.0")]
     pub fn connect_timeout(addr: &SocketAddr, timeout: Duration) -> io::Result<TcpStream> {
         net_imp::TcpStream::connect_timeout(addr, timeout).map(TcpStream)
     }
 
-    /// Returns the socket address of the remote peer of this TCP connection.
+    /// 返回此 TCP 连接的远端对等方（peer）的套接字地址。
     ///
-    /// # Examples
+    /// # 示例(Examples）
     ///
     /// ```no_run
     /// use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpStream};
@@ -202,9 +197,9 @@ impl TcpStream {
         self.0.peer_addr()
     }
 
-    /// Returns the socket address of the local half of this TCP connection.
+    /// 返回此 TCP 连接本地一端的套接字地址。
     ///
-    /// # Examples
+    /// # 示例(Examples）
     ///
     /// ```no_run
     /// use std::net::{IpAddr, Ipv4Addr, TcpStream};
@@ -219,20 +214,18 @@ impl TcpStream {
         self.0.socket_addr()
     }
 
-    /// Shuts down the read, write, or both halves of this connection.
+    /// 关闭此连接的读取一端、写入一端，或两者皆关闭。
     ///
-    /// This function will cause all pending and future I/O on the specified
-    /// portions to return immediately with an appropriate value (see the
-    /// documentation of [`Shutdown`]).
+    /// 此函数会使指定部分上所有挂起的以及将来的 I/O 立即返回一个相应的值（参见
+    /// [`Shutdown`] 的文档）。
     ///
-    /// # Platform-specific behavior
+    /// # 平台特定行为(Platform-specific behavior）
     ///
-    /// Calling this function multiple times may result in different behavior,
-    /// depending on the operating system. On Linux, the second call will
-    /// return `Ok(())`, but on macOS, it will return `ErrorKind::NotConnected`.
-    /// This may change in the future.
+    /// 多次调用此函数可能导致不同的行为，取决于操作系统。在 Linux 上，第二次调用会
+    /// 返回 `Ok(())`，但在 macOS 上会返回 `ErrorKind::NotConnected`。这一点将来可能
+    /// 发生变化。
     ///
-    /// # Examples
+    /// # 示例(Examples）
     ///
     /// ```no_run
     /// use std::net::{Shutdown, TcpStream};
@@ -246,14 +239,12 @@ impl TcpStream {
         self.0.shutdown(how)
     }
 
-    /// Creates a new independently owned handle to the underlying socket.
+    /// 创建一个独立持有的、指向底层套接字的新句柄。
     ///
-    /// The returned `TcpStream` is a reference to the same stream that this
-    /// object references. Both handles will read and write the same stream of
-    /// data, and options set on one stream will be propagated to the other
-    /// stream.
+    /// 返回的 `TcpStream` 是对此对象所引用的同一条流的引用。两个句柄都会读写同一条
+    /// 数据流，且在其中一条流上设置的选项会传播到另一条流上。
     ///
-    /// # Examples
+    /// # 示例(Examples）
     ///
     /// ```no_run
     /// use std::net::TcpStream;
@@ -267,23 +258,21 @@ impl TcpStream {
         self.0.duplicate().map(TcpStream)
     }
 
-    /// Sets the read timeout to the timeout specified.
+    /// 将读取超时设置为指定的超时时长。
     ///
-    /// If the value specified is [`None`], then [`read`] calls will block
-    /// indefinitely. An [`Err`] is returned if the zero [`Duration`] is
-    /// passed to this method.
+    /// 如果指定的值为 [`None`]，则 [`read`] 调用会无限期地阻塞。如果向此方法传入零值
+    /// [`Duration`]，则返回一个 [`Err`]。
     ///
-    /// # Platform-specific behavior
+    /// # 平台特定行为(Platform-specific behavior）
     ///
-    /// Platforms may return a different error code whenever a read times out as
-    /// a result of setting this option. For example Unix typically returns an
-    /// error of the kind [`WouldBlock`], but Windows may return [`TimedOut`].
+    /// 每当读取因设置了此选项而超时时，不同平台可能返回不同的错误码。例如 Unix 通常
+    /// 返回 [`WouldBlock`] 类型的错误，但 Windows 可能返回 [`TimedOut`]。
     ///
     /// [`read`]: Read::read
     /// [`WouldBlock`]: io::ErrorKind::WouldBlock
     /// [`TimedOut`]: io::ErrorKind::TimedOut
     ///
-    /// # Examples
+    /// # 示例(Examples）
     ///
     /// ```no_run
     /// use std::net::TcpStream;
@@ -293,8 +282,7 @@ impl TcpStream {
     /// stream.set_read_timeout(None).expect("set_read_timeout call failed");
     /// ```
     ///
-    /// An [`Err`] is returned if the zero [`Duration`] is passed to this
-    /// method:
+    /// 如果向此方法传入零值 [`Duration`]，则返回一个 [`Err`]：
     ///
     /// ```no_run
     /// use std::io;
@@ -311,23 +299,21 @@ impl TcpStream {
         self.0.set_read_timeout(dur)
     }
 
-    /// Sets the write timeout to the timeout specified.
+    /// 将写入超时设置为指定的超时时长。
     ///
-    /// If the value specified is [`None`], then [`write`] calls will block
-    /// indefinitely. An [`Err`] is returned if the zero [`Duration`] is
-    /// passed to this method.
+    /// 如果指定的值为 [`None`]，则 [`write`] 调用会无限期地阻塞。如果向此方法传入零值
+    /// [`Duration`]，则返回一个 [`Err`]。
     ///
-    /// # Platform-specific behavior
+    /// # 平台特定行为(Platform-specific behavior）
     ///
-    /// Platforms may return a different error code whenever a write times out
-    /// as a result of setting this option. For example Unix typically returns
-    /// an error of the kind [`WouldBlock`], but Windows may return [`TimedOut`].
+    /// 每当写入因设置了此选项而超时时，不同平台可能返回不同的错误码。例如 Unix 通常
+    /// 返回 [`WouldBlock`] 类型的错误，但 Windows 可能返回 [`TimedOut`]。
     ///
     /// [`write`]: Write::write
     /// [`WouldBlock`]: io::ErrorKind::WouldBlock
     /// [`TimedOut`]: io::ErrorKind::TimedOut
     ///
-    /// # Examples
+    /// # 示例(Examples）
     ///
     /// ```no_run
     /// use std::net::TcpStream;
@@ -337,8 +323,7 @@ impl TcpStream {
     /// stream.set_write_timeout(None).expect("set_write_timeout call failed");
     /// ```
     ///
-    /// An [`Err`] is returned if the zero [`Duration`] is passed to this
-    /// method:
+    /// 如果向此方法传入零值 [`Duration`]，则返回一个 [`Err`]：
     ///
     /// ```no_run
     /// use std::io;
@@ -355,17 +340,17 @@ impl TcpStream {
         self.0.set_write_timeout(dur)
     }
 
-    /// Returns the read timeout of this socket.
+    /// 返回此套接字的读取超时。
     ///
-    /// If the timeout is [`None`], then [`read`] calls will block indefinitely.
+    /// 如果超时为 [`None`]，则 [`read`] 调用会无限期地阻塞。
     ///
-    /// # Platform-specific behavior
+    /// # 平台特定行为(Platform-specific behavior）
     ///
-    /// Some platforms do not provide access to the current timeout.
+    /// 有些平台不提供访问当前超时值的途径。
     ///
     /// [`read`]: Read::read
     ///
-    /// # Examples
+    /// # 示例(Examples）
     ///
     /// ```no_run
     /// use std::net::TcpStream;
@@ -380,17 +365,17 @@ impl TcpStream {
         self.0.read_timeout()
     }
 
-    /// Returns the write timeout of this socket.
+    /// 返回此套接字的写入超时。
     ///
-    /// If the timeout is [`None`], then [`write`] calls will block indefinitely.
+    /// 如果超时为 [`None`]，则 [`write`] 调用会无限期地阻塞。
     ///
-    /// # Platform-specific behavior
+    /// # 平台特定行为(Platform-specific behavior）
     ///
-    /// Some platforms do not provide access to the current timeout.
+    /// 有些平台不提供访问当前超时值的途径。
     ///
     /// [`write`]: Write::write
     ///
-    /// # Examples
+    /// # 示例(Examples）
     ///
     /// ```no_run
     /// use std::net::TcpStream;
@@ -405,14 +390,13 @@ impl TcpStream {
         self.0.write_timeout()
     }
 
-    /// Receives data on the socket from the remote address to which it is
-    /// connected, without removing that data from the queue. On success,
-    /// returns the number of bytes peeked.
+    /// 从此套接字所连接到的远端地址接收数据，但不把这些数据从队列中移除。成功时，
+    /// 返回窥视（peek）到的字节数。
     ///
-    /// Successive calls return the same data. This is accomplished by passing
-    /// `MSG_PEEK` as a flag to the underlying `recv` system call.
+    /// 连续多次调用会返回相同的数据。这是通过向底层的 `recv` 系统调用传入 `MSG_PEEK`
+    /// 标志来实现的。
     ///
-    /// # Examples
+    /// # 示例(Examples）
     ///
     /// ```no_run
     /// use std::net::TcpStream;
@@ -427,15 +411,13 @@ impl TcpStream {
         self.0.peek(buf)
     }
 
-    /// Sets the value of the `SO_LINGER` option on this socket.
+    /// 设置此套接字上 `SO_LINGER` 选项的值。
     ///
-    /// This value controls how the socket is closed when data remains
-    /// to be sent. If `SO_LINGER` is set, the socket will remain open
-    /// for the specified duration as the system attempts to send pending data.
-    /// Otherwise, the system may close the socket immediately, or wait for a
-    /// default timeout.
+    /// 此值控制当仍有数据等待发送时套接字如何被关闭。如果设置了 `SO_LINGER`，套接字
+    /// 会在系统尝试发送挂起数据的过程中保持打开状态长达指定的时长。否则，系统可能
+    /// 立即关闭套接字，或者等待一个默认的超时。
     ///
-    /// # Examples
+    /// # 示例(Examples）
     ///
     /// ```no_run
     /// #![feature(tcp_linger)]
@@ -452,11 +434,11 @@ impl TcpStream {
         self.0.set_linger(linger)
     }
 
-    /// Gets the value of the `SO_LINGER` option on this socket.
+    /// 获取此套接字上 `SO_LINGER` 选项的值。
     ///
-    /// For more information about this option, see [`TcpStream::set_linger`].
+    /// 关于此选项的更多信息，参见 [`TcpStream::set_linger`]。
     ///
-    /// # Examples
+    /// # 示例(Examples）
     ///
     /// ```no_run
     /// #![feature(tcp_linger)]
@@ -474,15 +456,13 @@ impl TcpStream {
         self.0.linger()
     }
 
-    /// Sets the value of the `TCP_NODELAY` option on this socket.
+    /// 设置此套接字上 `TCP_NODELAY` 选项的值。
     ///
-    /// If set, this option disables the Nagle algorithm. This means that
-    /// segments are always sent as soon as possible, even if there is only a
-    /// small amount of data. When not set, data is buffered until there is a
-    /// sufficient amount to send out, thereby avoiding the frequent sending of
-    /// small packets.
+    /// 如果设置了此选项，它会禁用 Nagle 算法。这意味着即使只有少量数据，分段
+    /// （segment）也总是会尽快被发送出去。未设置时，数据会被缓冲，直到积累到足以
+    /// 发送的量为止，从而避免频繁发送小数据包。
     ///
-    /// # Examples
+    /// # 示例(Examples）
     ///
     /// ```no_run
     /// use std::net::TcpStream;
@@ -496,11 +476,11 @@ impl TcpStream {
         self.0.set_nodelay(nodelay)
     }
 
-    /// Gets the value of the `TCP_NODELAY` option on this socket.
+    /// 获取此套接字上 `TCP_NODELAY` 选项的值。
     ///
-    /// For more information about this option, see [`TcpStream::set_nodelay`].
+    /// 关于此选项的更多信息，参见 [`TcpStream::set_nodelay`]。
     ///
-    /// # Examples
+    /// # 示例(Examples）
     ///
     /// ```no_run
     /// use std::net::TcpStream;
@@ -515,12 +495,11 @@ impl TcpStream {
         self.0.nodelay()
     }
 
-    /// Sets the value for the `IP_TTL` option on this socket.
+    /// 设置此套接字上 `IP_TTL` 选项的值。
     ///
-    /// This value sets the time-to-live field that is used in every packet sent
-    /// from this socket.
+    /// 此值设置在每个从此套接字发出的数据包中使用的生存时间（time-to-live）字段。
     ///
-    /// # Examples
+    /// # 示例(Examples）
     ///
     /// ```no_run
     /// use std::net::TcpStream;
@@ -534,11 +513,11 @@ impl TcpStream {
         self.0.set_ttl(ttl)
     }
 
-    /// Gets the value of the `IP_TTL` option for this socket.
+    /// 获取此套接字上 `IP_TTL` 选项的值。
     ///
-    /// For more information about this option, see [`TcpStream::set_ttl`].
+    /// 关于此选项的更多信息，参见 [`TcpStream::set_ttl`]。
     ///
-    /// # Examples
+    /// # 示例(Examples）
     ///
     /// ```no_run
     /// use std::net::TcpStream;
@@ -553,13 +532,12 @@ impl TcpStream {
         self.0.ttl()
     }
 
-    /// Gets the value of the `SO_ERROR` option on this socket.
+    /// 获取此套接字上 `SO_ERROR` 选项的值。
     ///
-    /// This will retrieve the stored error in the underlying socket, clearing
-    /// the field in the process. This can be useful for checking errors between
-    /// calls.
+    /// 这会取出底层套接字中存储的错误，并在此过程中清空该字段。这对于在多次调用之间
+    /// 检查错误很有用。
     ///
-    /// # Examples
+    /// # 示例(Examples）
     ///
     /// ```no_run
     /// use std::net::TcpStream;
@@ -573,22 +551,18 @@ impl TcpStream {
         self.0.take_error()
     }
 
-    /// Moves this TCP stream into or out of nonblocking mode.
+    /// 将此 TCP 流切换进或切换出非阻塞模式。
     ///
-    /// This will result in `read`, `write`, `recv` and `send` system operations
-    /// becoming nonblocking, i.e., immediately returning from their calls.
-    /// If the IO operation is successful, `Ok` is returned and no further
-    /// action is required. If the IO operation could not be completed and needs
-    /// to be retried, an error with kind [`io::ErrorKind::WouldBlock`] is
-    /// returned.
+    /// 这会使 `read`、`write`、`recv` 和 `send` 等系统操作变为非阻塞，即立即从调用中
+    /// 返回。如果 IO 操作成功，则返回 `Ok` 且无需进一步处理。如果 IO 操作无法完成、
+    /// 需要重试，则返回一个类型为 [`io::ErrorKind::WouldBlock`] 的错误。
     ///
-    /// On Unix platforms, calling this method corresponds to calling `fcntl`
-    /// `FIONBIO`. On Windows calling this method corresponds to calling
-    /// `ioctlsocket` `FIONBIO`.
+    /// 在 Unix 平台上，调用此方法对应于调用 `fcntl` 的 `FIONBIO`。在 Windows 上调用
+    /// 此方法对应于调用 `ioctlsocket` 的 `FIONBIO`。
     ///
-    /// # Examples
+    /// # 示例(Examples）
     ///
-    /// Reading bytes from a TCP stream in non-blocking mode:
+    /// 以非阻塞模式从一条 TCP 流读取字节：
     ///
     /// ```no_run
     /// use std::io::{self, Read};
@@ -604,8 +578,7 @@ impl TcpStream {
     ///     match stream.read_to_end(&mut buf) {
     ///         Ok(_) => break,
     ///         Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-    ///             // wait until network socket is ready, typically implemented
-    ///             // via platform-specific APIs such as epoll or IOCP
+    ///             // 等待网络套接字就绪，通常通过 epoll、IOCP 等平台特定 API 实现
     ///             wait_for_fd();
     ///         }
     ///         Err(e) => panic!("encountered IO error: {e}"),
@@ -619,11 +592,11 @@ impl TcpStream {
     }
 }
 
-// In addition to the `impl`s here, `TcpStream` also has `impl`s for
-// `AsFd`/`From<OwnedFd>`/`Into<OwnedFd>` and
-// `AsRawFd`/`IntoRawFd`/`FromRawFd`, on Unix and WASI, and
-// `AsSocket`/`From<OwnedSocket>`/`Into<OwnedSocket>` and
-// `AsRawSocket`/`IntoRawSocket`/`FromRawSocket` on Windows.
+// 除了这里的这些 `impl` 之外，`TcpStream` 在 Unix 与 WASI 上还实现了
+// `AsFd`/`From<OwnedFd>`/`Into<OwnedFd>` 与
+// `AsRawFd`/`IntoRawFd`/`FromRawFd`，在 Windows 上则实现了
+// `AsSocket`/`From<OwnedSocket>`/`Into<OwnedSocket>` 与
+// `AsRawSocket`/`IntoRawSocket`/`FromRawSocket`。
 
 #[stable(feature = "rust1", since = "1.0.0")]
 impl Read for TcpStream {
@@ -731,26 +704,22 @@ impl fmt::Debug for TcpStream {
 }
 
 impl TcpListener {
-    /// Creates a new `TcpListener` which will be bound to the specified
-    /// address.
+    /// 创建一个新的 `TcpListener`，它将被绑定到指定的地址。
     ///
-    /// The returned listener is ready for accepting connections.
+    /// 返回的监听器已准备好接受连接。
     ///
-    /// Binding with a port number of 0 will request that the OS assigns a port
-    /// to this listener. The port allocated can be queried via the
-    /// [`TcpListener::local_addr`] method.
+    /// 以端口号 0 进行绑定，会请求操作系统为此监听器分配一个端口。可以通过
+    /// [`TcpListener::local_addr`] 方法查询分配到的端口。
     ///
-    /// The address type can be any implementor of [`ToSocketAddrs`] trait. See
-    /// its documentation for concrete examples.
+    /// 地址类型可以是 [`ToSocketAddrs`] trait 的任意实现者。具体示例参见其文档。
     ///
-    /// If `addr` yields multiple addresses, `bind` will be attempted with
-    /// each of the addresses until one succeeds and returns the listener. If
-    /// none of the addresses succeed in creating a listener, the error returned
-    /// from the last attempt (the last address) is returned.
+    /// 如果 `addr` 产出多个地址，`bind` 会逐一尝试这些地址，直到某个成功并返回监听器
+    /// 为止。如果所有地址都未能成功创建出监听器，则返回最后一次尝试（即最后一个地址）
+    /// 所返回的错误。
     ///
-    /// # Examples
+    /// # 示例(Examples）
     ///
-    /// Creates a TCP listener bound to `127.0.0.1:80`:
+    /// 创建一个绑定到 `127.0.0.1:80` 的 TCP 监听器：
     ///
     /// ```no_run
     /// use std::net::TcpListener;
@@ -758,8 +727,8 @@ impl TcpListener {
     /// let listener = TcpListener::bind("127.0.0.1:80").unwrap();
     /// ```
     ///
-    /// Creates a TCP listener bound to `127.0.0.1:80`. If that fails, create a
-    /// TCP listener bound to `127.0.0.1:443`:
+    /// 创建一个绑定到 `127.0.0.1:80` 的 TCP 监听器。如果失败，则创建一个绑定到
+    /// `127.0.0.1:443` 的 TCP 监听器：
     ///
     /// ```no_run
     /// use std::net::{SocketAddr, TcpListener};
@@ -771,8 +740,7 @@ impl TcpListener {
     /// let listener = TcpListener::bind(&addrs[..]).unwrap();
     /// ```
     ///
-    /// Creates a TCP listener bound to a port assigned by the operating system
-    /// at `127.0.0.1`.
+    /// 创建一个绑定到 `127.0.0.1` 上由操作系统分配的端口的 TCP 监听器。
     ///
     /// ```no_run
     /// use std::net::TcpListener;
@@ -784,9 +752,9 @@ impl TcpListener {
         net_imp::TcpListener::bind(addr).map(TcpListener)
     }
 
-    /// Returns the local socket address of this listener.
+    /// 返回此监听器的本地套接字地址。
     ///
-    /// # Examples
+    /// # 示例(Examples）
     ///
     /// ```no_run
     /// use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpListener};
@@ -800,13 +768,12 @@ impl TcpListener {
         self.0.socket_addr()
     }
 
-    /// Creates a new independently owned handle to the underlying socket.
+    /// 创建一个独立持有的、指向底层套接字的新句柄。
     ///
-    /// The returned [`TcpListener`] is a reference to the same socket that this
-    /// object references. Both handles can be used to accept incoming
-    /// connections and options set on one listener will affect the other.
+    /// 返回的 [`TcpListener`] 是对此对象所引用的同一个套接字的引用。两个句柄都可用于
+    /// 接受入站连接，且在其中一个监听器上设置的选项会影响另一个。
     ///
-    /// # Examples
+    /// # 示例(Examples）
     ///
     /// ```no_run
     /// use std::net::TcpListener;
@@ -819,13 +786,12 @@ impl TcpListener {
         self.0.duplicate().map(TcpListener)
     }
 
-    /// Accept a new incoming connection from this listener.
+    /// 从此监听器接受一个新的入站连接。
     ///
-    /// This function will block the calling thread until a new TCP connection
-    /// is established. When established, the corresponding [`TcpStream`] and the
-    /// remote peer's address will be returned.
+    /// 此函数会阻塞调用线程，直到一条新的 TCP 连接建立为止。建立成功后，会返回相应的
+    /// [`TcpStream`] 以及远端对等方的地址。
     ///
-    /// # Examples
+    /// # 示例(Examples）
     ///
     /// ```no_run
     /// use std::net::TcpListener;
@@ -838,20 +804,18 @@ impl TcpListener {
     /// ```
     #[stable(feature = "rust1", since = "1.0.0")]
     pub fn accept(&self) -> io::Result<(TcpStream, SocketAddr)> {
-        // On WASM, `TcpStream` is uninhabited (as it's unsupported) and so
-        // the `a` variable here is technically unused.
+        // 在 WASM 上，`TcpStream` 是无人居住类型（uninhabited，因为它不被支持），
+        // 因此这里的 `a` 变量从技术上说是未使用的。
         #[cfg_attr(target_arch = "wasm32", allow(unused_variables))]
         self.0.accept().map(|(a, b)| (TcpStream(a), b))
     }
 
-    /// Returns an iterator over the connections being received on this
-    /// listener.
+    /// 返回一个迭代器，遍历此监听器上正在接收到的连接。
     ///
-    /// The returned iterator will never return [`None`] and will also not yield
-    /// the peer's [`SocketAddr`] structure. Iterating over it is equivalent to
-    /// calling [`TcpListener::accept`] in a loop.
+    /// 返回的迭代器永远不会返回 [`None`]，也不会产出对等方的 [`SocketAddr`] 结构体。
+    /// 遍历它等价于在循环中调用 [`TcpListener::accept`]。
     ///
-    /// # Examples
+    /// # 示例(Examples）
     ///
     /// ```no_run
     /// use std::net::{TcpListener, TcpStream};
@@ -879,14 +843,12 @@ impl TcpListener {
         Incoming { listener: self }
     }
 
-    /// Turn this into an iterator over the connections being received on this
-    /// listener.
+    /// 把它转换为一个迭代器，遍历此监听器上正在接收到的连接。
     ///
-    /// The returned iterator will never return [`None`] and will also not yield
-    /// the peer's [`SocketAddr`] structure. Iterating over it is equivalent to
-    /// calling [`TcpListener::accept`] in a loop.
+    /// 返回的迭代器永远不会返回 [`None`]，也不会产出对等方的 [`SocketAddr`] 结构体。
+    /// 遍历它等价于在循环中调用 [`TcpListener::accept`]。
     ///
-    /// # Examples
+    /// # 示例(Examples）
     ///
     /// ```no_run
     /// #![feature(tcplistener_into_incoming)]
@@ -895,12 +857,12 @@ impl TcpListener {
     /// fn listen_on(port: u16) -> impl Iterator<Item = TcpStream> {
     ///     let listener = TcpListener::bind(("127.0.0.1", port)).unwrap();
     ///     listener.into_incoming()
-    ///         .filter_map(Result::ok) /* Ignore failed connections */
+    ///         .filter_map(Result::ok) /* 忽略失败的连接 */
     /// }
     ///
     /// fn main() -> std::io::Result<()> {
     ///     for stream in listen_on(80) {
-    ///         /* handle the connection here */
+    ///         /* 在此处理连接 */
     ///     }
     ///     Ok(())
     /// }
@@ -911,12 +873,11 @@ impl TcpListener {
         IntoIncoming { listener: self }
     }
 
-    /// Sets the value for the `IP_TTL` option on this socket.
+    /// 设置此套接字上 `IP_TTL` 选项的值。
     ///
-    /// This value sets the time-to-live field that is used in every packet sent
-    /// from this socket.
+    /// 此值设置在每个从此套接字发出的数据包中使用的生存时间（time-to-live）字段。
     ///
-    /// # Examples
+    /// # 示例(Examples）
     ///
     /// ```no_run
     /// use std::net::TcpListener;
@@ -929,11 +890,11 @@ impl TcpListener {
         self.0.set_ttl(ttl)
     }
 
-    /// Gets the value of the `IP_TTL` option for this socket.
+    /// 获取此套接字上 `IP_TTL` 选项的值。
     ///
-    /// For more information about this option, see [`TcpListener::set_ttl`].
+    /// 关于此选项的更多信息，参见 [`TcpListener::set_ttl`]。
     ///
-    /// # Examples
+    /// # 示例(Examples）
     ///
     /// ```no_run
     /// use std::net::TcpListener;
@@ -961,13 +922,12 @@ impl TcpListener {
         self.0.only_v6()
     }
 
-    /// Gets the value of the `SO_ERROR` option on this socket.
+    /// 获取此套接字上 `SO_ERROR` 选项的值。
     ///
-    /// This will retrieve the stored error in the underlying socket, clearing
-    /// the field in the process. This can be useful for checking errors between
-    /// calls.
+    /// 这会取出底层套接字中存储的错误，并在此过程中清空该字段。这对于在多次调用之间
+    /// 检查错误很有用。
     ///
-    /// # Examples
+    /// # 示例(Examples）
     ///
     /// ```no_run
     /// use std::net::TcpListener;
@@ -980,22 +940,18 @@ impl TcpListener {
         self.0.take_error()
     }
 
-    /// Moves this TCP stream into or out of nonblocking mode.
+    /// 将此 TCP 流切换进或切换出非阻塞模式。
     ///
-    /// This will result in the `accept` operation becoming nonblocking,
-    /// i.e., immediately returning from their calls. If the IO operation is
-    /// successful, `Ok` is returned and no further action is required. If the
-    /// IO operation could not be completed and needs to be retried, an error
-    /// with kind [`io::ErrorKind::WouldBlock`] is returned.
+    /// 这会使 `accept` 操作变为非阻塞，即立即从调用中返回。如果 IO 操作成功，则返回
+    /// `Ok` 且无需进一步处理。如果 IO 操作无法完成、需要重试，则返回一个类型为
+    /// [`io::ErrorKind::WouldBlock`] 的错误。
     ///
-    /// On Unix platforms, calling this method corresponds to calling `fcntl`
-    /// `FIONBIO`. On Windows calling this method corresponds to calling
-    /// `ioctlsocket` `FIONBIO`.
+    /// 在 Unix 平台上，调用此方法对应于调用 `fcntl` 的 `FIONBIO`。在 Windows 上调用
+    /// 此方法对应于调用 `ioctlsocket` 的 `FIONBIO`。
     ///
-    /// # Examples
+    /// # 示例(Examples）
     ///
-    /// Bind a TCP listener to an address, listen for connections, and read
-    /// bytes in nonblocking mode:
+    /// 把一个 TCP 监听器绑定到某个地址，监听连接，并以非阻塞模式读取字节：
     ///
     /// ```no_run
     /// use std::io;
@@ -1009,12 +965,11 @@ impl TcpListener {
     /// for stream in listener.incoming() {
     ///     match stream {
     ///         Ok(s) => {
-    ///             // do something with the TcpStream
+    ///             // 对该 TcpStream 做些事情
     ///             handle_connection(s);
     ///         }
     ///         Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-    ///             // wait until network socket is ready, typically implemented
-    ///             // via platform-specific APIs such as epoll or IOCP
+    ///             // 等待网络套接字就绪，通常通过 epoll、IOCP 等平台特定 API 实现
     ///             wait_for_fd();
     ///             continue;
     ///         }
@@ -1028,11 +983,11 @@ impl TcpListener {
     }
 }
 
-// In addition to the `impl`s here, `TcpListener` also has `impl`s for
-// `AsFd`/`From<OwnedFd>`/`Into<OwnedFd>` and
-// `AsRawFd`/`IntoRawFd`/`FromRawFd`, on Unix and WASI, and
-// `AsSocket`/`From<OwnedSocket>`/`Into<OwnedSocket>` and
-// `AsRawSocket`/`IntoRawSocket`/`FromRawSocket` on Windows.
+// 除了这里的这些 `impl` 之外，`TcpListener` 在 Unix 与 WASI 上还实现了
+// `AsFd`/`From<OwnedFd>`/`Into<OwnedFd>` 与
+// `AsRawFd`/`IntoRawFd`/`FromRawFd`，在 Windows 上则实现了
+// `AsSocket`/`From<OwnedSocket>`/`Into<OwnedSocket>` 与
+// `AsRawSocket`/`IntoRawSocket`/`FromRawSocket`。
 
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<'a> Iterator for Incoming<'a> {

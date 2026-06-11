@@ -1,4 +1,4 @@
-//! C definitions used by libnative that don't belong in liblibc
+//! libnative 所使用、但不适合放在 liblibc 中的 C 定义
 
 #![allow(nonstandard_style)]
 #![cfg_attr(test, allow(dead_code))]
@@ -26,13 +26,13 @@ pub const SRWLOCK_INIT: SRWLOCK = SRWLOCK { Ptr: ptr::null_mut() };
 #[cfg(not(target_thread_local))]
 pub const INIT_ONCE_STATIC_INIT: INIT_ONCE = INIT_ONCE { Ptr: ptr::null_mut() };
 
-// Some windows_sys types have different signs than the types we use.
+// 某些 windows_sys 类型的符号性（sign）与我们使用的类型不同。
 pub const OBJ_DONT_REPARSE: u32 = windows_sys::OBJ_DONT_REPARSE as u32;
 pub const FRS_ERR_SYSVOL_POPULATE_TIMEOUT: u32 =
     windows_sys::FRS_ERR_SYSVOL_POPULATE_TIMEOUT as u32;
 
-// Equivalent to the `NT_SUCCESS` C preprocessor macro.
-// See: https://docs.microsoft.com/en-us/windows-hardware/drivers/kernel/using-ntstatus-values
+// 等价于 C 预处理器宏 `NT_SUCCESS`。
+// 参见：https://docs.microsoft.com/en-us/windows-hardware/drivers/kernel/using-ntstatus-values
 pub fn nt_success(status: NTSTATUS) -> bool {
     status >= 0
 }
@@ -54,17 +54,16 @@ impl IO_STATUS_BLOCK {
     pub const PENDING: Self =
         IO_STATUS_BLOCK { Anonymous: IO_STATUS_BLOCK_0 { Status: STATUS_PENDING }, Information: 0 };
     pub fn status(&self) -> NTSTATUS {
-        // SAFETY: If `self.Anonymous.Status` was set then this is obviously safe.
-        // If `self.Anonymous.Pointer` was set then this is the equivalent to converting
-        // the pointer to an integer, which is also safe.
-        // Currently the only safe way to construct `IO_STATUS_BLOCK` outside of
-        // this module is to call the `default` method, which sets the `Status`.
+        // SAFETY: 如果设置的是 `self.Anonymous.Status`，那么这显然是安全的。
+        // 如果设置的是 `self.Anonymous.Pointer`，那么这等价于把指针转换为整数，同样是安全的。
+        // 目前在本模块之外构造 `IO_STATUS_BLOCK` 的唯一安全方式是调用 `default`
+        // 方法，而该方法会设置 `Status` 字段。
         unsafe { self.Anonymous.Status }
     }
 }
 
-/// NB: Use carefully! In general using this as a reference is likely to get the
-/// provenance wrong for the `rest` field!
+/// NB: 谨慎使用！通常把它当作引用来使用很可能会导致 `rest` 字段的
+/// provenance（来源信息）出错！
 #[repr(C)]
 pub struct REPARSE_DATA_BUFFER {
     pub ReparseTag: c_uint,
@@ -73,8 +72,8 @@ pub struct REPARSE_DATA_BUFFER {
     pub rest: (),
 }
 
-/// NB: Use carefully! In general using this as a reference is likely to get the
-/// provenance wrong for the `PathBuffer` field!
+/// NB: 谨慎使用！通常把它当作引用来使用很可能会导致 `PathBuffer` 字段的
+/// provenance（来源信息）出错！
 #[repr(C)]
 pub struct SYMBOLIC_LINK_REPARSE_BUFFER {
     pub SubstituteNameOffset: c_ushort,
@@ -94,11 +93,11 @@ pub struct MOUNT_POINT_REPARSE_BUFFER {
     pub PathBuffer: WCHAR,
 }
 
-// Desktop specific functions & types
+// 桌面（Desktop）专用的函数与类型
 #[cfg(not(target_vendor = "uwp"))]
 pub const EXCEPTION_CONTINUE_SEARCH: i32 = 0;
 
-// Use raw-dylib to import ProcessPrng as we can't rely on there being an import library.
+// 使用 raw-dylib 来导入 ProcessPrng，因为我们无法依赖于存在对应的导入库（import library）。
 #[cfg(not(target_vendor = "win7"))]
 #[cfg_attr(
     target_arch = "x86",
@@ -126,8 +125,8 @@ windows_targets::link!("ntdll.dll" "system" fn NtCreateNamedPipeFile(
     defaulttimeout: *const u64,
 ) -> NTSTATUS);
 
-// Functions that aren't available on every version of Windows that we support,
-// but we still use them and just provide some form of a fallback implementation.
+// 这些函数并非在我们支持的每个 Windows 版本上都可用，
+// 但我们仍然会使用它们，只是提供某种形式的回退（fallback）实现。
 compat_fn_with_fallback! {
     pub static KERNEL32: &CStr = c"kernel32";
 
@@ -158,7 +157,7 @@ compat_fn_with_fallback! {
 }
 
 #[cfg(not(target_vendor = "win7"))]
-// Use raw-dylib to import synchronization functions to workaround issues with the older mingw import library.
+// 使用 raw-dylib 来导入同步相关函数，以规避较旧 mingw 导入库（import library）的问题。
 #[cfg_attr(
     target_arch = "x86",
     link(
@@ -182,7 +181,7 @@ unsafe extern "system" {
     pub fn WakeByAddressAll(address: *const c_void);
 }
 
-// These are loaded by `load_synch_functions`.
+// 这些函数由 `load_synch_functions` 加载。
 #[cfg(target_vendor = "win7")]
 compat_fn_optional! {
     pub fn WaitOnAddress(

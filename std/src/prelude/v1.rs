@@ -1,13 +1,13 @@
-//! The first version of the prelude of The Rust Standard Library.
+//! Rust 标准库预导入的第一个版本。
 //!
-//! See the [module-level documentation](super) for more.
+//! 更多内容参见[模块级文档](super)。
 
 #![stable(feature = "rust1", since = "1.0.0")]
 
-// No formatting: this file is nothing but re-exports, and their order is worth preserving.
+// 不做格式化：本文件除了重导出别无他物，而其顺序值得保留。
 #![cfg_attr(rustfmt, rustfmt::skip)]
 
-// Re-exported core operators
+// 重导出的 core 运算符（operators）
 #[stable(feature = "rust1", since = "1.0.0")]
 #[doc(no_inline)]
 pub use crate::marker::{Send, Sized, Sync, Unpin};
@@ -18,7 +18,7 @@ pub use crate::ops::{Drop, Fn, FnMut, FnOnce};
 #[doc(no_inline)]
 pub use crate::ops::{AsyncFn, AsyncFnMut, AsyncFnOnce};
 
-// Re-exported functions
+// 重导出的函数
 #[stable(feature = "rust1", since = "1.0.0")]
 #[doc(no_inline)]
 pub use crate::mem::drop;
@@ -26,7 +26,7 @@ pub use crate::mem::drop;
 #[doc(no_inline)]
 pub use crate::mem::{align_of, align_of_val, size_of, size_of_val};
 
-// Re-exported types and traits
+// 重导出的类型与 trait
 #[stable(feature = "rust1", since = "1.0.0")]
 #[doc(no_inline)]
 pub use crate::convert::{AsMut, AsRef, From, Into};
@@ -43,7 +43,7 @@ pub use crate::option::Option::{self, None, Some};
 #[doc(no_inline)]
 pub use crate::result::Result::{self, Err, Ok};
 
-// Re-exported built-in macros and traits
+// 重导出的内建宏与 trait
 #[stable(feature = "builtin_macro_prelude", since = "1.38.0")]
 #[doc(no_inline)]
 #[expect(deprecated)]
@@ -60,16 +60,15 @@ pub use crate::{
     dbg, eprint, eprintln, format, is_x86_feature_detected, print, println, thread_local
 };
 
-// These macros need special handling, so that we don't export them *and* the modules of the same
-// name. We only want the macros in the prelude so we shadow the original modules with private
-// modules with the same names.
+// 这些宏需要特殊处理，以免我们既导出它们*又*导出同名的模块。我们只想把这些宏放进
+// 预导入，因此用同名的私有模块来遮蔽（shadow）原来的模块。
 mod ambiguous_macros_only {
     #[expect(hidden_glob_reexports)]
     mod vec {}
     #[expect(hidden_glob_reexports)]
     mod panic {}
-    // Building std without the expect exported_private_dependencies will create warnings, but then
-    // clippy claims its a useless_attribute. So silence both.
+    // 在构建 std 时若不带 expect exported_private_dependencies，会产生警告；但那样
+    // clippy 又会声称这是一个 useless_attribute。因此把两者都消音。
     #[expect(clippy::useless_attribute)]
     #[expect(exported_private_dependencies)]
     #[stable(feature = "builtin_macro_prelude", since = "1.38.0")]
@@ -111,8 +110,8 @@ pub use core::prelude::v1::log_syntax;
 #[doc(no_inline)]
 pub use core::prelude::v1::trace_macros;
 
-// Do not `doc(no_inline)` so that they become doc items on their own
-// (no public module for them to be re-exported from).
+// 不要 `doc(no_inline)`，以便它们各自成为独立的文档项
+//（因为没有一个公开模块可供它们被重导出）。
 #[stable(feature = "builtin_macro_prelude", since = "1.38.0")]
 pub use core::prelude::v1::{
     alloc_error_handler, bench, derive, global_allocator, test, test_case,
@@ -121,7 +120,7 @@ pub use core::prelude::v1::{
 #[unstable(feature = "derive_const", issue = "118304")]
 pub use core::prelude::v1::derive_const;
 
-// Do not `doc(no_inline)` either.
+// 同样不要 `doc(no_inline)`。
 #[unstable(
     feature = "cfg_accessible",
     issue = "64797",
@@ -129,7 +128,7 @@ pub use core::prelude::v1::derive_const;
 )]
 pub use core::prelude::v1::cfg_accessible;
 
-// Do not `doc(no_inline)` either.
+// 同样不要 `doc(no_inline)`。
 #[unstable(
     feature = "cfg_eval",
     issue = "82679",
@@ -137,7 +136,7 @@ pub use core::prelude::v1::cfg_accessible;
 )]
 pub use core::prelude::v1::cfg_eval;
 
-// Do not `doc(no_inline)` either.
+// 同样不要 `doc(no_inline)`。
 #[unstable(
     feature = "type_ascription",
     issue = "23416",
@@ -145,7 +144,7 @@ pub use core::prelude::v1::cfg_eval;
 )]
 pub use core::prelude::v1::type_ascribe;
 
-// Do not `doc(no_inline)` either.
+// 同样不要 `doc(no_inline)`。
 #[unstable(
     feature = "deref_patterns",
     issue = "87121",
@@ -153,7 +152,7 @@ pub use core::prelude::v1::type_ascribe;
 )]
 pub use core::prelude::v1::deref;
 
-// Do not `doc(no_inline)` either.
+// 同样不要 `doc(no_inline)`。
 #[unstable(
     feature = "type_alias_impl_trait",
     issue = "63063",
@@ -167,10 +166,9 @@ pub use core::prelude::v1::{eii, unsafe_eii};
 #[unstable(feature = "eii_internals", issue = "none")]
 pub use core::prelude::v1::eii_declaration;
 
-// The file so far is equivalent to core/src/prelude/v1.rs. It is duplicated
-// rather than glob imported because we want docs to show these re-exports as
-// pointing to within `std`.
-// Below are the items from the alloc crate.
+// 到目前为止，本文件等价于 core/src/prelude/v1.rs。这里采用重复定义而非 glob 导入，
+// 是因为我们希望文档把这些重导出显示为指向 `std` 内部。
+// 下面是来自 alloc crate 的各项。
 
 #[stable(feature = "rust1", since = "1.0.0")]
 #[doc(no_inline)]

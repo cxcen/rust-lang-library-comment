@@ -9,8 +9,8 @@ pub struct Mutex {
 }
 
 const UNLOCKED: State = 0;
-const LOCKED: State = 1; // locked, no other threads waiting
-const CONTENDED: State = 2; // locked, and other threads waiting (contended)
+const LOCKED: State = 1; // 已锁定，没有其他线程在等待
+const CONTENDED: State = 2; // 已锁定，且有其他线程在等待（处于争用状态 contended）
 
 impl Mutex {
     #[inline]
@@ -19,14 +19,14 @@ impl Mutex {
     }
 
     #[inline]
-    // Make this a diagnostic item for Miri's concurrency model checker.
+    // 将其标记为诊断项（diagnostic item），供 Miri 的并发模型检查器识别。
     #[cfg_attr(not(test), rustc_diagnostic_item = "sys_mutex_try_lock")]
     pub fn try_lock(&self) -> bool {
         self.futex.compare_exchange(UNLOCKED, LOCKED, Acquire, Relaxed).is_ok()
     }
 
     #[inline]
-    // Make this a diagnostic item for Miri's concurrency model checker.
+    // 将其标记为诊断项（diagnostic item），供 Miri 的并发模型检查器识别。
     #[cfg_attr(not(test), rustc_diagnostic_item = "sys_mutex_lock")]
     pub fn lock(&self) {
         if self.futex.compare_exchange(UNLOCKED, LOCKED, Acquire, Relaxed).is_err() {
@@ -36,31 +36,31 @@ impl Mutex {
 
     #[cold]
     fn lock_contended(&self) {
-        // Spin first to speed things up if the lock is released quickly.
+        // 先自旋（spin），以便在锁很快被释放时加快获取速度。
         let mut state = self.spin();
 
-        // If it's unlocked now, attempt to take the lock
-        // without marking it as contended.
+        // 如果此刻锁已是未锁定状态，则尝试拿锁，
+        // 且不把它标记为争用（contended）状态。
         if state == UNLOCKED {
             match self.futex.compare_exchange(UNLOCKED, LOCKED, Acquire, Relaxed) {
-                Ok(_) => return, // Locked!
+                Ok(_) => return, // 加锁成功！
                 Err(s) => state = s,
             }
         }
 
         loop {
-            // Put the lock in contended state.
-            // We avoid an unnecessary write if it as already set to CONTENDED,
-            // to be friendlier for the caches.
+            // 把锁置为争用（contended）状态。
+            // 如果它已经是 CONTENDED，我们就避免一次不必要的写操作，
+            // 以对缓存更友好。
             if state != CONTENDED && self.futex.swap(CONTENDED, Acquire) == UNLOCKED {
-                // We changed it from UNLOCKED to CONTENDED, so we just successfully locked it.
+                // 我们把它从 UNLOCKED 改成了 CONTENDED，所以此刻已成功加锁。
                 return;
             }
 
-            // Wait for the futex to change state, assuming it is still CONTENDED.
+            // 在假定 futex 仍为 CONTENDED 的前提下，等待它改变状态。
             futex_wait(&self.futex, CONTENDED, None);
 
-            // Spin again after waking up.
+            // 被唤醒后再次自旋。
             state = self.spin();
         }
     }
@@ -68,12 +68,12 @@ impl Mutex {
     fn spin(&self) -> State {
         let mut spin = 100;
         loop {
-            // We only use `load` (and not `swap` or `compare_exchange`)
-            // while spinning, to be easier on the caches.
+            // 自旋期间我们只使用 `load`（而不是 `swap` 或 `compare_exchange`），
+            // 以对缓存更友好。
             let state = self.futex.load(Relaxed);
 
-            // We stop spinning when the mutex is UNLOCKED,
-            // but also when it's CONTENDED.
+            // 当 mutex 处于 UNLOCKED 时停止自旋，
+            // 当它处于 CONTENDED 时也停止自旋。
             if state != LOCKED || spin == 0 {
                 return state;
             }
@@ -84,14 +84,13 @@ impl Mutex {
     }
 
     #[inline]
-    // Make this a diagnostic item for Miri's concurrency model checker.
+    // 将其标记为诊断项（diagnostic item），供 Miri 的并发模型检查器识别。
     #[cfg_attr(not(test), rustc_diagnostic_item = "sys_mutex_unlock")]
     pub unsafe fn unlock(&self) {
         if self.futex.swap(UNLOCKED, Release) == CONTENDED {
-            // We only wake up one thread. When that thread locks the mutex, it
-            // will mark the mutex as CONTENDED (see lock_contended above),
-            // which makes sure that any other waiting threads will also be
-            // woken up eventually.
+            // 我们只唤醒一个线程。当那个线程拿到 mutex 时，它会把 mutex 标记为
+            // CONTENDED（见上文的 lock_contended），从而确保其他正在等待的线程
+            // 最终也都会被唤醒。
             self.wake();
         }
     }

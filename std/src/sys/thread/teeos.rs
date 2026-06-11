@@ -18,13 +18,13 @@ pub struct Thread {
     id: libc::pthread_t,
 }
 
-// Some platforms may have pthread_t as a pointer in which case we still want
-// a thread to be Send/Sync
+// 在某些平台上，pthread_t 可能是一个指针，此时我们仍然希望
+// Thread 是 Send/Sync 的。
 unsafe impl Send for Thread {}
 unsafe impl Sync for Thread {}
 
 impl Thread {
-    // unsafe: see thread::Builder::spawn_unchecked for safety requirements
+    // unsafe：安全性要求参见 thread::Builder::spawn_unchecked
     pub unsafe fn new(stack: usize, init: Box<ThreadInit>) -> io::Result<Thread> {
         let data = Box::into_raw(init);
         let mut native: libc::pthread_t = unsafe { mem::zeroed() };
@@ -48,10 +48,9 @@ impl Thread {
             0 => {}
             n => {
                 assert_eq!(n, libc::EINVAL);
-                // EINVAL means |stack_size| is either too small or not a
-                // multiple of the system page size.  Because it's definitely
-                // >= PTHREAD_STACK_MIN, it must be an alignment issue.
-                // Round up to the nearest page and try again.
+                // EINVAL 意味着 |stack_size| 要么太小，要么不是系统页大小的整数倍。
+                // 由于它肯定 >= PTHREAD_STACK_MIN，所以一定是对齐问题。
+                // 向上取整到最近的页边界后再试一次。
                 let page_size = os::page_size();
                 let stack_size =
                     (stack_size + page_size - 1) & (-(page_size as isize - 1) as usize - 1);
@@ -60,25 +59,24 @@ impl Thread {
         };
 
         let ret = unsafe { libc::pthread_create(&mut native, &attr, thread_start, data as *mut _) };
-        // Note: if the thread creation fails and this assert fails, then data will
-        // be leaked. However, an alternative design could cause double-free
-        // which is clearly worse.
+        // 注意：如果线程创建失败且此断言失败，那么 data 会被泄漏。
+        // 然而，另一种设计可能导致 double-free（重复释放），那显然更糟。
         assert_eq!(unsafe { libc::pthread_attr_destroy(&mut attr) }, 0);
 
         return if ret != 0 {
-            // The thread failed to start and as a result data was not consumed. Therefore, it is
-            // safe to reconstruct the box so that it gets deallocated.
+            // 线程启动失败，因此 data 没有被消费掉。所以重新构造这个
+            // box 以便它被释放是安全的。
             drop(unsafe { Box::from_raw(data) });
             Err(io::Error::from_raw_os_error(ret))
         } else {
-            // The new thread will start running earliest after the next yield.
-            // We add a yield here, so that the user does not have to.
+            // 新线程最早会在下一次 yield 之后开始运行。
+            // 我们在这里加一次 yield，这样用户就不必自己加了。
             yield_now();
             Ok(Thread { id: native })
         };
 
         extern "C" fn thread_start(data: *mut libc::c_void) -> *mut libc::c_void {
-            // SAFETY: we are simply recreating the box that was leaked earlier.
+            // SAFETY：我们只是在重建先前被泄漏的 box。
             let init = unsafe { Box::from_raw(data as *mut ThreadInit) };
             let rust_start = init.init();
             rust_start();
@@ -86,7 +84,7 @@ impl Thread {
         }
     }
 
-    /// must join, because no pthread_detach supported
+    /// 必须 join，因为不支持 pthread_detach
     pub fn join(self) {
         let id = self.into_id();
         let ret = unsafe { libc::pthread_join(id, ptr::null_mut()) };
@@ -100,7 +98,7 @@ impl Thread {
 
 impl Drop for Thread {
     fn drop(&mut self) {
-        // we can not call detach, so just panic if thread spawn without join
+        // 我们无法调用 detach，所以如果线程在没有 join 的情况下被 spawn，就直接 panic
         panic!("thread must join, detach is not supported!");
     }
 }
@@ -110,7 +108,7 @@ pub fn yield_now() {
     debug_assert_eq!(ret, 0);
 }
 
-/// only main thread could wait for sometime in teeos
+/// 在 teeos 中只有主线程能够等待一段时间
 pub fn sleep(dur: Duration) {
     let sleep_millis = dur.as_millis();
     let final_sleep: u32 =

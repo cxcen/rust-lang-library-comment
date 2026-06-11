@@ -17,15 +17,15 @@ use crate::{cmp, mem, ptr, sys};
 pub type wrlen_t = i32;
 
 pub(super) mod netc {
-    //! BSD socket compatibility shim
+    //! BSD socket 兼容性垫片（shim）
     //!
-    //! Some Windows API types are not quite what's expected by our cross-platform
-    //! net code. E.g. naming differences or different pointer types.
+    //! 某些 Windows API 类型与我们跨平台网络代码所期望的并不完全一致。
+    //! 例如命名上的差异或不同的指针类型。
 
     use core::ffi::{c_char, c_int, c_uint, c_ulong, c_ushort, c_void};
 
     use crate::sys::c::{self, ADDRESS_FAMILY, ADDRINFOA, SOCKADDR, SOCKET};
-    // re-exports from Windows API bindings.
+    // 从 Windows API 绑定中重新导出。
     pub use crate::sys::c::{
         ADDRESS_FAMILY as sa_family_t, ADDRINFOA as addrinfo, IP_ADD_MEMBERSHIP,
         IP_DROP_MEMBERSHIP, IP_MULTICAST_LOOP, IP_MULTICAST_TTL, IP_TTL, IPPROTO_IP, IPPROTO_IPV6,
@@ -41,9 +41,9 @@ pub(super) mod netc {
     pub const AF_INET: i32 = c::AF_INET as i32;
     pub const AF_INET6: i32 = c::AF_INET6 as i32;
 
-    // The following two structs use a union in the generated bindings but
-    // our cross-platform code expects a normal field so it's redefined here.
-    // As a consequence, we also need to redefine other structs that use this struct.
+    // 下面两个结构体在生成的绑定中使用了 union，但我们的跨平台代码期望的是
+    // 一个普通字段，所以这里将其重新定义。因此，我们还需要重新定义其他用到
+    // 这个结构体的结构体。
     #[repr(C)]
     #[derive(Copy, Clone)]
     pub struct in_addr {
@@ -226,8 +226,8 @@ impl Socket {
     }
 
     fn recv_with_flags(&self, mut buf: BorrowedCursor<'_>, flags: c_int) -> io::Result<()> {
-        // On unix when a socket is shut down all further reads return 0, so we
-        // do the same on windows to map a shut down socket to returning EOF.
+        // 在 unix 上，当 socket 被关闭后，之后所有的读取都会返回 0，
+        // 因此我们在 windows 上做同样的处理，把已关闭的 socket 映射为返回 EOF。
         let length = cmp::min(buf.capacity(), i32::MAX as usize) as i32;
         let result =
             unsafe { c::recv(self.as_raw(), buf.as_mut().as_mut_ptr() as *mut _, length, flags) };
@@ -260,8 +260,8 @@ impl Socket {
     }
 
     pub fn read_vectored(&self, bufs: &mut [IoSliceMut<'_>]) -> io::Result<usize> {
-        // On unix when a socket is shut down all further reads return 0, so we
-        // do the same on windows to map a shut down socket to returning EOF.
+        // 在 unix 上，当 socket 被关闭后，之后所有的读取都会返回 0，
+        // 因此我们在 windows 上做同样的处理，把已关闭的 socket 映射为返回 EOF。
         let length = cmp::min(bufs.len(), u32::MAX as usize) as u32;
         let mut nread = 0;
         let mut flags = 0;
@@ -311,8 +311,8 @@ impl Socket {
         let mut addrlen = size_of_val(&storage) as netc::socklen_t;
         let length = cmp::min(buf.len(), <wrlen_t>::MAX as usize) as wrlen_t;
 
-        // On unix when a socket is shut down all further reads return 0, so we
-        // do the same on windows to map a shut down socket to returning EOF.
+        // 在 unix 上，当 socket 被关闭后，之后所有的读取都会返回 0，
+        // 因此我们在 windows 上做同样的处理，把已关闭的 socket 映射为返回 EOF。
         let result = unsafe {
             c::recvfrom(
                 self.as_raw(),

@@ -1,40 +1,33 @@
-//! Thread Local Storage
+//! 线程本地存储（Thread Local Storage）
 //!
-//! Currently, we are limited to 1023 TLS entries. The entries
-//! live in a page of memory that's unique per-process, and is
-//! stored in the `$tp` register. If this register is 0, then
-//! TLS has not been initialized and thread cleanup can be skipped.
+//! 目前，我们被限制在 1023 个 TLS 条目。这些条目存放在一页内存中，
+//! 该页对每个进程唯一，并保存在 `$tp` 寄存器中。如果该寄存器为 0，
+//! 则说明 TLS 尚未初始化，可以跳过线程清理。
 //!
-//! The index into this register is the `key`. This key is identical
-//! between all threads, but indexes a different offset within this
-//! pointer.
+//! 进入该寄存器的索引就是 `key`。这个 key 在所有线程之间是相同的，
+//! 但在该指针内部索引到不同的偏移量。
 //!
-//! # Dtor registration (stolen from Windows)
+//! # 析构函数注册（抄自 Windows）
 //!
-//! Xous has no native support for running destructors so we manage our own
-//! list of destructors to keep track of how to destroy keys. When a thread
-//! or the process exits, `run_dtors` is called, which will iterate through
-//! the list and run the destructors.
+//! Xous 没有运行析构函数（destructors）的原生支持，所以我们自己管理一份
+//! 析构函数列表，以追踪如何销毁各个 key。当某个线程或进程退出时，
+//! `run_dtors` 会被调用，它会遍历该列表并运行析构函数。
 //!
-//! Currently unregistration from this list is not supported. A destructor can be
-//! registered but cannot be unregistered. There's various simplifying reasons
-//! for doing this, the big ones being:
+//! 目前不支持从该列表中注销（unregistration）。析构函数可以被注册，
+//! 但无法被注销。这样做有若干简化方面的原因，主要是：
 //!
-//! 1. Currently we don't even support deallocating TLS keys, so normal operation
-//!    doesn't need to deallocate a destructor.
-//! 2. There is no point in time where we know we can unregister a destructor
-//!    because it could always be getting run by some remote thread.
+//! 1. 目前我们甚至不支持释放 TLS key，所以正常操作不需要释放析构函数。
+//! 2. 不存在某个时间点能让我们确知可以注销某个析构函数，因为它随时
+//!    可能正被某个远程线程运行。
 //!
-//! Typically processes have a statically known set of TLS keys which is pretty
-//! small, and we'd want to keep this memory alive for the whole process anyway
-//! really.
+//! 通常进程拥有一组静态已知且相当小的 TLS key，而且无论如何我们其实都希望
+//! 让这块内存在整个进程生命周期内保持存活。
 //!
-//! Perhaps one day we can fold the `Box` here into a static allocation,
-//! expanding the `LazyKey` structure to contain not only a slot for the TLS
-//! key but also a slot for the destructor queue on windows. An optimization for
-//! another day!
+//! 也许有一天我们可以把这里的 `Box` 折叠进一处静态分配，扩展 `LazyKey`
+//! 结构，使其不仅含有一个用于 TLS key 的槽位，还像 windows 上那样含有一个
+//! 用于析构函数队列的槽位。这是留待将来的优化！
 
-// FIXME(joboet): implement support for native TLS instead.
+// FIXME(joboet)：改为实现对原生 TLS 的支持。
 
 use core::arch::asm;
 
@@ -50,7 +43,7 @@ pub type Dtor = unsafe extern "C" fn(*mut u8);
 
 const TLS_MEMORY_SIZE: usize = 4096;
 
-/// TLS keys start at `1`. Index `0` is unused
+/// TLS key 从 `1` 开始。索引 `0` 未被使用
 #[cfg(not(test))]
 #[unsafe(export_name = "_ZN16__rust_internals3std3sys4xous16thread_local_key13TLS_KEY_INDEXE")]
 static TLS_KEY_INDEX: Atomic<usize> = AtomicUsize::new(1);
@@ -79,8 +72,7 @@ fn tls_ptr_addr() -> *mut *mut u8 {
     core::ptr::with_exposed_provenance_mut::<*mut u8>(tp)
 }
 
-/// Creates an area of memory that's unique per thread. This area will
-/// contain all thread local pointers.
+/// 创建一块对每个线程唯一的内存区域。该区域将包含所有线程本地指针。
 fn tls_table() -> &'static mut [*mut u8] {
     let tp = tls_ptr_addr();
 
@@ -89,8 +81,8 @@ fn tls_table() -> &'static mut [*mut u8] {
             core::slice::from_raw_parts_mut(tp, TLS_MEMORY_SIZE / size_of::<*mut u8>())
         };
     }
-    // If the TP register is `0`, then this thread hasn't initialized
-    // its TLS yet. Allocate a new page to store this memory.
+    // 如果 TP 寄存器为 `0`，则说明该线程尚未初始化其 TLS。
+    // 分配一个新页来存放这块内存。
     let tp = unsafe {
         map_memory(
             None,
@@ -106,7 +98,7 @@ fn tls_table() -> &'static mut [*mut u8] {
     }
 
     unsafe {
-        // Set the thread's `$tp` register
+        // 设置该线程的 `$tp` 寄存器
         asm!(
             "mv tp, {}",
             in(reg) tp.as_mut_ptr() as usize,
@@ -117,7 +109,7 @@ fn tls_table() -> &'static mut [*mut u8] {
 
 #[inline]
 pub fn create(dtor: Option<Dtor>) -> Key {
-    // Allocate a new TLS key. These keys are shared among all threads.
+    // 分配一个新的 TLS key。这些 key 在所有线程之间共享。
     #[allow(unused_unsafe)]
     let key = unsafe { TLS_KEY_INDEX.fetch_add(1, Relaxed) };
     if let Some(f) = dtor {
@@ -141,8 +133,8 @@ pub unsafe fn get(key: Key) -> *mut u8 {
 
 #[inline]
 pub unsafe fn destroy(_key: Key) {
-    // Just leak the key. Probably not great on long-running systems that create
-    // lots of TLS variables, but in practice that's not an issue.
+    // 直接泄漏该 key。在创建大量 TLS 变量的长期运行系统上这或许不太好，
+    // 但实践中这并不是问题。
 }
 
 struct Node {
@@ -152,8 +144,8 @@ struct Node {
 }
 
 unsafe fn register_dtor(key: Key, dtor: Dtor) {
-    // We use the System allocator here to avoid interfering with a potential
-    // Global allocator using thread-local storage.
+    // 我们这里使用 System 分配器，以避免干扰某个可能使用线程本地存储的
+    // Global 分配器。
     let mut node =
         ManuallyDrop::new(Box::new_in(Node { key, dtor, next: ptr::null_mut() }, System));
 
@@ -163,7 +155,7 @@ unsafe fn register_dtor(key: Key, dtor: Dtor) {
         node.next = head;
         #[allow(unused_unsafe)]
         match unsafe { DTORS.compare_exchange(head, &mut **node, Release, Acquire) } {
-            Ok(_) => return, // nothing to drop, we successfully added the node to the list
+            Ok(_) => return, // 没有什么要 drop 的，我们已成功把节点加入列表
             Err(cur) => head = cur,
         }
     }
@@ -172,33 +164,30 @@ unsafe fn register_dtor(key: Key, dtor: Dtor) {
 pub unsafe fn destroy_tls() {
     let tp = tls_ptr_addr();
 
-    // If the pointer address is 0, then this thread has no TLS.
+    // 如果指针地址为 0，则说明该线程没有 TLS。
     if tp.is_null() {
         return;
     }
 
     unsafe { run_dtors() };
 
-    // Finally, free the TLS array
+    // 最后，释放 TLS 数组
     unsafe {
         unmap_memory(core::slice::from_raw_parts_mut(tp, TLS_MEMORY_SIZE / size_of::<usize>()))
             .unwrap()
     };
 }
 
-// This is marked inline(never) to prevent dealloc calls from being reordered
-// to after the TLS has been destroyed.
-// See https://github.com/rust-lang/rust/pull/144465#pullrequestreview-3289729950
-// for more context.
+// 此函数被标记为 inline(never)，以防止 dealloc 调用被重排到 TLS 已被销毁之后。
+// 更多背景请参见
+// https://github.com/rust-lang/rust/pull/144465#pullrequestreview-3289729950 。
 #[inline(never)]
 unsafe fn run_dtors() {
     let mut any_run = true;
 
-    // Run the destructor "some" number of times. This is 5x on Windows,
-    // so we copy it here. This allows TLS variables to create new
-    // TLS variables upon destruction that will also get destroyed.
-    // Keep going until we run out of tries or until we have nothing
-    // left to destroy.
+    // 把析构函数运行“若干”次。Windows 上是 5 次，所以我们这里照搬。
+    // 这允许 TLS 变量在被销毁时创建出新的 TLS 变量，而这些新变量也会被销毁。
+    // 一直进行下去，直到用完尝试次数，或者直到没有任何东西可销毁为止。
     for _ in 0..5 {
         if !any_run {
             break;

@@ -1,4 +1,4 @@
-//! Android-specific networking functionality.
+//! Android 平台特有的网络功能。
 
 #![stable(feature = "unix_socket_abstract", since = "1.70.0")]
 

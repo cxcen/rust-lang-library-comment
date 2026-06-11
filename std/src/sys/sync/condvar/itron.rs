@@ -1,4 +1,4 @@
-//! POSIX conditional variable implementation based on user-space wait queues.
+//! 基于用户空间等待队列（user-space wait queues）的 POSIX 条件变量实现。
 
 use crate::mem::replace;
 use crate::ptr::NonNull;
@@ -9,8 +9,8 @@ use crate::sys::pal::itron::{abi, task};
 use crate::sys::sync::Mutex;
 use crate::time::Duration;
 
-// The implementation is inspired by the queue-based implementation shown in
-// Andrew D. Birrell's paper "Implementing Condition Variables with Semaphores"
+// 本实现的灵感来自 Andrew D. Birrell 的论文
+// "Implementing Condition Variables with Semaphores" 中展示的基于队列的实现。
 
 pub struct Condvar {
     waiters: SpinMutex<waiter_queue::WaiterQueue>,
@@ -28,11 +28,11 @@ impl Condvar {
     pub fn notify_one(&self) {
         self.waiters.with_locked(|waiters| {
             if let Some(task) = waiters.pop_front() {
-                // Unpark the task
+                // 唤醒（unpark）该任务
                 match unsafe { abi::wup_tsk(task) } {
-                    // The task already has a token.
+                    // 该任务已经持有一个令牌（token）。
                     abi::E_QOVR => {}
-                    // Can't undo the effect; abort the program on failure
+                    // 无法撤销该效果；失败时中止程序
                     er => {
                         expect_success_aborting(er, &"wup_tsk");
                     }
@@ -44,11 +44,11 @@ impl Condvar {
     pub fn notify_all(&self) {
         self.waiters.with_locked(|waiters| {
             while let Some(task) = waiters.pop_front() {
-                // Unpark the task
+                // 唤醒（unpark）该任务
                 match unsafe { abi::wup_tsk(task) } {
-                    // The task already has a token.
+                    // 该任务已经持有一个令牌（token）。
                     abi::E_QOVR => {}
-                    // Can't undo the effect; abort the program on failure
+                    // 无法撤销该效果；失败时中止程序
                     er => {
                         expect_success_aborting(er, &"wup_tsk");
                     }
@@ -58,7 +58,7 @@ impl Condvar {
     }
 
     pub unsafe fn wait(&self, mutex: &Mutex) {
-        // Construct `Waiter`.
+        // 构造 `Waiter`。
         let mut waiter = waiter_queue::Waiter::new();
         let waiter = NonNull::from(&mut waiter);
 
@@ -68,9 +68,9 @@ impl Condvar {
 
         unsafe { mutex.unlock() };
 
-        // Wait until `waiter` is removed from the queue
+        // 等待，直到 `waiter` 被从队列中移除
         loop {
-            // Park the current task
+            // 将当前任务 park 起来
             expect_success_aborting(unsafe { abi::slp_tsk() }, &"slp_tsk");
 
             if !self.waiters.with_locked(|waiters| unsafe { waiters.is_queued(waiter) }) {
@@ -82,7 +82,7 @@ impl Condvar {
     }
 
     pub unsafe fn wait_timeout(&self, mutex: &Mutex, dur: Duration) -> bool {
-        // Construct and pin `Waiter`
+        // 构造并固定（pin）`Waiter`
         let mut waiter = waiter_queue::Waiter::new();
         let waiter = NonNull::from(&mut waiter);
 
@@ -92,14 +92,13 @@ impl Condvar {
 
         unsafe { mutex.unlock() };
 
-        // Park the current task and do not wake up until the timeout elapses
-        // or the task gets woken up by `notify_*`
+        // 把当前任务 park 起来，在超时到期或任务被 `notify_*` 唤醒之前都不唤醒
         match with_tmos_strong(dur, |tmo| {
             let er = unsafe { abi::tslp_tsk(tmo) };
             if er == 0 {
-                // We were unparked. Are we really dequeued?
+                // 我们被 unpark 了。我们真的已经出队了吗？
                 if self.waiters.with_locked(|waiters| unsafe { waiters.is_queued(waiter) }) {
-                    // No we are not. Continue waiting.
+                    // 没有，我们还没出队。继续等待。
                     return abi::E_TMOUT;
                 }
             }
@@ -111,9 +110,8 @@ impl Condvar {
             }
         }
 
-        // Remove `waiter` from `self.waiters`. If `waiter` is still in
-        // `waiters`, it means we woke up because of a timeout. Otherwise,
-        // we woke up because of `notify_*`.
+        // 把 `waiter` 从 `self.waiters` 中移除。如果 `waiter` 仍在 `waiters` 中，
+        // 说明我们是因为超时而醒来的。否则，我们是因为 `notify_*` 而醒来的。
         let success = self.waiters.with_locked(|waiters| unsafe { !waiters.remove(waiter) });
 
         mutex.lock();
@@ -138,9 +136,8 @@ mod waiter_queue {
     unsafe impl Sync for ListHead {}
 
     pub struct Waiter {
-        // These fields are only accessed through `&[mut] WaiterQueue`.
-        /// The waiting task's ID. Will be zeroed when the task is woken up
-        /// and removed from a queue.
+        // 这些字段只能通过 `&[mut] WaiterQueue` 访问。
+        /// 等待任务的 ID。当任务被唤醒并从队列中移除时会被清零。
         task: abi::ID,
         priority: abi::PRI,
         prev: Option<NonNull<Waiter>>,
@@ -156,9 +153,8 @@ mod waiter_queue {
             let task = task::current_task_id();
             let priority = task::task_priority(abi::TSK_SELF);
 
-            // Zeroness of `Waiter::task` indicates whether the `Waiter` is
-            // linked to a queue or not. This invariant is important for
-            // the correctness.
+            // `Waiter::task` 是否为零，用于指示该 `Waiter` 是否链接到某个队列上。
+            // 这个不变量对正确性很重要。
             debug_assert_ne!(task, 0);
 
             Self { task, priority, prev: None, next: None }
@@ -171,14 +167,14 @@ mod waiter_queue {
             Self { head: None }
         }
 
-        /// # Safety
+        /// # 安全性(Safety）
         ///
-        ///  - The caller must own `*waiter_ptr`. The caller will lose the
-        ///    ownership until `*waiter_ptr` is removed from `self`.
+        ///  - 调用者必须拥有 `*waiter_ptr`。在 `*waiter_ptr` 被从 `self` 中移除
+        ///    之前，调用者将失去其所有权。
         ///
-        ///  - `*waiter_ptr` must be valid until it's removed from the queue.
+        ///  - 在 `*waiter_ptr` 被从队列中移除之前，它必须保持有效。
         ///
-        ///  - `*waiter_ptr` must not have been previously inserted to a `WaiterQueue`.
+        ///  - `*waiter_ptr` 之前不得已被插入到某个 `WaiterQueue` 中。
         ///
         pub unsafe fn insert(&mut self, mut waiter_ptr: NonNull<Waiter>) {
             unsafe {
@@ -188,14 +184,14 @@ mod waiter_queue {
                 debug_assert!(waiter.next.is_none());
 
                 if let Some(head) = &mut self.head {
-                    // Find the insertion position and insert `waiter`
+                    // 找到插入位置并插入 `waiter`
                     let insert_after = {
                         let mut cursor = head.last;
                         loop {
                             if waiter.priority >= cursor.as_ref().priority {
-                                // `cursor` and all previous waiters have the same or higher
-                                // priority than `current_task_priority`. Insert the new
-                                // waiter right after `cursor`.
+                                // `cursor` 及其之前所有的 waiter 都具有大于等于
+                                // `current_task_priority` 的优先级。把新的 waiter
+                                // 紧接在 `cursor` 之后插入。
                                 break Some(cursor);
                             }
                             cursor = if let Some(prev) = cursor.as_ref().prev {
@@ -207,7 +203,7 @@ mod waiter_queue {
                     };
 
                     if let Some(mut insert_after) = insert_after {
-                        // Insert `waiter` after `insert_after`
+                        // 把 `waiter` 插入到 `insert_after` 之后
                         let insert_before = insert_after.as_ref().next;
 
                         waiter.prev = Some(insert_after);
@@ -220,20 +216,20 @@ mod waiter_queue {
                             head.last = waiter_ptr;
                         }
                     } else {
-                        // Insert `waiter` to the front
+                        // 把 `waiter` 插入到队首
                         waiter.next = Some(head.first);
                         head.first.as_mut().prev = Some(waiter_ptr);
                         head.first = waiter_ptr;
                     }
                 } else {
-                    // `waiter` is the only element
+                    // `waiter` 是唯一的元素
                     self.head = Some(ListHead { first: waiter_ptr, last: waiter_ptr });
                 }
             }
         }
 
-        /// Given a `Waiter` that was previously inserted to `self`, remove
-        /// it from `self` if it's still there.
+        /// 给定一个之前被插入到 `self` 的 `Waiter`，如果它仍在 `self` 中，
+        /// 则把它从 `self` 中移除。
         #[inline]
         pub unsafe fn remove(&mut self, mut waiter_ptr: NonNull<Waiter>) -> bool {
             unsafe {
@@ -268,8 +264,8 @@ mod waiter_queue {
             }
         }
 
-        /// Given a `Waiter` that was previously inserted to `self`, return a
-        /// flag indicating whether it's still in `self`.
+        /// 给定一个之前被插入到 `self` 的 `Waiter`，返回一个标志，指示它是否仍在
+        /// `self` 中。
         #[inline]
         pub unsafe fn is_queued(&self, waiter: NonNull<Waiter>) -> bool {
             unsafe { waiter.as_ref().task != 0 }
@@ -281,10 +277,10 @@ mod waiter_queue {
                 let head = self.head.as_mut()?;
                 let waiter = head.first.as_mut();
 
-                // Get the ID
+                // 取出该 ID
                 let id = replace(&mut waiter.task, 0);
 
-                // Unlink the waiter
+                // 把该 waiter 从链表中解开
                 if let Some(mut next) = waiter.next {
                     head.first = next;
                     next.as_mut().prev = None;

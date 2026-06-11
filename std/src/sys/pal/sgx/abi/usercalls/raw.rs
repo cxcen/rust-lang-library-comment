@@ -14,16 +14,16 @@ unsafe extern "C" {
     -> UsercallReturn;
 }
 
-/// Performs the raw usercall operation as defined in the ABI calling convention.
+/// 按照 ABI 调用约定中定义的方式执行原始 usercall 操作。
 ///
-/// # Safety
+/// # 安全性(Safety）
 ///
-/// The caller must ensure to pass parameters appropriate for the usercall `nr`
-/// and to observe all requirements specified in the ABI.
+/// 调用方必须确保传入与该 usercall `nr` 相匹配的参数，并遵守 ABI 中规定的所有
+/// 要求。
 ///
 /// # Panics
 ///
-/// Panics if `nr` is `0`.
+/// 如果 `nr` 为 `0` 则 panic。
 #[unstable(feature = "sgx_platform", issue = "56975")]
 #[inline]
 pub unsafe fn do_usercall(
@@ -38,29 +38,29 @@ pub unsafe fn do_usercall(
     (a, b)
 }
 
-/// A value passed or returned in a CPU register.
+/// 在 CPU 寄存器中传递或返回的值。
 #[unstable(feature = "sgx_platform", issue = "56975")]
 pub type Register = u64;
 
-/// Translate a type from/to Register to be used as an argument.
+/// 把某个类型从/向 Register 进行转换，以用作参数。
 #[unstable(feature = "sgx_platform", issue = "56975")]
 pub trait RegisterArgument {
-    /// Translate a Register to Self.
+    /// 把 Register 转换为 Self。
     fn from_register(_: Register) -> Self;
-    /// Translate self to a Register.
+    /// 把 self 转换为 Register。
     fn into_register(self) -> Register;
 }
 
-/// Translate a pair of Registers to the raw usercall return value.
+/// 把一对 Register 转换为原始 usercall 返回值。
 #[unstable(feature = "sgx_platform", issue = "56975")]
 pub trait ReturnValue {
-    /// Translate a pair of Registers to the raw usercall return value.
+    /// 把一对 Register 转换为原始 usercall 返回值。
     fn from_registers(call: &'static str, regs: (Register, Register)) -> Self;
 }
 
 macro_rules! define_usercalls {
     ($(fn $f:ident($($n:ident: $t:ty),*) $(-> $r:tt)*; )*) => {
-        /// Usercall numbers as per the ABI.
+        /// 按照 ABI 定义的 usercall 编号。
         #[repr(u64)]
         #[unstable(feature = "sgx_platform", issue = "56975")]
         #[derive(Copy, Clone, Hash, PartialEq, Eq, Debug)]
@@ -185,12 +185,11 @@ macro_rules! return_type_is_abort {
     };
 }
 
-// In this macro: using `$r:tt` because `$r:ty` doesn't match ! in `return_type_is_abort`
+// 在此宏中：使用 `$r:tt` 是因为 `$r:ty` 在 `return_type_is_abort` 中无法匹配 !
 macro_rules! enclave_usercalls_internal_define_usercalls {
     (def fn $f:ident($n1:ident: $t1:ty, $n2:ident: $t2:ty,
                      $n3:ident: $t3:ty, $n4:ident: $t4:ty) -> $r:tt) => (
-        /// This is the raw function definition, see the ABI documentation for
-        /// more information.
+        /// 这是原始函数定义，更多信息请参见 ABI 文档。
         #[unstable(feature = "sgx_platform", issue = "56975")]
         #[inline(always)]
         pub unsafe fn $f($n1: $t1, $n2: $t2, $n3: $t3, $n4: $t4) -> $r {
@@ -205,8 +204,7 @@ macro_rules! enclave_usercalls_internal_define_usercalls {
         }
     );
     (def fn $f:ident($n1:ident: $t1:ty, $n2:ident: $t2:ty, $n3:ident: $t3:ty) -> $r:tt) => (
-        /// This is the raw function definition, see the ABI documentation for
-        /// more information.
+        /// 这是原始函数定义，更多信息请参见 ABI 文档。
         #[unstable(feature = "sgx_platform", issue = "56975")]
         #[inline(always)]
         pub unsafe fn $f($n1: $t1, $n2: $t2, $n3: $t3) -> $r {
@@ -221,8 +219,7 @@ macro_rules! enclave_usercalls_internal_define_usercalls {
         }
     );
     (def fn $f:ident($n1:ident: $t1:ty, $n2:ident: $t2:ty) -> $r:tt) => (
-        /// This is the raw function definition, see the ABI documentation for
-        /// more information.
+        /// 这是原始函数定义，更多信息请参见 ABI 文档。
         #[unstable(feature = "sgx_platform", issue = "56975")]
         #[inline(always)]
         pub unsafe fn $f($n1: $t1, $n2: $t2) -> $r {
@@ -236,8 +233,7 @@ macro_rules! enclave_usercalls_internal_define_usercalls {
         }
     );
     (def fn $f:ident($n1:ident: $t1:ty) -> $r:tt) => (
-        /// This is the raw function definition, see the ABI documentation for
-        /// more information.
+        /// 这是原始函数定义，更多信息请参见 ABI 文档。
         #[unstable(feature = "sgx_platform", issue = "56975")]
         #[inline(always)]
         pub unsafe fn $f($n1: $t1) -> $r {
@@ -250,8 +246,7 @@ macro_rules! enclave_usercalls_internal_define_usercalls {
         }
     );
     (def fn $f:ident() -> $r:tt) => (
-        /// This is the raw function definition, see the ABI documentation for
-        /// more information.
+        /// 这是原始函数定义，更多信息请参见 ABI 文档。
         #[unstable(feature = "sgx_platform", issue = "56975")]
         #[inline(always)]
         pub unsafe fn $f() -> $r {

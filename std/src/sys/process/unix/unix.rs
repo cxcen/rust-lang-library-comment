@@ -25,8 +25,8 @@ cfg_select! {
         use libc::{c_char, posix_spawn_file_actions_t, posix_spawnattr_t};
         use crate::time::Duration;
         use crate::sync::LazyLock;
-        // Get smallest amount of time we can sleep.
-        // Return a common value if it cannot be determined.
+        // 获取我们能够睡眠的最小时间量。
+        // 如果无法确定，则返回一个通用值。
         fn get_clock_resolution() -> Duration {
             static MIN_DELAY: LazyLock<Duration, fn() -> Duration> = LazyLock::new(|| {
                 let mut mindelay = libc::timespec { tv_sec: 0, tv_nsec: 0 };
@@ -39,16 +39,16 @@ cfg_select! {
             });
             *MIN_DELAY
         }
-        // Arbitrary minimum sleep duration for retrying fork/spawn
+        // 重试 fork/spawn 时使用的任意（arbitrary）最小睡眠时长
         const MIN_FORKSPAWN_SLEEP: Duration = Duration::from_nanos(1);
-        // Maximum duration of sleeping before giving up and returning an error
+        // 在放弃并返回错误之前睡眠的最大时长
         const MAX_FORKSPAWN_SLEEP: Duration = Duration::from_millis(1000);
     }
     _ => {}
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// Command
+// 命令（Command）
 ////////////////////////////////////////////////////////////////////////////////
 
 impl Command {
@@ -80,22 +80,20 @@ impl Command {
         #[cfg(not(target_os = "linux"))]
         let (input, output) = sys::pipe::pipe()?;
 
-        // Whatever happens after the fork is almost for sure going to touch or
-        // look at the environment in one way or another (PATH in `execvp` or
-        // accessing the `environ` pointer ourselves). Make sure no other thread
-        // is accessing the environment when we do the fork itself.
+        // fork 之后无论发生什么，几乎肯定都会以某种方式触碰或查看环境
+        //（在 `execvp` 中查看 PATH，或我们自己访问 `environ` 指针）。
+        // 因此要确保在我们执行 fork 本身时没有其他线程正在访问环境。
         //
-        // Note that as soon as we're done with the fork there's no need to hold
-        // a lock any more because the parent won't do anything and the child is
-        // in its own process. Thus the parent drops the lock guard immediately.
-        // The child calls `mem::forget` to leak the lock, which is crucial because
-        // releasing a lock is not async-signal-safe.
+        // 注意，一旦我们完成了 fork，就不再需要持有锁了，因为父进程不会再做任何事情，
+        // 而子进程身处它自己的进程之中。因此父进程会立即丢弃（drop）这个锁守卫（lock guard）。
+        // 子进程则调用 `mem::forget` 来泄漏（leak）这个锁，这一点至关重要，
+        // 因为释放锁不是 async-signal-safe（异步信号安全）的。
         let env_lock = sys::env::env_read_lock();
         let pid = unsafe { self.do_fork()? };
 
         if pid == 0 {
             crate::panic::always_abort();
-            mem::forget(env_lock); // avoid non-async-signal-safe unlocking
+            mem::forget(env_lock); // 避免非 async-signal-safe 的解锁操作
             drop(input);
             #[cfg(target_os = "linux")]
             if self.get_create_pidfd() {
@@ -114,9 +112,9 @@ impl Command {
                 CLOEXEC_MSG_FOOTER[2],
                 CLOEXEC_MSG_FOOTER[3],
             ];
-            // pipe I/O up to PIPE_BUF bytes should be atomic, and then
-            // we want to be sure we *don't* run at_exit destructors as
-            // we're being torn down regardless
+            // 不超过 PIPE_BUF 字节的管道 I/O 应当是原子的，而且
+            // 我们想确保自己 *不* 运行 at_exit 析构函数（destructors），
+            // 因为无论如何我们都正在被销毁（torn down）
             rtassert!(output.write(&bytes).is_ok());
             unsafe { libc::_exit(1) }
         }
@@ -130,11 +128,11 @@ impl Command {
         #[cfg(not(target_os = "linux"))]
         let pidfd = -1;
 
-        // Safety: We obtained the pidfd (on Linux) using SOCK_SEQPACKET, so it's valid.
+        // Safety: 我们（在 Linux 上）是使用 SOCK_SEQPACKET 获取该 pidfd 的，所以它是有效的。
         let mut p = unsafe { Process::new(pid, pidfd) };
         let mut bytes = [0; 8];
 
-        // loop to handle EINTR
+        // 循环以处理 EINTR
         loop {
             match input.read(&mut bytes) {
                 Ok(0) => return Ok((p, ours)),
@@ -155,8 +153,8 @@ impl Command {
                     panic!("the CLOEXEC pipe failed: {e:?}")
                 }
                 Ok(..) => {
-                    // pipe I/O up to PIPE_BUF bytes should be atomic
-                    // similarly SOCK_SEQPACKET messages should arrive whole
+                    // 不超过 PIPE_BUF 字节的管道 I/O 应当是原子的
+                    // 类似地，SOCK_SEQPACKET 消息也应当整条地到达
                     assert!(p.wait().is_ok(), "wait() should either return Ok or panic");
                     panic!("short read on the CLOEXEC pipe")
                 }
@@ -164,12 +162,10 @@ impl Command {
         }
     }
 
-    // WatchOS and TVOS headers mark the `fork`/`exec*` functions with
-    // `__WATCHOS_PROHIBITED __TVOS_PROHIBITED`, and indicate that the
-    // `posix_spawn*` functions should be used instead. It isn't entirely clear
-    // what `PROHIBITED` means here (e.g. if calls to these functions are
-    // allowed to exist in dead code), but it sounds bad, so we go out of our
-    // way to avoid that all-together.
+    // WatchOS 和 TVOS 的头文件用 `__WATCHOS_PROHIBITED __TVOS_PROHIBITED`
+    // 标记了 `fork`/`exec*` 函数，并指出应改用 `posix_spawn*` 函数。
+    // 这里的 `PROHIBITED` 究竟是什么意思尚不完全清楚（例如，是否允许这些函数的调用
+    // 存在于死代码（dead code）中），但听起来不妙，所以我们竭力避免一切相关用法。
     #[cfg(any(target_os = "tvos", target_os = "watchos"))]
     const ERR_APPLE_TV_WATCH_NO_FORK_EXEC: Error = io::const_error!(
         ErrorKind::Unsupported,
@@ -181,17 +177,17 @@ impl Command {
         return Err(Self::ERR_APPLE_TV_WATCH_NO_FORK_EXEC);
     }
 
-    // Attempts to fork the process. If successful, returns Ok((0, -1))
-    // in the child, and Ok((child_pid, -1)) in the parent.
+    // 尝试 fork 该进程。如果成功，在子进程中返回 Ok((0, -1))，
+    // 在父进程中返回 Ok((child_pid, -1))。
     #[cfg(not(any(target_os = "watchos", target_os = "tvos", target_os = "nto")))]
     unsafe fn do_fork(&mut self) -> Result<pid_t, io::Error> {
         cvt(libc::fork())
     }
 
-    // On QNX Neutrino, fork can fail with EBADF in case "another thread might have opened
-    // or closed a file descriptor while the fork() was occurring".
-    // Documentation says "... or try calling fork() again". This is what we do here.
-    // See also https://www.qnx.com/developers/docs/7.1/#com.qnx.doc.neutrino.lib_ref/topic/f/fork.html
+    // 在 QNX Neutrino 上，fork 可能以 EBADF 失败，原因是“在 fork() 进行期间，
+    // 另一个线程可能打开或关闭了某个文件描述符”。
+    // 文档说“……或者尝试再次调用 fork()”。这正是我们在这里所做的。
+    // 另见 https://www.qnx.com/developers/docs/7.1/#com.qnx.doc.neutrino.lib_ref/topic/f/fork.html
     #[cfg(target_os = "nto")]
     unsafe fn do_fork(&mut self) -> Result<pid_t, io::Error> {
         use crate::sys::io::errno;
@@ -202,8 +198,8 @@ impl Command {
             let r = libc::fork();
             if r == -1 as libc::pid_t && errno() as libc::c_int == libc::EBADF {
                 if delay < get_clock_resolution() {
-                    // We cannot sleep this short (it would be longer).
-                    // Yield instead.
+                    // 我们无法睡眠这么短的时间（实际睡眠会更长）。
+                    // 改为让出（Yield）。
                     thread::yield_now();
                 } else if delay < MAX_FORKSPAWN_SLEEP {
                     thread::sleep(delay);
@@ -231,9 +227,8 @@ impl Command {
         match self.setup_io(default, true) {
             Ok((_, theirs)) => {
                 unsafe {
-                    // Similar to when forking, we want to ensure that access to
-                    // the environment is synchronized, so make sure to grab the
-                    // environment lock before we try to exec.
+                    // 和 fork 时类似，我们想确保对环境的访问是同步的，
+                    // 因此在尝试 exec 之前务必先拿到环境锁（environment lock）。
                     let _lock = sys::env::env_read_lock();
 
                     let Err(e) = self.do_exec(theirs, envp.as_ref());
@@ -244,36 +239,27 @@ impl Command {
         }
     }
 
-    // And at this point we've reached a special time in the life of the
-    // child. The child must now be considered hamstrung and unable to
-    // do anything other than syscalls really. Consider the following
-    // scenario:
+    // 而此刻，我们已经到达了子进程生命中的一个特殊时刻。现在必须认为子进程已被严重削弱
+    // （hamstrung），除了系统调用（syscalls）之外几乎做不了任何事情。考虑如下场景：
     //
-    //      1. Thread A of process 1 grabs the malloc() mutex
-    //      2. Thread B of process 1 forks(), creating thread C
-    //      3. Thread C of process 2 then attempts to malloc()
-    //      4. The memory of process 2 is the same as the memory of
-    //         process 1, so the mutex is locked.
+    //      1. 进程 1 的线程 A 抓住了 malloc() 互斥锁
+    //      2. 进程 1 的线程 B 调用 forks()，创建出线程 C
+    //      3. 进程 2 的线程 C 接着尝试 malloc()
+    //      4. 进程 2 的内存与进程 1 的内存相同，所以那个互斥锁是被锁住的。
     //
-    // This situation looks a lot like deadlock, right? It turns out
-    // that this is what pthread_atfork() takes care of, which is
-    // presumably implemented across platforms. The first thing that
-    // threads to *before* forking is to do things like grab the malloc
-    // mutex, and then after the fork they unlock it.
+    // 这种情形看起来很像死锁（deadlock），对吧？事实证明，这正是 pthread_atfork()
+    // 所要处理的问题，而它大概是在各个平台上都有实现的。线程在 fork *之前* 要做的
+    // 第一件事，就是去做诸如抓住 malloc 互斥锁之类的事情，然后在 fork 之后再把它解锁。
     //
-    // Despite this information, libnative's spawn has been witnessed to
-    // deadlock on both macOS and FreeBSD. I'm not entirely sure why, but
-    // all collected backtraces point at malloc/free traffic in the
-    // child spawned process.
+    // 尽管有这些信息，libnative 的 spawn 仍被观察到在 macOS 和 FreeBSD 上都发生过死锁。
+    // 我不完全确定原因，但收集到的所有回溯（backtraces）都指向子 spawn 进程中的
+    // malloc/free 活动。
     //
-    // For this reason, the block of code below should contain 0
-    // invocations of either malloc of free (or their related friends).
+    // 出于这个原因，下面这段代码应当包含 0 次对 malloc 或 free（及其相关伙伴）的调用。
     //
-    // As an example of not having malloc/free traffic, we don't close
-    // this file descriptor by dropping the FileDesc (which contains an
-    // allocation). Instead we just close it manually. This will never
-    // have the drop glue anyway because this code never returns (the
-    // child will either exec() or invoke libc::exit)
+    // 作为一个没有 malloc/free 活动的例子：我们不会通过丢弃 FileDesc（它含有一处分配）
+    // 来关闭这个文件描述符。相反，我们只是手动地关闭它。反正这里永远不会有 drop glue，
+    // 因为这段代码永远不会返回（子进程要么 exec()，要么调用 libc::exit）
     #[cfg(not(any(target_os = "tvos", target_os = "watchos")))]
     unsafe fn do_exec(
         &mut self,
@@ -295,7 +281,7 @@ impl Command {
         #[cfg(not(target_os = "l4re"))]
         {
             if let Some(_g) = self.get_groups() {
-                //FIXME: Redox kernel does not support setgroups yet
+                //FIXME: Redox kernel 目前还不支持 setgroups
                 #[cfg(not(target_os = "redox"))]
                 cvt(libc::setgroups(_g.len().try_into().unwrap(), _g.as_ptr()))?;
             }
@@ -303,20 +289,19 @@ impl Command {
                 cvt(libc::setgid(u as gid_t))?;
             }
             if let Some(u) = self.get_uid() {
-                // When dropping privileges from root, the `setgroups` call
-                // will remove any extraneous groups. We only drop groups
-                // if we have CAP_SETGID and we weren't given an explicit
-                // set of groups. If we don't call this, then even though our
-                // uid has dropped, we may still have groups that enable us to
-                // do super-user things.
-                //FIXME: Redox kernel does not support setgroups yet
+                // 当从 root 降权（drop privileges）时，`setgroups` 调用会移除任何
+                // 多余的（extraneous）用户组。只有当我们拥有 CAP_SETGID 且没有被显式
+                // 指定一组用户组时，我们才会丢弃这些用户组。如果我们不调用它，那么即便
+                // 我们的 uid 已经降权，我们可能仍然拥有某些足以让我们做超级用户（super-user）
+                // 事情的用户组。
+                //FIXME: Redox kernel 目前还不支持 setgroups
                 #[cfg(not(target_os = "redox"))]
                 if self.get_groups().is_none() {
                     let res = cvt(libc::setgroups(0, crate::ptr::null()));
                     if let Err(e) = res {
-                        // Here we ignore the case of not having CAP_SETGID.
-                        // An alternative would be to require CAP_SETGID (in
-                        // addition to CAP_SETUID) for setting the UID.
+                        // 这里我们忽略没有 CAP_SETGID 的情况。
+                        // 一种替代方案是：要求在设置 UID 时除了 CAP_SETUID 之外
+                        // 还必须拥有 CAP_SETGID。
                         if e.raw_os_error() != Some(libc::EPERM) {
                             return Err(e.into());
                         }
@@ -346,16 +331,15 @@ impl Command {
             cvt(libc::setsid())?;
         }
 
-        // emscripten has no signal support.
+        // emscripten 没有信号支持。
         #[cfg(not(target_os = "emscripten"))]
         {
-            // Inherit the signal mask from the parent rather than resetting it (i.e. do not call
-            // pthread_sigmask).
+            // 继承父进程的信号掩码（signal mask），而不是重置它（即不调用 pthread_sigmask）。
 
-            // If -Zon-broken-pipe is used, don't reset SIGPIPE to SIG_DFL.
-            // If -Zon-broken-pipe is not used, reset SIGPIPE to SIG_DFL for backward compatibility.
+            // 如果使用了 -Zon-broken-pipe，则不要把 SIGPIPE 重置为 SIG_DFL。
+            // 如果未使用 -Zon-broken-pipe，则为了向后兼容，把 SIGPIPE 重置为 SIG_DFL。
             //
-            // -Zon-broken-pipe is an opportunity to change the default here.
+            // -Zon-broken-pipe 提供了一个在此处改变默认行为的契机。
             if !crate::sys::pal::on_broken_pipe_flag_used() {
                 #[cfg(target_os = "android")] // see issue #88585
                 {
@@ -384,11 +368,9 @@ impl Command {
             callback()?;
         }
 
-        // Although we're performing an exec here we may also return with an
-        // error from this function (without actually exec'ing) in which case we
-        // want to be sure to restore the global environment back to what it
-        // once was, ensuring that our temporary override, when free'd, doesn't
-        // corrupt our process's environment.
+        // 尽管我们在这里执行的是 exec，但本函数也可能带着一个错误返回（而并未真正 exec），
+        // 在这种情况下，我们想确保把全局环境恢复到它原先的样子，从而保证我们的临时覆盖
+        // （temporary override）在被释放（free'd）时不会破坏本进程的环境。
         let mut _reset = None;
         if let Some(envp) = maybe_envp {
             struct Reset(*const *const libc::c_char);
@@ -435,8 +417,7 @@ impl Command {
         Ok(None)
     }
 
-    // Only support platforms for which posix_spawn() can return ENOENT
-    // directly.
+    // 只支持那些 posix_spawn() 可以直接返回 ENOENT 的平台。
     #[cfg(any(
         target_os = "freebsd",
         target_os = "illumos",
@@ -485,10 +466,10 @@ impl Command {
                 static PIDFD_SUPPORTED: Atomic<u8> = AtomicU8::new(0);
                 const UNKNOWN: u8 = 0;
                 const SPAWN: u8 = 1;
-                // Obtaining a pidfd via the fork+exec path might work
+                // 通过 fork+exec 路径来获取 pidfd 可能可行
                 const FORK_EXEC: u8 = 2;
-                // Neither pidfd_spawn nor fork/exec will get us a pidfd.
-                // Instead we'll just posix_spawn if the other preconditions are met.
+                // pidfd_spawn 和 fork/exec 都无法给我们一个 pidfd。
+                // 于是，如果其他前提条件都满足，我们就只做 posix_spawn。
                 const NO: u8 = 3;
 
                 if self.get_create_pidfd() {
@@ -501,22 +482,22 @@ impl Command {
 
                         match PidFd::current_process() {
                             Ok(pidfd) => {
-                                // if pidfd_open works then we at least know the fork path is available.
+                                // 如果 pidfd_open 可用，那么我们至少知道 fork 路径是可用的。
                                 support = FORK_EXEC;
-                                // but for the fast path we need both spawnp and the
-                                // pidfd -> pid conversion to work.
+                                // 但对于快速路径，我们需要 spawnp 以及
+                                // pidfd -> pid 的转换都能正常工作。
                                 if pidfd_spawnp.get().is_some() && let Ok(pid) = pidfd.pid() {
                                     assert_eq!(pid, crate::process::id(), "sanity check");
                                     support = SPAWN;
                                 }
                             }
                             Err(e) if e.raw_os_error() == Some(libc::EMFILE) => {
-                                // We're temporarily(?) out of file descriptors. In this case pidfd_spawnp would also fail
-                                // Don't update the support flag so we can probe again later.
+                                // 我们（暂时？）耗尽了文件描述符。在这种情况下 pidfd_spawnp 同样会失败。
+                                // 不要更新 support 标志，以便我们稍后可以再次探测（probe）。
                                 return Err(e)
                             }
                             _ => {
-                                // pidfd_open not available? likely an old kernel without pidfd support.
+                                // pidfd_open 不可用？很可能是一个不支持 pidfd 的旧内核。
                             }
                         }
                         PIDFD_SUPPORTED.store(support, Ordering::Relaxed);
@@ -534,7 +515,7 @@ impl Command {
             }
         }
 
-        // Only glibc 2.24+ posix_spawn() supports returning ENOENT directly.
+        // 只有 glibc 2.24+ 的 posix_spawn() 才支持直接返回 ENOENT。
         #[cfg(all(target_os = "linux", target_env = "gnu"))]
         {
             if let Some(version) = sys::os::glibc_version() {
@@ -546,9 +527,9 @@ impl Command {
             }
         }
 
-        // On QNX Neutrino, posix_spawnp can fail with EBADF in case "another thread might have opened
-        // or closed a file descriptor while the posix_spawn() was occurring".
-        // Documentation says "... or try calling posix_spawn() again". This is what we do here.
+        // 在 QNX Neutrino 上，posix_spawnp 可能以 EBADF 失败，原因是“在 posix_spawn() 进行期间，
+        // 另一个线程可能打开或关闭了某个文件描述符”。
+        // 文档说“……或者尝试再次调用 posix_spawn()”。这正是我们在这里所做的。
         // See also http://www.qnx.com/developers/docs/7.1/#com.qnx.doc.neutrino.lib_ref/topic/p/posix_spawn.html
         #[cfg(target_os = "nto")]
         unsafe fn retrying_libc_posix_spawnp(
@@ -564,8 +545,8 @@ impl Command {
                 match libc::posix_spawnp(pid, file, file_actions, attrp, argv, envp) {
                     libc::EBADF => {
                         if delay < get_clock_resolution() {
-                            // We cannot sleep this short (it would be longer).
-                            // Yield instead.
+                            // 我们无法睡眠这么短的时间（实际睡眠会更长）。
+                            // 改为让出（Yield）。
                             thread::yield_now();
                         } else if delay < MAX_FORKSPAWN_SLEEP {
                             thread::sleep(delay);
@@ -590,19 +571,19 @@ impl Command {
             *const libc::c_char,
         ) -> libc::c_int;
 
-        /// Get the function pointer for adding a chdir action to a
-        /// `posix_spawn_file_actions_t`, if available, assuming a dynamic libc.
+        /// 在假定使用动态 libc 的前提下，获取用于向 `posix_spawn_file_actions_t` 添加
+        /// 一个 chdir action 的函数指针（若可用）。
         ///
-        /// Some platforms can set a new working directory for a spawned process in the
-        /// `posix_spawn` path. This function looks up the function pointer for adding
-        /// such an action to a `posix_spawn_file_actions_t` struct.
+        /// 某些平台能够在 `posix_spawn` 路径中为被 spawn 的进程设置一个新的工作目录。
+        /// 本函数查找用于向 `posix_spawn_file_actions_t` 结构体添加这样一个 action 的
+        /// 函数指针。
         #[cfg(not(any(all(target_os = "linux", target_env = "musl"), target_os = "cygwin")))]
         fn get_posix_spawn_addchdir() -> Option<PosixSpawnAddChdirFn> {
             use crate::sys::weak::weak;
 
-            // POSIX.1-2024 standardizes this function:
-            // https://pubs.opengroup.org/onlinepubs/9799919799/functions/posix_spawn_file_actions_addchdir.html.
-            // The _np version is more widely available, though, so try that first.
+            // POSIX.1-2024 把这个函数标准化了：
+            // https://pubs.opengroup.org/onlinepubs/9799919799/functions/posix_spawn_file_actions_addchdir.html。
+            // 不过 _np 版本的可用范围更广，因此先尝试它。
 
             weak!(
                 fn posix_spawn_file_actions_addchdir_np(
@@ -623,36 +604,32 @@ impl Command {
                 .or_else(|| posix_spawn_file_actions_addchdir.get())
         }
 
-        /// Get the function pointer for adding a chdir action to a
-        /// `posix_spawn_file_actions_t`, if available, on platforms where the function
-        /// is known to exist.
+        /// 在已知该函数存在的平台上，获取用于向 `posix_spawn_file_actions_t` 添加
+        /// 一个 chdir action 的函数指针（若可用）。
         ///
-        /// Weak symbol lookup doesn't work with statically linked libcs, so in cases
-        /// where static linking is possible we need to either check for the presence
-        /// of the symbol at compile time or know about it upfront.
+        /// 弱符号（Weak symbol）查找对静态链接的 libc 不起作用，因此在可能进行静态链接的
+        /// 情况下，我们要么需要在编译期检查该符号是否存在，要么需要事先就知道它。
         ///
-        /// Cygwin doesn't support weak symbol, so just link it.
+        /// Cygwin 不支持弱符号，所以直接把它链接进来。
         #[cfg(any(all(target_os = "linux", target_env = "musl"), target_os = "cygwin"))]
         fn get_posix_spawn_addchdir() -> Option<PosixSpawnAddChdirFn> {
-            // Our minimum required musl supports this function, so we can just use it.
+            // 我们所要求的最低 musl 版本就支持此函数，因此可以直接使用它。
             Some(libc::posix_spawn_file_actions_addchdir_np)
         }
 
         let addchdir = match self.get_cwd() {
             Some(cwd) => {
                 if cfg!(target_vendor = "apple") {
-                    // There is a bug in macOS where a relative executable
-                    // path like "../myprogram" will cause `posix_spawn` to
-                    // successfully launch the program, but erroneously return
-                    // ENOENT when used with posix_spawn_file_actions_addchdir_np
-                    // which was introduced in macOS 10.15.
+                    // macOS 上有一个 bug：像 "../myprogram" 这样的相对可执行路径
+                    // 会导致 `posix_spawn` 成功启动该程序，但当与
+                    // posix_spawn_file_actions_addchdir_np（它在 macOS 10.15 中引入）
+                    // 一起使用时，却错误地返回 ENOENT。
                     if self.get_program_kind() == ProgramKind::Relative {
                         return Ok(None);
                     }
                 }
-                // Check for the availability of the posix_spawn addchdir
-                // function now. If it isn't available, bail and use the
-                // fork/exec path.
+                // 现在检查 posix_spawn 的 addchdir 函数是否可用。
+                // 如果它不可用，就放弃（bail）并改用 fork/exec 路径。
                 match get_posix_spawn_addchdir() {
                     Some(f) => Some((f, cwd)),
                     None => return Ok(None),
@@ -724,13 +701,13 @@ impl Command {
                 cvt_nz(libc::posix_spawnattr_setpgroup(attrs.0.as_mut_ptr(), pgroup))?;
             }
 
-            // Inherit the signal mask from this process rather than resetting it (i.e. do not call
-            // posix_spawnattr_setsigmask).
+            // 继承本进程的信号掩码（signal mask），而不是重置它（即不调用
+            // posix_spawnattr_setsigmask）。
 
-            // If -Zon-broken-pipe is used, don't reset SIGPIPE to SIG_DFL.
-            // If -Zon-broken-pipe is not used, reset SIGPIPE to SIG_DFL for backward compatibility.
+            // 如果使用了 -Zon-broken-pipe，则不要把 SIGPIPE 重置为 SIG_DFL。
+            // 如果未使用 -Zon-broken-pipe，则为了向后兼容，把 SIGPIPE 重置为 SIG_DFL。
             //
-            // -Zon-broken-pipe is an opportunity to change the default here.
+            // -Zon-broken-pipe 提供了一个在此处改变默认行为的契机。
             if !on_broken_pipe_flag_used() {
                 let mut default_set = MaybeUninit::<libc::sigset_t>::uninit();
                 cvt(sigemptyset(default_set.as_mut_ptr()))?;
@@ -759,7 +736,7 @@ impl Command {
 
             cvt_nz(libc::posix_spawnattr_setflags(attrs.0.as_mut_ptr(), flags as _))?;
 
-            // Make sure we synchronize access to the global `environ` resource
+            // 确保我们对全局 `environ` 资源的访问是同步的
             let _env_lock = sys::env::env_read_lock();
             let envp = envp.map(|c| c.as_ptr()).unwrap_or_else(|| *sys::env::environ() as *const _);
 
@@ -795,11 +772,11 @@ impl Command {
                 let pid = match pidfd.pid() {
                     Ok(pid) => pid,
                     Err(e) => {
-                        // The child has been spawned and we are holding its pidfd.
-                        // But we cannot obtain its pid even though pidfd_spawnp and getpid support
-                        // was verified earlier.
-                        // This is quite unlikely, but might happen if the ioctl is not supported,
-                        // glibc tries to use procfs and we're out of file descriptors.
+                        // 子进程已被 spawn，并且我们持有它的 pidfd。
+                        // 但即便前面已经验证过 pidfd_spawnp 和 getpid 的支持，
+                        // 我们仍然无法获取它的 pid。
+                        // 这相当不太可能发生，但如果该 ioctl 不受支持、glibc 尝试改用 procfs，
+                        // 而我们又耗尽了文件描述符，就可能出现这种情况。
                         return Err(Error::new(
                             e.kind(),
                             "pidfd_spawnp succeeded but the child's PID could not be obtained",
@@ -810,7 +787,7 @@ impl Command {
                 return Ok(Some(Process::new(pid as i32, pidfd.into_raw_fd())));
             }
 
-            // Safety: -1 indicates we don't have a pidfd.
+            // Safety: -1 表示我们没有 pidfd。
             let mut p = Process::new(0, -1);
 
             let spawn_res = spawn_fn(
@@ -840,7 +817,7 @@ impl Command {
 
         unsafe {
             let child_pid = libc::getpid();
-            // pidfd_open sets CLOEXEC by default
+            // pidfd_open 默认会设置 CLOEXEC
             let pidfd = libc::syscall(libc::SYS_pidfd_open, child_pid, 0);
 
             let fds: [c_int; 1] = [pidfd as RawFd];
@@ -855,14 +832,14 @@ impl Command {
 
             let mut cmsg: Cmsg = mem::zeroed();
 
-            // 0-length message to send through the socket so we can pass along the fd
+            // 一条 0 长度的消息，通过 socket 发送，这样我们就能借此把 fd 传递过去
             let mut iov = [IoSlice::new(b"")];
             let mut msg: libc::msghdr = mem::zeroed();
 
             msg.msg_iov = (&raw mut iov) as *mut _;
             msg.msg_iovlen = 1;
 
-            // only attach cmsg if we successfully acquired the pidfd
+            // 只有在我们成功获取到 pidfd 时才附加 cmsg
             if pidfd >= 0 {
                 msg.msg_controllen = size_of_val(&cmsg.buf) as _;
                 msg.msg_control = (&raw mut cmsg.buf) as *mut _;
@@ -879,8 +856,8 @@ impl Command {
                 );
             }
 
-            // we send the 0-length message even if we failed to acquire the pidfd
-            // so we get a consistent SEQPACKET order
+            // 即使我们未能获取到 pidfd，也仍然发送这条 0 长度的消息，
+            // 以便我们得到一个一致的 SEQPACKET 顺序
             match cvt_r(|| libc::sendmsg(sock.as_raw(), &msg, 0)) {
                 Ok(0) => {}
                 other => rtabort!("failed to communicate with parent process. {:?}", other),
@@ -904,7 +881,7 @@ impl Command {
                 _align: libc::cmsghdr,
             }
             let mut cmsg: Cmsg = mem::zeroed();
-            // 0-length read to get the fd
+            // 一次 0 长度的读取，以获取该 fd
             let mut iov = [IoSliceMut::new(&mut [])];
 
             let mut msg: libc::msghdr = mem::zeroed();
@@ -943,33 +920,32 @@ impl Command {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// Processes
+// 进程（Processes）
 ////////////////////////////////////////////////////////////////////////////////
 
-/// The unique ID of the process (this should never be negative).
+/// 进程的唯一 ID（它绝不应为负数）。
 pub struct Process {
     pid: pid_t,
     status: Option<ExitStatus>,
-    // On Linux, stores the pidfd created for this child.
-    // This is None if the user did not request pidfd creation,
-    // or if the pidfd could not be created for some reason
-    // (e.g. the `pidfd_open` syscall was not available).
+    // 在 Linux 上，存储为该子进程创建的 pidfd。
+    // 如果用户没有请求创建 pidfd，或者由于某种原因 pidfd 无法被创建
+    //（例如 `pidfd_open` 系统调用不可用），则它为 None。
     #[cfg(target_os = "linux")]
     pidfd: Option<PidFd>,
 }
 
 impl Process {
     #[cfg(target_os = "linux")]
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// `pidfd` must either be -1 (representing no file descriptor) or a valid, exclusively owned file
-    /// descriptor (See [I/O Safety]).
+    /// `pidfd` 必须要么是 -1（表示没有文件描述符），要么是一个有效的、被独占拥有
+    /// （exclusively owned）的文件描述符（参见 [I/O Safety]）。
     ///
     /// [I/O Safety]: crate::io#io-safety
     unsafe fn new(pid: pid_t, pidfd: pid_t) -> Self {
         use crate::os::unix::io::FromRawFd;
         use crate::sys::FromInner;
-        // Safety: If `pidfd` is nonnegative, we assume it's valid and otherwise unowned.
+        // Safety: 如果 `pidfd` 为非负值，我们就假定它有效，并且在其他情况下是无主的（unowned）。
         let pidfd = (pidfd >= 0).then(|| PidFd::from_inner(sys::fd::FileDesc::from_raw_fd(pidfd)));
         Process { pid, status: None, pidfd }
     }
@@ -988,15 +964,15 @@ impl Process {
     }
 
     pub(crate) fn send_signal(&self, signal: i32) -> io::Result<()> {
-        // If we've already waited on this process then the pid can be recycled and
-        // used for another process, and we probably shouldn't be sending signals to
-        // random processes, so return Ok because the process has exited already.
+        // 如果我们已经对该进程 wait 过了，那么这个 pid 可能会被回收（recycled）并用于
+        // 另一个进程，而我们大概不应该向随机的进程发送信号，因此返回 Ok，
+        // 因为该进程已经退出了。
         if self.status.is_some() {
             return Ok(());
         }
         #[cfg(target_os = "linux")]
         if let Some(pid_fd) = self.pidfd.as_ref() {
-            // pidfd_send_signal predates pidfd_open. so if we were able to get an fd then sending signals will work too
+            // pidfd_send_signal 出现得比 pidfd_open 早。因此，如果我们能拿到一个 fd，那么发送信号也能正常工作
             return pid_fd.send_signal(signal);
         }
         cvt(unsafe { libc::kill(self.pid, signal) }).map(drop)
@@ -1042,10 +1018,11 @@ impl Process {
     }
 }
 
-/// Unix exit statuses
+/// Unix 退出状态（exit statuses）
 //
-// This is not actually an "exit status" in Unix terminology.  Rather, it is a "wait status".
-// See the discussion in comments and doc comments for `std::process::ExitStatus`.
+// 在 Unix 术语中，这其实并不是一个 "exit status"（退出状态）。确切地说，它是一个
+// "wait status"（等待状态）。
+// 参见 `std::process::ExitStatus` 的注释和文档注释中的讨论。
 #[derive(PartialEq, Eq, Clone, Copy, Default)]
 pub struct ExitStatus(c_int);
 
@@ -1079,11 +1056,11 @@ impl ExitStatus {
     }
 
     pub fn exit_ok(&self) -> Result<(), ExitStatusError> {
-        // This assumes that WIFEXITED(status) && WEXITSTATUS==0 corresponds to status==0. This is
-        // true on all actual versions of Unix, is widely assumed, and is specified in SuS
-        // https://pubs.opengroup.org/onlinepubs/9699919799/functions/wait.html. If it is not
-        // true for a platform pretending to be Unix, the tests (our doctests, and also
-        // unix/tests.rs) will spot it. `ExitStatusError::code` assumes this too.
+        // 它假定 WIFEXITED(status) && WEXITSTATUS==0 对应于 status==0。
+        // 这在所有实际版本的 Unix 上都成立，被广泛假定，并在 SuS 中有明确规定
+        // https://pubs.opengroup.org/onlinepubs/9699919799/functions/wait.html。
+        // 如果对某个假装成 Unix 的平台而言它不成立，那么这些测试（我们的 doctests，
+        // 以及 unix/tests.rs）会发现它。`ExitStatusError::code` 也做了同样的假定。
         match NonZero::try_from(self.0) {
             /* was nonzero */ Ok(failure) => Err(ExitStatusError(failure)),
             /* was zero, couldn't convert */ Err(_) => Ok(()),
@@ -1115,19 +1092,18 @@ impl ExitStatus {
     }
 }
 
-/// Converts a raw `c_int` to a type-safe `ExitStatus` by wrapping it without copying.
+/// 通过包装一个原始的 `c_int`（不进行拷贝）来把它转换为类型安全的 `ExitStatus`。
 impl From<c_int> for ExitStatus {
     fn from(a: c_int) -> ExitStatus {
         ExitStatus(a)
     }
 }
 
-/// Converts a signal number to a readable, searchable name.
+/// 把一个信号编号（signal number）转换为一个可读、可搜索的名称。
 ///
-/// This string should be displayed right after the signal number.
-/// If a signal is unrecognized, it returns the empty string, so that
-/// you just get the number like "0". If it is recognized, you'll get
-/// something like "9 (SIGKILL)".
+/// 这个字符串应当紧接在信号编号之后显示。
+/// 如果某个信号无法识别，它会返回空字符串，这样你就只会得到像 "0" 这样的数字。
+/// 如果它能被识别，你会得到类似 "9 (SIGKILL)" 这样的结果。
 fn signal_string(signal: i32) -> &'static str {
     match signal {
         libc::SIGHUP => " (SIGHUP)",
@@ -1178,7 +1154,7 @@ fn signal_string(signal: i32) -> &'static str {
         libc::SIGPOLL => " (SIGPOLL)",
         #[cfg(not(target_os = "l4re"))]
         libc::SIGSYS => " (SIGSYS)",
-        // For information on Linux signals, run `man 7 signal`
+        // 关于 Linux 信号的信息，运行 `man 7 signal`
         #[cfg(all(
             target_os = "linux",
             any(
@@ -1276,7 +1252,7 @@ mod linux_child_ext {
             self.handle
                 .pidfd
                 .as_ref()
-                // SAFETY: The os type is a transparent wrapper, therefore we can transmute references
+                // SAFETY: 该 os 类型是一个透明包装器（transparent wrapper），因此我们可以对引用做 transmute
                 .map(|fd| unsafe { mem::transmute::<&imp::PidFd, &os::PidFd>(fd) })
                 .ok_or_else(|| io::const_error!(ErrorKind::Uncategorized, "no pidfd was created."))
         }
@@ -1294,7 +1270,7 @@ mod linux_child_ext {
 #[cfg(test)]
 mod tests;
 
-// See [`unsupported_wait_status::compare_with_linux`];
+// 参见 [`unsupported_wait_status::compare_with_linux`]；
 #[cfg(all(test, target_os = "linux"))]
 #[path = "unsupported/wait_status.rs"]
 mod unsupported_wait_status;

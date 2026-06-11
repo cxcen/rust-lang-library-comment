@@ -4,31 +4,30 @@ use crate::sync::atomic::Ordering::{Acquire, Relaxed, Release};
 use crate::sync::once::OnceExclusiveState;
 use crate::sys::futex::{Futex, Primitive, futex_wait, futex_wake_all};
 
-// On some platforms, the OS is very nice and handles the waiter queue for us.
-// This means we only need one atomic value with 4 states:
+// 在某些平台上，操作系统非常友好，会替我们管理等待者队列。
+// 这意味着我们只需要一个原子量，它有 4 个状态：
 
-/// No initialization has run yet, and no thread is currently using the Once.
+/// 尚未运行过任何初始化，且当前没有线程在使用这个 Once。
 const INCOMPLETE: Primitive = 3;
-/// Some thread has previously attempted to initialize the Once, but it panicked,
-/// so the Once is now poisoned. There are no other threads currently accessing
-/// this Once.
+/// 之前曾有某个线程尝试初始化这个 Once，但它 panic 了，
+/// 因此该 Once 现在已被毒化（poisoned）。当前没有其他线程在访问
+/// 这个 Once。
 const POISONED: Primitive = 2;
-/// Some thread is currently attempting to run initialization. It may succeed,
-/// so all future threads need to wait for it to finish.
+/// 当前有某个线程正在尝试运行初始化。它可能会成功，
+/// 因此所有后续线程都需要等待它完成。
 const RUNNING: Primitive = 1;
-/// Initialization has completed and all future calls should finish immediately.
-/// By choosing this state as the all-zero state the `is_completed` check can be
-/// a bit faster on some platforms.
+/// 初始化已经完成，所有后续调用都应立即返回。
+/// 把这个状态选为全零状态后，在某些平台上 `is_completed` 检查
+/// 可以稍快一些。
 const COMPLETE: Primitive = 0;
 
-// An additional bit indicates whether there are waiting threads:
+// 另有一个额外的位指示是否存在正在等待的线程：
 
-/// May only be set if the state is not COMPLETE.
+/// 仅当状态不为 COMPLETE 时才可置位。
 const QUEUED: Primitive = 4;
 
-// Threads wait by setting the QUEUED bit and calling `futex_wait` on the state
-// variable. When the running thread finishes, it will wake all waiting threads using
-// `futex_wake_all`.
+// 线程通过置位 QUEUED 位并在 state 变量上调用 `futex_wait` 来等待。
+// 当正在运行的线程结束时，它会用 `futex_wake_all` 唤醒所有等待的线程。
 
 const STATE_MASK: Primitive = 0b11;
 
@@ -56,9 +55,8 @@ struct CompletionGuard<'a> {
 
 impl<'a> Drop for CompletionGuard<'a> {
     fn drop(&mut self) {
-        // Use release ordering to propagate changes to all threads checking
-        // up on the Once. `futex_wake_all` does its own synchronization, hence
-        // we do not need `AcqRel`.
+        // 使用 release 内存序，把改动传播给所有正在检查这个 Once 的线程。
+        // `futex_wake_all` 会做自己的同步，因此我们不需要 `AcqRel`。
         if self.state_and_queued.swap(self.set_state_on_drop_to, Release) & QUEUED != 0 {
             futex_wake_all(self.state_and_queued);
         }
@@ -77,8 +75,7 @@ impl Once {
 
     #[inline]
     pub fn is_completed(&self) -> bool {
-        // Use acquire ordering to make all initialization changes visible to the
-        // current thread.
+        // 使用 acquire 内存序，使所有初始化期间的改动对当前线程可见。
         self.state_and_queued.load(Acquire) == COMPLETE
     }
 
@@ -111,11 +108,11 @@ impl Once {
             match state {
                 COMPLETE => return,
                 POISONED if !ignore_poisoning => {
-                    // Panic to propagate the poison.
+                    // Panic 以传播毒化（poison）状态。
                     panic!("Once instance has previously been poisoned");
                 }
                 _ => {
-                    // Set the QUEUED bit if it has not already been set.
+                    // 如果 QUEUED 位尚未置位，则将其置位。
                     if !queued {
                         state_and_queued += QUEUED;
                         if let Err(new) = self.state_and_queued.compare_exchange_weak(
@@ -146,11 +143,11 @@ impl Once {
             match state {
                 COMPLETE => return,
                 POISONED if !ignore_poisoning => {
-                    // Panic to propagate the poison.
+                    // Panic 以传播毒化（poison）状态。
                     panic!("Once instance has previously been poisoned");
                 }
                 INCOMPLETE | POISONED => {
-                    // Try to register the current thread as the one running.
+                    // 尝试把当前线程注册为正在运行的那个线程。
                     let next = RUNNING + if queued { QUEUED } else { 0 };
                     if let Err(new) = self.state_and_queued.compare_exchange_weak(
                         state_and_queued,
@@ -162,13 +159,13 @@ impl Once {
                         continue;
                     }
 
-                    // `waiter_queue` will manage other waiting threads, and
-                    // wake them up on drop.
+                    // `waiter_queue` 会管理其他等待的线程，
+                    // 并在 drop 时唤醒它们。
                     let mut waiter_queue = CompletionGuard {
                         state_and_queued: &self.state_and_queued,
                         set_state_on_drop_to: POISONED,
                     };
-                    // Run the function, letting it know if we're poisoned or not.
+                    // 运行该函数，并告知它我们是否处于毒化状态。
                     let f_state = public::OnceState {
                         inner: OnceState {
                             poisoned: state == POISONED,
@@ -180,10 +177,10 @@ impl Once {
                     return;
                 }
                 _ => {
-                    // All other values must be RUNNING.
+                    // 所有其他取值都必定是 RUNNING。
                     assert!(state == RUNNING);
 
-                    // Set the QUEUED bit if it is not already set.
+                    // 如果 QUEUED 位尚未置位，则将其置位。
                     if !queued {
                         state_and_queued += QUEUED;
                         if let Err(new) = self.state_and_queued.compare_exchange_weak(

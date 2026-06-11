@@ -1,17 +1,17 @@
 pub fn fill_bytes(bytes: &mut [u8]) {
-    // Handle zero-byte request
+    // 处理零字节请求
     if bytes.is_empty() {
         return;
     }
 
-    // Try EFI_RNG_PROTOCOL
+    // 尝试 EFI_RNG_PROTOCOL
     if rng_protocol::fill_bytes(bytes) {
         return;
     }
 
-    // Fallback to rdrand if rng protocol missing.
+    // 如果缺少 rng protocol，则回退到 rdrand。
     //
-    // For real-world example, see [issue-13825](https://github.com/rust-lang/rust/issues/138252#issuecomment-2891270323)
+    // 真实世界中的示例参见 [issue-13825](https://github.com/rust-lang/rust/issues/138252#issuecomment-2891270323)
     #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
     if rdrand::fill_bytes(bytes) {
         return;
@@ -52,7 +52,7 @@ mod rng_protocol {
     }
 }
 
-/// Port from [getrandom](https://github.com/rust-random/getrandom/blob/master/src/backends/rdrand.rs)
+/// 移植自 [getrandom](https://github.com/rust-random/getrandom/blob/master/src/backends/rdrand.rs)
 #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
 mod rdrand {
     cfg_select! {
@@ -70,9 +70,9 @@ mod rdrand {
 
     static RDRAND_GOOD: crate::sync::LazyLock<bool> = crate::sync::LazyLock::new(is_rdrand_good);
 
-    // Recommendation from "Intel® Digital Random Number Generator (DRNG) Software
-    // Implementation Guide" - Section 5.2.1 and "Intel® 64 and IA-32 Architectures
-    // Software Developer’s Manual" - Volume 1 - Section 7.3.17.1.
+    // 推荐值来自《Intel® Digital Random Number Generator (DRNG) Software
+    // Implementation Guide》第 5.2.1 节，以及《Intel® 64 and IA-32 Architectures
+    // Software Developer’s Manual》第 1 卷第 7.3.17.1 节。
     const RETRY_LIMIT: usize = 10;
 
     unsafe fn rdrand() -> Option<Word> {
@@ -85,11 +85,11 @@ mod rdrand {
         None
     }
 
-    // Run a small self-test to make sure we aren't repeating values
-    // Adapted from Linux's test in arch/x86/kernel/cpu/rdrand.c
-    // Fails with probability < 2^(-90) on 32-bit systems
+    // 运行一个小型自检（self-test），确保我们没有重复产生相同的值
+    // 改编自 Linux 在 arch/x86/kernel/cpu/rdrand.c 中的测试
+    // 在 32 位系统上，失败的概率 < 2^(-90)
     unsafe fn self_test() -> bool {
-        // On AMD, RDRAND returns 0xFF...FF on failure, count it as a collision.
+        // 在 AMD 上，RDRAND 失败时会返回 0xFF...FF，把它当作一次碰撞（collision）计入。
         let mut prev = Word::MAX;
         let mut fails = 0;
         for _ in 0..8 {
@@ -105,8 +105,8 @@ mod rdrand {
     fn is_rdrand_good() -> bool {
         #[cfg(not(target_feature = "rdrand"))]
         {
-            // SAFETY: All Rust x86 targets are new enough to have CPUID, and we
-            // check that leaf 1 is supported before using it.
+            // SAFETY: 所有 Rust x86 目标平台都足够新、都带有 CPUID，
+            // 而且我们在使用 leaf 1 之前会先检查它是否受支持。
             let cpuid0 = arch::__cpuid(0);
             if cpuid0.eax < 1 {
                 return false;
@@ -120,9 +120,9 @@ mod rdrand {
                 if family == 0xF {
                     family += (cpuid1.eax >> 20) & 0xFF;
                 }
-                // AMD CPUs families before 17h (Zen) sometimes fail to set CF when
-                // RDRAND fails after suspend. Don't use RDRAND on those families.
-                // See https://bugzilla.redhat.com/show_bug.cgi?id=1150286
+                // 17h（Zen）之前的 AMD CPU 家族有时会在挂起（suspend）后
+                // RDRAND 失败时未能正确设置 CF 标志。不要在这些家族上使用 RDRAND。
+                // 参见 https://bugzilla.redhat.com/show_bug.cgi?id=1150286
                 if family < 0x17 {
                     return false;
                 }
@@ -134,7 +134,7 @@ mod rdrand {
             }
         }
 
-        // SAFETY: We have already checked that rdrand is available.
+        // SAFETY: 我们已经检查过 rdrand 可用。
         unsafe { self_test() }
     }
 

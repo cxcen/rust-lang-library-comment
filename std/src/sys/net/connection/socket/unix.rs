@@ -38,7 +38,7 @@ pub fn cvt_gai(err: c_int) -> io::Result<()> {
         return Ok(());
     }
 
-    // We may need to trigger a glibc workaround. See on_resolver_failure() for details.
+    // 我们可能需要触发一个针对 glibc 的变通处理。详见 on_resolver_failure()。
     on_resolver_failure();
 
     #[cfg(not(any(target_os = "espidf", target_os = "nuttx")))]
@@ -48,8 +48,8 @@ pub fn cvt_gai(err: c_int) -> io::Result<()> {
 
     #[cfg(not(any(target_os = "espidf", target_os = "nuttx")))]
     let detail = unsafe {
-        // We can't always expect a UTF-8 environment. When we don't get that luxury,
-        // it's better to give a low-quality error message than none at all.
+        // 我们不能总是假定身处 UTF-8 的环境。当没有这份运气时，
+        // 给出一条低质量的错误消息也好过完全没有消息。
         CStr::from_ptr(libc::gai_strerror(err)).to_string_lossy()
     };
 
@@ -78,14 +78,14 @@ impl Socket {
                 target_os = "nto",
                 target_os = "solaris",
             ) => {
-                // On platforms that support it we pass the SOCK_CLOEXEC
-                // flag to atomically create the socket and set it as
-                // CLOEXEC. On Linux this was added in 2.6.27.
+                // 在支持的平台上，我们传入 SOCK_CLOEXEC 标志，
+                // 以原子地创建 socket 并将其设置为 CLOEXEC。
+                // 在 Linux 上，这是在 2.6.27 中加入的。
                 let fd = cvt(unsafe { libc::socket(family, ty | libc::SOCK_CLOEXEC, 0) })?;
                 let socket = Socket(unsafe { FileDesc::from_raw_fd(fd) });
 
-                // DragonFlyBSD, FreeBSD and NetBSD use `SO_NOSIGPIPE` as a `setsockopt`
-                // flag to disable `SIGPIPE` emission on socket.
+                // DragonFlyBSD、FreeBSD 和 NetBSD 使用 `SO_NOSIGPIPE` 作为
+                // `setsockopt` 标志，以禁止 socket 发出 `SIGPIPE`。
                 #[cfg(any(target_os = "freebsd", target_os = "netbsd", target_os = "dragonfly"))]
                 unsafe { setsockopt(&socket, libc::SOL_SOCKET, libc::SO_NOSIGPIPE, 1)? };
 
@@ -97,8 +97,8 @@ impl Socket {
                 fd.set_cloexec()?;
                 let socket = Socket(fd);
 
-                // macOS and iOS use `SO_NOSIGPIPE` as a `setsockopt`
-                // flag to disable `SIGPIPE` emission on socket.
+                // macOS 和 iOS 使用 `SO_NOSIGPIPE` 作为 `setsockopt` 标志，
+                // 以禁止 socket 发出 `SIGPIPE`。
                 #[cfg(target_vendor = "apple")]
                 unsafe { setsockopt(&socket, libc::SOL_SOCKET, libc::SO_NOSIGPIPE, 1)? };
 
@@ -125,7 +125,7 @@ impl Socket {
                     target_os = "cygwin",
                     target_os = "nto",
                 ) => {
-                    // Like above, set cloexec atomically
+                    // 与上面一样，原子地设置 cloexec
                     cvt(libc::socketpair(fam, ty | libc::SOCK_CLOEXEC, 0, fds.as_mut_ptr()))?;
                     Ok((Socket(FileDesc::from_raw_fd(fds[0])), Socket(FileDesc::from_raw_fd(fds[1]))))
                 }
@@ -172,7 +172,7 @@ impl Socket {
 
         match r {
             Ok(_) => return Ok(()),
-            // there's no ErrorKind for EINPROGRESS :(
+            // EINPROGRESS 没有对应的 ErrorKind :(
             Err(ref e) if e.raw_os_error() == Some(libc::EINPROGRESS) => {}
             Err(e) => return Err(e),
         }
@@ -212,15 +212,15 @@ impl Socket {
                 0 => {}
                 _ => {
                     if cfg!(target_os = "vxworks") {
-                        // VxWorks poll does not return  POLLHUP or POLLERR in revents. Check if the
-                        // connection actually succeeded and return ok only when the socket is
-                        // ready and no errors were found.
+                        // VxWorks 的 poll 不会在 revents 中返回 POLLHUP 或 POLLERR。
+                        // 检查连接是否确实成功，仅当 socket 就绪且未发现错误时才
+                        // 返回 ok。
                         if let Some(e) = self.take_error()? {
                             return Err(e);
                         }
                     } else {
-                        // linux returns POLLOUT|POLLERR|POLLHUP for refused connections (!), so look
-                        // for POLLHUP or POLLERR rather than read readiness
+                        // linux 对于被拒绝的连接会返回 POLLOUT|POLLERR|POLLHUP（!），
+                        // 因此应查找 POLLHUP 或 POLLERR，而不是查看读就绪状态。
                         if pollfd.revents & (libc::POLLHUP | libc::POLLERR) != 0 {
                             let e = self.take_error()?.unwrap_or_else(|| {
                                 io::const_error!(
@@ -239,10 +239,9 @@ impl Socket {
     }
 
     pub fn accept(&self, storage: *mut sockaddr, len: *mut socklen_t) -> io::Result<Socket> {
-        // Unfortunately the only known way right now to accept a socket and
-        // atomically set the CLOEXEC flag is to use the `accept4` syscall on
-        // platforms that support it. On Linux, this was added in 2.6.28,
-        // glibc 2.10 and musl 0.9.5.
+        // 目前不幸的是，要想原子地 accept 一个 socket 并设置 CLOEXEC 标志，
+        // 已知的唯一办法是在支持的平台上使用 `accept4` 系统调用。
+        // 在 Linux 上，这是在 2.6.28、glibc 2.10 和 musl 0.9.5 中加入的。
         cfg_select! {
             any(
                 target_os = "android",
@@ -329,9 +328,9 @@ impl Socket {
         buf: &mut [u8],
         flags: c_int,
     ) -> io::Result<(usize, SocketAddr)> {
-        // The `recvfrom` function will fill in the storage with the address,
-        // so we don't need to zero it here.
-        // reference: https://linux.die.net/man/2/recvfrom
+        // `recvfrom` 函数会用地址填充 storage，
+        // 因此我们在这里不需要将其清零。
+        // 参考：https://linux.die.net/man/2/recvfrom
         let mut storage: mem::MaybeUninit<libc::sockaddr_storage> = mem::MaybeUninit::uninit();
         let mut addrlen = size_of_val(&storage) as libc::socklen_t;
 
@@ -475,7 +474,7 @@ impl Socket {
         Ok(raw != 0)
     }
 
-    // bionic libc makes no use of this flag
+    // bionic libc 不使用此标志
     #[cfg(target_os = "linux")]
     pub fn set_deferaccept(&self, accept: Duration) -> io::Result<()> {
         let val = cmp::min(accept.as_secs(), c_int::MAX as u64) as c_int;
@@ -523,14 +522,14 @@ impl Socket {
 
     #[cfg(any(target_os = "solaris", target_os = "illumos"))]
     pub fn set_exclbind(&self, excl: bool) -> io::Result<()> {
-        // not yet on libc crate
+        // libc crate 中尚无此项
         const SO_EXCLBIND: i32 = 0x1015;
         unsafe { setsockopt(self, libc::SOL_SOCKET, SO_EXCLBIND, excl) }
     }
 
     #[cfg(any(target_os = "solaris", target_os = "illumos"))]
     pub fn exclbind(&self) -> io::Result<bool> {
-        // not yet on libc crate
+        // libc crate 中尚无此项
         const SO_EXCLBIND: i32 = 0x1015;
         let raw: c_int = unsafe { getsockopt(self, libc::SOL_SOCKET, SO_EXCLBIND)? };
         Ok(raw != 0)
@@ -593,8 +592,8 @@ impl Socket {
 
     #[cfg(any(target_os = "solaris", target_os = "illumos"))]
     pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
-        // FIONBIO is inadequate for sockets on illumos/Solaris, so use the
-        // fcntl(F_[GS]ETFL)-based method provided by FileDesc instead.
+        // 在 illumos/Solaris 上 FIONBIO 对于 socket 而言并不适用，
+        // 因此改用 FileDesc 提供的基于 fcntl(F_[GS]ETFL) 的方法。
         self.0.set_nonblocking(nonblocking)
     }
 
@@ -663,27 +662,24 @@ impl FromRawFd for Socket {
     }
 }
 
-// In versions of glibc prior to 2.26, there's a bug where the DNS resolver
-// will cache the contents of /etc/resolv.conf, so changes to that file on disk
-// can be ignored by a long-running program. That can break DNS lookups on e.g.
-// laptops where the network comes and goes. See
-// https://sourceware.org/bugzilla/show_bug.cgi?id=984. Note however that some
-// distros including Debian have patched glibc to fix this for a long time.
+// 在 2.26 之前版本的 glibc 中存在一个 bug：DNS 解析器会缓存
+// /etc/resolv.conf 的内容，因此磁盘上对该文件的改动可能会被长期运行的
+// 程序忽略。这会破坏 DNS 查询，例如在网络时断时续的笔记本电脑上。详见
+// https://sourceware.org/bugzilla/show_bug.cgi?id=984。不过请注意，
+// 包括 Debian 在内的一些发行版很久以前就给 glibc 打了补丁来修复这个问题。
 //
-// A workaround for this bug is to call the res_init libc function, to clear
-// the cached configs. Unfortunately, while we believe glibc's implementation
-// of res_init is thread-safe, we know that other implementations are not
-// (https://github.com/rust-lang/rust/issues/43592). Code here in std could
-// try to synchronize its res_init calls with a Mutex, but that wouldn't
-// protect programs that call into libc in other ways. So instead of calling
-// res_init unconditionally, we call it only when we detect we're linking
-// against glibc version < 2.26. (That is, when we both know its needed and
-// believe it's thread-safe).
+// 该 bug 的一种变通办法是调用 libc 的 res_init 函数，以清除缓存的配置。
+// 不幸的是，虽然我们相信 glibc 对 res_init 的实现是线程安全的，但我们知道
+// 其他实现并非如此（https://github.com/rust-lang/rust/issues/43592）。std 中
+// 此处的代码可以尝试用 Mutex 来同步它对 res_init 的调用，但那无法保护那些
+// 以其他方式调用 libc 的程序。因此，我们不会无条件地调用 res_init，
+// 而只在检测到我们链接的是版本 < 2.26 的 glibc 时才调用它。（也就是说，
+// 当我们既知道它有必要、又相信它是线程安全的时候。）
 #[cfg(all(target_os = "linux", target_env = "gnu"))]
 fn on_resolver_failure() {
     use crate::sys;
 
-    // If the version fails to parse, we treat it the same as "not glibc".
+    // 如果版本解析失败，我们将其按“非 glibc”同等处理。
     if let Some(version) = sys::os::glibc_version() {
         if version < (2, 26) {
             unsafe { libc::res_init() };

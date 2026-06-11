@@ -8,9 +8,9 @@ pub type Pipe = FileDesc;
 pub fn pipe() -> io::Result<(Pipe, Pipe)> {
     let mut fds = [0; 2];
 
-    // The only known way right now to create atomically set the CLOEXEC flag is
-    // to use the `pipe2` syscall. This was added to Linux in 2.6.27, glibc 2.9
-    // and musl 0.9.3, and some other targets also have it.
+    // 目前已知的、能在创建管道时原子地设置 CLOEXEC 标志的唯一办法，是使用 `pipe2`
+    // 系统调用。它在 Linux 2.6.27、glibc 2.9 和 musl 0.9.3 中加入，其他一些目标平台
+    // 也提供了它。
     cfg_select! {
         any(
             target_os = "android",

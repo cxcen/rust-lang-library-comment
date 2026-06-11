@@ -1,5 +1,5 @@
-//! The underlying OsString/OsStr implementation on Windows is a
-//! wrapper around the "WTF-8" encoding; see the `wtf8` module for more.
+//! Windows 上 OsString/OsStr 的底层实现是对「WTF-8」编码的一层包装；
+//! 更多内容参见 `wtf8` 模块。
 
 use alloc::wtf8::{Wtf8, Wtf8Buf};
 use core::clone::CloneToUninit;
@@ -155,19 +155,18 @@ impl Buf {
 
     #[inline]
     pub fn as_slice(&self) -> &Slice {
-        // SAFETY: Slice is just a wrapper for Wtf8,
-        // and self.inner.as_slice() returns &Wtf8.
-        // Therefore, transmuting &Wtf8 to &Slice is safe.
+        // SAFETY: Slice 只是对 Wtf8 的一个包装，
+        // 而 self.inner.as_slice() 返回 &Wtf8。
+        // 因此，将 &Wtf8 transmute 为 &Slice 是安全的。
         unsafe { mem::transmute(self.inner.as_slice()) }
     }
 
     #[inline]
     pub fn as_mut_slice(&mut self) -> &mut Slice {
-        // SAFETY: Slice is just a wrapper for Wtf8,
-        // and self.inner.as_mut_slice() returns &mut Wtf8.
-        // Therefore, transmuting &mut Wtf8 to &mut Slice is safe.
-        // Additionally, care should be taken to ensure the slice
-        // is always valid Wtf8.
+        // SAFETY: Slice 只是对 Wtf8 的一个包装，
+        // 而 self.inner.as_mut_slice() 返回 &mut Wtf8。
+        // 因此，将 &mut Wtf8 transmute 为 &mut Slice 是安全的。
+        // 此外，应当注意确保该切片始终是有效的 Wtf8。
         unsafe { mem::transmute(self.inner.as_mut_slice()) }
     }
 
@@ -197,30 +196,27 @@ impl Buf {
         self.as_slice().into_rc()
     }
 
-    /// Provides plumbing to `Vec::truncate` without giving full mutable access
-    /// to the `Vec`.
+    /// 在不给予对 `Vec` 完全可变访问权的前提下，提供通往 `Vec::truncate` 的管道。
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// The length must be at an `OsStr` boundary, according to
-    /// `Slice::check_public_boundary`.
+    /// 根据 `Slice::check_public_boundary`，长度必须位于一个 `OsStr` 边界上。
     #[inline]
     pub unsafe fn truncate_unchecked(&mut self, len: usize) {
         self.inner.truncate(len);
     }
 
-    /// Provides plumbing to `Vec::extend_from_slice` without giving full
-    /// mutable access to the `Vec`.
+    /// 在不给予对 `Vec` 完全可变访问权的前提下，提供通往
+    /// `Vec::extend_from_slice` 的管道。
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// The slice must be valid for the platform encoding (as described in
-    /// `OsStr::from_encoded_bytes_unchecked`). For this encoding, that means
-    /// `other` must be valid WTF-8.
+    /// 该切片必须对平台编码有效（如 `OsStr::from_encoded_bytes_unchecked`
+    /// 中所述）。对于这种编码，这意味着 `other` 必须是有效的 WTF-8。
     ///
-    /// Additionally, this method bypasses the WTF-8 surrogate joining, so
-    /// either `self` must not end with a leading surrogate half, or `other`
-    /// must not start with a trailing surrogate half.
+    /// 此外，本方法会绕过 WTF-8 的代理对拼接(surrogate joining），所以
+    /// 要么 `self` 不能以一个前导代理半部(leading surrogate half）结尾，
+    /// 要么 `other` 不能以一个后尾代理半部(trailing surrogate half）开头。
     #[inline]
     pub unsafe fn extend_from_slice_unchecked(&mut self, other: &[u8]) {
         unsafe {
@@ -324,7 +320,7 @@ unsafe impl CloneToUninit for Slice {
     #[inline]
     #[cfg_attr(debug_assertions, track_caller)]
     unsafe fn clone_to_uninit(&self, dst: *mut u8) {
-        // SAFETY: we're just a transparent wrapper around Wtf8
+        // SAFETY: 我们只是对 Wtf8 的一个透明包装
         unsafe { self.inner.clone_to_uninit(dst) }
     }
 }

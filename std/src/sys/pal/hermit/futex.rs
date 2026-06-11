@@ -3,20 +3,20 @@ use crate::ptr::null;
 use crate::sync::atomic::Atomic;
 use crate::time::Duration;
 
-/// An atomic for use as a futex that is at least 32-bits but may be larger
+/// 用作 futex 的原子类型，至少 32 位，但也可能更大
 pub type Futex = Atomic<Primitive>;
-/// Must be the underlying type of Futex
+/// 必须是 Futex 的底层类型
 pub type Primitive = u32;
 
-/// An atomic for use as a futex that is at least 8-bits but may be larger.
+/// 用作 futex 的原子类型，至少 8 位，但也可能更大。
 pub type SmallFutex = Atomic<SmallPrimitive>;
-/// Must be the underlying type of SmallFutex
+/// 必须是 SmallFutex 的底层类型
 pub type SmallPrimitive = u32;
 
 pub fn futex_wait(futex: &Atomic<u32>, expected: u32, timeout: Option<Duration>) -> bool {
-    // Calculate the timeout as a relative timespec.
+    // 将超时计算为一个相对的 timespec。
     //
-    // Overflows are rounded up to an infinite timeout (None).
+    // 溢出会被向上取整为无限超时（None）。
     let timespec = timeout.and_then(|dur| {
         Some(hermit_abi::timespec {
             tv_sec: dur.as_secs().try_into().ok()?,

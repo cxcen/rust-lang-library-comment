@@ -1,15 +1,12 @@
-//! Platform-specific extensions to `std` for Unix platforms.
+//! 针对 Unix 平台、对 `std` 的平台特有扩展。
 //!
-//! Provides access to platform-level information on Unix platforms, and
-//! exposes Unix-specific functions that would otherwise be inappropriate as
-//! part of the core `std` library.
+//! 在 Unix 平台上提供对平台级信息的访问，并暴露那些若作为核心 `std` 库的一部分
+//! 则并不合适的 Unix 特有函数。
 //!
-//! It exposes more ways to deal with platform-specific strings ([`OsStr`],
-//! [`OsString`]), allows to set permissions more granularly, extract low-level
-//! file descriptors from files and sockets, and has platform-specific helpers
-//! for spawning processes.
+//! 它暴露了更多处理平台特有字符串（[`OsStr`]、[`OsString`]）的方式，允许更细粒度地
+//! 设置权限、从文件与套接字中提取底层文件描述符，并提供了用于派生进程的平台特有辅助工具。
 //!
-//! # Examples
+//! # 示例
 //!
 //! ```no_run
 //! use std::fs::File;
@@ -19,7 +16,7 @@
 //!     let f = File::create("foo.txt")?;
 //!     let fd = f.as_raw_fd();
 //!
-//!     // use fd with native unix bindings
+//!     // 配合原生的 unix 绑定使用 fd
 //!
 //!     Ok(())
 //! }
@@ -31,7 +28,7 @@
 #![stable(feature = "rust1", since = "1.0.0")]
 #![doc(cfg(unix))]
 
-// Use linux as the default platform when documenting on other platforms like Windows
+// 在诸如 Windows 等其他平台上生成文档时，使用 linux 作为默认平台
 #[cfg(doc)]
 use crate::os::linux as platform;
 
@@ -95,9 +92,9 @@ pub mod process;
 pub mod raw;
 pub mod thread;
 
-/// A prelude for conveniently writing platform-specific code.
+/// 一个 prelude，方便编写平台特有代码。
 ///
-/// Includes all extension traits, and some important type definitions.
+/// 包含所有扩展 trait，以及一些重要的类型定义。
 #[stable(feature = "rust1", since = "1.0.0")]
 pub mod prelude {
     #[doc(no_inline)]

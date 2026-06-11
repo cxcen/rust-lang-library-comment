@@ -1,11 +1,11 @@
 use crate::io as std_io;
 
-// SAFETY: must be called only once during runtime initialization.
-// NOTE: this is not guaranteed to run, for example when Rust code is called externally.
+// SAFETY: 必须在运行时初始化期间仅调用一次。
+// NOTE: 不保证一定会被运行，例如当 Rust 代码被外部调用时。
 pub unsafe fn init(_argc: isize, _argv: *const *const u8, _sigpipe: u8) {}
 
-// SAFETY: must be called only once during runtime cleanup.
-// NOTE: this is not guaranteed to run, for example when the program aborts.
+// SAFETY: 必须在运行时清理期间仅调用一次。
+// NOTE: 不保证一定会被运行，例如当程序中止（abort）时。
 pub unsafe fn cleanup() {}
 
 pub fn unsupported<T>() -> std_io::Result<T> {

@@ -9,7 +9,7 @@ use crate::sys::unsupported;
 use crate::{fmt, io};
 
 ////////////////////////////////////////////////////////////////////////////////
-// Command
+// 命令（Command）
 ////////////////////////////////////////////////////////////////////////////////
 
 pub struct Command {
@@ -131,7 +131,7 @@ impl From<File> for Stdio {
 }
 
 impl fmt::Debug for Command {
-    // show all attributes
+    // 显示所有属性
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if f.alternate() {
             let mut debug_command = f.debug_struct("Command");
@@ -161,9 +161,9 @@ impl fmt::Debug for Command {
             }
             if self.env.does_clear() {
                 write!(f, "env -i ")?;
-                // Altered env vars will be printed next, that should exactly work as expected.
+                // 被改动过的环境变量将紧接着打印出来，这应当完全如预期那样工作。
             } else {
-                // Removed env vars need the command to be wrapped in `env`.
+                // 被移除的环境变量需要把命令用 `env` 包裹起来。
                 let mut any_removed = false;
                 for (key, value_opt) in self.get_envs() {
                     if value_opt.is_none() {
@@ -175,7 +175,7 @@ impl fmt::Debug for Command {
                     }
                 }
             }
-            // Altered env vars can just be added in front of the program.
+            // 被改动过的环境变量可以直接添加到程序名前面。
             for (key, value_opt) in self.get_envs() {
                 if let Some(value) = value_opt {
                     write!(f, "{}={value:?} ", key.to_string_lossy())?;

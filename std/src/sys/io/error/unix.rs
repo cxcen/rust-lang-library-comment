@@ -30,22 +30,22 @@ unsafe extern "C" {
     #[cfg_attr(any(target_os = "freebsd", target_vendor = "apple"), link_name = "__error")]
     #[cfg_attr(target_os = "haiku", link_name = "_errnop")]
     #[cfg_attr(target_os = "aix", link_name = "_Errno")]
-    // SAFETY: this will always return the same pointer on a given thread.
+    // SAFETY: 在给定线程上它总是返回同一个指针。
     #[unsafe(ffi_const)]
     pub safe fn errno_location() -> *mut c_int;
 }
 
-/// Returns the platform-specific value of errno
+/// 返回平台特定的 errno 值
 #[cfg(not(any(target_os = "dragonfly", target_os = "vxworks", target_os = "rtems")))]
 #[inline]
 pub fn errno() -> i32 {
     unsafe { (*errno_location()) as i32 }
 }
 
-/// Sets the platform-specific value of errno
-// needed for readdir and syscall!
+/// 设置平台特定的 errno 值
+// readdir 和 syscall! 需要它
 #[cfg(all(not(target_os = "dragonfly"), not(target_os = "vxworks"), not(target_os = "rtems")))]
-#[allow(dead_code)] // but not all target cfgs actually end up using it
+#[allow(dead_code)] // 但并非所有目标 cfg 最终都会用到它
 #[inline]
 pub fn set_errno(e: i32) {
     unsafe { *errno_location() = e as c_int }
@@ -141,16 +141,16 @@ pub fn decode_error_kind(errno: i32) -> io::ErrorKind {
 
         libc::EACCES | libc::EPERM => PermissionDenied,
 
-        // These two constants can have the same value on some systems,
-        // but different values on others, so we can't use a match
-        // clause
+        // 这两个常量在某些系统上可能有相同的值，
+        // 但在另一些系统上有不同的值，所以我们不能使用 match
+        // 分支
         x if x == libc::EAGAIN || x == libc::EWOULDBLOCK => WouldBlock,
 
         _ => Uncategorized,
     }
 }
 
-/// Gets a detailed string description for the given error number.
+/// 获取给定错误号的详细字符串描述。
 pub fn error_string(errno: i32) -> String {
     const TMPBUF_SZ: usize = 128;
 
@@ -179,8 +179,8 @@ pub fn error_string(errno: i32) -> String {
         }
 
         let p = p as *const _;
-        // We can't always expect a UTF-8 environment. When we don't get that luxury,
-        // it's better to give a low-quality error message than none at all.
+        // 我们并不总是能指望有一个 UTF-8 环境。当我们没有这份运气时，
+        // 给出一条低质量的错误消息也比完全没有要好。
         String::from_utf8_lossy(CStr::from_ptr(p).to_bytes()).into()
     }
 }

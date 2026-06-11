@@ -14,10 +14,10 @@ local_pointer! {
     static CURRENT;
 }
 
-/// Persistent storage for the thread ID.
+/// 用于持久化保存线程 ID 的存储。
 ///
-/// We store the thread ID so that it never gets destroyed during the lifetime
-/// of a thread, either using `#[thread_local]` or multiple `local_pointer!`s.
+/// 我们保存线程 ID，使得它在一个线程的整个生命周期内永远不会被销毁，做法是
+/// 使用 `#[thread_local]` 或者多个 `local_pointer!`。
 pub(super) mod id {
     use super::*;
 
@@ -116,8 +116,8 @@ pub(super) mod id {
     }
 }
 
-/// Tries to set the thread handle for the current thread. Fails if a handle was
-/// already set or if the thread ID of `thread` would change an already-set ID.
+/// 尝试为当前线程设置线程句柄。如果已经设置过句柄，或者 `thread` 的线程 ID
+/// 会改变一个已经设置好的 ID，则失败。
 pub(super) fn set_current(thread: Thread) -> Result<(), Thread> {
     if CURRENT.get() != NONE {
         return Err(thread);
@@ -129,20 +129,19 @@ pub(super) fn set_current(thread: Thread) -> Result<(), Thread> {
         _ => return Err(thread),
     }
 
-    // Make sure that `crate::rt::thread_cleanup` will be run, which will
-    // call `drop_current`.
+    // 确保 `crate::rt::thread_cleanup` 会被运行，它将调用 `drop_current`。
     crate::sys::thread_local::guard::enable();
     CURRENT.set(thread.into_raw().cast_mut());
     Ok(())
 }
 
-/// Gets the unique identifier of the thread which invokes it.
+/// 获取调用它的线程的唯一标识符。
 ///
-/// Calling this function may be more efficient than accessing the current
-/// thread id through the current thread handle. i.e. `thread::current().id()`.
+/// 调用本函数可能比通过当前线程句柄访问当前线程 ID（即
+/// `thread::current().id()`）更高效。
 ///
-/// This function will always succeed, will always return the same value for
-/// one thread and is guaranteed not to call the global allocator.
+/// 本函数总是会成功，对同一个线程总是返回相同的值，并且保证不会调用全局
+/// 分配器。
 ///
 /// # Examples
 ///
@@ -162,9 +161,8 @@ pub(super) fn set_current(thread: Thread) -> Result<(), Thread> {
 #[must_use]
 #[unstable(feature = "current_thread_id", issue = "147194")]
 pub fn current_id() -> ThreadId {
-    // If accessing the persistent thread ID takes multiple TLS accesses, try
-    // to retrieve it from the current thread handle, which will only take one
-    // TLS access.
+    // 如果访问持久化的线程 ID 需要多次 TLS 访问，就尝试从当前线程句柄中获取它，
+    // 那样只需一次 TLS 访问。
     if !id::CHEAP {
         if let Some(id) = try_with_current(|t| t.map(|t| t.id())) {
             return id;
@@ -174,28 +172,26 @@ pub fn current_id() -> ThreadId {
     id::get_or_init()
 }
 
-/// Gets the OS thread ID of the thread that invokes it, if available. If not, return the Rust
-/// thread ID.
+/// 获取调用它的线程的操作系统线程 ID（如果可用）。如果不可用，则返回 Rust
+/// 线程 ID。
 ///
-/// We use a `u64` to all possible platform IDs without excess `cfg`; most use `int`, some use a
-/// pointer, and Apple uses `uint64_t`. This is a "best effort" approach for diagnostics and is
-/// allowed to fall back to a non-OS ID (such as the Rust thread ID) or a non-unique ID (such as a
-/// PID) if the thread ID cannot be retrieved.
+/// 我们使用 `u64` 来容纳所有可能的平台 ID，从而避免过多的 `cfg`；大多数平台使用
+/// `int`，有些使用指针，而 Apple 使用 `uint64_t`。这是一种用于诊断的“尽力而为”
+/// 的做法，允许回退到非操作系统 ID（例如 Rust 线程 ID），或非唯一的 ID（例如
+/// PID），前提是无法取得线程 ID。
 pub(crate) fn current_os_id() -> u64 {
     imp::current_os_id().unwrap_or_else(|| current_id().as_u64().get())
 }
 
-/// Gets a reference to the handle of the thread that invokes it, if the handle
-/// has been initialized.
+/// 获取调用它的线程的句柄的引用（如果该句柄已被初始化）。
 fn try_with_current<F, R>(f: F) -> R
 where
     F: FnOnce(Option<&Thread>) -> R,
 {
     let current = CURRENT.get();
     if current > DESTROYED {
-        // SAFETY: `Arc` does not contain interior mutability, so it does not
-        // matter that the address of the handle might be different depending
-        // on where this is called.
+        // SAFETY: `Arc` 不含内部可变性，所以无论它在何处被调用、句柄的地址可能
+        // 不同，都没有关系。
         unsafe {
             let current = ManuallyDrop::new(Thread::from_raw(current));
             f(Some(&current))
@@ -205,27 +201,25 @@ where
     }
 }
 
-/// Run a function with the current thread's name.
+/// 以当前线程的名字为参数运行一个函数。
 ///
-/// Modulo thread local accesses, this function is safe to call from signal
-/// handlers and in similar circumstances where allocations are not possible.
+/// 除了线程局部访问之外，本函数可以安全地从信号处理器中调用，以及在其他无法
+/// 进行内存分配的类似场景下调用。
 pub(crate) fn with_current_name<F, R>(f: F) -> R
 where
     F: FnOnce(Option<&str>) -> R,
 {
     try_with_current(|thread| {
         let name = if let Some(thread) = thread {
-            // If there is a current thread handle, try to use the name stored
-            // there.
+            // 如果存在当前线程句柄，就尝试使用其中保存的名字。
             thread.name()
         } else if let Some(main) = main_thread::get()
             && let Some(id) = id::get()
             && id == main
         {
-            // The main thread doesn't always have a thread handle, we must
-            // identify it through its ID instead. The checks are ordered so
-            // that the current ID is only loaded if it is actually needed,
-            // since loading it from TLS might need multiple expensive accesses.
+            // 主线程并不总是拥有线程句柄，我们必须通过它的 ID 来识别它。这些检查
+            // 经过排序，使得只有在确实需要时才会加载当前 ID，因为从 TLS 加载它
+            // 可能需要多次开销较大的访问。
             Some("main")
         } else {
             None
@@ -235,9 +229,8 @@ where
     })
 }
 
-/// Gets a handle to the thread that invokes it. If the handle stored in thread-
-/// local storage was already destroyed, this creates a new unnamed temporary
-/// handle to allow thread parking in nearly all situations.
+/// 获取调用它的线程的句柄。如果保存在线程局部存储中的句柄已经被销毁，本函数会
+/// 创建一个新的、未命名的临时句柄，以便在几乎所有情况下都能进行线程 park。
 pub(crate) fn current_or_unnamed() -> Thread {
     let current = CURRENT.get();
     if current > DESTROYED {
@@ -252,11 +245,11 @@ pub(crate) fn current_or_unnamed() -> Thread {
     }
 }
 
-/// Gets a handle to the thread that invokes it.
+/// 获取调用它的线程的句柄。
 ///
 /// # Examples
 ///
-/// Getting a handle to the current thread with `thread::current()`:
+/// 用 `thread::current()` 获取当前线程的句柄：
 ///
 /// ```
 /// use std::thread;
@@ -289,24 +282,21 @@ pub fn current() -> Thread {
 fn init_current(current: *mut ()) -> Thread {
     if current == NONE {
         CURRENT.set(BUSY);
-        // If the thread ID was initialized already, use it.
+        // 如果线程 ID 已经初始化过，就使用它。
         let id = id::get_or_init();
         let thread = Thread::new(id, None);
 
-        // Make sure that `crate::rt::thread_cleanup` will be run, which will
-        // call `drop_current`.
+        // 确保 `crate::rt::thread_cleanup` 会被运行，它将调用 `drop_current`。
         crate::sys::thread_local::guard::enable();
         CURRENT.set(thread.clone().into_raw().cast_mut());
         thread
     } else if current == BUSY {
-        // BUSY exists solely for this check, but as it is in the slow path, the
-        // extra TLS write above shouldn't matter. The alternative is nearly always
-        // a stack overflow.
+        // BUSY 的存在完全是为了这一检查，但由于它处于慢路径，上面那次额外的 TLS
+        // 写入应该无关紧要。否则的话，结果几乎总是栈溢出。
         //
-        // If we reach this point it means our initialization routine ended up
-        // calling current() either directly, or indirectly through the global
-        // allocator, which is a bug either way as we may not call the global
-        // allocator in current().
+        // 如果我们走到这里，意味着我们的初始化例程最终调用了 current()——
+        // 要么是直接调用，要么是经由全局分配器间接调用——无论哪种都是 bug，
+        // 因为我们不能在 current() 中调用全局分配器。
         rtabort!(
             "init_current() was re-entrant, which indicates a bug in the Rust threading implementation"
         )
@@ -319,8 +309,7 @@ fn init_current(current: *mut ()) -> Thread {
     }
 }
 
-/// This should be run in [`crate::rt::thread_cleanup`] to reset the thread
-/// handle.
+/// 应在 [`crate::rt::thread_cleanup`] 中运行它来重置线程句柄。
 pub(crate) fn drop_current() {
     let current = CURRENT.get();
     if current > DESTROYED {

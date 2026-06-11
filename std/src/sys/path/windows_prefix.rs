@@ -1,4 +1,4 @@
-//! Parse Windows prefixes, for both Windows and Cygwin.
+//! 解析 Windows 前缀，同时供 Windows 和 Cygwin 使用。
 
 use super::{is_sep_byte, is_verbatim_sep};
 use crate::ffi::OsStr;
@@ -13,7 +13,7 @@ impl<'a, const LEN: usize> PrefixParser<'a, LEN> {
     #[inline]
     fn get_prefix(path: &OsStr) -> [u8; LEN] {
         let mut prefix = [0; LEN];
-        // SAFETY: Only ASCII characters are modified.
+        // SAFETY: 只有 ASCII 字符会被修改。
         for (i, &ch) in path.as_encoded_bytes().iter().take(LEN).enumerate() {
             prefix[i] = if ch == b'/' { b'\\' } else { ch };
         }
@@ -51,10 +51,9 @@ impl<'a> PrefixParserSlice<'a, '_> {
     }
 
     fn finish(self) -> &'a OsStr {
-        // SAFETY: The unsafety here stems from converting between &OsStr and
-        // &[u8] and back. This is safe to do because (1) we only look at ASCII
-        // contents of the encoding and (2) new &OsStr values are produced only
-        // from ASCII-bounded slices of existing &OsStr values.
+        // SAFETY: 这里的不安全性源于在 &OsStr 和 &[u8] 之间来回转换。这样做是安全的，
+        // 因为 (1) 我们只查看编码中的 ASCII 内容，并且 (2) 新的 &OsStr 值只从已有
+        // &OsStr 值的、以 ASCII 为边界的切片中产生。
         unsafe { OsStr::from_encoded_bytes_unchecked(&self.path.as_encoded_bytes()[self.index..]) }
     }
 }
@@ -67,15 +66,14 @@ pub fn parse_prefix(path: &OsStr) -> Option<Prefix<'_>> {
     if let Some(parser) = parser.strip_prefix(r"\\") {
         // \\
 
-        // It's a POSIX path.
+        // 这是一个 POSIX 路径。
         if cfg!(target_os = "cygwin") && !path.as_encoded_bytes().iter().any(|&x| x == b'\\') {
             return None;
         }
 
-        // The meaning of verbatim paths can change when they use a different
-        // separator.
+        // 当 verbatim 路径使用不同的分隔符时，其含义可能会改变。
         if let Some(parser) = parser.strip_prefix(r"?\")
-            // Cygwin allows `/` in verbatim paths.
+            // Cygwin 允许在 verbatim 路径中使用 `/`。
             && (cfg!(target_os = "cygwin") || !parser.prefix_bytes().iter().any(|&x| x == b'/'))
         {
             // \\?\
@@ -90,7 +88,7 @@ pub fn parse_prefix(path: &OsStr) -> Option<Prefix<'_>> {
             } else {
                 let path = parser.finish();
 
-                // in verbatim paths only recognize an exact drive prefix
+                // 在 verbatim 路径中只识别精确的盘符前缀
                 if let Some(drive) = parse_drive_exact(path) {
                     // \\?\C:
                     Some(VerbatimDisk(drive))
@@ -114,21 +112,21 @@ pub fn parse_prefix(path: &OsStr) -> Option<Prefix<'_>> {
                 // \\server\share
                 Some(UNC(server, share))
             } else {
-                // no valid prefix beginning with "\\" recognized
+                // 没有识别出以 "\\" 开头的有效前缀
                 None
             }
         }
     } else {
-        // If it has a drive like `C:` then it's a disk.
-        // Otherwise there is no prefix.
+        // 如果它带有像 `C:` 这样的盘符，那么它就是一个磁盘。
+        // 否则就没有前缀。
         Some(Disk(parse_drive(path)?))
     }
 }
 
-// Parses a drive prefix, e.g. "C:" and "C:\whatever"
+// 解析盘符前缀，例如 "C:" 和 "C:\whatever"
 fn parse_drive(path: &OsStr) -> Option<u8> {
-    // In most DOS systems, it is not possible to have more than 26 drive letters.
-    // See <https://en.wikipedia.org/wiki/Drive_letter_assignment#Common_assignments>.
+    // 在大多数 DOS 系统中，不可能有超过 26 个盘符。
+    // 参见 <https://en.wikipedia.org/wiki/Drive_letter_assignment#Common_assignments>。
     fn is_valid_drive_letter(drive: &u8) -> bool {
         drive.is_ascii_alphabetic()
     }
@@ -139,9 +137,9 @@ fn parse_drive(path: &OsStr) -> Option<u8> {
     }
 }
 
-// Parses a drive prefix exactly, e.g. "C:"
+// 精确地解析盘符前缀，例如 "C:"
 fn parse_drive_exact(path: &OsStr) -> Option<u8> {
-    // only parse two bytes: the drive letter and the drive separator
+    // 只解析两个字节：盘符字母和盘符分隔符
     if path.as_encoded_bytes().get(2).map(|&x| is_sep_byte(x)).unwrap_or(true) {
         parse_drive(path)
     } else {
@@ -149,10 +147,10 @@ fn parse_drive_exact(path: &OsStr) -> Option<u8> {
     }
 }
 
-// Parse the next path component.
+// 解析下一个路径组件。
 //
-// Returns the next component and the rest of the path excluding the component and separator.
-// Does not recognize `/` as a separator character on Windows if `verbatim` is true.
+// 返回下一个组件，以及路径中剔除该组件和分隔符之后剩下的部分。
+// 如果 `verbatim` 为 true，则在 Windows 上不把 `/` 识别为分隔符字符。
 pub(crate) fn parse_next_component(path: &OsStr, verbatim: bool) -> (&OsStr, &OsStr) {
     let separator = if verbatim { is_verbatim_sep } else { is_sep_byte };
 
@@ -162,14 +160,14 @@ pub(crate) fn parse_next_component(path: &OsStr, verbatim: bool) -> (&OsStr, &Os
 
             let component = &path.as_encoded_bytes()[..separator_start];
 
-            // Panic safe
-            // The max `separator_end` is `bytes.len()` and `bytes[bytes.len()..]` is a valid index.
+            // panic 安全
+            // `separator_end` 的最大值是 `bytes.len()`，而 `bytes[bytes.len()..]` 是一个有效的索引。
             let path = &path.as_encoded_bytes()[separator_end..];
 
-            // SAFETY: `path` is a valid wtf8 encoded slice and each of the separators ('/', '\')
-            // is encoded in a single byte, therefore `bytes[separator_start]` and
-            // `bytes[separator_end]` must be code point boundaries and thus
-            // `bytes[..separator_start]` and `bytes[separator_end..]` are valid wtf8 slices.
+            // SAFETY: `path` 是一个有效的 wtf8 编码切片，并且每一个分隔符（'/'、'\'）
+            // 都以单个字节编码，因此 `bytes[separator_start]` 和
+            // `bytes[separator_end]` 必定是码点边界，从而
+            // `bytes[..separator_start]` 和 `bytes[separator_end..]` 都是有效的 wtf8 切片。
             unsafe {
                 (
                     OsStr::from_encoded_bytes_unchecked(component),

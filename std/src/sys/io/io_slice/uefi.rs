@@ -1,5 +1,5 @@
-//! A buffer type used with `Write::write_vectored` for UEFI Networking APIs. Vectored writing to
-//! File is not supported as of UEFI Spec 2.11.
+//! 一种与 `Write::write_vectored` 配合用于 UEFI 网络 API 的缓冲区类型。截至
+//! UEFI Spec 2.11，尚不支持对 File 进行向量化(vectored）写入。
 
 use crate::marker::PhantomData;
 use crate::slice;

@@ -24,16 +24,16 @@ impl Parker {
     }
 
     pub unsafe fn park(self: Pin<&Self>) {
-        // Change NOTIFIED to EMPTY and EMPTY to PARKED.
+        // 把 NOTIFIED 改为 EMPTY，把 EMPTY 改为 PARKED。
         let state = self.state.fetch_sub(1, Acquire);
         if state == NOTIFIED {
-            // The state has gone from NOTIFIED (1) to EMPTY (0)
+            // 状态已从 NOTIFIED (1) 变为 EMPTY (0)
             return;
         }
-        // The state has gone from EMPTY (0) to PARKED (-1)
+        // 状态已从 EMPTY (0) 变为 PARKED (-1)
         assert!(state == EMPTY);
 
-        // The state is now PARKED (-1). Wait until the `unpark` wakes us up.
+        // 现在状态是 PARKED (-1)。等待，直到 `unpark` 把我们唤醒。
         blocking_scalar(
             ticktimer_server(),
             TicktimerScalar::WaitForCondition(self.index(), 0).into(),
@@ -45,21 +45,19 @@ impl Parker {
     }
 
     pub unsafe fn park_timeout(self: Pin<&Self>, timeout: Duration) {
-        // Change NOTIFIED to EMPTY and EMPTY to PARKED.
+        // 把 NOTIFIED 改为 EMPTY，把 EMPTY 改为 PARKED。
         let state = self.state.fetch_sub(1, Acquire);
         if state == NOTIFIED {
-            // The state has gone from NOTIFIED (1) to EMPTY (0)
+            // 状态已从 NOTIFIED (1) 变为 EMPTY (0)
             return;
         }
-        // The state has gone from EMPTY (0) to PARKED (-1)
+        // 状态已从 EMPTY (0) 变为 PARKED (-1)
         assert!(state == EMPTY);
 
-        // A value of zero indicates an indefinite wait. Clamp the number of
-        // milliseconds to the allowed range.
+        // 值为零表示无限期等待。把毫秒数限制（clamp）到允许的范围内。
         let millis = usize::max(timeout.as_millis().try_into().unwrap_or(usize::MAX), 1);
 
-        // The state is now PARKED (-1). Wait until the `unpark` wakes us up,
-        // or things time out.
+        // 现在状态是 PARKED (-1)。等待，直到 `unpark` 把我们唤醒，或者超时。
         let _was_timeout = blocking_scalar(
             ticktimer_server(),
             TicktimerScalar::WaitForCondition(self.index(), millis).into(),
@@ -72,22 +70,20 @@ impl Parker {
     }
 
     pub fn unpark(self: Pin<&Self>) {
-        // If the state is already `NOTIFIED`, then another thread has
-        // indicated it wants to wake up the target thread.
+        // 如果状态已经是 `NOTIFIED`，那么说明另一个线程已经表明它想要
+        // 唤醒目标线程。
         //
-        // If the state is `EMPTY` then there is nothing to wake up, and
-        // the target thread will immediately exit from `park()` the
-        // next time that function is called.
+        // 如果状态是 `EMPTY`，那么没有什么需要唤醒，目标线程下一次调用
+        // `park()` 时会立即从中退出。
         if self.state.swap(NOTIFIED, Release) != PARKED {
             return;
         }
 
-        // The thread is parked, wake it up. Keep trying until we wake something up.
-        // This will happen when the `NotifyCondition` call returns the fact that
-        // 1 condition was notified.
-        // Alternately, keep going until the state is seen as `EMPTY`, indicating
-        // the thread woke up and kept going. This can happen when the Park
-        // times out before we can send the NotifyCondition message.
+        // 线程处于 parked 状态，把它唤醒。一直尝试，直到我们唤醒了某个东西。
+        // 当 `NotifyCondition` 调用返回「有 1 个 condition 被通知」这一事实时，
+        // 就会发生这种情况。
+        // 或者，一直进行下去，直到看到状态变为 `EMPTY`，表明该线程已醒来并继续运行。
+        // 当 Park 在我们发出 NotifyCondition 消息之前就超时时，可能会出现这种情况。
         while blocking_scalar(
             ticktimer_server(),
             TicktimerScalar::NotifyCondition(self.index(), 1).into(),
@@ -96,8 +92,8 @@ impl Parker {
             == 0
             && self.state.load(Acquire) != EMPTY
         {
-            // The target thread hasn't yet hit the `WaitForCondition` call.
-            // Yield to let the target thread run some more.
+            // 目标线程尚未到达 `WaitForCondition` 调用。
+            // 让出（yield），以便让目标线程多运行一会儿。
             crate::thread::yield_now();
         }
     }

@@ -1,4 +1,4 @@
-// FIXME: This is currently disabled on *BSD.
+// FIXME: 目前在 *BSD 上被禁用。
 
 use super::{SocketAddr, sockaddr_un};
 use crate::io::{self, IoSlice, IoSliceMut};
@@ -10,7 +10,7 @@ use crate::ptr::{eq, read_unaligned};
 use crate::slice::from_raw_parts;
 use crate::sys::net::Socket;
 
-// FIXME(#43348): Make libc adapt #[doc(cfg(...))] so we don't need these fake definitions here?
+// FIXME(#43348): 让 libc 适配 #[doc(cfg(...))]，这样我们就不需要在此放置这些伪定义？
 #[cfg(all(
     doc,
     not(target_os = "linux"),
@@ -43,7 +43,7 @@ pub(super) fn recv_vectored_with_ancillary_from(
         msg.msg_iov = bufs.as_mut_ptr().cast();
         msg.msg_iovlen = bufs.len() as _;
         msg.msg_controllen = ancillary.buffer.len() as _;
-        // macos requires that the control pointer is null when the len is 0.
+        // macos 要求当 len 为 0 时控制指针必须为 null。
         if msg.msg_controllen > 0 {
             msg.msg_control = ancillary.buffer.as_mut_ptr().cast();
         }
@@ -76,7 +76,7 @@ pub(super) fn send_vectored_with_ancillary_to(
         msg.msg_iov = bufs.as_ptr() as *mut _;
         msg.msg_iovlen = bufs.len() as _;
         msg.msg_controllen = ancillary.length as _;
-        // macos requires that the control pointer is null when the len is 0.
+        // macos 要求当 len 为 0 时控制指针必须为 null。
         if msg.msg_controllen > 0 {
             msg.msg_control = ancillary.buffer.as_mut_ptr().cast();
         }
@@ -136,9 +136,8 @@ fn add_to_ancillary_data<T>(
             previous_cmsg = cmsg;
             cmsg = libc::CMSG_NXTHDR(&msg, cmsg);
 
-            // Most operating systems, but not Linux or emscripten, return the previous pointer
-            // when its length is zero. Therefore, check if the previous pointer is the same as
-            // the current one.
+            // 大多数操作系统（但 Linux 与 emscripten 除外）在前一个指针的长度为零时
+            // 会返回它本身。因此，检查前一个指针是否与当前指针相同。
             if eq(cmsg, previous_cmsg) {
                 break;
             }
@@ -165,11 +164,11 @@ struct AncillaryDataIter<'a, T> {
 }
 
 impl<'a, T> AncillaryDataIter<'a, T> {
-    /// Creates `AncillaryDataIter` struct to iterate through the data unit in the control message.
+    /// 创建 `AncillaryDataIter` 结构体，用于遍历控制消息中的数据单元（data unit）。
     ///
     /// # Safety
     ///
-    /// `data` must contain a valid control message.
+    /// `data` 必须包含一条有效的控制消息。
     unsafe fn new(data: &'a [u8]) -> AncillaryDataIter<'a, T> {
         AncillaryDataIter { data, phantom: PhantomData }
     }
@@ -203,7 +202,7 @@ impl<'a, T> Iterator for AncillaryDataIter<'a, T> {
 #[derive(Clone)]
 pub struct SocketCred(());
 
-/// Unix credential.
+/// Unix 凭据（credential）。
 #[cfg(any(target_os = "android", target_os = "linux", target_os = "cygwin"))]
 #[unstable(feature = "unix_socket_ancillary_data", issue = "76915")]
 #[derive(Clone)]
@@ -222,48 +221,48 @@ pub struct SocketCred(libc::sockcred2);
 #[doc(cfg(any(target_os = "android", target_os = "linux", target_os = "cygwin")))]
 #[cfg(any(target_os = "android", target_os = "linux", target_os = "cygwin"))]
 impl SocketCred {
-    /// Creates a Unix credential struct.
+    /// 创建一个 Unix 凭据（credential）结构体。
     ///
-    /// PID, UID and GID is set to 0.
+    /// PID、UID 与 GID 均被设置为 0。
     #[unstable(feature = "unix_socket_ancillary_data", issue = "76915")]
     #[must_use]
     pub fn new() -> SocketCred {
         SocketCred(libc::ucred { pid: 0, uid: 0, gid: 0 })
     }
 
-    /// Set the PID.
+    /// 设置 PID。
     #[unstable(feature = "unix_socket_ancillary_data", issue = "76915")]
     pub fn set_pid(&mut self, pid: libc::pid_t) {
         self.0.pid = pid;
     }
 
-    /// Gets the current PID.
+    /// 获取当前的 PID。
     #[must_use]
     #[unstable(feature = "unix_socket_ancillary_data", issue = "76915")]
     pub fn get_pid(&self) -> libc::pid_t {
         self.0.pid
     }
 
-    /// Set the UID.
+    /// 设置 UID。
     #[unstable(feature = "unix_socket_ancillary_data", issue = "76915")]
     pub fn set_uid(&mut self, uid: libc::uid_t) {
         self.0.uid = uid;
     }
 
-    /// Gets the current UID.
+    /// 获取当前的 UID。
     #[must_use]
     #[unstable(feature = "unix_socket_ancillary_data", issue = "76915")]
     pub fn get_uid(&self) -> libc::uid_t {
         self.0.uid
     }
 
-    /// Set the GID.
+    /// 设置 GID。
     #[unstable(feature = "unix_socket_ancillary_data", issue = "76915")]
     pub fn set_gid(&mut self, gid: libc::gid_t) {
         self.0.gid = gid;
     }
 
-    /// Gets the current GID.
+    /// 获取当前的 GID。
     #[must_use]
     #[unstable(feature = "unix_socket_ancillary_data", issue = "76915")]
     pub fn get_gid(&self) -> libc::gid_t {
@@ -273,9 +272,9 @@ impl SocketCred {
 
 #[cfg(target_os = "freebsd")]
 impl SocketCred {
-    /// Creates a Unix credential struct.
+    /// 创建一个 Unix 凭据（credential）结构体。
     ///
-    /// PID, UID and GID is set to 0.
+    /// PID、UID 与 GID 均被设置为 0。
     #[unstable(feature = "unix_socket_ancillary_data", issue = "76915")]
     #[must_use]
     pub fn new() -> SocketCred {
@@ -291,39 +290,39 @@ impl SocketCred {
         })
     }
 
-    /// Set the PID.
+    /// 设置 PID。
     #[unstable(feature = "unix_socket_ancillary_data", issue = "76915")]
     pub fn set_pid(&mut self, pid: libc::pid_t) {
         self.0.sc_pid = pid;
     }
 
-    /// Gets the current PID.
+    /// 获取当前的 PID。
     #[must_use]
     #[unstable(feature = "unix_socket_ancillary_data", issue = "76915")]
     pub fn get_pid(&self) -> libc::pid_t {
         self.0.sc_pid
     }
 
-    /// Set the UID.
+    /// 设置 UID。
     #[unstable(feature = "unix_socket_ancillary_data", issue = "76915")]
     pub fn set_uid(&mut self, uid: libc::uid_t) {
         self.0.sc_euid = uid;
     }
 
-    /// Gets the current UID.
+    /// 获取当前的 UID。
     #[must_use]
     #[unstable(feature = "unix_socket_ancillary_data", issue = "76915")]
     pub fn get_uid(&self) -> libc::uid_t {
         self.0.sc_euid
     }
 
-    /// Set the GID.
+    /// 设置 GID。
     #[unstable(feature = "unix_socket_ancillary_data", issue = "76915")]
     pub fn set_gid(&mut self, gid: libc::gid_t) {
         self.0.sc_egid = gid;
     }
 
-    /// Gets the current GID.
+    /// 获取当前的 GID。
     #[must_use]
     #[unstable(feature = "unix_socket_ancillary_data", issue = "76915")]
     pub fn get_gid(&self) -> libc::gid_t {
@@ -333,9 +332,9 @@ impl SocketCred {
 
 #[cfg(target_os = "netbsd")]
 impl SocketCred {
-    /// Creates a Unix credential struct.
+    /// 创建一个 Unix 凭据（credential）结构体。
     ///
-    /// PID, UID and GID is set to 0.
+    /// PID、UID 与 GID 均被设置为 0。
     #[unstable(feature = "unix_socket_ancillary_data", issue = "76915")]
     pub fn new() -> SocketCred {
         SocketCred(libc::sockcred {
@@ -349,39 +348,39 @@ impl SocketCred {
         })
     }
 
-    /// Set the PID.
+    /// 设置 PID。
     #[unstable(feature = "unix_socket_ancillary_data", issue = "76915")]
     pub fn set_pid(&mut self, pid: libc::pid_t) {
         self.0.sc_pid = pid;
     }
 
-    /// Gets the current PID.
+    /// 获取当前的 PID。
     #[must_use]
     #[unstable(feature = "unix_socket_ancillary_data", issue = "76915")]
     pub fn get_pid(&self) -> libc::pid_t {
         self.0.sc_pid
     }
 
-    /// Set the UID.
+    /// 设置 UID。
     #[unstable(feature = "unix_socket_ancillary_data", issue = "76915")]
     pub fn set_uid(&mut self, uid: libc::uid_t) {
         self.0.sc_uid = uid;
     }
 
-    /// Gets the current UID.
+    /// 获取当前的 UID。
     #[must_use]
     #[unstable(feature = "unix_socket_ancillary_data", issue = "76915")]
     pub fn get_uid(&self) -> libc::uid_t {
         self.0.sc_uid
     }
 
-    /// Set the GID.
+    /// 设置 GID。
     #[unstable(feature = "unix_socket_ancillary_data", issue = "76915")]
     pub fn set_gid(&mut self, gid: libc::gid_t) {
         self.0.sc_gid = gid;
     }
 
-    /// Gets the current GID.
+    /// 获取当前的 GID。
     #[must_use]
     #[unstable(feature = "unix_socket_ancillary_data", issue = "76915")]
     pub fn get_gid(&self) -> libc::gid_t {
@@ -389,9 +388,9 @@ impl SocketCred {
     }
 }
 
-/// This control message contains file descriptors.
+/// 这条控制消息包含文件描述符。
 ///
-/// The level is equal to `SOL_SOCKET` and the type is equal to `SCM_RIGHTS`.
+/// 其 level 等于 `SOL_SOCKET`，type 等于 `SCM_RIGHTS`。
 #[unstable(feature = "unix_socket_ancillary_data", issue = "76915")]
 pub struct ScmRights<'a>(AncillaryDataIter<'a, RawFd>);
 
@@ -415,9 +414,9 @@ impl<'a> Iterator for ScmRights<'a> {
 #[unstable(feature = "unix_socket_ancillary_data", issue = "76915")]
 pub struct ScmCredentials<'a>(AncillaryDataIter<'a, ()>);
 
-/// This control message contains unix credentials.
+/// 这条控制消息包含 unix 凭据（credentials）。
 ///
-/// The level is equal to `SOL_SOCKET` and the type is equal to `SCM_CREDENTIALS` or `SCM_CREDS`.
+/// 其 level 等于 `SOL_SOCKET`，type 等于 `SCM_CREDENTIALS` 或 `SCM_CREDS`。
 #[cfg(any(target_os = "android", target_os = "linux", target_os = "cygwin"))]
 #[unstable(feature = "unix_socket_ancillary_data", issue = "76915")]
 pub struct ScmCredentials<'a>(AncillaryDataIter<'a, libc::ucred>);
@@ -447,7 +446,7 @@ impl<'a> Iterator for ScmCredentials<'a> {
     }
 }
 
-/// The error type which is returned from parsing the type a control message.
+/// 在解析某条控制消息的类型时返回的错误类型。
 #[non_exhaustive]
 #[derive(Debug)]
 #[unstable(feature = "unix_socket_ancillary_data", issue = "76915")]
@@ -455,7 +454,7 @@ pub enum AncillaryError {
     Unknown { cmsg_level: i32, cmsg_type: i32 },
 }
 
-/// This enum represent one control message of variable type.
+/// 此枚举表示一条类型可变的控制消息。
 #[unstable(feature = "unix_socket_ancillary_data", issue = "76915")]
 pub enum AncillaryData<'a> {
     ScmRights(ScmRights<'a>),
@@ -471,24 +470,24 @@ pub enum AncillaryData<'a> {
 }
 
 impl<'a> AncillaryData<'a> {
-    /// Creates an `AncillaryData::ScmRights` variant.
+    /// 创建一个 `AncillaryData::ScmRights` 变体。
     ///
     /// # Safety
     ///
-    /// `data` must contain a valid control message and the control message must be type of
-    /// `SOL_SOCKET` and level of `SCM_RIGHTS`.
+    /// `data` 必须包含一条有效的控制消息，且该控制消息的 type 必须为 `SOL_SOCKET`、
+    /// level 必须为 `SCM_RIGHTS`。
     unsafe fn as_rights(data: &'a [u8]) -> Self {
         let ancillary_data_iter = AncillaryDataIter::new(data);
         let scm_rights = ScmRights(ancillary_data_iter);
         AncillaryData::ScmRights(scm_rights)
     }
 
-    /// Creates an `AncillaryData::ScmCredentials` variant.
+    /// 创建一个 `AncillaryData::ScmCredentials` 变体。
     ///
     /// # Safety
     ///
-    /// `data` must contain a valid control message and the control message must be type of
-    /// `SOL_SOCKET` and level of `SCM_CREDENTIALS` or `SCM_CREDS`.
+    /// `data` 必须包含一条有效的控制消息，且该控制消息的 type 必须为 `SOL_SOCKET`、
+    /// level 必须为 `SCM_CREDENTIALS` 或 `SCM_CREDS`。
     #[cfg(any(
         doc,
         target_os = "android",
@@ -531,7 +530,7 @@ impl<'a> AncillaryData<'a> {
     }
 }
 
-/// This struct is used to iterate through the control messages.
+/// 此结构体用于遍历各条控制消息。
 #[must_use = "iterators are lazy and do nothing unless consumed"]
 #[unstable(feature = "unix_socket_ancillary_data", issue = "76915")]
 pub struct Messages<'a> {
@@ -557,9 +556,8 @@ impl<'a> Iterator for Messages<'a> {
 
             let cmsg = cmsg.as_ref()?;
 
-            // Most operating systems, but not Linux or emscripten, return the previous pointer
-            // when its length is zero. Therefore, check if the previous pointer is the same as
-            // the current one.
+            // 大多数操作系统（但 Linux 与 emscripten 除外）在前一个指针的长度为零时
+            // 会返回它本身。因此，检查前一个指针是否与当前指针相同。
             if let Some(current) = self.current {
                 if eq(current, cmsg) {
                     return None;
@@ -573,9 +571,9 @@ impl<'a> Iterator for Messages<'a> {
     }
 }
 
-/// A Unix socket Ancillary data struct.
+/// 一个 Unix 套接字辅助数据（Ancillary data）结构体。
 ///
-/// # Example
+/// # 示例
 /// ```no_run
 /// #![feature(unix_socket_ancillary_data)]
 /// use std::os::unix::net::{UnixStream, SocketAncillary, AncillaryData};
@@ -611,9 +609,9 @@ pub struct SocketAncillary<'a> {
 }
 
 impl<'a> SocketAncillary<'a> {
-    /// Creates an ancillary data with the given buffer.
+    /// 用给定的缓冲区创建一份辅助数据（ancillary data）。
     ///
-    /// # Example
+    /// # 示例
     ///
     /// ```no_run
     /// # #![allow(unused_mut)]
@@ -627,36 +625,36 @@ impl<'a> SocketAncillary<'a> {
         SocketAncillary { buffer, length: 0, truncated: false }
     }
 
-    /// Returns the capacity of the buffer.
+    /// 返回缓冲区的容量。
     #[must_use]
     #[unstable(feature = "unix_socket_ancillary_data", issue = "76915")]
     pub fn capacity(&self) -> usize {
         self.buffer.len()
     }
 
-    /// Returns `true` if the ancillary data is empty.
+    /// 如果该辅助数据为空，则返回 `true`。
     #[must_use]
     #[unstable(feature = "unix_socket_ancillary_data", issue = "76915")]
     pub fn is_empty(&self) -> bool {
         self.length == 0
     }
 
-    /// Returns the number of used bytes.
+    /// 返回已使用的字节数。
     #[must_use]
     #[unstable(feature = "unix_socket_ancillary_data", issue = "76915")]
     pub fn len(&self) -> usize {
         self.length
     }
 
-    /// Returns the iterator of the control messages.
+    /// 返回遍历各条控制消息的迭代器。
     #[unstable(feature = "unix_socket_ancillary_data", issue = "76915")]
     pub fn messages(&self) -> Messages<'_> {
         Messages { buffer: &self.buffer[..self.length], current: None }
     }
 
-    /// Is `true` if during a recv operation the ancillary was truncated.
+    /// 如果在一次 recv 操作期间辅助数据被截断（truncated），则为 `true`。
     ///
-    /// # Example
+    /// # 示例
     ///
     /// ```no_run
     /// #![feature(unix_socket_ancillary_data)]
@@ -683,14 +681,14 @@ impl<'a> SocketAncillary<'a> {
         self.truncated
     }
 
-    /// Add file descriptors to the ancillary data.
+    /// 向辅助数据（ancillary data）中添加文件描述符。
     ///
-    /// The function returns `true` if there was enough space in the buffer.
-    /// If there was not enough space then no file descriptors was appended.
-    /// Technically, that means this operation adds a control message with the level `SOL_SOCKET`
-    /// and type `SCM_RIGHTS`.
+    /// 如果缓冲区中有足够空间，该函数返回 `true`。
+    /// 如果空间不足，则不会追加任何文件描述符。
+    /// 从技术上讲，这意味着此操作会添加一条 level 为 `SOL_SOCKET`、type 为 `SCM_RIGHTS`
+    /// 的控制消息。
     ///
-    /// # Example
+    /// # 示例
     ///
     /// ```no_run
     /// #![feature(unix_socket_ancillary_data)]
@@ -723,12 +721,12 @@ impl<'a> SocketAncillary<'a> {
         )
     }
 
-    /// Add credentials to the ancillary data.
+    /// 向辅助数据（ancillary data）中添加凭据（credentials）。
     ///
-    /// The function returns `true` if there is enough space in the buffer.
-    /// If there is not enough space then no credentials will be appended.
-    /// Technically, that means this operation adds a control message with the level `SOL_SOCKET`
-    /// and type `SCM_CREDENTIALS`, `SCM_CREDS`, or `SCM_CREDS2`.
+    /// 如果缓冲区中有足够空间，该函数返回 `true`。
+    /// 如果空间不足，则不会追加任何凭据。
+    /// 从技术上讲，这意味着此操作会添加一条 level 为 `SOL_SOCKET`、type 为
+    /// `SCM_CREDENTIALS`、`SCM_CREDS` 或 `SCM_CREDS2` 的控制消息。
     ///
     #[cfg(any(
         doc,
@@ -755,9 +753,9 @@ impl<'a> SocketAncillary<'a> {
         )
     }
 
-    /// Clears the ancillary data, removing all values.
+    /// 清空辅助数据（ancillary data），移除所有值。
     ///
-    /// # Example
+    /// # 示例
     ///
     /// ```no_run
     /// #![feature(unix_socket_ancillary_data)]

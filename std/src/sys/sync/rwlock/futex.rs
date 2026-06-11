@@ -2,16 +2,17 @@ use crate::sync::atomic::Ordering::{Acquire, Relaxed, Release};
 use crate::sys::futex::{Futex, Primitive, futex_wait, futex_wake, futex_wake_all};
 
 pub struct RwLock {
-    // The state consists of a 30-bit reader counter, a 'readers waiting' flag, and a 'writers waiting' flag.
-    // Bits 0..30:
-    //   0: Unlocked
-    //   1..=0x3FFF_FFFE: Locked by N readers
-    //   0x3FFF_FFFF: Write locked
-    // Bit 30: Readers are waiting on this futex.
-    // Bit 31: Writers are waiting on the writer_notify futex.
+    // state 由一个 30 位的读者计数器、一个 'readers waiting'（有读者在等待）标志位
+    // 和一个 'writers waiting'（有写者在等待）标志位组成。
+    // 第 0..30 位：
+    //   0: 未锁定（Unlocked）
+    //   1..=0x3FFF_FFFE: 被 N 个读者锁定
+    //   0x3FFF_FFFF: 被写者锁定（Write locked）
+    // 第 30 位：有读者正在这个 futex 上等待。
+    // 第 31 位：有写者正在 writer_notify futex 上等待。
     state: Futex,
-    // The 'condition variable' to notify writers through.
-    // Incremented on every signal.
+    // 用来通知写者的「条件变量」。
+    // 每次 signal（信号通知）时自增。
     writer_notify: Futex,
 }
 
@@ -45,27 +46,25 @@ fn has_writers_waiting(state: Primitive) -> bool {
 
 #[inline]
 fn is_read_lockable(state: Primitive) -> bool {
-    // This also returns false if the counter could overflow if we tried to read lock it.
+    // 如果尝试加读锁会导致计数器溢出，本函数也会返回 false。
     //
-    // We don't allow read-locking if there's readers waiting, even if the lock is unlocked
-    // and there's no writers waiting. The only situation when this happens is after unlocking,
-    // at which point the unlocking thread might be waking up writers, which have priority over readers.
-    // The unlocking thread will clear the readers waiting bit and wake up readers, if necessary.
+    // 当有读者在等待时，我们不允许加读锁，即便锁当前是未锁定状态且没有写者在等待。
+    // 唯一会出现这种情况的时机是在解锁之后：此时解锁线程可能正在唤醒写者，而写者
+    // 的优先级高于读者。解锁线程会在需要时清除 readers waiting 位并唤醒读者。
     state & MASK < MAX_READERS && !has_readers_waiting(state) && !has_writers_waiting(state)
 }
 
 #[inline]
 fn is_read_lockable_after_wakeup(state: Primitive) -> bool {
-    // We make a special case for checking if we can read-lock _after_ a reader thread that went to
-    // sleep has been woken up by a call to `downgrade`.
+    // 对于「一个进入休眠的读者线程被 `downgrade` 调用唤醒 *之后* 能否加读锁」
+    // 这一判断，我们做了特殊处理。
     //
-    // `downgrade` will wake up all readers and place the lock in read mode. Thus, there should be
-    // no readers waiting and the lock should be read-locked (not write-locked or unlocked).
+    // `downgrade` 会唤醒所有读者并把锁置于读模式。因此此时应当没有读者在等待，
+    // 且锁应当处于读锁定状态（既不是写锁定，也不是未锁定）。
     //
-    // Note that we do not check if any writers are waiting. This is because a call to `downgrade`
-    // implies that the caller wants other readers to read the value protected by the lock. If we
-    // did not allow readers to acquire the lock before writers after a `downgrade`, then only the
-    // original writer would be able to read the value, thus defeating the purpose of `downgrade`.
+    // 注意我们这里并不检查是否有写者在等待。这是因为调用 `downgrade` 意味着调用者
+    // 希望其他读者去读取受锁保护的值。如果我们在 `downgrade` 之后不允许读者先于写者
+    // 获取锁，那么就只有最初那个写者能读到该值，从而违背了 `downgrade` 的本意。
     state & MASK < MAX_READERS
         && !has_readers_waiting(state)
         && !is_write_locked(state)
@@ -103,18 +102,18 @@ impl RwLock {
         }
     }
 
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// The `RwLock` must be read-locked (N readers) in order to call this.
+    /// 调用此函数时，`RwLock` 必须处于读锁定状态（N 个读者）。
     #[inline]
     pub unsafe fn read_unlock(&self) {
         let state = self.state.fetch_sub(READ_LOCKED, Release) - READ_LOCKED;
 
-        // It's impossible for a reader to be waiting on a read-locked RwLock,
-        // except if there is also a writer waiting.
+        // 一个读者不可能在一个读锁定的 RwLock 上等待，
+        // 除非同时也有一个写者在等待。
         debug_assert!(!has_readers_waiting(state) || has_writers_waiting(state));
 
-        // Wake up a writer if we were the last reader and there's a writer waiting.
+        // 如果我们是最后一个读者且有写者在等待，则唤醒一个写者。
         if is_unlocked(state) && has_writers_waiting(state) {
             self.wake_writer_or_readers(state);
         }
@@ -126,12 +125,12 @@ impl RwLock {
         let mut state = self.spin_read();
 
         loop {
-            // If we have just been woken up, first check for a `downgrade` call.
-            // Otherwise, if we can read-lock it, lock it.
+            // 如果我们刚刚被唤醒，先检查是否发生过 `downgrade` 调用。
+            // 否则，如果可以加读锁，就加读锁。
             if (has_slept && is_read_lockable_after_wakeup(state)) || is_read_lockable(state) {
                 match self.state.compare_exchange_weak(state, state + READ_LOCKED, Acquire, Relaxed)
                 {
-                    Ok(_) => return, // Locked!
+                    Ok(_) => return, // 加锁成功！
                     Err(s) => {
                         state = s;
                         continue;
@@ -139,10 +138,10 @@ impl RwLock {
                 }
             }
 
-            // Check for overflow.
+            // 检查是否溢出。
             assert!(!has_reached_max_readers(state), "too many active read locks on RwLock");
 
-            // Make sure the readers waiting bit is set before we go to sleep.
+            // 在进入休眠前，确保 readers waiting 位已被置位。
             if !has_readers_waiting(state) {
                 if let Err(s) =
                     self.state.compare_exchange(state, state | READERS_WAITING, Relaxed, Relaxed)
@@ -152,11 +151,11 @@ impl RwLock {
                 }
             }
 
-            // Wait for the state to change.
+            // 等待 state 改变。
             futex_wait(&self.state, state | READERS_WAITING, None);
             has_slept = true;
 
-            // Spin again after waking up.
+            // 被唤醒后再次自旋。
             state = self.spin_read();
         }
     }
@@ -175,9 +174,9 @@ impl RwLock {
         }
     }
 
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// The `RwLock` must be write-locked (single writer) in order to call this.
+    /// 调用此函数时，`RwLock` 必须处于写锁定状态（单个写者）。
     #[inline]
     pub unsafe fn write_unlock(&self) {
         let state = self.state.fetch_sub(WRITE_LOCKED, Release) - WRITE_LOCKED;
@@ -189,17 +188,17 @@ impl RwLock {
         }
     }
 
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// The `RwLock` must be write-locked (single writer) in order to call this.
+    /// 调用此函数时，`RwLock` 必须处于写锁定状态（单个写者）。
     #[inline]
     pub unsafe fn downgrade(&self) {
-        // Removes all write bits and adds a single read bit.
+        // 清除所有写标志位，并加上一个读标志位。
         let state = self.state.fetch_add(DOWNGRADE, Release);
         debug_assert!(is_write_locked(state), "RwLock must be write locked to call `downgrade`");
 
         if has_readers_waiting(state) {
-            // Since we had the exclusive lock, nobody else can unset this bit.
+            // 由于我们持有独占锁，没有其他人能清除这个位。
             self.state.fetch_sub(READERS_WAITING, Relaxed);
             futex_wake_all(&self.state);
         }
@@ -212,7 +211,7 @@ impl RwLock {
         let mut other_writers_waiting = 0;
 
         loop {
-            // If it's unlocked, we try to lock it.
+            // 如果它未锁定，我们就尝试加锁。
             if is_unlocked(state) {
                 match self.state.compare_exchange_weak(
                     state,
@@ -220,7 +219,7 @@ impl RwLock {
                     Acquire,
                     Relaxed,
                 ) {
-                    Ok(_) => return, // Locked!
+                    Ok(_) => return, // 加锁成功！
                     Err(s) => {
                         state = s;
                         continue;
@@ -228,7 +227,7 @@ impl RwLock {
                 }
             }
 
-            // Set the waiting bit indicating that we're waiting on it.
+            // 置位 waiting 位，表示我们正在等待它。
             if !has_writers_waiting(state) {
                 if let Err(s) =
                     self.state.compare_exchange(state, state | WRITERS_WAITING, Relaxed, Relaxed)
@@ -238,47 +237,46 @@ impl RwLock {
                 }
             }
 
-            // Other writers might be waiting now too, so we should make sure
-            // we keep that bit on once we manage lock it.
+            // 现在可能也有其他写者在等待，所以一旦我们成功加锁，
+            // 应当确保保留该位。
             other_writers_waiting = WRITERS_WAITING;
 
-            // Examine the notification counter before we check if `state` has changed,
-            // to make sure we don't miss any notifications.
+            // 在检查 `state` 是否改变之前先读取通知计数器，
+            // 以确保我们不会漏掉任何通知。
             let seq = self.writer_notify.load(Acquire);
 
-            // Don't go to sleep if the lock has become available,
-            // or if the writers waiting bit is no longer set.
+            // 如果锁已经变为可用，或者 writers waiting 位已不再被置位，
+            // 则不要进入休眠。
             state = self.state.load(Relaxed);
             if is_unlocked(state) || !has_writers_waiting(state) {
                 continue;
             }
 
-            // Wait for the state to change.
+            // 等待 state 改变。
             futex_wait(&self.writer_notify, seq, None);
 
-            // Spin again after waking up.
+            // 被唤醒后再次自旋。
             state = self.spin_write();
         }
     }
 
-    /// Wakes up waiting threads after unlocking.
+    /// 在解锁后唤醒正在等待的线程。
     ///
-    /// If both are waiting, this will wake up only one writer, but will fall
-    /// back to waking up readers if there was no writer to wake up.
+    /// 如果读者和写者都在等待，这只会唤醒一个写者；但如果没有写者可唤醒，
+    /// 则回退为唤醒读者。
     #[cold]
     fn wake_writer_or_readers(&self, mut state: Primitive) {
         assert!(is_unlocked(state));
 
-        // The readers waiting bit might be turned on at any point now,
-        // since readers will block when there's anything waiting.
-        // Writers will just lock the lock though, regardless of the waiting bits,
-        // so we don't have to worry about the writer waiting bit.
+        // 此刻 readers waiting 位随时可能被置位，
+        // 因为只要有任何线程在等待，读者就会阻塞。
+        // 不过写者会直接对锁加锁，而不管这些 waiting 位，
+        // 所以我们不必担心 writer waiting 位。
         //
-        // If the lock gets locked in the meantime, we don't have to do
-        // anything, because then the thread that locked the lock will take
-        // care of waking up waiters when it unlocks.
+        // 如果在此期间锁被加锁了，我们什么都不用做，
+        // 因为那个加锁的线程会在它解锁时负责唤醒等待者。
 
-        // If only writers are waiting, wake one of them up.
+        // 如果只有写者在等待，唤醒其中一个。
         if state == WRITERS_WAITING {
             match self.state.compare_exchange(state, 0, Relaxed, Relaxed) {
                 Ok(_) => {
@@ -286,28 +284,28 @@ impl RwLock {
                     return;
                 }
                 Err(s) => {
-                    // Maybe some readers are now waiting too. So, continue to the next `if`.
+                    // 也许现在也有一些读者在等待了。所以继续执行下一个 `if`。
                     state = s;
                 }
             }
         }
 
-        // If both writers and readers are waiting, leave the readers waiting
-        // and only wake up one writer.
+        // 如果写者和读者都在等待，则让读者继续等待，
+        // 只唤醒一个写者。
         if state == READERS_WAITING + WRITERS_WAITING {
             if self.state.compare_exchange(state, READERS_WAITING, Relaxed, Relaxed).is_err() {
-                // The lock got locked. Not our problem anymore.
+                // 锁被加锁了。已经不关我们的事了。
                 return;
             }
             if self.wake_writer() {
                 return;
             }
-            // No writers were actually blocked on futex_wait, so we continue
-            // to wake up readers instead, since we can't be sure if we notified a writer.
+            // 实际上并没有写者阻塞在 futex_wait 上，所以我们继续转去唤醒读者，
+            // 因为我们无法确定是否真的通知到了某个写者。
             state = READERS_WAITING;
         }
 
-        // If readers are waiting, wake them all up.
+        // 如果有读者在等待，把它们全部唤醒。
         if state == READERS_WAITING {
             if self.state.compare_exchange(state, 0, Relaxed, Relaxed).is_ok() {
                 futex_wake_all(&self.state);
@@ -315,24 +313,21 @@ impl RwLock {
         }
     }
 
-    /// This wakes one writer and returns true if we woke up a writer that was
-    /// blocked on futex_wait.
+    /// 唤醒一个写者；如果我们唤醒了一个原本阻塞在 futex_wait 上的写者，则返回 true。
     ///
-    /// If this returns false, it might still be the case that we notified a
-    /// writer that was about to go to sleep.
+    /// 如果返回 false，仍有可能我们通知到了一个正准备进入休眠的写者。
     fn wake_writer(&self) -> bool {
         self.writer_notify.fetch_add(1, Release);
         futex_wake(&self.writer_notify)
-        // Note that FreeBSD and DragonFlyBSD don't tell us whether they woke
-        // up any threads or not, and always return `false` here. That still
-        // results in correct behavior: it just means readers get woken up as
-        // well in case both readers and writers were waiting.
+        // 注意 FreeBSD 和 DragonFlyBSD 不会告诉我们它们是否唤醒了任何线程，
+        // 这里总是返回 `false`。这仍然能产生正确的行为：它只是意味着在读者和写者
+        // 都在等待的情况下，读者也会一并被唤醒。
     }
 
-    /// Spin for a while, but stop directly at the given condition.
+    /// 自旋一段时间，但在满足给定条件时立即停止。
     #[inline]
     fn spin_until(&self, f: impl Fn(Primitive) -> bool) -> Primitive {
-        let mut spin = 100; // Chosen by fair dice roll.
+        let mut spin = 100; // 由一次公平掷骰子选定。
         loop {
             let state = self.state.load(Relaxed);
             if f(state) || spin == 0 {
@@ -345,13 +340,13 @@ impl RwLock {
 
     #[inline]
     fn spin_write(&self) -> Primitive {
-        // Stop spinning when it's unlocked or when there's waiting writers, to keep things somewhat fair.
+        // 当锁未锁定，或者有写者在等待时停止自旋，以保持一定程度的公平性。
         self.spin_until(|state| is_unlocked(state) || has_writers_waiting(state))
     }
 
     #[inline]
     fn spin_read(&self) -> Primitive {
-        // Stop spinning when it's unlocked or read locked, or when there's waiting threads.
+        // 当锁未锁定或处于读锁定，或者有线程在等待时停止自旋。
         self.spin_until(|state| {
             !is_write_locked(state) || has_readers_waiting(state) || has_writers_waiting(state)
         })

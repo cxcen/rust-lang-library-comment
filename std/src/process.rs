@@ -1,12 +1,11 @@
-//! A module for working with processes.
+//! 用于处理进程的模块。
 //!
-//! This module is mostly concerned with spawning and interacting with child
-//! processes, but it also provides [`abort`] and [`exit`] for terminating the
-//! current process.
+//! 本模块主要关注子进程的 spawn（衍生）与交互，但同时也提供了 [`abort`] 和 [`exit`]
+//! 用于终止当前进程。
 //!
-//! # Spawning a process
+//! # 衍生一个进程
 //!
-//! The [`Command`] struct is used to configure and spawn processes:
+//! [`Command`] 结构体用于配置并 spawn 进程：
 //!
 //! ```no_run
 //! use std::process::Command;
@@ -19,23 +18,20 @@
 //! assert_eq!(b"Hello world\n", output.stdout.as_slice());
 //! ```
 //!
-//! Several methods on [`Command`], such as [`spawn`] or [`output`], can be used
-//! to spawn a process. In particular, [`output`] spawns the child process and
-//! waits until the process terminates, while [`spawn`] will return a [`Child`]
-//! that represents the spawned child process.
+//! [`Command`] 上有若干方法（例如 [`spawn`] 或 [`output`]）可用于 spawn 一个进程。
+//! 特别地，[`output`] 会 spawn 子进程并一直等待该进程终止，而 [`spawn`] 会返回一个
+//! 表示已衍生子进程的 [`Child`]。
 //!
-//! # Handling I/O
+//! # 处理 I/O
 //!
-//! The [`stdout`], [`stdin`], and [`stderr`] of a child process can be
-//! configured by passing an [`Stdio`] to the corresponding method on
-//! [`Command`]. Once spawned, they can be accessed from the [`Child`]. For
-//! example, piping output from one command into another command can be done
-//! like so:
+//! 子进程的 [`stdout`]、[`stdin`] 和 [`stderr`] 可以通过向 [`Command`] 上对应的方法
+//! 传入一个 [`Stdio`] 来配置。进程衍生之后，可以从 [`Child`] 上访问它们。例如，把一个
+//! 命令的输出通过管道接到另一个命令，可以这样做：
 //!
 //! ```no_run
 //! use std::process::{Command, Stdio};
 //!
-//! // stdout must be configured with `Stdio::piped` in order to use
+//! // 必须用 `Stdio::piped` 配置 stdout 才能使用
 //! // `echo_child.stdout`
 //! let echo_child = Command::new("echo")
 //!     .arg("Oh no, a tpyo!")
@@ -43,8 +39,8 @@
 //!     .spawn()
 //!     .expect("Failed to start echo process");
 //!
-//! // Note that `echo_child` is moved here, but we won't be needing
-//! // `echo_child` anymore
+//! // 注意 `echo_child` 在这里被 move 了，但我们之后
+//! // 不再需要 `echo_child`
 //! let echo_out = echo_child.stdout.expect("Failed to open echo stdout");
 //!
 //! let mut sed_child = Command::new("sed")
@@ -58,8 +54,8 @@
 //! assert_eq!(b"Oh no, a typo!\n", output.stdout.as_slice());
 //! ```
 //!
-//! Note that [`ChildStderr`] and [`ChildStdout`] implement [`Read`] and
-//! [`ChildStdin`] implements [`Write`]:
+//! 注意 [`ChildStderr`] 和 [`ChildStdout`] 实现了 [`Read`]，而
+//! [`ChildStdin`] 实现了 [`Write`]：
 //!
 //! ```no_run
 //! use std::process::{Command, Stdio};
@@ -71,11 +67,11 @@
 //!     .spawn()
 //!     .expect("failed to execute child");
 //!
-//! // If the child process fills its stdout buffer, it may end up
-//! // waiting until the parent reads the stdout, and not be able to
-//! // read stdin in the meantime, causing a deadlock.
-//! // Writing from another thread ensures that stdout is being read
-//! // at the same time, avoiding the problem.
+//! // 如果子进程把它的 stdout 缓冲区填满了，它可能会一直
+//! // 等待父进程读取 stdout，而在此期间无法读取 stdin，
+//! // 从而造成死锁。
+//! // 在另一个线程里写入可以确保 stdout 同时被读取，
+//! // 从而避免该问题。
 //! let mut stdin = child.stdin.take().expect("failed to get stdin");
 //! std::thread::spawn(move || {
 //!     stdin.write_all(b"test").expect("failed to write to stdin");
@@ -90,44 +86,36 @@
 //!
 //! # Windows argument splitting
 //!
-//! On Unix systems arguments are passed to a new process as an array of strings,
-//! but on Windows arguments are passed as a single commandline string and it is
-//! up to the child process to parse it into an array. Therefore the parent and
-//! child processes must agree on how the commandline string is encoded.
+//! 在 Unix 系统上参数会以字符串数组的形式传给新进程，但在 Windows 上参数是作为单个
+//! 命令行字符串传递的，由子进程负责把它解析成数组。因此父进程和子进程必须就命令行
+//! 字符串如何编码达成一致。
 //!
-//! Most programs use the standard C run-time `argv`, which in practice results
-//! in consistent argument handling. However, some programs have their own way of
-//! parsing the commandline string. In these cases using [`arg`] or [`args`] may
-//! result in the child process seeing a different array of arguments than the
-//! parent process intended.
+//! 大多数程序使用标准 C 运行时的 `argv`，这在实践中能带来一致的参数处理。然而，有些
+//! 程序有自己解析命令行字符串的方式。在这些情况下使用 [`arg`] 或 [`args`] 可能会导致
+//! 子进程看到的参数数组与父进程意图传递的不同。
 //!
-//! Two ways of mitigating this are:
+//! 缓解这一问题的两种方式：
 //!
-//! * Validate untrusted input so that only a safe subset is allowed.
-//! * Use [`raw_arg`] to build a custom commandline. This bypasses the escaping
-//!   rules used by [`arg`] so should be used with due caution.
+//! * 校验不可信输入，使得只允许安全的子集。
+//! * 使用 [`raw_arg`] 构建自定义命令行。这会绕过 [`arg`] 使用的转义规则，因此应当
+//!   谨慎使用。
 //!
-//! `cmd.exe` and `.bat` files use non-standard argument parsing and are especially
-//! vulnerable to malicious input as they may be used to run arbitrary shell
-//! commands. Untrusted arguments should be restricted as much as possible.
-//! For examples on handling this see [`raw_arg`].
+//! `cmd.exe` 和 `.bat` 文件使用非标准的参数解析方式，且由于它们可能被用来运行任意
+//! shell 命令，因此对恶意输入尤其脆弱。不可信参数应尽可能地加以限制。处理这一问题的
+//! 示例见 [`raw_arg`]。
 //!
-//! ### Batch file special handling
+//! ### 批处理文件的特殊处理
 //!
-//! On Windows, `Command` uses the Windows API function [`CreateProcessW`] to
-//! spawn new processes. An undocumented feature of this function is that
-//! when given a `.bat` file as the application to run, it will automatically
-//! convert that into running `cmd.exe /c` with the batch file as the next argument.
+//! 在 Windows 上，`Command` 使用 Windows API 函数 [`CreateProcessW`] 来 spawn 新进程。
+//! 该函数有一个未文档化的特性：当给定一个 `.bat` 文件作为要运行的应用程序时，它会
+//! 自动将其转换为运行 `cmd.exe /c`，并以该批处理文件作为下一个参数。
 //!
-//! For historical reasons Rust currently preserves this behavior when using
-//! [`Command::new`], and escapes the arguments according to `cmd.exe` rules.
-//! Due to the complexity of `cmd.exe` argument handling, it might not be
-//! possible to safely escape some special characters, and using them will result
-//! in an error being returned at process spawn. The set of unescapeable
-//! special characters might change between releases.
+//! 出于历史原因，Rust 目前在使用 [`Command::new`] 时保留了这一行为，并按照 `cmd.exe`
+//! 的规则对参数进行转义。由于 `cmd.exe` 参数处理的复杂性，某些特殊字符可能无法被安全
+//! 转义，使用它们将导致在进程 spawn 时返回一个错误。无法转义的特殊字符集合可能在不同
+//! 版本之间发生变化。
 //!
-//! Also note that running batch scripts in this way may be removed in the
-//! future and so should not be relied upon.
+//! 另请注意，以这种方式运行批处理脚本的功能未来可能会被移除，因此不应依赖它。
 //!
 //! [`spawn`]: Command::spawn
 //! [`output`]: Command::output
@@ -169,35 +157,28 @@ use crate::path::Path;
 use crate::sys::{AsInner, AsInnerMut, FromInner, IntoInner, process as imp};
 use crate::{fmt, format_args_nl, fs, str};
 
-/// Representation of a running or exited child process.
+/// 一个正在运行或已退出的子进程的表示。
 ///
-/// This structure is used to represent and manage child processes. A child
-/// process is created via the [`Command`] struct, which configures the
-/// spawning process and can itself be constructed using a builder-style
-/// interface.
+/// 该结构体用于表示并管理子进程。子进程通过 [`Command`] 结构体创建，[`Command`]
+/// 负责配置 spawn 进程，并且其本身可以使用 builder 风格的接口来构造。
 ///
-/// There is no implementation of [`Drop`] for child processes,
-/// so if you do not ensure the `Child` has exited then it will continue to
-/// run, even after the `Child` handle to the child process has gone out of
-/// scope.
+/// 子进程没有 [`Drop`] 的实现，因此如果你不确保 `Child` 已经退出，它就会继续运行，
+/// 即使指向该子进程的 `Child` 句柄已经离开作用域也是如此。
 ///
-/// Calling [`wait`] (or other functions that wrap around it) will make
-/// the parent process wait until the child has actually exited before
-/// continuing.
+/// 调用 [`wait`]（或其他包装它的函数）会使父进程一直等待，直到子进程真正退出后
+/// 才继续往下执行。
 ///
-/// # Warning
+/// # 警告（Warning）
 ///
-/// On some systems, calling [`wait`] or similar is necessary for the OS to
-/// release resources. A process that terminated but has not been waited on is
-/// still around as a "zombie". Leaving too many zombies around may exhaust
-/// global resources (for example process IDs).
+/// 在某些系统上，调用 [`wait`] 或类似函数对于让操作系统释放资源是必要的。一个已经
+/// 终止但尚未被 wait 的进程仍然作为“僵尸（zombie）”存在。留下太多僵尸进程可能会
+/// 耗尽全局资源（例如进程 ID）。
 ///
-/// The standard library does *not* automatically wait on child processes (not
-/// even if the `Child` is dropped), it is up to the application developer to do
-/// so. As a consequence, dropping `Child` handles without waiting on them first
-/// is not recommended in long-running applications.
+/// 标准库**不会**自动 wait 子进程（即使 `Child` 被 drop 也不会），这需要由应用
+/// 开发者自己来做。因此，在长期运行的应用中，不先 wait 就 drop 掉 `Child` 句柄
+/// 是不推荐的做法。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```should_panic
 /// use std::process::Command;
@@ -218,44 +199,44 @@ use crate::{fmt, format_args_nl, fs, str};
 pub struct Child {
     pub(crate) handle: imp::Process,
 
-    /// The handle for writing to the child's standard input (stdin), if it
-    /// has been captured. You might find it helpful to do
+    /// 用于写入子进程标准输入（stdin）的句柄，前提是它已被捕获。你可能会发现
+    /// 这样做很有帮助
     ///
     /// ```ignore (incomplete)
     /// let stdin = child.stdin.take().expect("handle present");
     /// ```
     ///
-    /// to avoid partially moving the `child` and thus blocking yourself from calling
-    /// functions on `child` while using `stdin`.
+    /// 以避免对 `child` 进行部分 move，从而避免在使用 `stdin` 时阻碍你在 `child`
+    /// 上调用其他函数。
     #[stable(feature = "process", since = "1.0.0")]
     pub stdin: Option<ChildStdin>,
 
-    /// The handle for reading from the child's standard output (stdout), if it
-    /// has been captured. You might find it helpful to do
+    /// 用于从子进程标准输出（stdout）读取的句柄，前提是它已被捕获。你可能会发现
+    /// 这样做很有帮助
     ///
     /// ```ignore (incomplete)
     /// let stdout = child.stdout.take().expect("handle present");
     /// ```
     ///
-    /// to avoid partially moving the `child` and thus blocking yourself from calling
-    /// functions on `child` while using `stdout`.
+    /// 以避免对 `child` 进行部分 move，从而避免在使用 `stdout` 时阻碍你在 `child`
+    /// 上调用其他函数。
     #[stable(feature = "process", since = "1.0.0")]
     pub stdout: Option<ChildStdout>,
 
-    /// The handle for reading from the child's standard error (stderr), if it
-    /// has been captured. You might find it helpful to do
+    /// 用于从子进程标准错误（stderr）读取的句柄，前提是它已被捕获。你可能会发现
+    /// 这样做很有帮助
     ///
     /// ```ignore (incomplete)
     /// let stderr = child.stderr.take().expect("handle present");
     /// ```
     ///
-    /// to avoid partially moving the `child` and thus blocking yourself from calling
-    /// functions on `child` while using `stderr`.
+    /// 以避免对 `child` 进行部分 move，从而避免在使用 `stderr` 时阻碍你在 `child`
+    /// 上调用其他函数。
     #[stable(feature = "process", since = "1.0.0")]
     pub stderr: Option<ChildStderr>,
 }
 
-/// Allows extension traits within `std`.
+/// 允许在 `std` 内部定义扩展 trait。
 #[unstable(feature = "sealed", issue = "none")]
 impl crate::sealed::Sealed for Child {}
 
@@ -294,22 +275,21 @@ impl fmt::Debug for Child {
     }
 }
 
-/// The pipes connected to a spawned process.
+/// 连接到一个已衍生进程的管道集合。
 ///
-/// Used to pass pipe handles between this module and [`imp`].
+/// 用于在本模块与 [`imp`] 之间传递管道句柄。
 pub(crate) struct StdioPipes {
     pub stdin: Option<imp::ChildPipe>,
     pub stdout: Option<imp::ChildPipe>,
     pub stderr: Option<imp::ChildPipe>,
 }
 
-/// A handle to a child process's standard input (stdin).
+/// 指向子进程标准输入（stdin）的句柄。
 ///
-/// This struct is used in the [`stdin`] field on [`Child`].
+/// 此结构体被用于 [`Child`] 的 [`stdin`] 字段中。
 ///
-/// When an instance of `ChildStdin` is [dropped], the `ChildStdin`'s underlying
-/// file handle will be closed. If the child process was blocked on input prior
-/// to being dropped, it will become unblocked after dropping.
+/// 当一个 `ChildStdin` 实例被 [dropped] 时，`ChildStdin` 底层的文件句柄将被关闭。
+/// 如果子进程在被 drop 之前正阻塞于等待输入，drop 之后它会被解除阻塞。
 ///
 /// [`stdin`]: Child::stdin
 /// [dropped]: Drop
@@ -318,11 +298,11 @@ pub struct ChildStdin {
     inner: imp::ChildPipe,
 }
 
-// In addition to the `impl`s here, `ChildStdin` also has `impl`s for
-// `AsFd`/`From<OwnedFd>`/`Into<OwnedFd>` and
-// `AsRawFd`/`IntoRawFd`/`FromRawFd`, on Unix and WASI, and
-// `AsHandle`/`From<OwnedHandle>`/`Into<OwnedHandle>` and
-// `AsRawHandle`/`IntoRawHandle`/`FromRawHandle` on Windows.
+// 除了这里的这些 `impl` 之外，`ChildStdin` 在 Unix 和 WASI 上还有
+// `AsFd`/`From<OwnedFd>`/`Into<OwnedFd>` 以及
+// `AsRawFd`/`IntoRawFd`/`FromRawFd` 的 `impl`，在 Windows 上还有
+// `AsHandle`/`From<OwnedHandle>`/`Into<OwnedHandle>` 以及
+// `AsRawHandle`/`IntoRawHandle`/`FromRawHandle` 的 `impl`。
 
 #[stable(feature = "process", since = "1.0.0")]
 impl Write for ChildStdin {
@@ -390,12 +370,11 @@ impl fmt::Debug for ChildStdin {
     }
 }
 
-/// A handle to a child process's standard output (stdout).
+/// 指向子进程标准输出（stdout）的句柄。
 ///
-/// This struct is used in the [`stdout`] field on [`Child`].
+/// 此结构体被用于 [`Child`] 的 [`stdout`] 字段中。
 ///
-/// When an instance of `ChildStdout` is [dropped], the `ChildStdout`'s
-/// underlying file handle will be closed.
+/// 当一个 `ChildStdout` 实例被 [dropped] 时，`ChildStdout` 底层的文件句柄将被关闭。
 ///
 /// [`stdout`]: Child::stdout
 /// [dropped]: Drop
@@ -404,11 +383,11 @@ pub struct ChildStdout {
     inner: imp::ChildPipe,
 }
 
-// In addition to the `impl`s here, `ChildStdout` also has `impl`s for
-// `AsFd`/`From<OwnedFd>`/`Into<OwnedFd>` and
-// `AsRawFd`/`IntoRawFd`/`FromRawFd`, on Unix and WASI, and
-// `AsHandle`/`From<OwnedHandle>`/`Into<OwnedHandle>` and
-// `AsRawHandle`/`IntoRawHandle`/`FromRawHandle` on Windows.
+// 除了这里的这些 `impl` 之外，`ChildStdout` 在 Unix 和 WASI 上还有
+// `AsFd`/`From<OwnedFd>`/`Into<OwnedFd>` 以及
+// `AsRawFd`/`IntoRawFd`/`FromRawFd` 的 `impl`，在 Windows 上还有
+// `AsHandle`/`From<OwnedHandle>`/`Into<OwnedHandle>` 以及
+// `AsRawHandle`/`IntoRawHandle`/`FromRawHandle` 的 `impl`。
 
 #[stable(feature = "process", since = "1.0.0")]
 impl Read for ChildStdout {
@@ -460,12 +439,11 @@ impl fmt::Debug for ChildStdout {
     }
 }
 
-/// A handle to a child process's stderr.
+/// 指向子进程标准错误（stderr）的句柄。
 ///
-/// This struct is used in the [`stderr`] field on [`Child`].
+/// 此结构体被用于 [`Child`] 的 [`stderr`] 字段中。
 ///
-/// When an instance of `ChildStderr` is [dropped], the `ChildStderr`'s
-/// underlying file handle will be closed.
+/// 当一个 `ChildStderr` 实例被 [dropped] 时，`ChildStderr` 底层的文件句柄将被关闭。
 ///
 /// [`stderr`]: Child::stderr
 /// [dropped]: Drop
@@ -474,11 +452,11 @@ pub struct ChildStderr {
     inner: imp::ChildPipe,
 }
 
-// In addition to the `impl`s here, `ChildStderr` also has `impl`s for
-// `AsFd`/`From<OwnedFd>`/`Into<OwnedFd>` and
-// `AsRawFd`/`IntoRawFd`/`FromRawFd`, on Unix and WASI, and
-// `AsHandle`/`From<OwnedHandle>`/`Into<OwnedHandle>` and
-// `AsRawHandle`/`IntoRawHandle`/`FromRawHandle` on Windows.
+// 除了这里的这些 `impl` 之外，`ChildStderr` 在 Unix 和 WASI 上还有
+// `AsFd`/`From<OwnedFd>`/`Into<OwnedFd>` 以及
+// `AsRawFd`/`IntoRawFd`/`FromRawFd` 的 `impl`，在 Windows 上还有
+// `AsHandle`/`From<OwnedHandle>`/`Into<OwnedHandle>` 以及
+// `AsRawHandle`/`IntoRawHandle`/`FromRawHandle` 的 `impl`。
 
 #[stable(feature = "process", since = "1.0.0")]
 impl Read for ChildStderr {
@@ -530,13 +508,10 @@ impl fmt::Debug for ChildStderr {
     }
 }
 
-/// A process builder, providing fine-grained control
-/// over how a new process should be spawned.
+/// 一个进程 builder，提供对新进程应如何被 spawn 的细粒度控制。
 ///
-/// A default configuration can be
-/// generated using `Command::new(program)`, where `program` gives a path to the
-/// program to be executed. Additional builder methods allow the configuration
-/// to be changed (for example, by adding arguments) prior to spawning:
+/// 默认配置可以使用 `Command::new(program)` 生成，其中 `program` 给出待执行程序的
+/// 路径。额外的 builder 方法允许在 spawn 之前修改该配置（例如添加参数）：
 ///
 /// ```
 /// # if cfg!(not(all(target_vendor = "apple", not(target_os = "macos")))) {
@@ -559,8 +534,8 @@ impl fmt::Debug for ChildStderr {
 /// # }
 /// ```
 ///
-/// `Command` can be reused to spawn multiple processes. The builder methods
-/// change the command without needing to immediately spawn the process.
+/// `Command` 可以被复用以 spawn 多个进程。这些 builder 方法只修改命令，而无需立即
+/// spawn 进程。
 ///
 /// ```no_run
 /// use std::process::Command;
@@ -571,23 +546,23 @@ impl fmt::Debug for ChildStderr {
 /// let hello_2 = echo_hello.output().expect("failed to execute process");
 /// ```
 ///
-/// Similarly, you can call builder methods after spawning a process and then
-/// spawn a new process with the modified settings.
+/// 类似地，你可以在 spawn 一个进程之后调用 builder 方法，然后以修改后的设置 spawn
+/// 一个新进程。
 ///
 /// ```no_run
 /// use std::process::Command;
 ///
 /// let mut list_dir = Command::new("ls");
 ///
-/// // Execute `ls` in the current directory of the program.
+/// // 在程序的当前目录下执行 `ls`。
 /// list_dir.status().expect("process failed to execute");
 ///
 /// println!();
 ///
-/// // Change `ls` to execute in the root directory.
+/// // 修改 `ls`，使其在根目录下执行。
 /// list_dir.current_dir("/");
 ///
-/// // And then execute `ls` again but in the root directory.
+/// // 然后在根目录下再次执行 `ls`。
 /// list_dir.status().expect("process failed to execute");
 /// ```
 #[stable(feature = "process", since = "1.0.0")]
@@ -596,43 +571,36 @@ pub struct Command {
     inner: imp::Command,
 }
 
-/// Allows extension traits within `std`.
+/// 允许在 `std` 内部定义扩展 trait。
 #[unstable(feature = "sealed", issue = "none")]
 impl crate::sealed::Sealed for Command {}
 
 impl Command {
-    /// Constructs a new `Command` for launching the program at
-    /// path `program`, with the following default configuration:
+    /// 构造一个新的 `Command`，用于启动位于路径 `program` 处的程序，采用以下默认配置：
     ///
-    /// * No arguments to the program
-    /// * Inherit the current process's environment
-    /// * Inherit the current process's working directory
-    /// * Inherit stdin/stdout/stderr for [`spawn`] or [`status`], but create pipes for [`output`]
+    /// * 不向程序传递任何参数
+    /// * 继承当前进程的环境变量
+    /// * 继承当前进程的工作目录
+    /// * 对 [`spawn`] 或 [`status`] 继承 stdin/stdout/stderr，但对 [`output`] 创建管道
     ///
     /// [`spawn`]: Self::spawn
     /// [`status`]: Self::status
     /// [`output`]: Self::output
     ///
-    /// Builder methods are provided to change these defaults and
-    /// otherwise configure the process.
+    /// 提供了若干 builder 方法用于修改这些默认值并对进程进行其他配置。
     ///
-    /// If `program` is not an absolute path, the `PATH` will be searched in
-    /// an OS-defined way.
+    /// 如果 `program` 不是绝对路径，则会以某种由 OS 定义的方式搜索 `PATH`。
     ///
-    /// The search path to be used may be controlled by setting the
-    /// `PATH` environment variable on the Command,
-    /// but this has some implementation limitations on Windows
-    /// (see issue #37519).
+    /// 用于搜索的路径可以通过在该 Command 上设置 `PATH` 环境变量来控制，但这在
+    /// Windows 上有一些实现上的限制（见 issue #37519）。
     ///
-    /// # Platform-specific behavior
+    /// # 平台特定行为
     ///
-    /// Note on Windows: For executable files with the .exe extension,
-    /// it can be omitted when specifying the program for this Command.
-    /// However, if the file has a different extension,
-    /// a filename including the extension needs to be provided,
-    /// otherwise the file won't be found.
+    /// Windows 上的注意事项：对于带 .exe 扩展名的可执行文件，在为该 Command 指定
+    /// 程序时可以省略该扩展名。然而，如果文件具有不同的扩展名，则需要提供包含扩展名
+    /// 的文件名，否则该文件将无法被找到。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::process::Command;
@@ -642,18 +610,17 @@ impl Command {
     ///     .expect("sh command failed to start");
     /// ```
     ///
-    /// # Caveats
+    /// # 注意事项（Caveats）
     ///
-    /// [`Command::new`] is only intended to accept the path of the program. If you pass a program
-    /// path along with arguments like `Command::new("ls -l").spawn()`, it will try to search for
-    /// `ls -l` literally. The arguments need to be passed separately, such as via [`arg`] or
-    /// [`args`].
+    /// [`Command::new`] 只接受程序的路径。如果你像 `Command::new("ls -l").spawn()`
+    /// 这样在程序路径中附带了参数，它会按字面去搜索 `ls -l`。参数需要单独传递，例如
+    /// 通过 [`arg`] 或 [`args`]。
     ///
     /// ```no_run
     /// use std::process::Command;
     ///
     /// Command::new("ls")
-    ///     .arg("-l") // arg passed separately
+    ///     .arg("-l") // 参数单独传递
     ///     .spawn()
     ///     .expect("ls command failed to start");
     /// ```
@@ -665,9 +632,9 @@ impl Command {
         Command { inner: imp::Command::new(program.as_ref()) }
     }
 
-    /// Adds an argument to pass to the program.
+    /// 添加一个要传给程序的参数。
     ///
-    /// Only one argument can be passed per use. So instead of:
+    /// 每次调用只能传入一个参数。因此，不要写成：
     ///
     /// ```no_run
     /// # std::process::Command::new("sh")
@@ -675,7 +642,7 @@ impl Command {
     /// # ;
     /// ```
     ///
-    /// usage would be:
+    /// 而应写成：
     ///
     /// ```no_run
     /// # std::process::Command::new("sh")
@@ -684,35 +651,30 @@ impl Command {
     /// # ;
     /// ```
     ///
-    /// To pass multiple arguments see [`args`].
+    /// 要一次传入多个参数，见 [`args`]。
     ///
     /// [`args`]: Command::args
     ///
-    /// Note that the argument is not passed through a shell, but given
-    /// literally to the program. This means that shell syntax like quotes,
-    /// escaped characters, word splitting, glob patterns, variable substitution,
-    /// etc. have no effect.
+    /// 注意参数不会经过 shell，而是按字面直接传给程序。这意味着诸如引号、转义字符、
+    /// 单词拆分、glob 模式、变量替换等 shell 语法都不会生效。
     ///
     /// <div class="warning">
     ///
-    /// On Windows, use caution with untrusted inputs. Most applications use the
-    /// standard convention for decoding arguments passed to them. These are safe to
-    /// use with `arg`. However, some applications such as `cmd.exe` and `.bat` files
-    /// use a non-standard way of decoding arguments. They are therefore vulnerable
-    /// to malicious input.
+    /// 在 Windows 上，对不可信输入要格外小心。大多数应用程序使用解码传入参数的标准
+    /// 约定，这些应用与 `arg` 一起使用是安全的。然而，有些应用程序（例如 `cmd.exe`
+    /// 和 `.bat` 文件）使用非标准的方式解码参数。因此它们容易受到恶意输入的攻击。
     ///
-    /// In the case of `cmd.exe` this is especially important because a malicious
-    /// argument can potentially run arbitrary shell commands.
+    /// 就 `cmd.exe` 而言这一点尤其重要，因为一个恶意参数有可能运行任意 shell 命令。
     ///
-    /// See [Windows argument splitting][windows-args] for more details
-    /// or [`raw_arg`] for manually implementing non-standard argument encoding.
+    /// 更多细节见 [Windows argument splitting][windows-args]，或见 [`raw_arg`] 以手动
+    /// 实现非标准的参数编码。
     ///
     /// [`raw_arg`]: crate::os::windows::process::CommandExt::raw_arg
     /// [windows-args]: crate::process#windows-argument-splitting
     ///
     /// </div>
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::process::Command;
@@ -729,37 +691,32 @@ impl Command {
         self
     }
 
-    /// Adds multiple arguments to pass to the program.
+    /// 添加多个要传给程序的参数。
     ///
-    /// To pass a single argument see [`arg`].
+    /// 要传入单个参数，见 [`arg`]。
     ///
     /// [`arg`]: Command::arg
     ///
-    /// Note that the arguments are not passed through a shell, but given
-    /// literally to the program. This means that shell syntax like quotes,
-    /// escaped characters, word splitting, glob patterns, variable substitution, etc.
-    /// have no effect.
+    /// 注意参数不会经过 shell，而是按字面直接传给程序。这意味着诸如引号、转义字符、
+    /// 单词拆分、glob 模式、变量替换等 shell 语法都不会生效。
     ///
     /// <div class="warning">
     ///
-    /// On Windows, use caution with untrusted inputs. Most applications use the
-    /// standard convention for decoding arguments passed to them. These are safe to
-    /// use with `arg`. However, some applications such as `cmd.exe` and `.bat` files
-    /// use a non-standard way of decoding arguments. They are therefore vulnerable
-    /// to malicious input.
+    /// 在 Windows 上，对不可信输入要格外小心。大多数应用程序使用解码传入参数的标准
+    /// 约定，这些应用与 `arg` 一起使用是安全的。然而，有些应用程序（例如 `cmd.exe`
+    /// 和 `.bat` 文件）使用非标准的方式解码参数。因此它们容易受到恶意输入的攻击。
     ///
-    /// In the case of `cmd.exe` this is especially important because a malicious
-    /// argument can potentially run arbitrary shell commands.
+    /// 就 `cmd.exe` 而言这一点尤其重要，因为一个恶意参数有可能运行任意 shell 命令。
     ///
-    /// See [Windows argument splitting][windows-args] for more details
-    /// or [`raw_arg`] for manually implementing non-standard argument encoding.
+    /// 更多细节见 [Windows argument splitting][windows-args]，或见 [`raw_arg`] 以手动
+    /// 实现非标准的参数编码。
     ///
     /// [`raw_arg`]: crate::os::windows::process::CommandExt::raw_arg
     /// [windows-args]: crate::process#windows-argument-splitting
     ///
     /// </div>
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::process::Command;
@@ -781,21 +738,19 @@ impl Command {
         self
     }
 
-    /// Inserts or updates an explicit environment variable mapping.
+    /// 插入或更新一个显式的环境变量映射。
     ///
-    /// This method allows you to add an environment variable mapping to the spawned process or
-    /// overwrite a previously set value. You can use [`Command::envs`] to set multiple environment
-    /// variables simultaneously.
+    /// 此方法允许你向被 spawn 的进程添加一个环境变量映射，或覆盖先前设置的值。你可以
+    /// 使用 [`Command::envs`] 同时设置多个环境变量。
     ///
-    /// Child processes will inherit environment variables from their parent process by default.
-    /// Environment variables explicitly set using [`Command::env`] take precedence over inherited
-    /// variables. You can disable environment variable inheritance entirely using
-    /// [`Command::env_clear`] or for a single key using [`Command::env_remove`].
+    /// 子进程默认会从其父进程继承环境变量。使用 [`Command::env`] 显式设置的环境变量
+    /// 优先于继承来的变量。你可以使用 [`Command::env_clear`] 完全禁用环境变量继承，
+    /// 或使用 [`Command::env_remove`] 针对单个键禁用继承。
     ///
-    /// Note that environment variable names are case-insensitive (but
-    /// case-preserving) on Windows and case-sensitive on all other platforms.
+    /// 注意环境变量名在 Windows 上大小写不敏感（但保留大小写），而在其他所有平台上
+    /// 大小写敏感。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::process::Command;
@@ -815,21 +770,19 @@ impl Command {
         self
     }
 
-    /// Inserts or updates multiple explicit environment variable mappings.
+    /// 插入或更新多个显式的环境变量映射。
     ///
-    /// This method allows you to add multiple environment variable mappings to the spawned process
-    /// or overwrite previously set values. You can use [`Command::env`] to set a single environment
-    /// variable.
+    /// 此方法允许你向被 spawn 的进程添加多个环境变量映射，或覆盖先前设置的值。你可以
+    /// 使用 [`Command::env`] 设置单个环境变量。
     ///
-    /// Child processes will inherit environment variables from their parent process by default.
-    /// Environment variables explicitly set using [`Command::envs`] take precedence over inherited
-    /// variables. You can disable environment variable inheritance entirely using
-    /// [`Command::env_clear`] or for a single key using [`Command::env_remove`].
+    /// 子进程默认会从其父进程继承环境变量。使用 [`Command::envs`] 显式设置的环境变量
+    /// 优先于继承来的变量。你可以使用 [`Command::env_clear`] 完全禁用环境变量继承，
+    /// 或使用 [`Command::env_remove`] 针对单个键禁用继承。
     ///
-    /// Note that environment variable names are case-insensitive (but case-preserving) on Windows
-    /// and case-sensitive on all other platforms.
+    /// 注意环境变量名在 Windows 上大小写不敏感（但保留大小写），而在其他所有平台上
+    /// 大小写敏感。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::process::{Command, Stdio};
@@ -862,23 +815,21 @@ impl Command {
         self
     }
 
-    /// Removes an explicitly set environment variable and prevents inheriting it from a parent
-    /// process.
+    /// 移除一个显式设置的环境变量，并阻止从父进程继承它。
     ///
-    /// This method will remove the explicit value of an environment variable set via
-    /// [`Command::env`] or [`Command::envs`]. In addition, it will prevent the spawned child
-    /// process from inheriting that environment variable from its parent process.
+    /// 此方法会移除通过 [`Command::env`] 或 [`Command::envs`] 设置的某个环境变量的
+    /// 显式值。此外，它还会阻止被 spawn 的子进程从其父进程继承该环境变量。
     ///
-    /// After calling [`Command::env_remove`], the value associated with its key from
-    /// [`Command::get_envs`] will be [`None`].
+    /// 调用 [`Command::env_remove`] 之后，[`Command::get_envs`] 中与其键关联的值将为
+    /// [`None`]。
     ///
-    /// To clear all explicitly set environment variables and disable all environment variable
-    /// inheritance, you can use [`Command::env_clear`].
+    /// 要清除所有显式设置的环境变量并禁用所有环境变量继承，可以使用
+    /// [`Command::env_clear`]。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Prevent any inherited `GIT_DIR` variable from changing the target of the `git` command,
-    /// while allowing all other variables, like `GIT_AUTHOR_NAME`.
+    /// 阻止任何继承来的 `GIT_DIR` 变量改变 `git` 命令的目标，同时允许所有其他变量，
+    /// 例如 `GIT_AUTHOR_NAME`。
     ///
     /// ```no_run
     /// use std::process::Command;
@@ -895,22 +846,19 @@ impl Command {
         self
     }
 
-    /// Clears all explicitly set environment variables and prevents inheriting any parent process
-    /// environment variables.
+    /// 清除所有显式设置的环境变量，并阻止继承任何父进程的环境变量。
     ///
-    /// This method will remove all explicitly added environment variables set via [`Command::env`]
-    /// or [`Command::envs`]. In addition, it will prevent the spawned child process from inheriting
-    /// any environment variable from its parent process.
+    /// 此方法会移除所有通过 [`Command::env`] 或 [`Command::envs`] 显式添加的环境变量。
+    /// 此外，它还会阻止被 spawn 的子进程从其父进程继承任何环境变量。
     ///
-    /// After calling [`Command::env_clear`], the iterator from [`Command::get_envs`] will be
-    /// empty.
+    /// 调用 [`Command::env_clear`] 之后，[`Command::get_envs`] 返回的迭代器将为空。
     ///
-    /// You can use [`Command::env_remove`] to clear a single mapping.
+    /// 你可以使用 [`Command::env_remove`] 清除单个映射。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// The behavior of `sort` is affected by `LANG` and `LC_*` environment variables.
-    /// Clearing the environment makes `sort`'s behavior independent of the parent processes' language.
+    /// `sort` 的行为会受 `LANG` 和 `LC_*` 环境变量的影响。清除环境会使 `sort` 的行为
+    /// 与父进程的语言设置无关。
     ///
     /// ```no_run
     /// use std::process::Command;
@@ -927,17 +875,15 @@ impl Command {
         self
     }
 
-    /// Sets the working directory for the child process.
+    /// 设置子进程的工作目录。
     ///
-    /// # Platform-specific behavior
+    /// # 平台特定行为
     ///
-    /// If the program path is relative (e.g., `"./script.sh"`), it's ambiguous
-    /// whether it should be interpreted relative to the parent's working
-    /// directory or relative to `current_dir`. The behavior in this case is
-    /// platform specific and unstable, and it's recommended to use
-    /// [`canonicalize`] to get an absolute program path instead.
+    /// 如果程序路径是相对的（例如 `"./script.sh"`），那么它究竟应当被解释为相对于
+    /// 父进程的工作目录、还是相对于 `current_dir`，是有歧义的。这种情况下的行为是
+    /// 平台特定且不稳定的，建议改用 [`canonicalize`] 获取绝对的程序路径。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::process::Command;
@@ -955,10 +901,10 @@ impl Command {
         self
     }
 
-    /// Configuration for the child process's standard input (stdin) handle.
+    /// 配置子进程标准输入（stdin）的句柄。
     ///
-    /// Defaults to [`inherit`] when used with [`spawn`] or [`status`], and
-    /// defaults to [`piped`] when used with [`output`].
+    /// 与 [`spawn`] 或 [`status`] 一起使用时默认为 [`inherit`]，与 [`output`] 一起
+    /// 使用时默认为 [`piped`]。
     ///
     /// [`inherit`]: Stdio::inherit
     /// [`piped`]: Stdio::piped
@@ -966,7 +912,7 @@ impl Command {
     /// [`status`]: Self::status
     /// [`output`]: Self::output
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::process::{Command, Stdio};
@@ -982,10 +928,10 @@ impl Command {
         self
     }
 
-    /// Configuration for the child process's standard output (stdout) handle.
+    /// 配置子进程标准输出（stdout）的句柄。
     ///
-    /// Defaults to [`inherit`] when used with [`spawn`] or [`status`], and
-    /// defaults to [`piped`] when used with [`output`].
+    /// 与 [`spawn`] 或 [`status`] 一起使用时默认为 [`inherit`]，与 [`output`] 一起
+    /// 使用时默认为 [`piped`]。
     ///
     /// [`inherit`]: Stdio::inherit
     /// [`piped`]: Stdio::piped
@@ -993,7 +939,7 @@ impl Command {
     /// [`status`]: Self::status
     /// [`output`]: Self::output
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::process::{Command, Stdio};
@@ -1009,10 +955,10 @@ impl Command {
         self
     }
 
-    /// Configuration for the child process's standard error (stderr) handle.
+    /// 配置子进程标准错误（stderr）的句柄。
     ///
-    /// Defaults to [`inherit`] when used with [`spawn`] or [`status`], and
-    /// defaults to [`piped`] when used with [`output`].
+    /// 与 [`spawn`] 或 [`status`] 一起使用时默认为 [`inherit`]，与 [`output`] 一起
+    /// 使用时默认为 [`piped`]。
     ///
     /// [`inherit`]: Stdio::inherit
     /// [`piped`]: Stdio::piped
@@ -1020,7 +966,7 @@ impl Command {
     /// [`status`]: Self::status
     /// [`output`]: Self::output
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::process::{Command, Stdio};
@@ -1036,11 +982,11 @@ impl Command {
         self
     }
 
-    /// Executes the command as a child process, returning a handle to it.
+    /// 将该命令作为子进程执行，返回指向它的句柄。
     ///
-    /// By default, stdin, stdout and stderr are inherited from the parent.
+    /// 默认情况下，stdin、stdout 和 stderr 都从父进程继承。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::process::Command;
@@ -1054,15 +1000,12 @@ impl Command {
         self.inner.spawn(imp::Stdio::Inherit, true).map(Child::from_inner)
     }
 
-    /// Executes the command as a child process, waiting for it to finish and
-    /// collecting all of its output.
+    /// 将该命令作为子进程执行，等待它结束，并收集它的所有输出。
     ///
-    /// By default, stdout and stderr are captured (and used to provide the
-    /// resulting output). Stdin is not inherited from the parent and any
-    /// attempt by the child process to read from the stdin stream will result
-    /// in the stream immediately closing.
+    /// 默认情况下，stdout 和 stderr 会被捕获（并用于提供返回的输出）。stdin 不从父进程
+    /// 继承，子进程任何从 stdin 流读取的尝试都会导致该流立即关闭。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```should_panic
     /// use std::process::Command;
@@ -1084,12 +1027,11 @@ impl Command {
         Ok(Output { status: ExitStatus(status), stdout, stderr })
     }
 
-    /// Executes a command as a child process, waiting for it to finish and
-    /// collecting its status.
+    /// 将命令作为子进程执行，等待它结束，并收集它的状态。
     ///
-    /// By default, stdin, stdout and stderr are inherited from the parent.
+    /// 默认情况下，stdin、stdout 和 stderr 都从父进程继承。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```should_panic
     /// use std::process::Command;
@@ -1111,9 +1053,9 @@ impl Command {
             .and_then(|mut p| p.wait())
     }
 
-    /// Returns the path to the program that was given to [`Command::new`].
+    /// 返回传给 [`Command::new`] 的程序路径。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::process::Command;
@@ -1127,13 +1069,12 @@ impl Command {
         self.inner.get_program()
     }
 
-    /// Returns an iterator of the arguments that will be passed to the program.
+    /// 返回一个迭代器，遍历将传给程序的参数。
     ///
-    /// This does not include the path to the program as the first argument;
-    /// it only includes the arguments specified with [`Command::arg`] and
-    /// [`Command::args`].
+    /// 这不包括作为第一个参数的程序路径；它只包括通过 [`Command::arg`] 和
+    /// [`Command::args`] 指定的参数。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::ffi::OsStr;
@@ -1149,23 +1090,21 @@ impl Command {
         CommandArgs { inner: self.inner.get_args() }
     }
 
-    /// Returns an iterator of the environment variables explicitly set for the child process.
+    /// 返回一个迭代器，遍历为子进程显式设置的环境变量。
     ///
-    /// Environment variables explicitly set using [`Command::env`], [`Command::envs`], and
-    /// [`Command::env_remove`] can be retrieved with this method.
+    /// 通过 [`Command::env`]、[`Command::envs`] 和 [`Command::env_remove`] 显式设置的
+    /// 环境变量都可以用此方法获取。
     ///
-    /// Note that this output does not include environment variables inherited from the parent
-    /// process.
+    /// 注意此输出不包括从父进程继承的环境变量。
     ///
-    /// Each element is a tuple key/value pair `(&OsStr, Option<&OsStr>)`. A [`None`] value
-    /// indicates its key was explicitly removed via [`Command::env_remove`]. The associated key for
-    /// the [`None`] value will no longer inherit from its parent process.
+    /// 每个元素都是一个键/值对元组 `(&OsStr, Option<&OsStr>)`。[`None`] 值表示其键
+    /// 被通过 [`Command::env_remove`] 显式移除了。与该 [`None`] 值关联的键将不再从其
+    /// 父进程继承。
     ///
-    /// An empty iterator can indicate that no explicit mappings were added or that
-    /// [`Command::env_clear`] was called. After calling [`Command::env_clear`], the child process
-    /// will not inherit any environment variables from its parent process.
+    /// 空迭代器可能表示没有添加任何显式映射，或表示调用过 [`Command::env_clear`]。
+    /// 调用 [`Command::env_clear`] 之后，子进程将不会从其父进程继承任何环境变量。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::ffi::OsStr;
@@ -1184,11 +1123,11 @@ impl Command {
         CommandEnvs { iter: self.inner.get_envs() }
     }
 
-    /// Returns the working directory for the child process.
+    /// 返回子进程的工作目录。
     ///
-    /// This returns [`None`] if the working directory will not be changed.
+    /// 如果工作目录不会被改变，则返回 [`None`]。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::path::Path;
@@ -1205,13 +1144,12 @@ impl Command {
         self.inner.get_current_dir()
     }
 
-    /// Returns whether the environment will be cleared for the child process.
+    /// 返回是否将为子进程清除环境变量。
     ///
-    /// This returns `true` if [`Command::env_clear`] was called, and `false` otherwise.
-    /// When `true`, the child process will not inherit any environment variables from
-    /// its parent process.
+    /// 如果调用过 [`Command::env_clear`]，则返回 `true`，否则返回 `false`。当为
+    /// `true` 时，子进程将不会从其父进程继承任何环境变量。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(command_resolved_envs)]
@@ -1232,16 +1170,14 @@ impl Command {
 
 #[stable(feature = "rust1", since = "1.0.0")]
 impl fmt::Debug for Command {
-    /// Format the program and arguments of a Command for display. Any
-    /// non-utf8 data is lossily converted using the utf8 replacement
-    /// character.
+    /// 格式化一个 Command 的程序和参数以供显示。任何非 utf8 数据都会使用 utf8
+    /// 替换字符进行有损转换。
     ///
-    /// The default format approximates a shell invocation of the program along with its
-    /// arguments. It does not include most of the other command properties. The output is not guaranteed to work
-    /// (e.g. due to lack of shell-escaping or differences in path resolution).
-    /// On some platforms you can use [the alternate syntax] to show more fields.
+    /// 默认格式近似于该程序连同其参数的一次 shell 调用。它不包含大多数其他命令属性。
+    /// 输出不保证能正常工作（例如由于缺少 shell 转义或路径解析方式的差异）。在某些
+    /// 平台上你可以使用[备用语法][the alternate syntax]来显示更多字段。
     ///
-    /// Note that the debug implementation is platform-specific.
+    /// 注意该 debug 实现是平台特定的。
     ///
     /// [the alternate syntax]: fmt#sign0
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -1263,10 +1199,9 @@ impl AsInnerMut<imp::Command> for Command {
     }
 }
 
-/// An iterator over the command arguments.
+/// 一个遍历命令参数的迭代器。
 ///
-/// This struct is created by [`Command::get_args`]. See its documentation for
-/// more.
+/// 该结构体由 [`Command::get_args`] 创建。更多信息见其文档。
 #[must_use = "iterators are lazy and do nothing unless consumed"]
 #[stable(feature = "command_access", since = "1.57.0")]
 #[derive(Debug)]
@@ -1295,11 +1230,10 @@ impl<'a> ExactSizeIterator for CommandArgs<'a> {
     }
 }
 
-/// An iterator over the command environment variables.
+/// 一个遍历命令环境变量的迭代器。
 ///
-/// This struct is created by
-/// [`Command::get_envs`][crate::process::Command::get_envs]. See its
-/// documentation for more.
+/// 该结构体由 [`Command::get_envs`][crate::process::Command::get_envs] 创建。更多
+/// 信息见其文档。
 #[must_use = "iterators are lazy and do nothing unless consumed"]
 #[stable(feature = "command_access", since = "1.57.0")]
 pub struct CommandEnvs<'a> {
@@ -1337,47 +1271,42 @@ impl<'a> fmt::Debug for CommandEnvs<'a> {
     }
 }
 
-/// The output of a finished process.
+/// 一个已结束进程的输出。
 ///
-/// This is returned in a Result by either the [`output`] method of a
-/// [`Command`], or the [`wait_with_output`] method of a [`Child`]
-/// process.
+/// 它由 [`Command`] 的 [`output`] 方法或 [`Child`] 进程的 [`wait_with_output`]
+/// 方法以 Result 的形式返回。
 ///
 /// [`output`]: Command::output
 /// [`wait_with_output`]: Child::wait_with_output
 #[derive(PartialEq, Eq, Clone)]
 #[stable(feature = "process", since = "1.0.0")]
 pub struct Output {
-    /// The status (exit code) of the process.
+    /// 进程的状态（退出码）。
     #[stable(feature = "process", since = "1.0.0")]
     pub status: ExitStatus,
-    /// The data that the process wrote to stdout.
+    /// 进程写入 stdout 的数据。
     #[stable(feature = "process", since = "1.0.0")]
     pub stdout: Vec<u8>,
-    /// The data that the process wrote to stderr.
+    /// 进程写入 stderr 的数据。
     #[stable(feature = "process", since = "1.0.0")]
     pub stderr: Vec<u8>,
 }
 
 impl Output {
-    /// Returns an error if a nonzero exit status was received.
+    /// 如果收到了非零退出状态，则返回一个错误。
     ///
-    /// If the [`Command`] exited successfully,
-    /// `self` is returned.
+    /// 如果该 [`Command`] 成功退出，则返回 `self`。
     ///
-    /// This is equivalent to calling [`exit_ok`](ExitStatus::exit_ok)
-    /// on [`Output.status`](Output::status).
+    /// 这等价于在 [`Output.status`](Output::status) 上调用
+    /// [`exit_ok`](ExitStatus::exit_ok)。
     ///
-    /// Note that this will throw away the [`Output::stderr`] field in the error case.
-    /// If the child process outputs useful informantion to stderr, you can:
-    /// * Use `cmd.stderr(Stdio::inherit())` to forward the
-    ///   stderr child process to the parent's stderr,
-    ///   usually printing it to console where the user can see it.
-    ///   This is usually correct for command-line applications.
-    /// * Capture `stderr` using a custom error type.
-    ///   This is usually correct for libraries.
+    /// 注意在错误情况下这会丢弃 [`Output::stderr`] 字段。如果子进程向 stderr 输出了
+    /// 有用的信息，你可以：
+    /// * 使用 `cmd.stderr(Stdio::inherit())` 把子进程的 stderr 转发到父进程的 stderr，
+    ///   通常会将其打印到用户能看到的控制台。这对命令行应用程序通常是正确的做法。
+    /// * 使用自定义错误类型来捕获 `stderr`。这对库来说通常是正确的做法。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(exit_status_error)]
@@ -1393,8 +1322,8 @@ impl Output {
     }
 }
 
-// If either stderr or stdout are valid utf8 strings it prints the valid
-// strings, otherwise it prints the byte sequence instead
+// 如果 stderr 或 stdout 是有效的 utf8 字符串，就打印这些有效字符串，否则改为打印
+// 其字节序列
 #[stable(feature = "process_output_debug", since = "1.7.0")]
 impl fmt::Debug for Output {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -1418,8 +1347,8 @@ impl fmt::Debug for Output {
     }
 }
 
-/// Describes what to do with a standard I/O stream for a child process when
-/// passed to the [`stdin`], [`stdout`], and [`stderr`] methods of [`Command`].
+/// 描述当传给 [`Command`] 的 [`stdin`]、[`stdout`] 和 [`stderr`] 方法时，对子进程的
+/// 某个标准 I/O 流要做什么。
 ///
 /// [`stdin`]: Command::stdin
 /// [`stdout`]: Command::stdout
@@ -1428,11 +1357,11 @@ impl fmt::Debug for Output {
 pub struct Stdio(imp::Stdio);
 
 impl Stdio {
-    /// A new pipe should be arranged to connect the parent and child processes.
+    /// 应当安排一个新管道来连接父进程和子进程。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// With stdout:
+    /// 配合 stdout：
     ///
     /// ```no_run
     /// use std::process::{Command, Stdio};
@@ -1444,10 +1373,10 @@ impl Stdio {
     ///     .expect("Failed to execute command");
     ///
     /// assert_eq!(String::from_utf8_lossy(&output.stdout), "Hello, world!\n");
-    /// // Nothing echoed to console
+    /// // 控制台上不会回显任何内容
     /// ```
     ///
-    /// With stdin:
+    /// 配合 stdin：
     ///
     /// ```no_run
     /// use std::io::Write;
@@ -1468,11 +1397,9 @@ impl Stdio {
     /// assert_eq!(String::from_utf8_lossy(&output.stdout), "!dlrow ,olleH");
     /// ```
     ///
-    /// Writing more than a pipe buffer's worth of input to stdin without also reading
-    /// stdout and stderr at the same time may cause a deadlock.
-    /// This is an issue when running any program that doesn't guarantee that it reads
-    /// its entire stdin before writing more than a pipe buffer's worth of output.
-    /// The size of a pipe buffer varies on different targets.
+    /// 在不同时读取 stdout 和 stderr 的情况下，向 stdin 写入超过一个管道缓冲区大小的
+    /// 输入可能造成死锁。这在运行任何不保证在写入超过一个管道缓冲区大小的输出之前
+    /// 就读完其全部 stdin 的程序时是一个问题。管道缓冲区的大小因目标平台而异。
     ///
     #[must_use]
     #[stable(feature = "process", since = "1.0.0")]
@@ -1480,11 +1407,11 @@ impl Stdio {
         Stdio(imp::Stdio::MakePipe)
     }
 
-    /// The child inherits from the corresponding parent descriptor.
+    /// 子进程从父进程对应的描述符继承。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// With stdout:
+    /// 配合 stdout：
     ///
     /// ```no_run
     /// use std::process::{Command, Stdio};
@@ -1496,10 +1423,10 @@ impl Stdio {
     ///     .expect("Failed to execute command");
     ///
     /// assert_eq!(String::from_utf8_lossy(&output.stdout), "");
-    /// // "Hello, world!" echoed to console
+    /// // "Hello, world!" 被回显到控制台
     /// ```
     ///
-    /// With stdin:
+    /// 配合 stdin：
     ///
     /// ```no_run
     /// use std::process::{Command, Stdio};
@@ -1520,12 +1447,11 @@ impl Stdio {
         Stdio(imp::Stdio::Inherit)
     }
 
-    /// This stream will be ignored. This is the equivalent of attaching the
-    /// stream to `/dev/null`.
+    /// 该流将被忽略。这等价于把该流连接到 `/dev/null`。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// With stdout:
+    /// 配合 stdout：
     ///
     /// ```no_run
     /// use std::process::{Command, Stdio};
@@ -1537,10 +1463,10 @@ impl Stdio {
     ///     .expect("Failed to execute command");
     ///
     /// assert_eq!(String::from_utf8_lossy(&output.stdout), "");
-    /// // Nothing echoed to console
+    /// // 控制台上不会回显任何内容
     /// ```
     ///
-    /// With stdin:
+    /// 配合 stdin：
     ///
     /// ```no_run
     /// use std::process::{Command, Stdio};
@@ -1552,7 +1478,7 @@ impl Stdio {
     ///     .expect("Failed to execute command");
     ///
     /// assert_eq!(String::from_utf8_lossy(&output.stdout), "");
-    /// // Ignores any piped-in input
+    /// // 忽略任何通过管道传入的输入
     /// ```
     #[must_use]
     #[stable(feature = "process", since = "1.0.0")]
@@ -1560,9 +1486,9 @@ impl Stdio {
         Stdio(imp::Stdio::Null)
     }
 
-    /// Returns `true` if this requires [`Command`] to create a new pipe.
+    /// 如果这需要 [`Command`] 创建一个新管道，则返回 `true`。
     ///
-    /// # Example
+    /// # 示例
     ///
     /// ```
     /// #![feature(stdio_makes_pipe)]
@@ -1592,11 +1518,11 @@ impl fmt::Debug for Stdio {
 
 #[stable(feature = "stdio_from", since = "1.20.0")]
 impl From<ChildStdin> for Stdio {
-    /// Converts a [`ChildStdin`] into a [`Stdio`].
+    /// 将一个 [`ChildStdin`] 转换为 [`Stdio`]。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// `ChildStdin` will be converted to `Stdio` using `Stdio::from` under the hood.
+    /// `ChildStdin` 在底层会通过 `Stdio::from` 被转换为 `Stdio`。
     ///
     /// ```rust,no_run
     /// use std::process::{Command, Stdio};
@@ -1608,11 +1534,11 @@ impl From<ChildStdin> for Stdio {
     ///
     /// let _echo = Command::new("echo")
     ///     .arg("Hello, world!")
-    ///     .stdout(reverse.stdin.unwrap()) // Converted into a Stdio here
+    ///     .stdout(reverse.stdin.unwrap()) // 在此处被转换为 Stdio
     ///     .output()
     ///     .expect("failed echo command");
     ///
-    /// // "!dlrow ,olleH" echoed to console
+    /// // "!dlrow ,olleH" 被回显到控制台
     /// ```
     fn from(child: ChildStdin) -> Stdio {
         Stdio::from_inner(child.into_inner().into())
@@ -1621,11 +1547,11 @@ impl From<ChildStdin> for Stdio {
 
 #[stable(feature = "stdio_from", since = "1.20.0")]
 impl From<ChildStdout> for Stdio {
-    /// Converts a [`ChildStdout`] into a [`Stdio`].
+    /// 将一个 [`ChildStdout`] 转换为 [`Stdio`]。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// `ChildStdout` will be converted to `Stdio` using `Stdio::from` under the hood.
+    /// `ChildStdout` 在底层会通过 `Stdio::from` 被转换为 `Stdio`。
     ///
     /// ```rust,no_run
     /// use std::process::{Command, Stdio};
@@ -1637,7 +1563,7 @@ impl From<ChildStdout> for Stdio {
     ///     .expect("failed echo command");
     ///
     /// let reverse = Command::new("rev")
-    ///     .stdin(hello.stdout.unwrap())  // Converted into a Stdio here
+    ///     .stdin(hello.stdout.unwrap())  // 在此处被转换为 Stdio
     ///     .output()
     ///     .expect("failed reverse command");
     ///
@@ -1650,9 +1576,9 @@ impl From<ChildStdout> for Stdio {
 
 #[stable(feature = "stdio_from", since = "1.20.0")]
 impl From<ChildStderr> for Stdio {
-    /// Converts a [`ChildStderr`] into a [`Stdio`].
+    /// 将一个 [`ChildStderr`] 转换为 [`Stdio`]。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```rust,no_run
     /// use std::process::{Command, Stdio};
@@ -1665,7 +1591,7 @@ impl From<ChildStderr> for Stdio {
     ///
     /// let cat = Command::new("cat")
     ///     .arg("-")
-    ///     .stdin(reverse.stderr.unwrap()) // Converted into a Stdio here
+    ///     .stdin(reverse.stderr.unwrap()) // 在此处被转换为 Stdio
     ///     .output()
     ///     .expect("failed echo command");
     ///
@@ -1681,21 +1607,21 @@ impl From<ChildStderr> for Stdio {
 
 #[stable(feature = "stdio_from", since = "1.20.0")]
 impl From<fs::File> for Stdio {
-    /// Converts a [`File`](fs::File) into a [`Stdio`].
+    /// 将一个 [`File`](fs::File) 转换为 [`Stdio`]。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// `File` will be converted to `Stdio` using `Stdio::from` under the hood.
+    /// `File` 在底层会通过 `Stdio::from` 被转换为 `Stdio`。
     ///
     /// ```rust,no_run
     /// use std::fs::File;
     /// use std::process::Command;
     ///
-    /// // With the `foo.txt` file containing "Hello, world!"
+    /// // `foo.txt` 文件中包含 "Hello, world!"
     /// let file = File::open("foo.txt")?;
     ///
     /// let reverse = Command::new("rev")
-    ///     .stdin(file)  // Implicit File conversion into a Stdio
+    ///     .stdin(file)  // File 隐式转换为 Stdio
     ///     .output()?;
     ///
     /// assert_eq!(reverse.stdout, b"!dlrow ,olleH");
@@ -1708,9 +1634,9 @@ impl From<fs::File> for Stdio {
 
 #[stable(feature = "stdio_from_stdio", since = "1.74.0")]
 impl From<io::Stdout> for Stdio {
-    /// Redirect command stdout/stderr to our stdout
+    /// 将命令的 stdout/stderr 重定向到我们的 stdout
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```rust
     /// #![feature(exit_status_error)]
@@ -1719,8 +1645,8 @@ impl From<io::Stdout> for Stdio {
     ///
     /// # fn test() -> Result<(), Box<dyn std::error::Error>> {
     /// let output = Command::new("whoami")
-    // "whoami" is a command which exists on both Unix and Windows,
-    // and which succeeds, producing some stdout output but no stderr.
+    // "whoami" 是一个在 Unix 和 Windows 上都存在的命令，
+    // 并且会成功执行，产生一些 stdout 输出但没有 stderr。
     ///     .stdout(io::stdout())
     ///     .output()?;
     /// output.status.exit_ok()?;
@@ -1739,9 +1665,9 @@ impl From<io::Stdout> for Stdio {
 
 #[stable(feature = "stdio_from_stdio", since = "1.74.0")]
 impl From<io::Stderr> for Stdio {
-    /// Redirect command stdout/stderr to our stderr
+    /// 将命令的 stdout/stderr 重定向到我们的 stderr
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```rust
     /// #![feature(exit_status_error)]
@@ -1780,56 +1706,51 @@ impl From<io::PipeReader> for Stdio {
     }
 }
 
-/// Describes the result of a process after it has terminated.
+/// 描述一个进程终止后的结果。
 ///
-/// This `struct` is used to represent the exit status or other termination of a child process.
-/// Child processes are created via the [`Command`] struct and their exit
-/// status is exposed through the [`status`] method, or the [`wait`] method
-/// of a [`Child`] process.
+/// 该 `struct` 用于表示子进程的退出状态或其他形式的终止。子进程通过 [`Command`]
+/// 结构体创建，其退出状态通过 [`status`] 方法、或 [`Child`] 进程的 [`wait`] 方法
+/// 暴露出来。
 ///
-/// An `ExitStatus` represents every possible disposition of a process.  On Unix this
-/// is the **wait status**.  It is *not* simply an *exit status* (a value passed to `exit`).
+/// `ExitStatus` 表示一个进程所有可能的处置情况。在 Unix 上它是 **wait status（等待
+/// 状态）**。它*不*只是一个*退出状态*（传给 `exit` 的值）。
 ///
-/// For proper error reporting of failed processes, print the value of `ExitStatus` or
-/// `ExitStatusError` using their implementations of [`Display`](crate::fmt::Display).
+/// 为了对失败的进程进行恰当的错误报告，应使用 `ExitStatus` 或 `ExitStatusError` 各自
+/// 的 [`Display`](crate::fmt::Display) 实现来打印其值。
 ///
-/// # Differences from `ExitCode`
+/// # 与 `ExitCode` 的区别
 ///
-/// [`ExitCode`] is intended for terminating the currently running process, via
-/// the `Termination` trait, in contrast to `ExitStatus`, which represents the
-/// termination of a child process. These APIs are separate due to platform
-/// compatibility differences and their expected usage; it is not generally
-/// possible to exactly reproduce an `ExitStatus` from a child for the current
-/// process after the fact.
+/// [`ExitCode`] 旨在通过 `Termination` trait 终止当前正在运行的进程，这与表示子进程
+/// 终止的 `ExitStatus` 形成对比。这两套 API 之所以分开，是由于平台兼容性差异以及它们
+/// 各自的预期用途；事后通常无法为当前进程精确地重现来自某个子进程的 `ExitStatus`。
 ///
 /// [`status`]: Command::status
 /// [`wait`]: Child::wait
 //
-// We speak slightly loosely (here and in various other places in the stdlib docs) about `exit`
-// vs `_exit`.  Naming of Unix system calls is not standardised across Unices, so terminology is a
-// matter of convention and tradition.  For clarity we usually speak of `exit`, even when we might
-// mean an underlying system call such as `_exit`.
+// 我们（在这里以及标准库文档的其他多处）在谈到 `exit` 与 `_exit` 时用词略有宽松。Unix
+// 系统调用的命名在各个 Unix 之间并未标准化，所以术语是约定与传统的问题。为清晰起见，
+// 我们通常说 `exit`，即便我们可能指的是底层的某个系统调用，例如 `_exit`。
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 #[stable(feature = "process", since = "1.0.0")]
 pub struct ExitStatus(imp::ExitStatus);
 
-/// The default value is one which indicates successful completion.
+/// 默认值是一个表示成功完成的值。
 #[stable(feature = "process_exitstatus_default", since = "1.73.0")]
 impl Default for ExitStatus {
     fn default() -> Self {
-        // Ideally this would be done by ExitCode::default().into() but that is complicated.
+        // 理想情况下这应当通过 ExitCode::default().into() 来完成，但那比较复杂。
         ExitStatus::from_inner(imp::ExitStatus::default())
     }
 }
 
-/// Allows extension traits within `std`.
+/// 允许在 `std` 内部定义扩展 trait。
 #[unstable(feature = "sealed", issue = "none")]
 impl crate::sealed::Sealed for ExitStatus {}
 
 impl ExitStatus {
-    /// Was termination successful?  Returns a `Result`.
+    /// 终止是否成功？返回一个 `Result`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(exit_status_error)]
@@ -1850,10 +1771,9 @@ impl ExitStatus {
         self.0.exit_ok().map_err(ExitStatusError)
     }
 
-    /// Was termination successful? Signal termination is not considered a
-    /// success, and success is defined as a zero exit status.
+    /// 终止是否成功？信号导致的终止不被视为成功，成功被定义为零退出状态。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```rust,no_run
     /// use std::process::Command;
@@ -1875,18 +1795,18 @@ impl ExitStatus {
         self.0.exit_ok().is_ok()
     }
 
-    /// Returns the exit code of the process, if any.
+    /// 返回进程的退出码（如果有的话）。
     ///
-    /// In Unix terms the return value is the **exit status**: the value passed to `exit`, if the
-    /// process finished by calling `exit`.  Note that on Unix the exit status is truncated to 8
-    /// bits, and that values that didn't come from a program's call to `exit` may be invented by the
-    /// runtime system (often, for example, 255, 254, 127 or 126).
+    /// 用 Unix 的术语来说，返回值是 **exit status（退出状态）**：如果进程是通过调用
+    /// `exit` 结束的，则为传给 `exit` 的值。注意在 Unix 上退出状态被截断为 8 位，且
+    /// 那些并非来自程序对 `exit` 调用的值可能是由运行时系统臆造的（例如常见的 255、
+    /// 254、127 或 126）。
     ///
-    /// On Unix, this will return `None` if the process was terminated by a signal.
-    /// [`ExitStatusExt`](crate::os::unix::process::ExitStatusExt) is an
-    /// extension trait for extracting any such signal, and other details, from the `ExitStatus`.
+    /// 在 Unix 上，如果进程是被信号终止的，这将返回 `None`。
+    /// [`ExitStatusExt`](crate::os::unix::process::ExitStatusExt) 是一个扩展 trait，
+    /// 用于从 `ExitStatus` 中提取任何此类信号及其他细节。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::process::Command;
@@ -1928,15 +1848,15 @@ impl fmt::Display for ExitStatus {
     }
 }
 
-/// Allows extension traits within `std`.
+/// 允许在 `std` 内部定义扩展 trait。
 #[unstable(feature = "sealed", issue = "none")]
 impl crate::sealed::Sealed for ExitStatusError {}
 
-/// Describes the result of a process after it has failed
+/// 描述一个进程失败后的结果
 ///
-/// Produced by the [`.exit_ok`](ExitStatus::exit_ok) method on [`ExitStatus`].
+/// 由 [`ExitStatus`] 上的 [`.exit_ok`](ExitStatus::exit_ok) 方法产生。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// #![feature(exit_status_error)]
@@ -1954,32 +1874,31 @@ impl crate::sealed::Sealed for ExitStatusError {}
 /// ```
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 #[unstable(feature = "exit_status_error", issue = "84908")]
-// The definition of imp::ExitStatusError should ideally be such that
-// Result<(), imp::ExitStatusError> has an identical representation to imp::ExitStatus.
+// imp::ExitStatusError 的定义在理想情况下应当使得
+// Result<(), imp::ExitStatusError> 与 imp::ExitStatus 具有完全相同的表示。
 pub struct ExitStatusError(imp::ExitStatusError);
 
 #[unstable(feature = "exit_status_error", issue = "84908")]
 impl ExitStatusError {
-    /// Reports the exit code, if applicable, from an `ExitStatusError`.
+    /// 从 `ExitStatusError` 中报告退出码（如果适用的话）。
     ///
-    /// In Unix terms the return value is the **exit status**: the value passed to `exit`, if the
-    /// process finished by calling `exit`.  Note that on Unix the exit status is truncated to 8
-    /// bits, and that values that didn't come from a program's call to `exit` may be invented by the
-    /// runtime system (often, for example, 255, 254, 127 or 126).
+    /// 用 Unix 的术语来说，返回值是 **exit status（退出状态）**：如果进程是通过调用
+    /// `exit` 结束的，则为传给 `exit` 的值。注意在 Unix 上退出状态被截断为 8 位，且
+    /// 那些并非来自程序对 `exit` 调用的值可能是由运行时系统臆造的（例如常见的 255、
+    /// 254、127 或 126）。
     ///
-    /// On Unix, this will return `None` if the process was terminated by a signal.  If you want to
-    /// handle such situations specially, consider using methods from
-    /// [`ExitStatusExt`](crate::os::unix::process::ExitStatusExt).
+    /// 在 Unix 上，如果进程是被信号终止的，这将返回 `None`。如果你想特殊处理这类
+    /// 情况，可以考虑使用 [`ExitStatusExt`](crate::os::unix::process::ExitStatusExt)
+    /// 中的方法。
     ///
-    /// If the process finished by calling `exit` with a nonzero value, this will return
-    /// that exit status.
+    /// 如果进程是通过以非零值调用 `exit` 结束的，这将返回那个退出状态。
     ///
-    /// If the error was something else, it will return `None`.
+    /// 如果错误是其他原因，则返回 `None`。
     ///
-    /// If the process exited successfully (ie, by calling `exit(0)`), there is no
-    /// `ExitStatusError`.  So the return value from `ExitStatusError::code()` is always nonzero.
+    /// 如果进程成功退出（即通过调用 `exit(0)`），则不存在 `ExitStatusError`。因此
+    /// `ExitStatusError::code()` 的返回值总是非零的。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(exit_status_error)]
@@ -1995,15 +1914,15 @@ impl ExitStatusError {
         self.code_nonzero().map(Into::into)
     }
 
-    /// Reports the exit code, if applicable, from an `ExitStatusError`, as a [`NonZero`].
+    /// 从 `ExitStatusError` 中报告退出码（如果适用的话），以 [`NonZero`] 形式返回。
     ///
-    /// This is exactly like [`code()`](Self::code), except that it returns a <code>[NonZero]<[i32]></code>.
+    /// 这与 [`code()`](Self::code) 完全相同，区别在于它返回一个
+    /// <code>[NonZero]<[i32]></code>。
     ///
-    /// Plain `code`, returning a plain integer, is provided because it is often more convenient.
-    /// The returned value from `code()` is indeed also nonzero; use `code_nonzero()` when you want
-    /// a type-level guarantee of nonzeroness.
+    /// 之所以提供返回普通整数的普通 `code`，是因为它通常更方便。`code()` 的返回值
+    /// 确实也是非零的；当你想要一个类型层面的非零保证时，使用 `code_nonzero()`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(exit_status_error)]
@@ -2021,7 +1940,7 @@ impl ExitStatusError {
         self.0.code()
     }
 
-    /// Converts an `ExitStatusError` (back) to an `ExitStatus`.
+    /// 将一个 `ExitStatusError`（重新）转换回 `ExitStatus`。
     #[must_use]
     pub fn into_status(&self) -> ExitStatus {
         ExitStatus(self.0.into())
@@ -2045,43 +1964,33 @@ impl fmt::Display for ExitStatusError {
 #[unstable(feature = "exit_status_error", issue = "84908")]
 impl crate::error::Error for ExitStatusError {}
 
-/// This type represents the status code the current process can return
-/// to its parent under normal termination.
+/// 该类型表示当前进程在正常终止时可以返回给其父进程的状态码。
 ///
-/// `ExitCode` is intended to be consumed only by the standard library (via
-/// [`Termination::report()`]). For forwards compatibility with potentially
-/// unusual targets, this type currently does not provide `Eq`, `Hash`, or
-/// access to the raw value. This type does provide `PartialEq` for
-/// comparison, but note that there may potentially be multiple failure
-/// codes, some of which will _not_ compare equal to `ExitCode::FAILURE`.
-/// The standard library provides the canonical `SUCCESS` and `FAILURE`
-/// exit codes as well as `From<u8> for ExitCode` for constructing other
-/// arbitrary exit codes.
+/// `ExitCode` 旨在仅由标准库（通过 [`Termination::report()`]）使用。为了对潜在的
+/// 不寻常目标平台保持前向兼容，该类型当前不提供 `Eq`、`Hash`，也不提供对原始值的
+/// 访问。该类型确实提供了用于比较的 `PartialEq`，但请注意可能存在多个失败码，其中
+/// 有些**不会**与 `ExitCode::FAILURE` 比较相等。标准库提供了规范的 `SUCCESS` 和
+/// `FAILURE` 退出码，以及用于构造其他任意退出码的 `From<u8> for ExitCode`。
 ///
-/// # Portability
+/// # 可移植性（Portability）
 ///
-/// Numeric values used in this type don't have portable meanings, and
-/// different platforms may mask different amounts of them.
+/// 该类型中使用的数值并没有可移植的含义，不同平台可能屏蔽掉其中不同数量的位。
 ///
-/// For the platform's canonical successful and unsuccessful codes, see
-/// the [`SUCCESS`] and [`FAILURE`] associated items.
+/// 关于平台的规范成功码与失败码，见 [`SUCCESS`] 和 [`FAILURE`] 这两个关联项。
 ///
 /// [`SUCCESS`]: ExitCode::SUCCESS
 /// [`FAILURE`]: ExitCode::FAILURE
 ///
-/// # Differences from `ExitStatus`
+/// # 与 `ExitStatus` 的区别
 ///
-/// `ExitCode` is intended for terminating the currently running process, via
-/// the `Termination` trait, in contrast to [`ExitStatus`], which represents the
-/// termination of a child process. These APIs are separate due to platform
-/// compatibility differences and their expected usage; it is not generally
-/// possible to exactly reproduce an `ExitStatus` from a child for the current
-/// process after the fact.
+/// `ExitCode` 旨在通过 `Termination` trait 终止当前正在运行的进程，这与表示子进程
+/// 终止的 [`ExitStatus`] 形成对比。这两套 API 之所以分开，是由于平台兼容性差异以及
+/// 它们各自的预期用途；事后通常无法为当前进程精确地重现来自某个子进程的
+/// `ExitStatus`。
 ///
-/// # Examples
+/// # 示例
 ///
-/// `ExitCode` can be returned from the `main` function of a crate, as it implements
-/// [`Termination`]:
+/// `ExitCode` 可以从一个 crate 的 `main` 函数返回，因为它实现了 [`Termination`]：
 ///
 /// ```
 /// use std::process::ExitCode;
@@ -2099,45 +2008,41 @@ impl crate::error::Error for ExitStatusError {}
 #[stable(feature = "process_exitcode", since = "1.61.0")]
 pub struct ExitCode(imp::ExitCode);
 
-/// Allows extension traits within `std`.
+/// 允许在 `std` 内部定义扩展 trait。
 #[unstable(feature = "sealed", issue = "none")]
 impl crate::sealed::Sealed for ExitCode {}
 
 #[stable(feature = "process_exitcode", since = "1.61.0")]
 impl ExitCode {
-    /// The canonical `ExitCode` for successful termination on this platform.
+    /// 本平台上表示成功终止的规范 `ExitCode`。
     ///
-    /// Note that a `()`-returning `main` implicitly results in a successful
-    /// termination, so there's no need to return this from `main` unless
-    /// you're also returning other possible codes.
+    /// 注意一个返回 `()` 的 `main` 会隐式地导致成功终止，因此除非你还要返回其他可能的
+    /// 状态码，否则无需从 `main` 返回它。
     #[stable(feature = "process_exitcode", since = "1.61.0")]
     pub const SUCCESS: ExitCode = ExitCode(imp::ExitCode::SUCCESS);
 
-    /// The canonical `ExitCode` for unsuccessful termination on this platform.
+    /// 本平台上表示失败终止的规范 `ExitCode`。
     ///
-    /// If you're only returning this and `SUCCESS` from `main`, consider
-    /// instead returning `Err(_)` and `Ok(())` respectively, which will
-    /// return the same codes (but will also `eprintln!` the error).
+    /// 如果你只打算从 `main` 返回它和 `SUCCESS`，可以考虑改为返回 `Err(_)` 和
+    /// `Ok(())`，它们会返回相同的状态码（但同时还会 `eprintln!` 出错误）。
     #[stable(feature = "process_exitcode", since = "1.61.0")]
     pub const FAILURE: ExitCode = ExitCode(imp::ExitCode::FAILURE);
 
-    /// Exit the current process with the given `ExitCode`.
+    /// 以给定的 `ExitCode` 退出当前进程。
     ///
-    /// Note that this has the same caveats as [`process::exit()`][exit], namely that this function
-    /// terminates the process immediately, so no destructors on the current stack or any other
-    /// thread's stack will be run. Also see those docs for some important notes on interop with C
-    /// code. If a clean shutdown is needed, it is recommended to simply return this ExitCode from
-    /// the `main` function, as demonstrated in the [type documentation](#examples).
+    /// 注意这与 [`process::exit()`][exit] 有相同的注意事项，即该函数会立即终止进程，
+    /// 因此不会运行当前栈或任何其他线程栈上的析构函数。另请参阅那些文档，了解关于与
+    /// C 代码互操作的一些重要说明。如果需要干净的关闭，建议直接从 `main` 函数返回这个
+    /// ExitCode，如[类型文档](#examples)中所演示的那样。
     ///
-    /// # Differences from `process::exit()`
+    /// # 与 `process::exit()` 的区别
     ///
-    /// `process::exit()` accepts any `i32` value as the exit code for the process; however, there
-    /// are platforms that only use a subset of that value (see [`process::exit` platform-specific
-    /// behavior][exit#platform-specific-behavior]). `ExitCode` exists because of this; only
-    /// `ExitCode`s that are supported by a majority of our platforms can be created, so those
-    /// problems don't exist (as much) with this method.
+    /// `process::exit()` 接受任何 `i32` 值作为进程的退出码；然而，有些平台只使用该值
+    /// 的一个子集（见 [`process::exit` 的平台特定行为][exit#platform-specific-behavior]）。
+    /// `ExitCode` 的存在正是因为这一点；只能创建出受我们大多数平台支持的 `ExitCode`，
+    /// 因此用这个方法时那些问题（在很大程度上）不复存在。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(exitcode_exit_method)]
@@ -2147,8 +2052,8 @@ impl ExitCode {
     /// # impl fmt::Display for UhOhError {
     /// #     fn fmt(&self, _: &mut fmt::Formatter<'_>) -> fmt::Result { unimplemented!() }
     /// # }
-    /// // there's no way to gracefully recover from an UhOhError, so we just
-    /// // print a message and exit
+    /// // 无法从 UhOhError 优雅地恢复，所以我们只是
+    /// // 打印一条消息并退出
     /// fn handle_unrecoverable_error(err: UhOhError) -> ! {
     ///     eprintln!("UH OH! {err}");
     ///     let code = match err {
@@ -2166,13 +2071,12 @@ impl ExitCode {
 }
 
 impl ExitCode {
-    // This is private/perma-unstable because ExitCode is opaque; we don't know that i32 will serve
-    // all usecases, for example windows seems to use u32, unix uses the 8-15th bits of an i32, we
-    // likely want to isolate users anything that could restrict the platform specific
-    // representation of an ExitCode
+    // 这是私有/永久不稳定的，因为 ExitCode 是不透明的；我们并不确定 i32 能服务于
+    // 所有用例，例如 windows 似乎使用 u32，unix 使用一个 i32 的第 8-15 位，我们很可能
+    // 想把用户与任何可能限制 ExitCode 平台特定表示的东西隔离开。
     //
-    // More info: https://internals.rust-lang.org/t/mini-pre-rfc-redesigning-process-exitstatus/5426
-    /// Converts an `ExitCode` into an i32
+    // 更多信息：https://internals.rust-lang.org/t/mini-pre-rfc-redesigning-process-exitstatus/5426
+    /// 将一个 `ExitCode` 转换为 i32
     #[unstable(
         feature = "process_exitcode_internals",
         reason = "exposed only for libstd",
@@ -2185,7 +2089,7 @@ impl ExitCode {
     }
 }
 
-/// The default value is [`ExitCode::SUCCESS`]
+/// 默认值是 [`ExitCode::SUCCESS`]
 #[stable(feature = "process_exitcode_default", since = "1.75.0")]
 impl Default for ExitCode {
     fn default() -> Self {
@@ -2195,7 +2099,7 @@ impl Default for ExitCode {
 
 #[stable(feature = "process_exitcode", since = "1.61.0")]
 impl From<u8> for ExitCode {
-    /// Constructs an `ExitCode` from an arbitrary u8 value.
+    /// 从一个任意的 u8 值构造一个 `ExitCode`。
     fn from(code: u8) -> Self {
         ExitCode(imp::ExitCode::from(code))
     }
@@ -2215,14 +2119,13 @@ impl FromInner<imp::ExitCode> for ExitCode {
 }
 
 impl Child {
-    /// Forces the child process to exit. If the child has already exited, `Ok(())`
-    /// is returned.
+    /// 强制子进程退出。如果子进程已经退出，则返回 `Ok(())`。
     ///
-    /// The mapping to [`ErrorKind`]s is not part of the compatibility contract of the function.
+    /// 到各种 [`ErrorKind`] 的映射不属于该函数的兼容性契约的一部分。
     ///
-    /// This is equivalent to sending a SIGKILL on Unix platforms.
+    /// 在 Unix 平台上，这等价于发送一个 SIGKILL。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::process::Command;
@@ -2243,9 +2146,9 @@ impl Child {
         self.handle.kill()
     }
 
-    /// Returns the OS-assigned process identifier associated with this child.
+    /// 返回与该子进程关联的、由 OS 分配的进程标识符。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::process::Command;
@@ -2264,16 +2167,14 @@ impl Child {
         self.handle.id()
     }
 
-    /// Waits for the child to exit completely, returning the status that it
-    /// exited with. This function will continue to have the same return value
-    /// after it has been called at least once.
+    /// 等待子进程完全退出，返回它退出时的状态。在至少被调用一次之后，此函数将持续
+    /// 返回相同的值。
     ///
-    /// The stdin handle to the child process, if any, will be closed
-    /// before waiting. This helps avoid deadlock: it ensures that the
-    /// child does not block waiting for input from the parent, while
-    /// the parent waits for the child to exit.
+    /// 指向子进程的 stdin 句柄（如果有的话）会在等待之前被关闭。这有助于避免死锁：
+    /// 它确保子进程不会因等待来自父进程的输入而阻塞，与此同时父进程又在等待子进程
+    /// 退出。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::process::Command;
@@ -2292,22 +2193,18 @@ impl Child {
         self.handle.wait().map(ExitStatus)
     }
 
-    /// Attempts to collect the exit status of the child if it has already
-    /// exited.
+    /// 尝试收集子进程的退出状态（如果它已经退出的话）。
     ///
-    /// This function will not block the calling thread and will only
-    /// check to see if the child process has exited or not. If the child has
-    /// exited then on Unix the process ID is reaped. This function is
-    /// guaranteed to repeatedly return a successful exit status so long as the
-    /// child has already exited.
+    /// 此函数不会阻塞调用线程，只会检查子进程是否已经退出。如果子进程已经退出，那么
+    /// 在 Unix 上其进程 ID 会被回收（reap）。只要子进程已经退出，此函数就保证会重复
+    /// 返回一个成功的退出状态。
     ///
-    /// If the child has exited, then `Ok(Some(status))` is returned. If the
-    /// exit status is not available at this time then `Ok(None)` is returned.
-    /// If an error occurs, then that error is returned.
+    /// 如果子进程已退出，则返回 `Ok(Some(status))`。如果此刻退出状态尚不可得，则返回
+    /// `Ok(None)`。如果发生错误，则返回该错误。
     ///
-    /// Note that unlike `wait`, this function will not attempt to drop stdin.
+    /// 注意与 `wait` 不同，此函数不会尝试 drop stdin。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::process::Command;
@@ -2330,21 +2227,18 @@ impl Child {
         Ok(self.handle.try_wait()?.map(ExitStatus))
     }
 
-    /// Simultaneously waits for the child to exit and collect all remaining
-    /// output on the stdout/stderr handles, returning an `Output`
-    /// instance.
+    /// 同时等待子进程退出并收集 stdout/stderr 句柄上剩余的全部输出，返回一个
+    /// `Output` 实例。
     ///
-    /// The stdin handle to the child process, if any, will be closed
-    /// before waiting. This helps avoid deadlock: it ensures that the
-    /// child does not block waiting for input from the parent, while
-    /// the parent waits for the child to exit.
+    /// 指向子进程的 stdin 句柄（如果有的话）会在等待之前被关闭。这有助于避免死锁：
+    /// 它确保子进程不会因等待来自父进程的输入而阻塞，与此同时父进程又在等待子进程
+    /// 退出。
     ///
-    /// By default, stdin, stdout and stderr are inherited from the parent.
-    /// In order to capture the output into this `Result<Output>` it is
-    /// necessary to create new pipes between parent and child. Use
-    /// `stdout(Stdio::piped())` or `stderr(Stdio::piped())`, respectively.
+    /// 默认情况下，stdin、stdout 和 stderr 都从父进程继承。为了把输出捕获到这个
+    /// `Result<Output>` 中，需要在父进程与子进程之间创建新的管道。请分别使用
+    /// `stdout(Stdio::piped())` 或 `stderr(Stdio::piped())`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```should_panic
     /// use std::process::{Command, Stdio};
@@ -2388,19 +2282,15 @@ impl Child {
     }
 }
 
-/// Terminates the current process with the specified exit code.
+/// 以指定的退出码终止当前进程。
 ///
-/// This function will never return and will immediately terminate the current
-/// process. The exit code is passed through to the underlying OS and will be
-/// available for consumption by another process.
+/// 此函数永远不会返回，并将立即终止当前进程。退出码会被透传给底层 OS，并可供另一个
+/// 进程消费。
 ///
-/// Note that because this function never returns, and that it terminates the
-/// process, no destructors on the current stack or any other thread's stack
-/// will be run. If a clean shutdown is needed it is recommended to only call
-/// this function at a known point where there are no more destructors left
-/// to run; or, preferably, simply return a type implementing [`Termination`]
-/// (such as [`ExitCode`] or `Result`) from the `main` function and avoid this
-/// function altogether:
+/// 注意由于此函数永不返回且会终止进程，因此不会运行当前栈或任何其他线程栈上的析构
+/// 函数。如果需要干净的关闭，建议只在一个已知没有更多析构函数待运行的点上调用此
+/// 函数；或者，更好的做法是直接从 `main` 函数返回一个实现了 [`Termination`] 的类型
+/// （例如 [`ExitCode`] 或 `Result`），从而完全避免使用此函数：
 ///
 /// ```
 /// # use std::io::Error as MyError;
@@ -2410,23 +2300,19 @@ impl Child {
 /// }
 /// ```
 ///
-/// In its current implementation, this function will execute exit handlers registered with `atexit`
-/// as well as other platform-specific exit handlers (e.g. `fini` sections of ELF shared objects).
-/// This means that Rust requires that all exit handlers are safe to execute at any time. In
-/// particular, if an exit handler cleans up some state that might be concurrently accessed by other
-/// threads, it is required that the exit handler performs suitable synchronization with those
-/// threads. (The alternative to this requirement would be to not run exit handlers at all, which is
-/// considered undesirable. Note that returning from `main` also calls `exit`, so making `exit` an
-/// unsafe operation is not an option.)
+/// 在其当前实现中，此函数将执行通过 `atexit` 注册的退出处理器，以及其他平台特定的
+/// 退出处理器（例如 ELF 共享对象的 `fini` 段）。这意味着 Rust 要求所有退出处理器
+/// 在任意时刻执行都是安全的。特别地，如果某个退出处理器清理了某些可能被其他线程
+/// 并发访问的状态，那么就要求该退出处理器与那些线程进行适当的同步。（这一要求的替代
+/// 方案将是完全不运行退出处理器，而这被认为是不可取的。注意从 `main` 返回也会调用
+/// `exit`，因此把 `exit` 设为一个 unsafe 操作并不是一个可选项。）
 ///
 /// ## Platform-specific behavior
 ///
-/// **Unix**: On Unix-like platforms, it is unlikely that all 32 bits of `exit`
-/// will be visible to a parent process inspecting the exit code. On most
-/// Unix-like platforms, only the eight least-significant bits are considered.
+/// **Unix**：在类 Unix 平台上，`exit` 的全部 32 位不太可能对一个检查退出码的父进程
+/// 都可见。在大多数类 Unix 平台上，只考虑最低有效的 8 位。
 ///
-/// For example, the exit code for this example will be `0` on Linux, but `256`
-/// on Windows:
+/// 例如，下面这个示例的退出码在 Linux 上将是 `0`，但在 Windows 上是 `256`：
 ///
 /// ```no_run
 /// use std::process;
@@ -2434,27 +2320,25 @@ impl Child {
 /// process::exit(0x0100);
 /// ```
 ///
-/// ### Safe interop with C code
+/// ### 与 C 代码的安全互操作
 ///
-/// On Unix, this function is currently implemented using the `exit` C function [`exit`][C-exit]. As
-/// of C23, the C standard does not permit multiple threads to call `exit` concurrently. Rust
-/// mitigates this with a lock, but if C code calls `exit`, that can still cause undefined behavior.
-/// Note that returning from `main` is equivalent to calling `exit`.
+/// 在 Unix 上，此函数当前使用 C 函数 [`exit`][C-exit] 实现。截至 C23，C 标准不允许
+/// 多个线程并发调用 `exit`。Rust 用一个锁来缓解这一点，但如果 C 代码调用 `exit`，
+/// 那仍然可能导致未定义行为。注意从 `main` 返回等价于调用 `exit`。
 ///
-/// Therefore, it is undefined behavior to have two concurrent threads perform the following
-/// without synchronization:
-/// - One thread calls Rust's `exit` function or returns from Rust's `main` function
-/// - Another thread calls the C function `exit` or `quick_exit`, or returns from C's `main` function
+/// 因此，如果两个并发线程在没有同步的情况下执行以下操作，就是未定义行为：
+/// - 一个线程调用 Rust 的 `exit` 函数或从 Rust 的 `main` 函数返回
+/// - 另一个线程调用 C 函数 `exit` 或 `quick_exit`，或从 C 的 `main` 函数返回
 ///
-/// Note that if a binary contains multiple copies of the Rust runtime (e.g., when combining
-/// multiple `cdylib` or `staticlib`), they each have their own separate lock, so from the
-/// perspective of code running in one of the Rust runtimes, the "outside" Rust code is basically C
-/// code, and concurrent `exit` again causes undefined behavior.
+/// 注意如果一个二进制文件包含 Rust 运行时的多个副本（例如组合多个 `cdylib` 或
+/// `staticlib` 时），它们各自拥有独立的锁，因此从运行在某个 Rust 运行时中的代码的
+/// 视角看，“外部的”那些 Rust 代码基本上就是 C 代码，并发的 `exit` 同样会导致未定义
+/// 行为。
 ///
-/// Individual C implementations might provide more guarantees than the standard and permit concurrent
-/// calls to `exit`; consult the documentation of your C implementation for details.
+/// 各个 C 实现可能提供比标准更强的保证并允许并发调用 `exit`；细节请查阅你的 C 实现
+/// 的文档。
 ///
-/// For some of the on-going discussion to make `exit` thread-safe in C, see:
+/// 关于使 C 中的 `exit` 线程安全的一些正在进行的讨论，见：
 /// - [Rust issue #126600](https://github.com/rust-lang/rust/issues/126600)
 /// - [Austin Group Bugzilla (for POSIX)](https://austingroupbugs.net/view.php?id=1845)
 /// - [GNU C library Bugzilla](https://sourceware.org/bugzilla/show_bug.cgi?id=31997)
@@ -2467,29 +2351,23 @@ pub fn exit(code: i32) -> ! {
     crate::sys::os::exit(code)
 }
 
-/// Terminates the process in an abnormal fashion.
+/// 以一种异常的方式终止进程。
 ///
-/// The function will never return and will immediately terminate the current
-/// process in a platform specific "abnormal" manner. As a consequence,
-/// no destructors on the current stack or any other thread's stack
-/// will be run, Rust IO buffers (eg, from `BufWriter`) will not be flushed,
-/// and C stdio buffers will (on most platforms) not be flushed.
+/// 该函数永远不会返回，并将立即以一种平台特定的“异常”方式终止当前进程。因此，
+/// 不会运行当前栈或任何其他线程栈上的析构函数，Rust 的 IO 缓冲区（例如来自
+/// `BufWriter` 的）不会被刷新，且 C 的 stdio 缓冲区（在大多数平台上）也不会被刷新。
 ///
-/// This is in contrast to the default behavior of [`panic!`] which unwinds
-/// the current thread's stack and calls all destructors.
-/// When `panic="abort"` is set, either as an argument to `rustc` or in a
-/// crate's Cargo.toml, [`panic!`] and `abort` are similar. However,
-/// [`panic!`] will still call the [panic hook] while `abort` will not.
+/// 这与 [`panic!`] 的默认行为形成对比，后者会展开当前线程的栈并调用所有析构函数。
+/// 当设置了 `panic="abort"`（无论是作为 `rustc` 的参数还是在某个 crate 的 Cargo.toml
+/// 中）时，[`panic!`] 和 `abort` 是类似的。不过，[`panic!`] 仍会调用 [panic hook]，
+/// 而 `abort` 不会。
 ///
-/// If a clean shutdown is needed it is recommended to only call
-/// this function at a known point where there are no more destructors left
-/// to run.
+/// 如果需要干净的关闭，建议只在一个已知没有更多析构函数待运行的点上调用此函数。
 ///
-/// The process's termination will be similar to that from the C `abort()`
-/// function.  On Unix, the process will terminate with signal `SIGABRT`, which
-/// typically means that the shell prints "Aborted".
+/// 进程的终止将类似于 C 的 `abort()` 函数所导致的终止。在 Unix 上，进程将以信号
+/// `SIGABRT` 终止，这通常意味着 shell 会打印 "Aborted"。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```no_run
 /// use std::process;
@@ -2499,12 +2377,11 @@ pub fn exit(code: i32) -> ! {
 ///
 ///     process::abort();
 ///
-///     // execution never gets here
+///     // 执行永远到不了这里
 /// }
 /// ```
 ///
-/// The `abort` function terminates the process, so the destructor will not
-/// get run on the example below:
+/// `abort` 函数会终止进程，因此下面这个示例中的析构函数不会被运行：
 ///
 /// ```no_run
 /// use std::process;
@@ -2520,7 +2397,7 @@ pub fn exit(code: i32) -> ! {
 /// fn main() {
 ///     let _x = HasDrop;
 ///     process::abort();
-///     // the destructor implemented for HasDrop will never get run
+///     // 为 HasDrop 实现的析构函数永远不会被运行
 /// }
 /// ```
 ///
@@ -2528,14 +2405,14 @@ pub fn exit(code: i32) -> ! {
 #[stable(feature = "process_abort", since = "1.17.0")]
 #[cold]
 #[cfg_attr(not(test), rustc_diagnostic_item = "process_abort")]
-#[cfg_attr(miri, track_caller)] // even without panics, this helps for Miri backtraces
+#[cfg_attr(miri, track_caller)] // 即便没有 panic，这对 Miri 的回溯也有帮助
 pub fn abort() -> ! {
     crate::sys::abort_internal();
 }
 
-/// Returns the OS-assigned process identifier associated with this process.
+/// 返回与本进程关联的、由 OS 分配的进程标识符。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```no_run
 /// use std::process;
@@ -2548,19 +2425,16 @@ pub fn id() -> u32 {
     crate::sys::os::getpid()
 }
 
-/// A trait for implementing arbitrary return types in the `main` function.
+/// 一个用于在 `main` 函数中实现任意返回类型的 trait。
 ///
-/// The C-main function only supports returning integers.
-/// So, every type implementing the `Termination` trait has to be converted
-/// to an integer.
+/// C 的 main 函数只支持返回整数。因此，每个实现了 `Termination` trait 的类型都必须
+/// 被转换成一个整数。
 ///
-/// The default implementations are returning `libc::EXIT_SUCCESS` to indicate
-/// a successful execution. In case of a failure, `libc::EXIT_FAILURE` is returned.
+/// 默认实现返回 `libc::EXIT_SUCCESS` 以表示一次成功的执行。在失败的情况下，则返回
+/// `libc::EXIT_FAILURE`。
 ///
-/// Because different runtimes have different specifications on the return value
-/// of the `main` function, this trait is likely to be available only on
-/// standard library's runtime for convenience. Other runtimes are not required
-/// to provide similar functionality.
+/// 由于不同的运行时对 `main` 函数返回值有不同的规范，因此为方便起见，该 trait 很可能
+/// 只在标准库的运行时上可用。其他运行时并不要求提供类似的功能。
 #[cfg_attr(not(any(test, doctest)), lang = "termination")]
 #[stable(feature = "termination_trait_lib", since = "1.61.0")]
 #[rustc_on_unimplemented(on(
@@ -2569,8 +2443,7 @@ pub fn id() -> u32 {
     label = "`main` can only return types that implement `{This}`"
 ))]
 pub trait Termination {
-    /// Is called to get the representation of the value as status code.
-    /// This status code is returned to the operating system.
+    /// 被调用以获取该值作为状态码的表示。这个状态码会被返回给操作系统。
     #[stable(feature = "termination_trait_lib", since = "1.61.0")]
     fn report(self) -> ExitCode;
 }

@@ -1,91 +1,70 @@
-//! Unix-specific extensions to general I/O primitives.
+//! 针对通用 I/O 基础类型的 Unix 特有扩展。
 //!
-//! Just like raw pointers, raw file descriptors point to resources with
-//! dynamic lifetimes, and they can dangle if they outlive their resources
-//! or be forged if they're created from invalid values.
+//! 正如裸指针一样，裸文件描述符指向具有动态生命周期的资源，如果它们的存活时间
+//! 超过了其所指向的资源，就可能变成悬垂（dangle）；如果它们由无效值构造出来，
+//! 则可能是伪造的（forged）。
 //!
-//! This module provides three types for representing file descriptors,
-//! with different ownership properties: raw, borrowed, and owned, which are
-//! analogous to types used for representing pointers. These types reflect concepts of [I/O
-//! safety][io-safety] on Unix.
+//! 本模块提供了三种用于表示文件描述符的类型，它们具有不同的所有权属性：raw（裸）、
+//! borrowed（借用）和 owned（拥有所有权），这与用于表示指针的那些类型相对应。
+//! 这些类型反映了 Unix 上的 [I/O 安全][io-safety]概念。
 //!
-//! | Type               | Analogous to |
+//! | 类型               | 类比于       |
 //! | ------------------ | ------------ |
 //! | [`RawFd`]          | `*const _`   |
 //! | [`BorrowedFd<'a>`] | `&'a Arc<_>` |
 //! | [`OwnedFd`]        | `Arc<_>`     |
 //!
-//! Like raw pointers, `RawFd` values are primitive values. And in new code,
-//! they should be considered unsafe to do I/O on (analogous to dereferencing
-//! them). Rust did not always provide this guidance, so existing code in the
-//! Rust ecosystem often doesn't mark `RawFd` usage as unsafe.
-//! Libraries are encouraged to migrate,
-//! either by adding `unsafe` to APIs that dereference `RawFd` values, or by
-//! using to `BorrowedFd` or `OwnedFd` instead.
+//! 与裸指针一样，`RawFd` 值是原生（primitive）值。在新代码中，应当将对它们进行 I/O
+//! 视为 unsafe（类比于解引用裸指针）。Rust 并非一直都给出这一指导，因此 Rust 生态中
+//! 现有的代码往往没有把 `RawFd` 的使用标记为 unsafe。
+//! 鼓励各类库进行迁移，方式有二：要么为那些会解引用 `RawFd` 值的 API 加上 `unsafe`，
+//! 要么改用 `BorrowedFd` 或 `OwnedFd`。
 //!
-//! The use of `Arc` for borrowed/owned file descriptors may be surprising. Unix file descriptors
-//! are mere references to internal kernel objects called "open file descriptions", and the same
-//! open file description can be referenced by multiple file descriptors (e.g. if `dup` is used).
-//! State such as the offset within the file is shared among all file descriptors that refer to the
-//! same open file description, and the kernel internally does reference-counting to only close the
-//! underlying resource once all file descriptors referencing it are closed. That's why `Arc` (and
-//! not `Box`) is the closest Rust analogy to an "owned" file descriptor.
+//! 对借用/拥有所有权的文件描述符使用 `Arc` 来类比可能令人意外。Unix 文件描述符不过是
+//! 对一种被称为“打开文件描述（open file descriptions）”的内核内部对象的引用，而同一个
+//! 打开文件描述可以被多个文件描述符引用（例如使用了 `dup`）。诸如文件内偏移量这样的状态
+//! 会被所有引用同一打开文件描述的文件描述符所共享，且内核内部会做引用计数，只有当所有
+//! 引用某资源的文件描述符都被关闭后，才会关闭底层资源。这正是为什么 `Arc`（而非 `Box`）
+//! 才是“拥有所有权”的文件描述符在 Rust 中最贴切的类比。
 //!
-//! Like references, `BorrowedFd` values are tied to a lifetime, to ensure
-//! that they don't outlive the resource they point to. These are safe to
-//! use. `BorrowedFd` values may be used in APIs which provide safe access to
-//! any system call except for:
+//! 与引用一样，`BorrowedFd` 值与某个生命周期绑定，以确保它们的存活时间不会超过其所指向的
+//! 资源。它们的使用是安全（safe）的。`BorrowedFd` 值可用于为以下系统调用之外的任意系统调用
+//! 提供安全访问的 API 中：
 //!
-//!  - `close`, because that would end the dynamic lifetime of the resource
-//!    without ending the lifetime of the file descriptor. (Equivalently:
-//!    an `&Arc<_>` cannot be `drop`ed.)
+//!  - `close`，因为这会在文件描述符的生命周期尚未结束的情况下，结束该资源的动态生命周期。
+//!    （等价地说：一个 `&Arc<_>` 不能被 `drop`。）
 //!
-//!  - `dup2`/`dup3`, in the second argument, because this argument is
-//!    closed and assigned a new resource, which may break the assumptions of
-//!    other code using that file descriptor.
+//!  - `dup2`/`dup3` 的第二个实参，因为该实参会被关闭并被赋予一个新的资源，这可能会破坏
+//!    其他使用该文件描述符的代码所做的假设。
 //!
-//! `BorrowedFd` values may be used in APIs which provide safe access to `dup` system calls, so code
-//! working with `OwnedFd` cannot assume to have exclusive access to the underlying open file
-//! description. (Equivalently: `&Arc` may be used in APIs that provide safe access to `clone`, so
-//! code working with an `Arc` cannot assume that the reference count is 1.)
+//! `BorrowedFd` 值可用于为 `dup` 系统调用提供安全访问的 API 中，因此使用 `OwnedFd` 的代码
+//! 不能假定自己对底层的打开文件描述拥有独占访问权。（等价地说：`&Arc` 可用于为 `clone`
+//! 提供安全访问的 API 中，因此使用 `Arc` 的代码不能假定其引用计数为 1。）
 //!
-//! `BorrowedFd` values may also be used with `mmap`, since `mmap` uses the
-//! provided file descriptor in a manner similar to `dup` and does not require
-//! the `BorrowedFd` passed to it to live for the lifetime of the resulting
-//! mapping. That said, `mmap` is unsafe for other reasons: it operates on raw
-//! pointers, and it can have undefined behavior if the underlying storage is
-//! mutated. Mutations may come from other processes, or from the same process
-//! if the API provides `BorrowedFd` access, since as mentioned earlier,
-//! `BorrowedFd` values may be used in APIs which provide safe access to any
-//! system call. Consequently, code using `mmap` and presenting a safe API must
-//! take full responsibility for ensuring that safe Rust code cannot evoke
-//! undefined behavior through it.
+//! `BorrowedFd` 值也可用于 `mmap`，因为 `mmap` 使用所提供文件描述符的方式与 `dup` 类似，
+//! 并不要求传给它的 `BorrowedFd` 在所产生映射的整个生命周期内都保持存活。话虽如此，`mmap`
+//! 因其他原因而是 unsafe 的：它操作裸指针，且如果底层存储被改动，可能产生未定义行为。
+//! 这种改动可能来自其他进程，也可能来自同一进程——如果该 API 提供了 `BorrowedFd` 访问，
+//! 因为如前所述，`BorrowedFd` 值可用于为任意系统调用提供安全访问的 API 中。因此，使用 `mmap`
+//! 并对外提供安全 API 的代码必须全权负责确保安全的 Rust 代码无法借由它引发未定义行为。
 //!
-//! Like `Arc`, `OwnedFd` values conceptually own one reference to the resource they point to,
-//! and decrement the reference count when they are dropped (by calling `close`).
-//! When the reference count reaches 0, the underlying open file description will be freed
-//! by the kernel.
+//! 与 `Arc` 一样，`OwnedFd` 值在概念上拥有对其所指向资源的一个引用，并在被 drop 时
+//!（通过调用 `close`）将引用计数减一。当引用计数归零时，内核将释放底层的打开文件描述。
 //!
-//! See the [`io` module docs][io-safety] for a general explanation of I/O safety.
+//! 关于 I/O 安全的一般性解释，参见 [`io` 模块文档][io-safety]。
 //!
-//! ## `/proc/self/mem` and similar OS features
+//! ## `/proc/self/mem` 及类似的操作系统特性
 //!
-//! Some platforms have special files, such as `/proc/self/mem`, which
-//! provide read and write access to the process's memory. Such reads
-//! and writes happen outside the control of the Rust compiler, so they do not
-//! uphold Rust's memory safety guarantees.
+//! 某些平台具有特殊文件，例如 `/proc/self/mem`，它们提供对进程内存的读写访问。
+//! 这类读写发生在 Rust 编译器的控制之外，因此它们并不维护 Rust 的内存安全保证。
 //!
-//! This does not mean that all APIs that might allow `/proc/self/mem`
-//! to be opened and read from or written must be `unsafe`. Rust's safety guarantees
-//! only cover what the program itself can do, and not what entities outside
-//! the program can do to it. `/proc/self/mem` is considered to be such an
-//! external entity, along with `/proc/self/fd/*`, debugging interfaces, and people with physical
-//! access to the hardware. This is true even in cases where the program is controlling the external
-//! entity.
+//! 这并不意味着所有可能允许打开 `/proc/self/mem` 并对其读写的 API 都必须是 `unsafe` 的。
+//! Rust 的安全保证只覆盖程序自身能做什么，而不覆盖程序外部的实体能对它做什么。
+//! `/proc/self/mem` 被视为这样一个外部实体，与之同列的还有 `/proc/self/fd/*`、调试接口，
+//! 以及对硬件拥有物理访问权的人。即便在程序正控制着该外部实体的情况下，这一点依然成立。
 //!
-//! If you desire to comprehensively prevent programs from reaching out and
-//! causing external entities to reach back in and violate memory safety, it's
-//! necessary to use *sandboxing*, which is outside the scope of `std`.
+//! 如果你希望全面防止程序伸手触发外部实体反过来侵入并破坏内存安全，就有必要使用*沙箱
+//!（sandboxing）*，而这超出了 `std` 的范畴。
 //!
 //! [`BorrowedFd<'a>`]: crate::os::unix::io::BorrowedFd
 //! [io-safety]: crate::io#io-safety
@@ -95,27 +74,26 @@
 use crate::io::{self, Stderr, StderrLock, Stdin, StdinLock, Stdout, StdoutLock, Write};
 #[stable(feature = "rust1", since = "1.0.0")]
 pub use crate::os::fd::*;
-#[allow(unused_imports)] // not used on all targets
+#[allow(unused_imports)] // 并非在所有目标平台上都会用到
 use crate::sys::cvt;
 
-// Tests for this module
+// 本模块的测试
 #[cfg(test)]
 mod tests;
 
 #[unstable(feature = "stdio_swap", issue = "150667")]
 pub trait StdioExt: crate::sealed::Sealed {
-    /// Redirects the stdio file descriptor to point to the file description underpinning `fd`.
+    /// 将标准 I/O 文件描述符重定向，使其指向 `fd` 底层的打开文件描述。
     ///
-    /// Rust std::io write buffers (if any) are flushed, but other runtimes
-    /// (e.g. C stdio) or libraries that acquire a clone of the file descriptor
-    /// will not be aware of this change.
+    /// Rust std::io 的写缓冲区（如果有的话）会被刷新（flush），但其他运行时
+    ///（例如 C stdio）或那些已获取该文件描述符克隆副本的库不会感知到这一变更。
     ///
-    /// # Platform-specific behavior
+    /// # 平台特定行为
     ///
-    /// This is [currently] implemented using
+    /// 该方法[当前][currently]通过以下方式实现
     ///
-    /// - `fd_renumber` on wasip1
-    /// - `dup2` on most unixes
+    /// - 在 wasip1 上使用 `fd_renumber`
+    /// - 在大多数 unix 上使用 `dup2`
     ///
     /// [currently]: crate::io#platform-specific-behavior
     ///
@@ -137,22 +115,21 @@ pub trait StdioExt: crate::sealed::Sealed {
     /// ```
     fn set_fd<T: Into<OwnedFd>>(&mut self, fd: T) -> io::Result<()>;
 
-    /// Redirects the stdio file descriptor and returns a new `OwnedFd`
-    /// backed by the previous file description.
+    /// 重定向标准 I/O 文件描述符，并返回一个由先前的打开文件描述支撑的新 `OwnedFd`。
     ///
-    /// See [`set_fd()`] for details.
+    /// 详见 [`set_fd()`]。
     ///
     /// [`set_fd()`]: StdioExt::set_fd
     fn replace_fd<T: Into<OwnedFd>>(&mut self, replace_with: T) -> io::Result<OwnedFd>;
 
-    /// Redirects the stdio file descriptor to the null device (`/dev/null`)
-    /// and returns a new `OwnedFd` backed by the previous file description.
+    /// 将标准 I/O 文件描述符重定向到空设备（`/dev/null`），
+    /// 并返回一个由先前的打开文件描述支撑的新 `OwnedFd`。
     ///
-    /// Programs that communicate structured data via stdio can use this early in `main()` to
-    /// extract the fds, treat them as other IO types (`File`, `UnixStream`, etc),
-    /// apply custom buffering or avoid interference from stdio use later in the program.
+    /// 通过标准 I/O 传递结构化数据的程序可以在 `main()` 早期使用它来提取这些 fd，
+    /// 将它们当作其他 IO 类型（`File`、`UnixStream` 等）处理，施加自定义缓冲，
+    /// 或避免受到程序后续使用标准 I/O 的干扰。
     ///
-    /// See [`set_fd()`] for additional details.
+    /// 更多细节参见 [`set_fd()`]。
     ///
     /// [`set_fd()`]: StdioExt::set_fd
     fn take_fd(&mut self) -> io::Result<OwnedFd>;
@@ -206,8 +183,8 @@ fn null_fd() -> io::Result<OwnedFd> {
     Ok(null_dev.into())
 }
 
-/// Replaces the underlying file descriptor with the one from `other`.
-/// Does not set CLOEXEC.
+/// 用来自 `other` 的文件描述符替换底层文件描述符。
+/// 不设置 CLOEXEC。
 fn replace_stdio_fd(this: BorrowedFd<'_>, other: OwnedFd) -> io::Result<()> {
     cfg_select! {
         all(target_os = "wasi", target_env = "p1") => {

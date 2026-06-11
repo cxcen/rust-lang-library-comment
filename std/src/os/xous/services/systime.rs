@@ -14,8 +14,7 @@ impl Into<[usize; 5]> for SystimeScalar {
     }
 }
 
-/// Returns a `Connection` to the systime server. This server is used for reporting the
-/// realtime clock.
+/// 返回一个到 systime 服务器的 `Connection`。该服务器用于报告实时时钟（realtime clock）。
 pub(crate) fn systime_server() -> Connection {
     static SYSTIME_SERVER_CONNECTION: Atomic<u32> = AtomicU32::new(0);
     let cid = SYSTIME_SERVER_CONNECTION.load(Ordering::Relaxed);

@@ -28,10 +28,9 @@ pub fn init(env: *const *const c_char) {
     }
 
     fn parse(input: &[u8]) -> Option<(OsString, OsString)> {
-        // Strategy (copied from glibc): Variable name and value are separated
-        // by an ASCII equals sign '='. Since a variable name must not be
-        // empty, allow variable names starting with an equals sign. Skip all
-        // malformed lines.
+        // 策略（抄自 glibc）：变量名与变量值之间由一个 ASCII 等号
+        // '=' 分隔。由于变量名不得为空，所以允许变量名以等号开头。
+        // 跳过所有格式不规范的行。
         if input.is_empty() {
             return None;
         }
@@ -45,8 +44,8 @@ pub fn init(env: *const *const c_char) {
     }
 }
 
-/// Returns a vector of (variable, value) byte-vector pairs for all the
-/// environment variables of the current process.
+/// 返回一个由 (变量, 值) 字节向量对组成的向量，涵盖当前进程的
+/// 所有环境变量。
 pub fn env() -> Env {
     let guard = ENV.lock().unwrap();
     let env = guard.as_ref().unwrap();

@@ -5,8 +5,8 @@ pub fn fill_bytes(_: &mut [u8]) {
 }
 
 pub fn hashmap_random_keys() -> (u64, u64) {
-    // Use allocation addresses for a bit of randomness. This isn't
-    // particularly secure, but there isn't really an alternative.
+    // 用分配得到的地址来获取一点随机性。这并不
+    // 特别安全，但也实在没有别的替代方案。
     let stack = 0u8;
     let heap = Box::new(0u8);
     let k1 = ptr::from_ref(&stack).addr() as u64;

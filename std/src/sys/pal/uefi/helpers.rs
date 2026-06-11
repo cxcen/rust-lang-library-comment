@@ -1,13 +1,13 @@
-//! Contains most of the shared UEFI specific stuff. Some of this might be moved to `std::os::uefi`
-//! if needed but no point in adding extra public API when there is not Std support for UEFI in the
-//! first place
+//! 包含大部分共享的 UEFI 特定内容。如有需要，其中一些可能会被移动到
+//! `std::os::uefi`；但在 UEFI 本身尚未获得 Std 支持的前提下，没有必要额外
+//! 添加公开 API。
 //!
-//! Some Nomenclature
-//! * Protocol:
-//! - Protocols serve to enable communication between separately built modules, including drivers.
-//! - Every protocol has a GUID associated with it. The GUID serves as the name for the protocol.
-//! - Protocols are produced and consumed.
-//! - More information about protocols can be found [here](https://edk2-docs.gitbook.io/edk-ii-uefi-driver-writer-s-guide/3_foundation/36_protocols_and_handles)
+//! 一些术语
+//! * Protocol（协议）：
+//! - Protocol 用于在各自独立构建的模块（包括驱动）之间实现通信。
+//! - 每个 protocol 都关联一个 GUID。该 GUID 充当该 protocol 的名称。
+//! - Protocol 有生产方与消费方。
+//! - 关于 protocol 的更多信息可参见[此处](https://edk2-docs.gitbook.io/edk-ii-uefi-driver-writer-s-guide/3_foundation/36_protocols_and_handles)
 
 use r_efi::efi::{self, Guid};
 use r_efi::protocols::{device_path, device_path_to_text, file, service_binding, shell};
@@ -35,11 +35,11 @@ type BootUninstallMultipleProtocolInterfaces =
 const BOOT_SERVICES_UNAVAILABLE: io::Error =
     const_error!(io::ErrorKind::Other, "Boot Services are no longer available");
 
-/// Locates Handles with a particular Protocol GUID.
+/// 定位带有特定 Protocol GUID 的 Handle。
 ///
-/// Implemented using `EFI_BOOT_SERVICES.LocateHandles()`.
+/// 使用 `EFI_BOOT_SERVICES.LocateHandles()` 实现。
 ///
-/// Returns an array of [Handles](r_efi::efi::Handle) that support a specified protocol.
+/// 返回一个支持指定 protocol 的 [Handle](r_efi::efi::Handle) 数组。
 pub(crate) fn locate_handles(mut guid: Guid) -> io::Result<Vec<NonNull<crate::ffi::c_void>>> {
     fn inner(
         guid: &mut Guid,
@@ -63,8 +63,8 @@ pub(crate) fn locate_handles(mut guid: Guid) -> io::Result<Vec<NonNull<crate::ff
     let boot_services = boot_services().ok_or(BOOT_SERVICES_UNAVAILABLE)?.cast();
     let mut buf_len = 0usize;
 
-    // This should always fail since the size of buffer is 0. This call should update the buf_len
-    // variable with the required buffer length
+    // 这一调用应当总是失败，因为缓冲区大小为 0。该调用应当把所需的缓冲区长度
+    // 更新到 buf_len 变量中
     match inner(&mut guid, boot_services, &mut buf_len, crate::ptr::null_mut()) {
         Ok(()) => unreachable!(),
         Err(e) => match e.kind() {
@@ -73,14 +73,14 @@ pub(crate) fn locate_handles(mut guid: Guid) -> io::Result<Vec<NonNull<crate::ff
         },
     }
 
-    // The returned buf_len is in bytes
+    // 返回的 buf_len 以字节为单位
     assert_eq!(buf_len % size_of::<r_efi::efi::Handle>(), 0);
     let num_of_handles = buf_len / size_of::<r_efi::efi::Handle>();
     let mut buf: Vec<r_efi::efi::Handle> = Vec::with_capacity(num_of_handles);
     match inner(&mut guid, boot_services, &mut buf_len, buf.as_mut_ptr()) {
         Ok(()) => {
-            // This is safe because the call will succeed only if buf_len >= required length.
-            // Also, on success, the `buf_len` is updated with the size of bufferv (in bytes) written
+            // 这是安全的，因为只有当 buf_len >= 所需长度时该调用才会成功。
+            // 此外，在成功时 `buf_len` 会被更新为已写入缓冲区的大小（以字节为单位）
             unsafe { buf.set_len(num_of_handles) };
             Ok(buf.into_iter().filter_map(|x| NonNull::new(x)).collect())
         }
@@ -88,14 +88,14 @@ pub(crate) fn locate_handles(mut guid: Guid) -> io::Result<Vec<NonNull<crate::ff
     }
 }
 
-/// Open Protocol on a handle.
-/// Internally just a call to `EFI_BOOT_SERVICES.OpenProtocol()`.
+/// 在某个 handle 上打开 Protocol。
+/// 内部其实只是对 `EFI_BOOT_SERVICES.OpenProtocol()` 的一次调用。
 ///
-/// Queries a handle to determine if it supports a specified protocol. If the protocol is
-/// supported by the handle, it opens the protocol on behalf of the calling agent.
+/// 查询某个 handle 以确定其是否支持指定 protocol。如果该 handle 支持此 protocol，
+/// 则代表调用方将该 protocol 打开。
 ///
-/// The protocol is opened with the attribute GET_PROTOCOL, which means the caller is not required
-/// to close the protocol interface with `EFI_BOOT_SERVICES.CloseProtocol()`
+/// 该 protocol 以 GET_PROTOCOL 属性打开，这意味着调用方不需要通过
+/// `EFI_BOOT_SERVICES.CloseProtocol()` 关闭该 protocol 接口
 pub(crate) fn open_protocol<T>(
     handle: NonNull<crate::ffi::c_void>,
     mut protocol_guid: Guid,
@@ -124,9 +124,9 @@ pub(crate) fn open_protocol<T>(
     }
 }
 
-/// Gets the Protocol for current system handle.
+/// 获取当前系统 handle 的 Protocol。
 ///
-/// Note: Some protocols need to be manually freed. It is the caller's responsibility to do so.
+/// 注意：某些 protocol 需要手动释放。这是调用方的责任。
 pub(crate) fn image_handle_protocol<T>(protocol_guid: Guid) -> io::Result<NonNull<T>> {
     let system_handle = uefi::env::try_image_handle()
         .ok_or(io::const_error!(io::ErrorKind::NotFound, "protocol not found in Image handle"))?;
@@ -241,7 +241,7 @@ fn device_node_to_text(path: NonNull<device_path::Protocol>) -> io::Result<OsStr
     Err(io::const_error!(io::ErrorKind::NotFound, "No device path to text protocol found"))
 }
 
-/// Gets RuntimeServices.
+/// 获取 RuntimeServices。
 pub(crate) fn runtime_services() -> Option<NonNull<r_efi::efi::RuntimeServices>> {
     let system_table: NonNull<r_efi::efi::SystemTable> =
         crate::os::uefi::env::try_system_table()?.cast();
@@ -407,7 +407,7 @@ impl<'a> DevicePathNode<'a> {
     pub(crate) fn data(&self) -> &[u8] {
         let length: usize = self.length().into();
 
-        // Some nodes do not have any special data
+        // 某些节点没有任何特殊数据
         if length > 4 {
             let raw_ptr: *const u8 = self.protocol.as_ptr().cast();
             let data = unsafe { raw_ptr.add(4) };
@@ -448,10 +448,10 @@ impl<'a> DevicePathNode<'a> {
 
 impl<'a> PartialEq for DevicePathNode<'a> {
     fn eq(&self, other: &Self) -> bool {
-        // Compare as a single buffer rather than by field since it optimizes better.
+        // 作为单个缓冲区整体比较，而非逐字段比较，因为这样优化效果更好。
         //
-        // SAFETY: `Protocol` is followed by a buffer of `length - sizeof::<Protocol>()`. `Protocol`
-        // has no padding so it is sound to interpret as a slice.
+        // SAFETY: `Protocol` 之后紧跟着一个长度为 `length - sizeof::<Protocol>()` 的缓冲区。
+        // `Protocol` 没有填充字节，因此把它解释为切片是合理的。
         unsafe {
             let s1 =
                 slice::from_raw_parts(self.protocol.as_ptr().cast::<u8>(), self.length().into());
@@ -477,7 +477,7 @@ impl<'a> crate::fmt::Debug for DevicePathNode<'a> {
     }
 }
 
-/// Protocols installed by Rust side on a handle.
+/// 由 Rust 侧安装在某个 handle 上的 Protocol。
 pub(crate) struct OwnedProtocol<T> {
     guid: r_efi::efi::Guid,
     handle: NonNull<crate::ffi::c_void>,
@@ -485,14 +485,14 @@ pub(crate) struct OwnedProtocol<T> {
 }
 
 impl<T> OwnedProtocol<T> {
-    // FIXME: Consider using unsafe trait for matching protocol with guid
+    // FIXME: 考虑使用 unsafe trait 来匹配 protocol 与 guid
     pub(crate) unsafe fn create(protocol: T, mut guid: r_efi::efi::Guid) -> io::Result<Self> {
         let bt: NonNull<r_efi::efi::BootServices> =
             boot_services().ok_or(BOOT_SERVICES_UNAVAILABLE)?.cast();
         let protocol: *mut T = Box::into_raw(Box::new(protocol));
         let mut handle: r_efi::efi::Handle = crate::ptr::null_mut();
 
-        // FIXME: Move into r-efi once extended_varargs_abi_support is stabilized
+        // FIXME: 一旦 extended_varargs_abi_support 稳定下来就移入 r-efi
         let func: BootInstallMultipleProtocolInterfaces =
             unsafe { crate::mem::transmute((*bt.as_ptr()).install_multiple_protocol_interfaces) };
 
@@ -523,10 +523,10 @@ impl<T> OwnedProtocol<T> {
 
 impl<T> Drop for OwnedProtocol<T> {
     fn drop(&mut self) {
-        // Do not deallocate a runtime protocol
+        // 不要释放运行时（runtime）protocol
         if let Some(bt) = boot_services() {
             let bt: NonNull<r_efi::efi::BootServices> = bt.cast();
-            // FIXME: Move into r-efi once extended_varargs_abi_support is stabilized
+            // FIXME: 一旦 extended_varargs_abi_support 稳定下来就移入 r-efi
             let func: BootUninstallMultipleProtocolInterfaces = unsafe {
                 crate::mem::transmute((*bt.as_ptr()).uninstall_multiple_protocol_interfaces)
             };
@@ -539,7 +539,7 @@ impl<T> Drop for OwnedProtocol<T> {
                 )
             };
 
-            // Leak the protocol in case uninstall fails
+            // 万一卸载失败，则故意泄漏该 protocol
             if status == r_efi::efi::Status::SUCCESS {
                 let _ = unsafe { Box::from_raw(self.protocol) };
             }
@@ -598,13 +598,13 @@ impl<T> Drop for OwnedTable<T> {
     }
 }
 
-/// Create OsString from a pointer to NULL terminated UTF-16 string
+/// 从指向以 NULL 结尾的 UTF-16 字符串的指针创建 OsString
 pub(crate) fn os_string_from_raw(ptr: *mut r_efi::efi::Char16) -> Option<OsString> {
     let path_len = unsafe { WStrUnits::new(ptr)?.count() };
     Some(OsString::from_wide(unsafe { slice::from_raw_parts(ptr.cast(), path_len) }))
 }
 
-/// Create NULL terminated UTF-16 string
+/// 创建以 NULL 结尾的 UTF-16 字符串
 pub(crate) fn os_string_to_raw(s: &OsStr) -> Option<Box<[r_efi::efi::Char16]>> {
     let temp = s.encode_wide().chain(Some(0)).collect::<Box<[r_efi::efi::Char16]>>();
     if temp[..temp.len() - 1].contains(&0) { None } else { Some(temp) }
@@ -631,17 +631,17 @@ pub(crate) fn open_shell() -> Option<NonNull<shell::Protocol>> {
     None
 }
 
-/// Get device path protocol associated with shell mapping.
+/// 获取与 shell 映射关联的 device path protocol。
 ///
-/// returns None in case no such mapping is exists
+/// 如果不存在这样的映射，则返回 None
 pub(crate) fn get_device_path_from_map(map: &Path) -> io::Result<BorrowedDevicePath<'static>> {
     let shell =
         open_shell().ok_or(io::const_error!(io::ErrorKind::NotFound, "UEFI Shell not found"))?;
     let mut path = os_string_to_raw(map.as_os_str())
         .ok_or(io::const_error!(io::ErrorKind::InvalidFilename, "invalid UEFI shell mapping"))?;
 
-    // The Device Path Protocol pointer returned by UEFI shell is owned by the shell and is not
-    // freed throughout it's lifetime. So it has a 'static lifetime.
+    // UEFI shell 返回的 Device Path Protocol 指针归 shell 所有，在其整个生命周期内
+    // 都不会被释放。因此它具有 'static 生命周期。
     let protocol = unsafe { ((*shell.as_ptr()).get_device_path_from_map)(path.as_mut_ptr()) };
     let protocol = NonNull::new(protocol)
         .ok_or(io::const_error!(io::ErrorKind::NotFound, "UEFI Shell mapping not found"))?;
@@ -649,14 +649,15 @@ pub(crate) fn get_device_path_from_map(map: &Path) -> io::Result<BorrowedDeviceP
     Ok(BorrowedDevicePath::new(protocol))
 }
 
-/// Helper for UEFI Protocols which are created and destroyed using
+/// 用于那些通过
 /// [EFI_SERVICE_BINDING_PROTOCOL](https://uefi.org/specs/UEFI/2.11/11_Protocols_UEFI_Driver_Model.html#efi-service-binding-protocol)
+/// 创建和销毁的 UEFI Protocol 的辅助工具
 ///
-/// # Invariant
-/// - `handle` must always be a valid UEFI handle corresponding to the `service_guid`.
-/// - Copying `ServiceProtocol` is sound as long as `handle` remains valid.
-/// - For most service binding protocols (in edk2 implementations), such handles remain valid
-///   for the lifetime of the UEFI environment — effectively `'static`.
+/// # 不变量(Invariant)
+/// - `handle` 必须始终是与 `service_guid` 对应的有效 UEFI handle。
+/// - 只要 `handle` 保持有效，复制 `ServiceProtocol` 就是合理的。
+/// - 对大多数 service binding protocol（在 edk2 实现中），这类 handle 在整个 UEFI
+///   环境的生命周期内都保持有效——实际上相当于 `'static`。
 #[derive(Clone, Copy)]
 pub(crate) struct ServiceProtocol {
     service_guid: r_efi::efi::Guid,
@@ -664,7 +665,7 @@ pub(crate) struct ServiceProtocol {
 }
 
 impl ServiceProtocol {
-    /// Open a child handle on a service_binding protocol.
+    /// 在 service_binding protocol 上打开一个子 handle。
     pub(crate) fn open(
         service_guid: r_efi::efi::Guid,
     ) -> io::Result<(Self, NonNull<crate::ffi::c_void>)> {
@@ -681,12 +682,12 @@ impl ServiceProtocol {
         Err(io::const_error!(io::ErrorKind::NotFound, "no service binding protocol found"))
     }
 
-    // SAFETY: sbp must be a valid service binding protocol pointer
+    // SAFETY: sbp 必须是一个有效的 service binding protocol 指针
     unsafe fn create_child(
         sbp: NonNull<service_binding::Protocol>,
     ) -> io::Result<NonNull<crate::ffi::c_void>> {
         let mut child_handle: r_efi::efi::Handle = crate::ptr::null_mut();
-        // SAFETY: A new handle is allocated if a pointer to NULL is passed.
+        // SAFETY: 如果传入指向 NULL 的指针，则会分配一个新的 handle。
         let r = unsafe { ((*sbp.as_ptr()).create_child)(sbp.as_ptr(), &mut child_handle) };
 
         if r.is_error() {
@@ -697,8 +698,7 @@ impl ServiceProtocol {
         }
     }
 
-    // SAFETY: Child handle must be allocated by the current service binding protocol and must be
-    // valid.
+    // SAFETY: 子 handle 必须由当前 service binding protocol 分配，且必须有效。
     pub(crate) unsafe fn destroy_child(
         &self,
         handle: NonNull<crate::ffi::c_void>,
@@ -749,7 +749,7 @@ impl OwnedEvent {
         r
     }
 
-    /// SAFETY: Assumes that ptr is a non-null valid UEFI event
+    /// SAFETY: 假定 ptr 是一个非空的有效 UEFI event
     pub(crate) unsafe fn from_raw(ptr: *mut crate::ffi::c_void) -> Self {
         Self(unsafe { NonNull::new_unchecked(ptr) })
     }
@@ -775,8 +775,8 @@ pub(crate) const fn ipv4_from_r_efi(ip: efi::Ipv4Address) -> crate::net::Ipv4Add
     crate::net::Ipv4Addr::new(ip.addr[0], ip.addr[1], ip.addr[2], ip.addr[3])
 }
 
-/// This type is intended for use with ZSTs. Since such types are unsized, a reference to such types
-/// is not valid in Rust. Thus, only pointers should be used when interacting with such types.
+/// 该类型设计用于 ZST（零大小类型）。由于这类类型是 unsized 的，对它们的引用在
+/// Rust 中并不有效。因此，与这类类型交互时只应使用指针。
 pub(crate) struct UefiBox<T> {
     inner: NonNull<T>,
     size: usize,
@@ -785,7 +785,7 @@ pub(crate) struct UefiBox<T> {
 impl<T> UefiBox<T> {
     pub(crate) fn new(len: usize) -> io::Result<Self> {
         assert!(len >= size_of::<T>());
-        // UEFI always expects types to be 8 byte aligned.
+        // UEFI 总是要求类型按 8 字节对齐。
         let layout = Layout::from_size_align(len, 8).unwrap();
         let ptr = unsafe { crate::alloc::alloc(layout) };
 
@@ -828,7 +828,7 @@ impl UefiBox<file::Info> {
         unsafe { (*self.as_mut_ptr()).size = s }
     }
 
-    // Length of string (including NULL), not number of bytes.
+    // 字符串长度（包含 NULL），而非字节数。
     fn file_name_len(&self) -> usize {
         (self.size() as usize - size_of::<file::Info<0>>()) / size_of::<u16>()
     }
@@ -849,12 +849,12 @@ impl UefiBox<file::Info> {
     }
 
     pub(crate) fn with_file_name(mut self, name: &OsStr) -> io::Result<Self> {
-        // os_string_to_raw returns NULL terminated string. So no need to handle it separately.
+        // os_string_to_raw 返回以 NULL 结尾的字符串。因此无需单独处理。
         let fname = os_string_to_raw(name)
             .ok_or(const_error!(io::ErrorKind::OutOfMemory, "Allocation failed"))?;
         let new_size = size_of::<file::Info<0>>() + fname.len() * size_of::<u16>();
 
-        // Reuse the current structure if the new name can fit in it.
+        // 如果新名称能放进当前结构中，则复用它。
         if self.size() >= new_size as u64 {
             self.file_name_mut()[..fname.len()].copy_from_slice(&fname);
             self.set_size(new_size as u64);

@@ -1,13 +1,13 @@
-//! Runtime lookup of operating system / platform version.
+//! 运行时查询操作系统/平台的版本。
 //!
-//! Related to [RFC 3750](https://github.com/rust-lang/rfcs/pull/3750), which
-//! does version detection at compile-time.
+//! 与 [RFC 3750](https://github.com/rust-lang/rfcs/pull/3750) 相关，该 RFC
+//! 在编译期进行版本探测。
 //!
-//! See also the `os_info` crate.
+//! 另见 `os_info` crate。
 
 #[cfg(target_vendor = "apple")]
 mod darwin;
 
-// In the future, we could expand this module with:
-// - `RtlGetVersion` on Windows.
-// - `__system_property_get` on Android.
+// 未来我们可以扩展这个模块，例如加入：
+// - Windows 上的 `RtlGetVersion`。
+// - Android 上的 `__system_property_get`。

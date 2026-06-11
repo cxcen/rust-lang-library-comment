@@ -6,7 +6,7 @@ use crate::ffi::{c_char, c_int, c_void};
 use crate::io;
 
 //////////
-// Time //
+// 时间 //
 //////////
 
 pub type zx_time_t = i64;
@@ -18,7 +18,7 @@ unsafe extern "C" {
 }
 
 /////////////
-// Handles //
+// 句柄 //
 /////////////
 
 pub type zx_handle_t = u32;
@@ -29,7 +29,7 @@ unsafe extern "C" {
     pub fn zx_handle_close(handle: zx_handle_t) -> zx_status_t;
 }
 
-/// A safe wrapper around `zx_handle_t`.
+/// 对 `zx_handle_t` 的一个安全封装。
 pub struct Handle {
     raw: zx_handle_t,
 }
@@ -78,7 +78,7 @@ unsafe extern "C" {
 }
 
 ////////////////
-// Properties //
+// 属性 //
 ////////////////
 
 pub const ZX_PROP_NAME: u32 = 3;
@@ -93,7 +93,7 @@ unsafe extern "C" {
 }
 
 /////////////
-// Signals //
+// 信号 //
 /////////////
 
 pub type zx_signals_t = u32;
@@ -102,17 +102,17 @@ pub const ZX_OBJECT_SIGNAL_3: zx_signals_t = 1 << 3;
 pub const ZX_TASK_TERMINATED: zx_signals_t = ZX_OBJECT_SIGNAL_3;
 
 /////////////////
-// Object info //
+// 对象信息 //
 /////////////////
 
-// The upper four bits gives the minor version.
+// 高四位给出次版本号（minor version）。
 pub type zx_object_info_topic_t = u32;
 
 pub const ZX_INFO_PROCESS: zx_object_info_topic_t = 3 | (1 << 28);
 
 pub type zx_info_process_flags_t = u32;
 
-// Returned for topic ZX_INFO_PROCESS
+// 用于 topic ZX_INFO_PROCESS 时返回
 #[derive(Default)]
 #[repr(C)]
 pub struct zx_info_process_t {
@@ -134,7 +134,7 @@ unsafe extern "C" {
 }
 
 ///////////////
-// Processes //
+// 进程 //
 ///////////////
 
 #[derive(Default)]
@@ -166,7 +166,7 @@ unsafe extern "C" {
     pub fn zx_task_kill(handle: zx_handle_t) -> zx_status_t;
 }
 
-// fdio_spawn_etc flags
+// fdio_spawn_etc 的 flags
 
 pub const FDIO_SPAWN_CLONE_JOB: u32 = 0x0001;
 pub const FDIO_SPAWN_CLONE_LDSVC: u32 = 0x0002;
@@ -174,12 +174,12 @@ pub const FDIO_SPAWN_CLONE_NAMESPACE: u32 = 0x0004;
 pub const FDIO_SPAWN_CLONE_ENVIRON: u32 = 0x0010;
 pub const FDIO_SPAWN_CLONE_UTC_CLOCK: u32 = 0x0020;
 
-// fdio_spawn_etc actions
+// fdio_spawn_etc 的 actions
 
 pub const FDIO_SPAWN_ACTION_TRANSFER_FD: u32 = 0x0002;
 
 ////////////
-// Errors //
+// 错误 //
 ////////////
 
 pub type zx_status_t = i32;

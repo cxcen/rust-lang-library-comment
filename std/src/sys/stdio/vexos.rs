@@ -40,13 +40,12 @@ impl io::Write for Stdout {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let mut written = 0;
 
-        // HACK: VEXos holds an internal ringbuffer for serial writes that is flushed to USB1
-        // roughly every millisecond by `vexTasksRun`. For writes larger than 2048 bytes, we
-        // must block until that buffer is flushed to USB1 before writing the rest of `buf`.
+        // HACK: VEXos 为串口写入维护一个内部环形缓冲区（ringbuffer），它由 `vexTasksRun`
+        // 大约每毫秒刷新（flush）到 USB1 一次。对于大于 2048 字节的写入，我们必须先阻塞
+        // 直到该缓冲区被刷新到 USB1，然后再写入 `buf` 的剩余部分。
         //
-        // This is fairly nonstandard for a `write` implementation, but it avoids a guaranteed
-        // recursive panic when using macros such as `print!` to write large amounts of data
-        // (buf.len() > 2048) to stdout at once.
+        // 对于一个 `write` 实现而言，这相当不标准，但它避免了在使用诸如 `print!` 之类的宏
+        // 一次性向 stdout 写入大量数据（buf.len() > 2048）时必然发生的递归 panic。
         for chunk in buf.chunks(STDOUT_BUF_SIZE) {
             if unsafe { vex_sdk::vexSerialWriteFree(STDIO_CHANNEL) as usize } < chunk.len() {
                 self.flush().unwrap();
@@ -62,12 +61,12 @@ impl io::Write for Stdout {
 
             written += count;
 
-            // This is a sanity check to ensure that we don't end up with non-contiguous
-            // buffer writes. e.g. a chunk gets only partially written, but we continue
-            // attempting to write the remaining chunks.
+            // 这是一项合理性检查（sanity check），用于确保我们不会出现非连续的
+            // 缓冲区写入。例如，某个 chunk 只被部分写入，而我们却继续尝试写入
+            // 剩余的 chunk。
             //
-            // In practice, this should never really occur since the previous flush ensures
-            // enough space in FIFO to write the entire chunk to vexSerialWriteBuffer.
+            // 实际上，这种情况应该基本不会发生，因为前面的 flush 确保了 FIFO 中
+            // 有足够的空间，可以把整个 chunk 写入 vexSerialWriteBuffer。
             if count != chunk.len() {
                 break;
             }
@@ -77,7 +76,7 @@ impl io::Write for Stdout {
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        // This may block for up to a millisecond.
+        // 这可能会阻塞最多一毫秒。
         unsafe {
             while (vex_sdk::vexSerialWriteFree(STDIO_CHANNEL) as usize) != STDOUT_BUF_SIZE {
                 vex_sdk::vexTasksRun();

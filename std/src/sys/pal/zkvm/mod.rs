@@ -1,11 +1,9 @@
-//! System bindings for the risc0 zkvm platform
+//! risc0 zkvm 平台的系统绑定（System bindings）
 //!
-//! This module contains the facade (aka platform-specific) implementations of
-//! OS level functionality for zkvm.
+//! 本模块包含 zkvm 上 OS 级功能的门面（facade，即平台特定）实现。
 //!
-//! This is all super highly experimental and not actually intended for
-//! wide/production use yet, it's still all in the experimental category. This
-//! will likely change over time.
+//! 这一切都还处于高度实验性阶段，目前并不真正打算用于广泛/生产环境，
+//! 仍完全属于实验性范畴。随着时间推移，这些很可能会发生变化。
 #![forbid(unsafe_op_in_unsafe_fn)]
 
 pub const WORD_SIZE: usize = size_of::<u32>();
@@ -17,12 +15,12 @@ pub mod time;
 
 use crate::io as std_io;
 
-// SAFETY: must be called only once during runtime initialization.
-// NOTE: this is not guaranteed to run, for example when Rust code is called externally.
+// SAFETY: 必须在运行时初始化期间仅调用一次。
+// NOTE: 不保证一定会被运行，例如当 Rust 代码被外部调用时。
 pub unsafe fn init(_argc: isize, _argv: *const *const u8, _sigpipe: u8) {}
 
-// SAFETY: must be called only once during runtime cleanup.
-// NOTE: this is not guaranteed to run, for example when the program aborts.
+// SAFETY: 必须在运行时清理期间仅调用一次。
+// NOTE: 不保证一定会被运行，例如当程序中止（abort）时。
 pub unsafe fn cleanup() {}
 
 pub fn unsupported<T>() -> std_io::Result<T> {

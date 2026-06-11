@@ -9,7 +9,7 @@ pub use tcplistener::*;
 mod udp;
 pub use udp::*;
 
-// this structure needs to be synchronized with what's in net/src/api.rs
+// 这个结构体需要与 net/src/api.rs 中的内容保持同步
 #[repr(C)]
 #[derive(Debug)]
 enum NetError {

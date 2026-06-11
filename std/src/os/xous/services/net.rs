@@ -5,21 +5,21 @@ use crate::os::xous::services::connect;
 
 pub(crate) enum NetBlockingScalar {
     StdGetTtlUdp(u16 /* fd */),                /* 36 */
-    StdSetTtlUdp(u16 /* fd */, u32 /* ttl */), /* 37 */
+    StdSetTtlUdp(u16 /* fd */, u32 /* ttl（生存时间） */), /* 37 */
     StdGetTtlTcp(u16 /* fd */),                /* 36 */
-    StdSetTtlTcp(u16 /* fd */, u32 /* ttl */), /* 37 */
+    StdSetTtlTcp(u16 /* fd */, u32 /* ttl（生存时间） */), /* 37 */
     StdGetNodelay(u16 /* fd */),               /* 38 */
     StdSetNodelay(u16 /* fd */, bool),         /* 39 */
     StdTcpClose(u16 /* fd */),                 /* 34 */
     StdUdpClose(u16 /* fd */),                 /* 41 */
-    StdTcpStreamShutdown(u16 /* fd */, crate::net::Shutdown /* how */), /* 46 */
+    StdTcpStreamShutdown(u16 /* fd */, crate::net::Shutdown /* how（关闭方式） */), /* 46 */
 }
 
 pub(crate) enum NetLendMut {
     StdTcpConnect,                                    /* 30 */
     StdTcpTx(u16 /* fd */),                           /* 31 */
-    StdTcpPeek(u16 /* fd */, bool /* nonblocking */), /* 32 */
-    StdTcpRx(u16 /* fd */, bool /* nonblocking */),   /* 33 */
+    StdTcpPeek(u16 /* fd */, bool /* nonblocking（非阻塞） */), /* 32 */
+    StdTcpRx(u16 /* fd */, bool /* nonblocking（非阻塞） */),   /* 33 */
     StdGetAddress(u16 /* fd */),                      /* 35 */
     StdUdpBind,                                       /* 40 */
     StdUdpRx(u16 /* fd */),                           /* 42 */
@@ -81,8 +81,8 @@ impl<'a> Into<[usize; 5]> for NetBlockingScalar {
     }
 }
 
-/// Returns a `Connection` to the Network server. This server provides all
-/// OS-level networking functions.
+/// 返回一个到网络服务器（Network server）的 `Connection`。该服务器提供所有操作系统级别的
+/// 网络功能。
 pub(crate) fn net_server() -> Connection {
     static NET_CONNECTION: Atomic<u32> = AtomicU32::new(0);
     let cid = NET_CONNECTION.load(Ordering::Relaxed);

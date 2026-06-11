@@ -1,5 +1,5 @@
 cfg_select! {
-    // Tier 1
+    // 第 1 层（Tier 1）
     any(target_os = "linux", target_os = "android") => {
         mod linux;
         pub use linux::{fill_bytes, hashmap_random_keys};
@@ -11,7 +11,7 @@ cfg_select! {
     target_vendor = "apple" => {
         mod apple;
         pub use apple::fill_bytes;
-    // Others, in alphabetical ordering.
+    // 其他平台，按字母顺序排列。
     }
     any(
         target_os = "dragonfly",
@@ -45,7 +45,7 @@ cfg_select! {
         pub use hermit::fill_bytes;
     }
     any(target_os = "horizon", target_os = "cygwin") => {
-        // FIXME(horizon): add arc4random_buf to shim-3ds
+        // FIXME(horizon): 向 shim-3ds 添加 arc4random_buf
         mod getrandom;
         pub use getrandom::fill_bytes;
     }
@@ -107,8 +107,8 @@ cfg_select! {
         target_os = "xous",
         target_os = "vexos",
     ) => {
-        // FIXME: finally remove std support for wasm32-unknown-unknown
-        // FIXME: add random data generation to xous
+        // FIXME: 最终移除对 wasm32-unknown-unknown 的 std 支持
+        // FIXME: 为 xous 添加随机数据生成
         mod unsupported;
         pub use unsupported::{fill_bytes, hashmap_random_keys};
     }

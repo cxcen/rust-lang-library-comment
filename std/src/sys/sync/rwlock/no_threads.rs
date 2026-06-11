@@ -1,12 +1,12 @@
 use crate::cell::Cell;
 
 pub struct RwLock {
-    // This platform has no threads, so we can use a Cell here.
+    // 本平台没有线程，所以我们可以在这里使用 Cell。
     mode: Cell<isize>,
 }
 
 unsafe impl Send for RwLock {}
-unsafe impl Sync for RwLock {} // no threads on this platform
+unsafe impl Sync for RwLock {} // 本平台没有线程
 
 impl RwLock {
     #[inline]

@@ -16,25 +16,25 @@ pub use unsupported_fs::{
     unlink,
 };
 
-/// VEXos file descriptor.
+/// VEXos 文件描述符。
 ///
-/// This stores an opaque pointer to a [FatFs file object structure] managed by VEXos
-/// representing an open file on disk.
+/// 它存储一个由 VEXos 管理的、指向 [FatFs 文件对象结构体] 的不透明指针（opaque pointer），
+/// 代表磁盘上一个已打开的文件。
 ///
-/// [FatFs file object structure]: https://github.com/Xilinx/embeddedsw/blob/master/lib/sw_services/xilffs/src/include/ff.h?rgh-link-date=2025-09-23T20%3A03%3A43Z#L215
+/// [FatFs 文件对象结构体]: https://github.com/Xilinx/embeddedsw/blob/master/lib/sw_services/xilffs/src/include/ff.h?rgh-link-date=2025-09-23T20%3A03%3A43Z#L215
 ///
-/// # Safety
+/// # 安全性(Safety）
 ///
-/// Since this platform uses a pointer to to an internal filesystem structure with a lifetime
-/// associated with it (rather than a UNIX-style file descriptor table), care must be taken to
-/// ensure that the pointer held by `FileDesc` is valid for as long as it exists.
+/// 由于该平台使用的是一个指向内部文件系统结构体的指针、并且带有与之关联的生命周期
+/// （而不是 UNIX 风格的文件描述符表），因此必须小心确保 `FileDesc` 所持有的指针
+/// 在其存在期间始终有效。
 #[derive(Debug)]
 struct FileDesc(*mut vex_sdk::FIL);
 
-// SAFETY: VEXos's FDs can be used on a thread other than the one they were created on.
+// SAFETY: VEXos 的 FD 可以在并非创建它的那个线程上使用。
 unsafe impl Send for FileDesc {}
-// SAFETY: We assume an environment without threads (i.e. no RTOS).
-// (If there were threads, it is possible that a mutex would be required.)
+// SAFETY: 我们假定环境中没有线程（即没有 RTOS）。
+// （如果存在线程，则可能需要一个互斥锁（mutex）。）
 unsafe impl Sync for FileDesc {}
 
 pub struct File {
@@ -120,7 +120,7 @@ impl FileType {
     }
 
     pub fn is_symlink(&self) -> bool {
-        // No symlinks in VEXos - entries are either files or directories.
+        // VEXos 中没有符号链接——条目要么是文件，要么是目录。
         false
     }
 }
@@ -192,11 +192,10 @@ impl OpenOptions {
 impl File {
     pub fn open(path: &Path, opts: &OpenOptions) -> io::Result<File> {
         run_path_with_cstr(path, &|path| {
-            // Enforce the invariants of `create_new`/`create`.
+            // 强制保证 `create_new`/`create` 的不变量（invariants）。
             //
-            // Since VEXos doesn't have anything akin to POSIX's `oflags`, we need to enforce
-            // the requirements that `create_new` can't have an existing file and `!create`
-            // doesn't create a file ourselves.
+            // 由于 VEXos 没有任何类似 POSIX 的 `oflags` 的东西，我们需要自己来强制保证：
+            // `create_new` 不能存在已有文件，且 `!create` 不会创建文件。
             if !opts.read && (opts.write || opts.append) && (opts.create_new || !opts.create) {
                 let status = unsafe { vex_sdk::vexFileStatus(path.as_ptr()) };
 
@@ -211,7 +210,7 @@ impl File {
             }
 
             let file = match opts {
-                // read + write - unsupported
+                // read + write —— 不支持
                 OpenOptions { read: true, write: true, .. } => {
                     return Err(io::const_error!(
                         io::ErrorKind::InvalidInput,
@@ -219,7 +218,7 @@ impl File {
                     ));
                 }
 
-                // read
+                // read（只读）
                 OpenOptions {
                     read: true,
                     write: false,
@@ -229,7 +228,7 @@ impl File {
                     create_new: false,
                 } => unsafe { vex_sdk::vexFileOpen(path.as_ptr(), c"".as_ptr()) },
 
-                // append
+                // append（追加）
                 OpenOptions {
                     read: false,
                     write: _,
@@ -239,7 +238,7 @@ impl File {
                     create_new: _,
                 } => unsafe { vex_sdk::vexFileOpenWrite(path.as_ptr()) },
 
-                // write
+                // write（写入）
                 OpenOptions {
                     read: false,
                     write: true,
@@ -251,7 +250,7 @@ impl File {
                     if *truncate {
                         vex_sdk::vexFileOpenCreate(path.as_ptr())
                     } else {
-                        // Open in append, but jump to the start of the file.
+                        // 以追加模式打开，但跳转到文件的起始位置。
                         let fd = vex_sdk::vexFileOpenWrite(path.as_ptr());
                         vex_sdk::vexFileSeek(fd, 0, 0);
                         fd
@@ -272,9 +271,9 @@ impl File {
     }
 
     pub fn file_attr(&self) -> io::Result<FileAttr> {
-        // `vexFileSize` returns -1 upon error, so u64::try_from will fail on error.
+        // `vexFileSize` 出错时返回 -1，因此出错时 u64::try_from 会失败。
         if let Ok(size) = u64::try_from(unsafe {
-            // SAFETY: `self.fd` contains a valid pointer to `FIL` for this struct's lifetime.
+            // SAFETY: 在该结构体的生命周期内，`self.fd` 中包含一个指向 `FIL` 的有效指针。
             vex_sdk::vexFileSize(self.fd.0)
         }) {
             Ok(FileAttr::File { size })
@@ -319,7 +318,7 @@ impl File {
         let len = buf.len() as u32;
         let buf_ptr = buf.as_mut_ptr();
         let read = unsafe {
-            // SAFETY: `self.fd` contains a valid pointer to `FIL` for this struct's lifetime.
+            // SAFETY: 在该结构体的生命周期内，`self.fd` 中包含一个指向 `FIL` 的有效指针。
             vex_sdk::vexFileRead(buf_ptr.cast::<c_char>(), 1, len, self.fd.0)
         };
 
@@ -347,7 +346,7 @@ impl File {
         let len = buf.len() as u32;
         let buf_ptr = buf.as_ptr();
         let written = unsafe {
-            // SAFETY: `self.fd` contains a valid pointer to `FIL` for this struct's lifetime.
+            // SAFETY: 在该结构体的生命周期内，`self.fd` 中包含一个指向 `FIL` 的有效指针。
             vex_sdk::vexFileWrite(buf_ptr.cast_mut().cast::<c_char>(), 1, len, self.fd.0)
         };
 
@@ -369,14 +368,14 @@ impl File {
 
     pub fn flush(&self) -> io::Result<()> {
         unsafe {
-            // SAFETY: `self.fd` contains a valid pointer to `FIL` for this struct's lifetime.
+            // SAFETY: 在该结构体的生命周期内，`self.fd` 中包含一个指向 `FIL` 的有效指针。
             vex_sdk::vexFileSync(self.fd.0);
         }
         Ok(())
     }
 
     pub fn tell(&self) -> io::Result<u64> {
-        // SAFETY: `self.fd` contains a valid pointer to `FIL` for this struct's lifetime.
+        // SAFETY: 在该结构体的生命周期内，`self.fd` 中包含一个指向 `FIL` 的有效指针。
         let position = unsafe { vex_sdk::vexFileTell(self.fd.0) };
 
         position.try_into().map_err(|_| {
@@ -402,7 +401,7 @@ impl File {
             })
         }
 
-        // SAFETY: `self.fd` contains a valid pointer to `FIL` for this struct's lifetime.
+        // SAFETY: 在该结构体的生命周期内，`self.fd` 中包含一个指向 `FIL` 的有效指针。
         match pos {
             SeekFrom::Start(offset) => unsafe {
                 map_fresult(vex_sdk::vexFileSeek(self.fd.0, try_convert_offset(offset)?, SEEK_SET))?
@@ -415,17 +414,17 @@ impl File {
                         SEEK_END,
                     ))?
                 } else {
-                    // `vexFileSeek` does not support seeking with negative offset, meaning
-                    // we have to calculate the offset from the end of the file ourselves.
+                    // `vexFileSeek` 不支持以负偏移量进行 seek，这意味着
+                    // 我们必须自己从文件末尾计算偏移量。
 
-                    // Seek to the end of the file to get the end position in the open buffer.
+                    // seek 到文件末尾，以获取打开缓冲区中的末尾位置。
                     map_fresult(vex_sdk::vexFileSeek(self.fd.0, 0, SEEK_END))?;
                     let end_position = self.tell()?;
 
                     map_fresult(vex_sdk::vexFileSeek(
                         self.fd.0,
-                        // NOTE: Files internally use a 32-bit representation for stream
-                        // position, so `end_position as i64` should never overflow.
+                        // NOTE: 文件内部使用 32 位表示来记录流位置（stream position），
+                        // 因此 `end_position as i64` 永远不会溢出。
                         try_convert_offset(end_position as i64 + offset)?,
                         SEEK_SET,
                     ))?
@@ -439,8 +438,8 @@ impl File {
                         SEEK_CUR,
                     ))?
                 } else {
-                    // `vexFileSeek` does not support seeking with negative offset, meaning
-                    // we have to calculate the offset from the stream position ourselves.
+                    // `vexFileSeek` 不支持以负偏移量进行 seek，这意味着
+                    // 我们必须自己从当前流位置计算偏移量。
                     map_fresult(vex_sdk::vexFileSeek(
                         self.fd.0,
                         try_convert_offset((self.tell()? as i64) + offset)?,
@@ -478,13 +477,13 @@ impl Drop for File {
 }
 
 pub fn readdir(_p: &Path) -> io::Result<ReadDir> {
-    // While there *is* a userspace function for reading file directories,
-    // the necessary implementation cannot currently be done cleanly, as
-    // VEXos does not expose directory length to user programs.
+    // 虽然 *确实* 存在一个用于读取文件目录的用户态函数，
+    // 但目前还无法干净利落地完成必要的实现，因为
+    // VEXos 不向用户程序暴露目录的长度。
     //
-    // This means that we would need to create a large fixed-length buffer
-    // and hope that the folder's contents didn't exceed that buffer's length,
-    // which obviously isn't behavior we want to rely on in the standard library.
+    // 这意味着我们将不得不创建一个很大的固定长度缓冲区，
+    // 并寄希望于文件夹的内容不超过该缓冲区的长度，
+    // 而这显然不是我们想在标准库中依赖的行为。
     unsupported()
 }
 
@@ -505,14 +504,14 @@ pub fn exists(path: &Path) -> io::Result<bool> {
 }
 
 pub fn stat(p: &Path) -> io::Result<FileAttr> {
-    // `vexFileStatus` returns 3 if the given path is a directory, 1 if the path is a
-    // file, or 0 if no such path exists.
+    // `vexFileStatus` 在给定路径是目录时返回 3，是文件时返回 1，
+    // 路径不存在时返回 0。
     const FILE_STATUS_DIR: u32 = 3;
 
     run_path_with_cstr(p, &|c_path| {
         let file_type = unsafe { vex_sdk::vexFileStatus(c_path.as_ptr()) };
 
-        // We can't get the size if its a directory because we cant open it as a file
+        // 如果它是目录，我们无法获取其大小，因为我们无法以文件的方式打开它
         if file_type == FILE_STATUS_DIR {
             Ok(FileAttr::Dir)
         } else {
@@ -525,15 +524,15 @@ pub fn stat(p: &Path) -> io::Result<FileAttr> {
 }
 
 pub fn lstat(p: &Path) -> io::Result<FileAttr> {
-    // Symlinks aren't supported in this filesystem
+    // 此文件系统不支持符号链接
     stat(p)
 }
 
-// Cannot use `copy` from `common` here, since `File::set_permissions` is unsupported on this target.
+// 这里不能使用 `common` 中的 `copy`，因为 `File::set_permissions` 在该目标平台上不受支持。
 pub fn copy(from: &Path, to: &Path) -> io::Result<u64> {
     use crate::fs::File;
 
-    // NOTE: If `from` is a directory, this call should fail due to vexFileOpen* returning null.
+    // NOTE: 如果 `from` 是一个目录，由于 vexFileOpen* 会返回 null，本次调用应当失败。
     let mut reader = File::open(from)?;
     let mut writer = File::create(to)?;
 
@@ -541,7 +540,7 @@ pub fn copy(from: &Path, to: &Path) -> io::Result<u64> {
 }
 
 fn map_fresult(fresult: vex_sdk::FRESULT) -> io::Result<()> {
-    // VEX uses a derivative of FatFs (Xilinx's xilffs library) for filesystem operations.
+    // VEX 使用 FatFs 的一个衍生版本（Xilinx 的 xilffs 库）来执行文件系统操作。
     match fresult {
         vex_sdk::FRESULT::FR_OK => Ok(()),
         vex_sdk::FRESULT::FR_DISK_ERR => Err(io::const_error!(

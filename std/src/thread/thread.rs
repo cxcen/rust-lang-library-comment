@@ -8,12 +8,12 @@ use crate::sync::Arc;
 use crate::sys::sync::Parker;
 use crate::time::Duration;
 
-// This module ensures private fields are kept private, which is necessary to enforce the safety requirements.
+// 这个模块确保私有字段保持私有，这对于强制满足安全要求是必需的。
 mod thread_name_string {
     use crate::ffi::{CStr, CString};
     use crate::str;
 
-    /// Like a `String` it's guaranteed UTF-8 and like a `CString` it's null terminated.
+    /// 像 `String` 一样保证是 UTF-8，又像 `CString` 一样以空字符结尾。
     pub(crate) struct ThreadNameString {
         inner: CString,
     }
@@ -32,7 +32,7 @@ mod thread_name_string {
         }
 
         pub fn as_str(&self) -> &str {
-            // SAFETY: `ThreadNameString` is guaranteed to be UTF-8.
+            // SAFETY: `ThreadNameString` 保证是 UTF-8。
             unsafe { str::from_utf8_unchecked(self.inner.to_bytes()) }
         }
     }
@@ -40,11 +40,10 @@ mod thread_name_string {
 
 use thread_name_string::ThreadNameString;
 
-/// The internal representation of a `Thread` handle
+/// `Thread` 句柄的内部表示
 ///
-/// We explicitly set the alignment for our guarantee in Thread::into_raw. This
-/// allows applications to stuff extra metadata bits into the alignment, which
-/// can be rather useful when working with atomics.
+/// 我们显式地设置对齐，以满足 Thread::into_raw 中的保证。这使得应用程序能够把
+/// 额外的元数据位塞进对齐空隙中，这在使用原子操作时相当有用。
 #[repr(align(8))]
 struct Inner {
     name: Option<ThreadNameString>,
@@ -60,21 +59,18 @@ impl Inner {
 
 #[derive(Clone)]
 #[stable(feature = "rust1", since = "1.0.0")]
-/// A handle to a thread.
+/// 指向一个线程的句柄。
 ///
-/// Threads are represented via the `Thread` type, which you can get in one of
-/// two ways:
+/// 线程通过 `Thread` 类型来表示，你可以通过以下两种方式之一获取它：
 ///
-/// * By spawning a new thread, e.g., using the [`thread::spawn`]
-///   function, and calling [`thread`] on the [`JoinHandle`].
-/// * By requesting the current thread, using the [`thread::current`] function.
+/// * 通过派生一个新线程，例如使用 [`thread::spawn`] 函数，并在返回的
+///   [`JoinHandle`] 上调用 [`thread`]。
+/// * 通过 [`thread::current`] 函数请求当前线程。
 ///
-/// The [`thread::current`] function is available even for threads not spawned
-/// by the APIs of this module.
+/// [`thread::current`] 函数即便对于并非由本模块 API 派生的线程也是可用的。
 ///
-/// There is usually no need to create a `Thread` struct yourself, one
-/// should instead use a function like `spawn` to create new threads, see the
-/// docs of [`Builder`] and [`spawn`] for more details.
+/// 通常没有必要自己创建一个 `Thread` 结构体，而应当使用诸如 `spawn` 这样的函数
+/// 来创建新线程，详见 [`Builder`] 和 [`spawn`] 的文档。
 ///
 /// [`thread::spawn`]: super::spawn
 /// [`thread`]: super::JoinHandle::thread
@@ -83,9 +79,8 @@ impl Inner {
 /// [`Builder`]: super::Builder
 /// [`spawn`]: super::spawn
 pub struct Thread {
-    // We use the System allocator such that creating or dropping this handle
-    // does not interfere with a potential Global allocator using thread-local
-    // storage.
+    // 我们使用 System 分配器，这样创建或丢弃这个句柄就不会干扰到某个可能使用
+    // 线程局部存储的 Global 分配器。
     inner: Pin<Arc<Inner, System>>,
 }
 
@@ -93,11 +88,9 @@ impl Thread {
     pub(crate) fn new(id: ThreadId, name: Option<String>) -> Thread {
         let name = name.map(ThreadNameString::from);
 
-        // We have to use `unsafe` here to construct the `Parker` in-place,
-        // which is required for the UNIX implementation.
+        // 我们这里不得不使用 `unsafe` 来就地构造 `Parker`，这是 UNIX 实现所要求的。
         //
-        // SAFETY: We pin the Arc immediately after creation, so its address never
-        // changes.
+        // SAFETY: 我们在创建后立即 pin 住这个 Arc，所以它的地址永不改变。
         let inner = unsafe {
             let mut arc = Arc::<Inner, _>::new_uninit_in(System);
             let ptr = Arc::get_mut_unchecked(&mut arc).as_mut_ptr();
@@ -110,35 +103,34 @@ impl Thread {
         Thread { inner }
     }
 
-    /// Like the public [`park`], but callable on any handle. This is used to
-    /// allow parking in TLS destructors.
+    /// 类似于公开的 [`park`]，但可以在任何句柄上调用。它用于允许在 TLS 析构函数
+    /// 中进行 park。
     ///
     /// # Safety
-    /// May only be called from the thread to which this handle belongs.
+    /// 只能从这个句柄所属的那个线程上调用。
     ///
     /// [`park`]: super::park
     pub(crate) unsafe fn park(&self) {
         unsafe { self.inner.as_ref().parker().park() }
     }
 
-    /// Like the public [`park_timeout`], but callable on any handle. This is
-    /// used to allow parking in TLS destructors.
+    /// 类似于公开的 [`park_timeout`]，但可以在任何句柄上调用。它用于允许在 TLS
+    /// 析构函数中进行 park。
     ///
     /// # Safety
-    /// May only be called from the thread to which this handle belongs.
+    /// 只能从这个句柄所属的那个线程上调用。
     ///
     /// [`park_timeout`]: super::park_timeout
     pub(crate) unsafe fn park_timeout(&self, dur: Duration) {
         unsafe { self.inner.as_ref().parker().park_timeout(dur) }
     }
 
-    /// Atomically makes the handle's token available if it is not already.
+    /// 原子地令该句柄的 token 变为可用（如果它尚不可用）。
     ///
-    /// Every thread is equipped with some basic low-level blocking support, via
-    /// the [`park`] function and the `unpark()` method. These can be used as a
-    /// more CPU-efficient implementation of a spinlock.
+    /// 每个线程都配备了一些基本的底层阻塞支持，通过 [`park`] 函数和 `unpark()`
+    /// 方法实现。它们可以被用作一种更省 CPU 的自旋锁实现。
     ///
-    /// See the [park documentation] for more details.
+    /// 更多细节请参阅 [park 文档][park documentation]。
     ///
     /// # Examples
     ///
@@ -158,15 +150,15 @@ impl Thread {
     ///     })
     ///     .unwrap();
     ///
-    /// // Let some time pass for the thread to be spawned.
+    /// // 留出一些时间让线程被派生出来。
     /// thread::sleep(Duration::from_millis(10));
     ///
-    /// // Wait until the other thread is queued.
-    /// // This is crucial! It guarantees that the `unpark` below is not consumed
-    /// // by some other code in the parked thread (e.g. inside `println!`).
+    /// // 等待直到另一个线程排好队。
+    /// // 这一点至关重要！它保证了下面的 `unpark` 不会被被 park 的线程中的
+    /// // 其他代码（例如 `println!` 内部）消耗掉。
     /// while !QUEUED.load(Ordering::Acquire) {
-    ///     // Spinning is of course inefficient; in practice, this would more likely be
-    ///     // a dequeue where we have no work to do if there's nobody queued.
+    ///     // 自旋当然是低效的；在实践中，这里更可能是一个出队操作，
+    ///     // 当没有人排队时我们就无事可做。
     ///     std::hint::spin_loop();
     /// }
     ///
@@ -184,7 +176,7 @@ impl Thread {
         self.inner.as_ref().parker().unpark();
     }
 
-    /// Gets the thread's unique identifier.
+    /// 获取该线程的唯一标识符。
     ///
     /// # Examples
     ///
@@ -204,14 +196,14 @@ impl Thread {
         self.inner.id
     }
 
-    /// Gets the thread's name.
+    /// 获取该线程的名字。
     ///
-    /// For more information about named threads, see
-    /// [this module-level documentation][naming-threads].
+    /// 关于具名线程的更多信息，请参阅
+    /// [此模块级文档][naming-threads]。
     ///
     /// # Examples
     ///
-    /// Threads by default have no name specified:
+    /// 线程默认没有指定名字：
     ///
     /// ```
     /// use std::thread;
@@ -225,7 +217,7 @@ impl Thread {
     /// handler.join().unwrap();
     /// ```
     ///
-    /// Thread with a specified name:
+    /// 指定了名字的线程：
     ///
     /// ```
     /// use std::thread;
@@ -253,11 +245,10 @@ impl Thread {
         }
     }
 
-    /// Consumes the `Thread`, returning a raw pointer.
+    /// 消耗这个 `Thread`，返回一个裸指针。
     ///
-    /// To avoid a memory leak the pointer must be converted
-    /// back into a `Thread` using [`Thread::from_raw`]. The pointer is
-    /// guaranteed to be aligned to at least 8 bytes.
+    /// 为了避免内存泄漏，必须使用 [`Thread::from_raw`] 把该指针转换回 `Thread`。
+    /// 保证该指针至少对齐到 8 字节。
     ///
     /// # Examples
     ///
@@ -275,30 +266,28 @@ impl Thread {
     /// ```
     #[unstable(feature = "thread_raw", issue = "97523")]
     pub fn into_raw(self) -> *const () {
-        // Safety: We only expose an opaque pointer, which maintains the `Pin` invariant.
+        // Safety: 我们只暴露一个不透明指针，它维持了 `Pin` 不变式。
         let inner = unsafe { Pin::into_inner_unchecked(self.inner) };
         Arc::into_raw_with_allocator(inner).0 as *const ()
     }
 
-    /// Constructs a `Thread` from a raw pointer.
+    /// 从一个裸指针构造出一个 `Thread`。
     ///
-    /// The raw pointer must have been previously returned
-    /// by a call to [`Thread::into_raw`].
+    /// 该裸指针必须是此前由一次 [`Thread::into_raw`] 调用返回的。
     ///
     /// # Safety
     ///
-    /// This function is unsafe because improper use may lead
-    /// to memory unsafety, even if the returned `Thread` is never
-    /// accessed.
+    /// 本函数是不安全的，因为不当使用可能导致内存不安全，即便返回的 `Thread`
+    /// 从未被访问也是如此。
     ///
-    /// Creating a `Thread` from a pointer other than one returned
-    /// from [`Thread::into_raw`] is **undefined behavior**.
+    /// 从一个并非由 [`Thread::into_raw`] 返回的指针构造 `Thread` 是**未定义
+    /// 行为**。
     ///
-    /// Calling this function twice on the same raw pointer can lead
-    /// to a double-free if both `Thread` instances are dropped.
+    /// 对同一个裸指针调用本函数两次，如果两个 `Thread` 实例都被丢弃，则可能
+    /// 导致 double-free。
     #[unstable(feature = "thread_raw", issue = "97523")]
     pub unsafe fn from_raw(ptr: *const ()) -> Thread {
-        // Safety: Upheld by caller.
+        // Safety: 由调用者保证。
         unsafe {
             Thread { inner: Pin::new_unchecked(Arc::from_raw_in(ptr as *const Inner, System)) }
         }

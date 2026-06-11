@@ -15,9 +15,9 @@ pub struct Dir {
     handle: Handle,
 }
 
-/// A wrapper around a raw NtCreateFile call.
+/// 对底层 NtCreateFile 调用的封装。
 ///
-/// This isn't completely safe because `OBJECT_ATTRIBUTES` contains raw pointers.
+/// 它并不完全安全，因为 `OBJECT_ATTRIBUTES` 中包含裸指针。
 unsafe fn nt_create_file(
     opts: &OpenOptions,
     object_attributes: &c::OBJECT_ATTRIBUTES,
@@ -25,9 +25,9 @@ unsafe fn nt_create_file(
 ) -> io::Result<Handle> {
     let mut handle = ptr::null_mut();
     let mut io_status = c::IO_STATUS_BLOCK::PENDING;
-    // SYNCHRONIZE is included in FILE_GENERIC_READ, but not GENERIC_READ, so we add it manually
+    // SYNCHRONIZE 包含在 FILE_GENERIC_READ 中，但不包含在 GENERIC_READ 中，因此我们手动加上它
     let access = opts.get_access_mode()? | c::SYNCHRONIZE;
-    // one of FILE_SYNCHRONOUS_IO_{,NON}ALERT is required for later operations to succeed.
+    // 后续操作要想成功，FILE_SYNCHRONOUS_IO_{,NON}ALERT 中必须有一个被设置。
     let options = create_options | c::FILE_SYNCHRONOUS_IO_NONALERT;
     let status = unsafe {
         c::NtCreateFile(
@@ -45,7 +45,7 @@ unsafe fn nt_create_file(
         )
     };
     if c::nt_success(status) {
-        // SAFETY: nt_success guarantees that handle is no longer null
+        // SAFETY: nt_success 保证 handle 不再为 null
         unsafe { Ok(Handle::from_raw_handle(handle)) }
     } else {
         Err(WinError::new(unsafe { c::RtlNtStatusToDosError(status) })).io_result()
@@ -58,12 +58,12 @@ impl Dir {
     }
 
     pub fn open_file(&self, path: &Path, opts: &OpenOptions) -> io::Result<File> {
-        // NtCreateFile will fail if given an absolute path and a non-null RootDirectory
+        // 若给定绝对路径且 RootDirectory 非 null，NtCreateFile 将会失败
         if path.is_absolute() {
             return File::open(path, opts);
         }
         let path = to_u16s(path)?;
-        let path = &path[..path.len() - 1]; // trim 0 byte
+        let path = &path[..path.len() - 1]; // 去掉末尾的 0 字节
         self.open_file_native(&path, opts).map(|handle| File { handle })
     }
 
@@ -81,7 +81,7 @@ impl Dir {
                 opts.share_mode,
                 &raw const sa,
                 creation,
-                // FILE_FLAG_BACKUP_SEMANTICS is required to open a directory
+                // 打开目录需要 FILE_FLAG_BACKUP_SEMANTICS
                 opts.get_flags_and_attributes() | c::FILE_FLAG_BACKUP_SEMANTICS,
                 ptr::null_mut(),
             )

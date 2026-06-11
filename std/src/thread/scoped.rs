@@ -9,22 +9,22 @@ use crate::sync::Arc;
 use crate::sync::atomic::{Atomic, AtomicBool, AtomicUsize, Ordering};
 use crate::{fmt, io};
 
-/// A scope to spawn scoped threads in.
+/// 一个可在其中派生作用域线程（scoped thread）的作用域。
 ///
-/// See [`scope`] for details.
+/// 详见 [`scope`]。
 #[stable(feature = "scoped_threads", since = "1.63.0")]
 pub struct Scope<'scope, 'env: 'scope> {
     data: Arc<ScopeData>,
-    /// Invariance over 'scope, to make sure 'scope cannot shrink,
-    /// which is necessary for soundness.
+    /// 对 'scope 保持不变型（invariance），以确保 'scope 不能收缩，这对于
+    /// 健全性（soundness）是必需的。
     ///
-    /// Without invariance, this would compile fine but be unsound:
+    /// 如果没有不变型，下面的代码会编译通过，但却是不健全的：
     ///
     /// ```compile_fail,E0373
     /// std::thread::scope(|s| {
     ///     s.spawn(|| {
     ///         let a = String::from("abcd");
-    ///         s.spawn(|| println!("{a:?}")); // might run after `a` is dropped
+    ///         s.spawn(|| println!("{a:?}")); // 可能在 `a` 被丢弃之后才运行
     ///     });
     /// });
     /// ```
@@ -32,9 +32,9 @@ pub struct Scope<'scope, 'env: 'scope> {
     env: PhantomData<&'env mut &'env ()>,
 }
 
-/// An owned permission to join on a scoped thread (block on its termination).
+/// 一项可用于 join 某个作用域线程（阻塞等待其终止）的、被拥有的许可。
 ///
-/// See [`Scope::spawn`] for details.
+/// 详见 [`Scope::spawn`]。
 #[stable(feature = "scoped_threads", since = "1.63.0")]
 pub struct ScopedJoinHandle<'scope, T>(JoinInner<'scope, T>);
 
@@ -46,10 +46,10 @@ pub(super) struct ScopeData {
 
 impl ScopeData {
     pub(super) fn increment_num_running_threads(&self) {
-        // We check for 'overflow' with usize::MAX / 2, to make sure there's no
-        // chance it overflows to 0, which would result in unsoundness.
+        // 我们用 usize::MAX / 2 来检查“溢出”，以确保它绝无可能溢出回 0，
+        // 因为那会导致不健全（unsoundness）。
         if self.num_running_threads.fetch_add(1, Ordering::Relaxed) > usize::MAX / 2 {
-            // This can only reasonably happen by mem::forget()'ing a lot of ScopedJoinHandles.
+            // 这只可能在 mem::forget() 了大量 ScopedJoinHandle 时合理地发生。
             self.overflow();
         }
     }
@@ -70,23 +70,23 @@ impl ScopeData {
     }
 }
 
-/// Creates a scope for spawning scoped threads.
+/// 创建一个用于派生作用域线程的作用域。
 ///
-/// The function passed to `scope` will be provided a [`Scope`] object,
-/// through which scoped threads can be [spawned][`Scope::spawn`].
+/// 传给 `scope` 的函数会得到一个 [`Scope`] 对象，作用域线程可以通过它来
+/// [派生][`Scope::spawn`]。
 ///
-/// Unlike non-scoped threads, scoped threads can borrow non-`'static` data,
-/// as the scope guarantees all threads will be joined at the end of the scope.
+/// 与非作用域线程不同，作用域线程可以借用非 `'static` 的数据，因为该作用域保证
+/// 所有线程都会在作用域结束时被 join。
 ///
-/// All threads spawned within the scope that haven't been manually joined
-/// will be automatically joined before this function returns.
+/// 在作用域内派生的、且未被手动 join 的所有线程，都会在本函数返回之前被自动
+/// join。
 ///
 /// # Panics
 ///
-/// If any of the automatically joined threads panicked, this function will panic.
+/// 如果任何被自动 join 的线程发生了 panic，本函数将会 panic。
 ///
-/// If you want to handle panics from spawned threads,
-/// [`join`][ScopedJoinHandle::join] them before the end of the scope.
+/// 如果你想处理来自派生线程的 panic，请在作用域结束之前
+/// [join][ScopedJoinHandle::join] 它们。
 ///
 /// # Example
 ///
@@ -99,48 +99,47 @@ impl ScopeData {
 /// thread::scope(|s| {
 ///     s.spawn(|| {
 ///         println!("hello from the first scoped thread");
-///         // We can borrow `a` here.
+///         // 我们可以在这里借用 `a`。
 ///         dbg!(&a);
 ///     });
 ///     s.spawn(|| {
 ///         println!("hello from the second scoped thread");
-///         // We can even mutably borrow `x` here,
-///         // because no other threads are using it.
+///         // 我们甚至可以在这里可变地借用 `x`，
+///         // 因为没有其他线程在使用它。
 ///         x += a[0] + a[2];
 ///     });
 ///     println!("hello from the main thread");
 /// });
 ///
-/// // After the scope, we can modify and access our variables again:
+/// // 作用域结束之后，我们可以再次修改和访问我们的变量：
 /// a.push(4);
 /// assert_eq!(x, a.len());
 /// ```
 ///
 /// # Lifetimes
 ///
-/// Scoped threads involve two lifetimes: `'scope` and `'env`.
+/// 作用域线程涉及两个生命周期：`'scope` 和 `'env`。
 ///
-/// The `'scope` lifetime represents the lifetime of the scope itself.
-/// That is: the time during which new scoped threads may be spawned,
-/// and also the time during which they might still be running.
-/// Once this lifetime ends, all scoped threads are joined.
-/// This lifetime starts within the `scope` function, before `f` (the argument to `scope`) starts.
-/// It ends after `f` returns and all scoped threads have been joined, but before `scope` returns.
+/// `'scope` 生命周期代表作用域本身的生命周期。也就是说：可以派生新的作用域线程
+/// 的那段时间，同时也是这些线程可能仍在运行的那段时间。一旦这个生命周期结束，
+/// 所有作用域线程都会被 join。这个生命周期在 `scope` 函数内、在 `f`（`scope`
+/// 的参数）开始之前就开始。它在 `f` 返回、且所有作用域线程都已被 join 之后、但
+/// 在 `scope` 返回之前结束。
 ///
-/// The `'env` lifetime represents the lifetime of whatever is borrowed by the scoped threads.
-/// This lifetime must outlast the call to `scope`, and thus cannot be smaller than `'scope`.
-/// It can be as small as the call to `scope`, meaning that anything that outlives this call,
-/// such as local variables defined right before the scope, can be borrowed by the scoped threads.
+/// `'env` 生命周期代表被作用域线程所借用的那些东西的生命周期。这个生命周期必须
+/// 比对 `scope` 的调用活得更久，因此它不能小于 `'scope`。它可以小到只是对
+/// `scope` 的那次调用，这意味着任何比这次调用活得更久的东西（例如就定义在作用域
+/// 之前的局部变量）都可以被作用域线程借用。
 ///
-/// The `'env: 'scope` bound is part of the definition of the `Scope` type.
+/// `'env: 'scope` 这一约束是 `Scope` 类型定义的一部分。
 #[track_caller]
 #[stable(feature = "scoped_threads", since = "1.63.0")]
 pub fn scope<'env, F, T>(f: F) -> T
 where
     F: for<'scope> FnOnce(&'scope Scope<'scope, 'env>) -> T,
 {
-    // We put the `ScopeData` into an `Arc` so that other threads can finish their
-    // `decrement_num_running_threads` even after this function returns.
+    // 我们把 `ScopeData` 放进一个 `Arc`，以便其他线程即便在本函数返回之后也能
+    // 完成它们的 `decrement_num_running_threads`。
     let scope = Scope {
         data: Arc::new(ScopeData {
             num_running_threads: AtomicUsize::new(0),
@@ -151,16 +150,16 @@ where
         scope: PhantomData,
     };
 
-    // Run `f`, but catch panics so we can make sure to wait for all the threads to join.
+    // 运行 `f`，但捕获 panic，以便确保我们会等待所有线程被 join。
     let result = catch_unwind(AssertUnwindSafe(|| f(&scope)));
 
-    // Wait until all the threads are finished.
+    // 等待直到所有线程都已完成。
     while scope.data.num_running_threads.load(Ordering::Acquire) != 0 {
-        // SAFETY: this is the main thread, the handle belongs to us.
+        // SAFETY: 这里是主线程，该句柄属于我们自己。
         unsafe { scope.data.main_thread.park() };
     }
 
-    // Throw any panic from `f`, or the return value of `f` if no thread panicked.
+    // 抛出来自 `f` 的任何 panic；如果没有线程发生 panic，则返回 `f` 的返回值。
     match result {
         Err(e) => resume_unwind(e),
         Ok(_) if scope.data.a_thread_panicked.load(Ordering::Relaxed) => {
@@ -171,27 +170,25 @@ where
 }
 
 impl<'scope, 'env> Scope<'scope, 'env> {
-    /// Spawns a new thread within a scope, returning a [`ScopedJoinHandle`] for it.
+    /// 在一个作用域内派生一个新线程，并返回它的 [`ScopedJoinHandle`]。
     ///
-    /// Unlike non-scoped threads, threads spawned with this function may
-    /// borrow non-`'static` data from the outside the scope. See [`scope`] for
-    /// details.
+    /// 与非作用域线程不同，用本函数派生的线程可以从作用域外部借用非 `'static`
+    /// 的数据。详见 [`scope`]。
     ///
-    /// The join handle provides a [`join`] method that can be used to join the spawned
-    /// thread. If the spawned thread panics, [`join`] will return an [`Err`] containing
-    /// the panic payload.
+    /// 这个 join 句柄提供了一个 [`join`] 方法，可用于 join 派生出来的线程。如果
+    /// 派生线程发生 panic，[`join`] 会返回一个 [`Err`]，其中包含 panic 载荷。
     ///
-    /// If the join handle is dropped, the spawned thread will be implicitly joined at the
-    /// end of the scope. In that case, if the spawned thread panics, [`scope`] will
-    /// panic after all threads are joined.
+    /// 如果这个 join 句柄被丢弃，派生线程会在作用域结束时被隐式 join。在这种
+    /// 情况下，如果派生线程发生 panic，那么在所有线程都被 join 之后 [`scope`]
+    /// 会 panic。
     ///
-    /// This function creates a thread with the default parameters of [`Builder`].
-    /// To specify the new thread's stack size or the name, use [`Builder::spawn_scoped`].
+    /// 本函数使用 [`Builder`] 的默认参数来创建线程。要指定新线程的栈大小或名字，
+    /// 请使用 [`Builder::spawn_scoped`]。
     ///
     /// # Panics
     ///
-    /// Panics if the OS fails to create a thread; use [`Builder::spawn_scoped`]
-    /// to recover from such errors.
+    /// 如果操作系统创建线程失败，则会 panic；可以使用 [`Builder::spawn_scoped`]
+    /// 从此类错误中恢复。
     ///
     /// [`join`]: ScopedJoinHandle::join
     #[stable(feature = "scoped_threads", since = "1.63.0")]
@@ -205,14 +202,14 @@ impl<'scope, 'env> Scope<'scope, 'env> {
 }
 
 impl Builder {
-    /// Spawns a new scoped thread using the settings set through this `Builder`.
+    /// 使用通过这个 `Builder` 所做的设置，派生一个新的作用域线程。
     ///
-    /// Unlike [`Scope::spawn`], this method yields an [`io::Result`] to
-    /// capture any failure to create the thread at the OS level.
+    /// 与 [`Scope::spawn`] 不同，本方法会返回一个 [`io::Result`]，以捕获在
+    /// 操作系统层面创建线程时的任何失败。
     ///
     /// # Panics
     ///
-    /// Panics if a thread name was set and it contained null bytes.
+    /// 如果设置了线程名且它包含空字节，则会 panic。
     ///
     /// # Example
     ///
@@ -228,7 +225,7 @@ impl Builder {
     ///         .spawn_scoped(s, ||
     ///     {
     ///         println!("hello from the {:?} scoped thread", thread::current().name());
-    ///         // We can borrow `a` here.
+    ///         // 我们可以在这里借用 `a`。
     ///         dbg!(&a);
     ///     })
     ///     .unwrap();
@@ -237,15 +234,15 @@ impl Builder {
     ///         .spawn_scoped(s, ||
     ///     {
     ///         println!("hello from the {:?} scoped thread", thread::current().name());
-    ///         // We can even mutably borrow `x` here,
-    ///         // because no other threads are using it.
+    ///         // 我们甚至可以在这里可变地借用 `x`，
+    ///         // 因为没有其他线程在使用它。
     ///         x += a[0] + a[2];
     ///     })
     ///     .unwrap();
     ///     println!("hello from the main thread");
     /// });
     ///
-    /// // After the scope, we can modify and access our variables again:
+    /// // 作用域结束之后，我们可以再次修改和访问我们的变量：
     /// a.push(4);
     /// assert_eq!(x, a.len());
     /// ```
@@ -267,7 +264,7 @@ impl Builder {
 }
 
 impl<'scope, T> ScopedJoinHandle<'scope, T> {
-    /// Extracts a handle to the underlying thread.
+    /// 取出指向底层线程的句柄。
     ///
     /// # Examples
     ///
@@ -287,17 +284,17 @@ impl<'scope, T> ScopedJoinHandle<'scope, T> {
         self.0.thread()
     }
 
-    /// Waits for the associated thread to finish.
+    /// 等待关联的线程完成。
     ///
-    /// This function will return immediately if the associated thread has already finished.
+    /// 如果关联的线程已经完成，本函数会立即返回。
     ///
-    /// In terms of [atomic memory orderings], the completion of the associated
-    /// thread synchronizes with this function returning.
-    /// In other words, all operations performed by that thread
-    /// [happen before](https://doc.rust-lang.org/nomicon/atomics.html#data-accesses)
-    /// all operations that happen after `join` returns.
+    /// 用[原子内存序][atomic memory orderings]的术语来说，关联线程的完成与本函数
+    /// 的返回之间存在同步（synchronizes with）关系。
+    /// 换句话说，那个线程所执行的所有操作都
+    /// [发生于（happen before）](https://doc.rust-lang.org/nomicon/atomics.html#data-accesses)
+    /// `join` 返回之后发生的所有操作之前。
     ///
-    /// If the associated thread panics, [`Err`] is returned with the panic payload.
+    /// 如果关联的线程发生 panic，则返回 [`Err`]，其中包含 panic 载荷。
     ///
     /// [atomic memory orderings]: crate::sync::atomic
     ///
@@ -318,16 +315,15 @@ impl<'scope, T> ScopedJoinHandle<'scope, T> {
         self.0.join()
     }
 
-    /// Checks if the associated thread has finished running its main function.
+    /// 检查关联的线程是否已经运行完它的主函数。
     ///
-    /// `is_finished` supports implementing a non-blocking join operation, by checking
-    /// `is_finished`, and calling `join` if it returns `true`. This function does not block. To
-    /// block while waiting on the thread to finish, use [`join`][Self::join].
+    /// `is_finished` 支持实现一个非阻塞的 join 操作，做法是先检查 `is_finished`，
+    /// 如果它返回 `true` 再调用 `join`。本函数不会阻塞。要阻塞等待线程完成，
+    /// 请使用 [`join`][Self::join]。
     ///
-    /// This might return `true` for a brief moment after the thread's main
-    /// function has returned, but before the thread itself has stopped running.
-    /// However, once this returns `true`, [`join`][Self::join] can be expected
-    /// to return quickly, without blocking for any significant amount of time.
+    /// 在线程的主函数已经返回、但线程自身尚未停止运行的那一小段时间里，本函数
+    /// 可能会返回 `true`。不过，一旦它返回 `true`，就可以预期
+    /// [`join`][Self::join] 会很快返回，不会有任何明显的阻塞。
     #[stable(feature = "scoped_threads", since = "1.63.0")]
     pub fn is_finished(&self) -> bool {
         self.0.is_finished()

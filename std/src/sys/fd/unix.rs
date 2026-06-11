@@ -24,8 +24,7 @@ cfg_select! {
         target_os = "android",
         target_os = "hurd",
     ) => {
-        // Prefer explicit pread64 for 64-bit offset independently of libc
-        // #[cfg(gnu_file_offset_bits64)].
+        // 独立于 libc 的 #[cfg(gnu_file_offset_bits64)]，优先显式使用 pread64 以支持 64 位偏移量。
         use libc::pread64;
     }
     _ => {
@@ -45,14 +44,12 @@ use crate::sys::{AsInner, FromInner, IntoInner, cvt};
 #[derive(Debug)]
 pub struct FileDesc(OwnedFd);
 
-// The maximum read limit on most POSIX-like systems is `SSIZE_MAX`,
-// with the man page quoting that if the count of bytes to read is
-// greater than `SSIZE_MAX` the result is "unspecified".
+// 在大多数类 POSIX 系统上，read 的最大读取上限是 `SSIZE_MAX`，
+// man 手册指出如果要读取的字节数大于 `SSIZE_MAX`，结果是「未指定的(unspecified）」。
 //
-// On Apple targets however, apparently the 64-bit libc is either buggy or
-// intentionally showing odd behavior by rejecting any read with a size
-// larger than INT_MAX. To handle both of these the read size is capped on
-// both platforms.
+// 然而在 Apple 目标平台上，64 位的 libc 似乎要么有 bug，要么是故意表现出
+// 怪异的行为：它会拒绝任何大小大于 INT_MAX 的读取。为了同时处理这两种情况，
+// 我们在两个平台上都对读取大小做了封顶。
 const READ_LIMIT: usize = if cfg!(target_vendor = "apple") {
     libc::c_int::MAX as usize
 } else {
@@ -98,7 +95,7 @@ const fn max_iov() -> usize {
     target_os = "cygwin",
 )))]
 const fn max_iov() -> usize {
-    16 // The minimum value required by POSIX.
+    16 // POSIX 要求的最小值。
 }
 
 impl FileDesc {
@@ -167,14 +164,14 @@ impl FileDesc {
                 self.as_raw_fd(),
                 buf.as_mut_ptr() as *mut libc::c_void,
                 cmp::min(buf.len(), READ_LIMIT),
-                offset as off64_t, // EINVAL if offset + count overflows
+                offset as off64_t, // 如果 offset + count 溢出则返回 EINVAL
             )
         })
         .map(|n| n as usize)
     }
 
     pub fn read_buf(&self, mut cursor: BorrowedCursor<'_>) -> io::Result<()> {
-        // SAFETY: `cursor.as_mut()` starts with `cursor.capacity()` writable bytes
+        // SAFETY: `cursor.as_mut()` 起始处有 `cursor.capacity()` 个可写字节
         let ret = cvt(unsafe {
             libc::read(
                 self.as_raw_fd(),
@@ -183,7 +180,7 @@ impl FileDesc {
             )
         })?;
 
-        // SAFETY: `ret` bytes were written to the initialized portion of the buffer
+        // SAFETY: `ret` 个字节已被写入缓冲区的已初始化部分
         unsafe {
             cursor.advance_unchecked(ret as usize);
         }
@@ -191,17 +188,17 @@ impl FileDesc {
     }
 
     pub fn read_buf_at(&self, mut cursor: BorrowedCursor<'_>, offset: u64) -> io::Result<()> {
-        // SAFETY: `cursor.as_mut()` starts with `cursor.capacity()` writable bytes
+        // SAFETY: `cursor.as_mut()` 起始处有 `cursor.capacity()` 个可写字节
         let ret = cvt(unsafe {
             pread64(
                 self.as_raw_fd(),
                 cursor.as_mut().as_mut_ptr().cast::<libc::c_void>(),
                 cmp::min(cursor.capacity(), READ_LIMIT),
-                offset as off64_t, // EINVAL if offset + count overflows
+                offset as off64_t, // 如果 offset + count 溢出则返回 EINVAL
             )
         })?;
 
-        // SAFETY: `ret` bytes were written to the initialized portion of the buffer
+        // SAFETY: `ret` 个字节已被写入缓冲区的已初始化部分
         unsafe {
             cursor.advance_unchecked(ret as usize);
         }
@@ -250,12 +247,11 @@ impl FileDesc {
         io::default_read_vectored(|b| self.read_at(b, offset), bufs)
     }
 
-    // We support some old Android versions that do not have `preadv` in libc,
-    // so we use weak linkage and fallback to a direct syscall if not available.
+    // 我们支持一些没有在 libc 中提供 `preadv` 的旧版 Android，
+    // 所以我们使用弱链接(weak linkage），在它不可用时回退到直接进行系统调用。
     //
-    // On 32-bit targets, we don't want to deal with weird ABI issues around
-    // passing 64-bits parameters to syscalls, so we fallback to the default
-    // implementation if `preadv` is not available.
+    // 在 32 位目标平台上，我们不想去处理向系统调用传递 64 位参数时那些奇怪的
+    // ABI 问题，所以如果 `preadv` 不可用，我们就回退到默认实现。
     #[cfg(all(target_os = "android", target_pointer_width = "64"))]
     pub fn read_vectored_at(&self, bufs: &mut [IoSliceMut<'_>], offset: u64) -> io::Result<usize> {
         syscall!(
@@ -305,15 +301,15 @@ impl FileDesc {
         }
     }
 
-    // We support old MacOS, iOS, watchOS, tvOS and visionOS. `preadv` was added in the following
-    // Apple OS versions:
+    // 我们支持旧版的 MacOS、iOS、watchOS、tvOS 和 visionOS。`preadv` 是在以下
+    // Apple OS 版本中加入的：
     // ios 14.0
     // tvos 14.0
     // macos 11.0
     // watchos 7.0
     //
-    // These versions may be newer than the minimum supported versions of OS's we support so we must
-    // use "weak" linking.
+    // 这些版本可能比我们所支持的操作系统的最低支持版本还要新，所以我们必须
+    // 使用「弱(weak）」链接。
     #[cfg(target_vendor = "apple")]
     pub fn read_vectored_at(&self, bufs: &mut [IoSliceMut<'_>], offset: u64) -> io::Result<usize> {
         weak!(
@@ -457,12 +453,11 @@ impl FileDesc {
         io::default_write_vectored(|b| self.write_at(b, offset), bufs)
     }
 
-    // We support some old Android versions that do not have `pwritev` in libc,
-    // so we use weak linkage and fallback to a direct syscall if not available.
+    // 我们支持一些没有在 libc 中提供 `pwritev` 的旧版 Android，
+    // 所以我们使用弱链接(weak linkage），在它不可用时回退到直接进行系统调用。
     //
-    // On 32-bit targets, we don't want to deal with weird ABI issues around
-    // passing 64-bits parameters to syscalls, so we fallback to the default
-    // implementation if `pwritev` is not available.
+    // 在 32 位目标平台上，我们不想去处理向系统调用传递 64 位参数时那些奇怪的
+    // ABI 问题，所以如果 `pwritev` 不可用，我们就回退到默认实现。
     #[cfg(all(target_os = "android", target_pointer_width = "64"))]
     pub fn write_vectored_at(&self, bufs: &[IoSlice<'_>], offset: u64) -> io::Result<usize> {
         syscall!(
@@ -512,15 +507,15 @@ impl FileDesc {
         }
     }
 
-    // We support old MacOS, iOS, watchOS, tvOS and visionOS. `pwritev` was added in the following
-    // Apple OS versions:
+    // 我们支持旧版的 MacOS、iOS、watchOS、tvOS 和 visionOS。`pwritev` 是在以下
+    // Apple OS 版本中加入的：
     // ios 14.0
     // tvos 14.0
     // macos 11.0
     // watchos 7.0
     //
-    // These versions may be newer than the minimum supported versions of OS's we support so we must
-    // use "weak" linking.
+    // 这些版本可能比我们所支持的操作系统的最低支持版本还要新，所以我们必须
+    // 使用「弱(weak）」链接。
     #[cfg(target_vendor = "apple")]
     pub fn write_vectored_at(&self, bufs: &[IoSlice<'_>], offset: u64) -> io::Result<usize> {
         weak!(
@@ -599,8 +594,8 @@ impl FileDesc {
     }
     #[cfg(any(target_os = "espidf", target_os = "horizon", target_os = "vita"))]
     pub fn set_cloexec(&self) -> io::Result<()> {
-        // FD_CLOEXEC is not supported in ESP-IDF, Horizon OS and Vita but there's no need to,
-        // because none of them supports spawning processes.
+        // ESP-IDF、Horizon OS 和 Vita 不支持 FD_CLOEXEC，但也没有必要支持，
+        // 因为它们都不支持派生(spawn）进程。
         Ok(())
     }
 

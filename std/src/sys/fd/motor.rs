@@ -49,7 +49,7 @@ impl FileDesc {
     #[inline]
     pub fn duplicate(&self) -> io::Result<FileDesc> {
         let fd = moto_rt::fs::duplicate(self.as_raw_fd()).map_err(map_motor_error)?;
-        // SAFETY: safe because we just got it from the OS runtime.
+        // SAFETY: 安全，因为我们刚刚从操作系统运行时拿到了它。
         unsafe { Ok(Self::from_raw_fd(fd)) }
     }
 

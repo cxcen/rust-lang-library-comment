@@ -1,17 +1,14 @@
-//! System bindings for HermitCore
+//! HermitCore 的系统绑定（System bindings）
 //!
-//! This module contains the facade (aka platform-specific) implementations of
-//! OS level functionality for HermitCore.
+//! 本模块包含 HermitCore 上 OS 级功能的门面（facade，即平台特定）实现。
 //!
-//! This is all super highly experimental and not actually intended for
-//! wide/production use yet, it's still all in the experimental category. This
-//! will likely change over time.
+//! 这一切都还处于高度实验性阶段，目前并不真正打算用于广泛/生产环境，
+//! 仍完全属于实验性范畴。随着时间推移，这些很可能会发生变化。
 //!
-//! Currently all functions here are basically stubs that immediately return
-//! errors. The hope is that with a portability lint we can turn actually just
-//! remove all this and just omit parts of the standard library if we're
-//! compiling for wasm. That way it's a compile time error for something that's
-//! guaranteed to be a runtime error!
+//! 目前这里的所有函数基本上都是立即返回错误的桩（stub）。我们希望借助一个
+//! 可移植性 lint，实际上可以直接移除所有这些代码：当我们为 wasm 编译时，
+//! 干脆省略标准库中的相应部分。这样一来，对于那些注定会在运行时出错的东西，
+//! 就能变成编译期错误！
 
 #![deny(unsafe_op_in_unsafe_fn)]
 #![allow(missing_docs, nonstandard_style)]
@@ -37,16 +34,16 @@ pub fn abort_internal() -> ! {
     unsafe { hermit_abi::abort() }
 }
 
-// SAFETY: must be called only once during runtime initialization.
-// NOTE: this is not guaranteed to run, for example when Rust code is called externally.
+// SAFETY: 必须在运行时初始化期间仅调用一次。
+// NOTE: 不保证一定会被运行，例如当 Rust 代码被外部调用时。
 pub unsafe fn init(argc: isize, argv: *const *const u8, _sigpipe: u8) {
     unsafe {
         crate::sys::args::init(argc, argv);
     }
 }
 
-// SAFETY: must be called only once during runtime cleanup.
-// NOTE: this is not guaranteed to run, for example when the program aborts.
+// SAFETY: 必须在运行时清理期间仅调用一次。
+// NOTE: 不保证一定会被运行，例如当程序中止（abort）时。
 pub unsafe fn cleanup() {}
 
 #[cfg(not(test))]
@@ -60,7 +57,7 @@ pub unsafe extern "C" fn runtime_entry(
         fn main(argc: isize, argv: *const *const c_char) -> i32;
     }
 
-    // initialize environment
+    // 初始化环境变量
     env::init(env);
 
     let result = unsafe { main(argc as isize, argv) };

@@ -51,7 +51,7 @@ cfg_select! {
     }
 }
 
-// FIXME: Replace this with platform-specific path conversion functions.
+// FIXME: 用平台特定的路径转换函数替换它。
 #[cfg(not(any(target_family = "unix", target_os = "windows", target_os = "wasi")))]
 #[inline]
 pub fn with_native_path<T>(path: &Path, f: &dyn Fn(&Path) -> io::Result<T>) -> io::Result<T> {
@@ -64,7 +64,7 @@ pub use imp::{
 };
 
 pub fn read_dir(path: &Path) -> io::Result<ReadDir> {
-    // FIXME: use with_native_path on all platforms
+    // FIXME: 在所有平台上都改用 with_native_path
     imp::readdir(path)
 }
 
@@ -81,7 +81,7 @@ pub fn remove_dir(path: &Path) -> io::Result<()> {
 }
 
 pub fn remove_dir_all(path: &Path) -> io::Result<()> {
-    // FIXME: use with_native_path on all platforms
+    // FIXME: 在所有平台上都改用 with_native_path
     #[cfg(not(windows))]
     return imp::remove_dir_all(path);
     #[cfg(windows)]
@@ -93,7 +93,7 @@ pub fn read_link(path: &Path) -> io::Result<PathBuf> {
 }
 
 pub fn symlink(original: &Path, link: &Path) -> io::Result<()> {
-    // FIXME: use with_native_path on all platforms
+    // FIXME: 在所有平台上都改用 with_native_path
     #[cfg(windows)]
     return imp::symlink(original, link);
     #[cfg(not(windows))]
@@ -126,8 +126,8 @@ pub fn set_permissions_nofollow(path: &Path, perm: crate::fs::Permissions) -> io
 
     let mut options = OpenOptions::new();
 
-    // ESP-IDF and Horizon do not support O_NOFOLLOW, so we skip setting it.
-    // Their filesystems do not have symbolic links, so no special handling is required.
+    // ESP-IDF 和 Horizon 不支持 O_NOFOLLOW，因此我们跳过设置它。
+    // 它们的文件系统没有符号链接，因此无需特殊处理。
     #[cfg(not(any(target_os = "espidf", target_os = "horizon")))]
     {
         use crate::os::unix::fs::OpenOptionsExt;
@@ -149,7 +149,7 @@ pub fn canonicalize(path: &Path) -> io::Result<PathBuf> {
 }
 
 pub fn copy(from: &Path, to: &Path) -> io::Result<u64> {
-    // FIXME: use with_native_path on all platforms
+    // FIXME: 在所有平台上都改用 with_native_path
     #[cfg(not(windows))]
     return imp::copy(from, to);
     #[cfg(windows)]
@@ -157,7 +157,7 @@ pub fn copy(from: &Path, to: &Path) -> io::Result<u64> {
 }
 
 pub fn exists(path: &Path) -> io::Result<bool> {
-    // FIXME: use with_native_path on all platforms
+    // FIXME: 在所有平台上都改用 with_native_path
     #[cfg(not(windows))]
     return imp::exists(path);
     #[cfg(windows)]

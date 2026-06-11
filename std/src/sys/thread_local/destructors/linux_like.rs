@@ -1,21 +1,20 @@
-//! Destructor registration for Linux-like systems.
+//! 针对 Linux 类系统的析构函数（destructor）注册。
 //!
-//! Since what appears to be version 2.18, glibc has shipped the
-//! `__cxa_thread_atexit_impl` symbol which GCC and clang both use to invoke
-//! destructors in C++ thread_local globals. This function does exactly what
-//! we want: it schedules a callback which will be run at thread exit with the
-//! provided argument.
+//! 大约从 2.18 版本起，glibc 开始提供 `__cxa_thread_atexit_impl` 符号，
+//! GCC 和 clang 都用它来为 C++ thread_local 全局变量调用析构函数。
+//! 这个函数所做的事情正是我们想要的：它调度一个回调，该回调将在线程退出时
+//! 以提供的参数被运行。
 //!
-//! Unfortunately, our minimum supported glibc version (at the time of writing)
-//! is 2.17, so we can only link this symbol weakly and need to use the
-//! [`list`](super::list) destructor implementation as fallback.
+//! 遗憾的是，（在撰写本文时）我们所支持的最低 glibc 版本是 2.17，
+//! 所以我们只能弱链接（link weakly）此符号，并需要用
+//! [`list`](super::list) 析构函数实现作为回退方案。
 
 use crate::mem::transmute;
 
 pub unsafe fn register(t: *mut u8, dtor: unsafe extern "C" fn(*mut u8)) {
-    /// This is necessary because the __cxa_thread_atexit_impl implementation
-    /// std links to by default may be a C or C++ implementation that was not
-    /// compiled using the Clang integer normalization option.
+    /// 这是必要的，因为 std 默认链接到的 __cxa_thread_atexit_impl 实现
+    /// 可能是一个 C 或 C++ 实现，且它没有使用 Clang 的整数规范化
+    ///（integer normalization）选项编译。
     #[cfg(sanitizer_cfi_normalize_integers)]
     use core::ffi::c_int;
     #[cfg(not(sanitizer_cfi_normalize_integers))]

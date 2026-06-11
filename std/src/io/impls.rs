@@ -7,7 +7,7 @@ use crate::io::{self, BorrowedCursor, BufRead, IoSlice, IoSliceMut, Read, Seek, 
 use crate::{cmp, fmt, mem, str};
 
 // =============================================================================
-// Forwarding implementations
+// 转发（forwarding）实现
 
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<R: Read + ?Sized> Read for &mut R {
@@ -288,12 +288,11 @@ impl<B: BufRead + ?Sized> BufRead for Box<B> {
 }
 
 // =============================================================================
-// In-memory buffer implementations
+// 内存缓冲区（in-memory buffer）实现
 
-/// Read is implemented for `&[u8]` by copying from the slice.
+/// `&[u8]` 的 Read 实现是通过从该切片复制数据来完成的。
 ///
-/// Note that reading updates the slice to point to the yet unread part.
-/// The slice will be empty when EOF is reached.
+/// 注意，读取会更新该切片，使其指向尚未读取的部分。当到达 EOF 时，该切片将为空。
 #[stable(feature = "rust1", since = "1.0.0")]
 impl Read for &[u8] {
     #[inline]
@@ -301,9 +300,8 @@ impl Read for &[u8] {
         let amt = cmp::min(buf.len(), self.len());
         let (a, b) = self.split_at(amt);
 
-        // First check if the amount of bytes we want to read is small:
-        // `copy_from_slice` will generally expand to a call to `memcpy`, and
-        // for a single byte the overhead is significant.
+        // 首先检查我们想读取的字节数是否很小：`copy_from_slice` 一般会展开为对 `memcpy` 的调用，
+        // 而对于单个字节而言，这个开销是显著的。
         if amt == 1 {
             buf[0] = a[0];
         } else {
@@ -346,16 +344,14 @@ impl Read for &[u8] {
     #[inline]
     fn read_exact(&mut self, buf: &mut [u8]) -> io::Result<()> {
         if buf.len() > self.len() {
-            // `read_exact` makes no promise about the content of `buf` if it
-            // fails so don't bother about that.
+            // 如果 `read_exact` 失败，它不对 `buf` 的内容做任何承诺，所以这里不必费心处理它。
             *self = &self[self.len()..];
             return Err(io::Error::READ_EXACT_EOF);
         }
         let (a, b) = self.split_at(buf.len());
 
-        // First check if the amount of bytes we want to read is small:
-        // `copy_from_slice` will generally expand to a call to `memcpy`, and
-        // for a single byte the overhead is significant.
+        // 首先检查我们想读取的字节数是否很小：`copy_from_slice` 一般会展开为对 `memcpy` 的调用，
+        // 而对于单个字节而言，这个开销是显著的。
         if buf.len() == 1 {
             buf[0] = a[0];
         } else {
@@ -369,7 +365,7 @@ impl Read for &[u8] {
     #[inline]
     fn read_buf_exact(&mut self, mut cursor: BorrowedCursor<'_>) -> io::Result<()> {
         if cursor.capacity() > self.len() {
-            // Append everything we can to the cursor.
+            // 把我们能追加的内容全部追加到 cursor 中。
             cursor.append(*self);
             *self = &self[self.len()..];
             return Err(io::Error::READ_EXACT_EOF);
@@ -415,15 +411,12 @@ impl BufRead for &[u8] {
     }
 }
 
-/// Write is implemented for `&mut [u8]` by copying into the slice, overwriting
-/// its data.
+/// `&mut [u8]` 的 Write 实现是通过复制到该切片中、覆写其数据来完成的。
 ///
-/// Note that writing updates the slice to point to the yet unwritten part.
-/// The slice will be empty when it has been completely overwritten.
+/// 注意，写入会更新该切片，使其指向尚未写入的部分。当切片被完全覆写后，它将为空。
 ///
-/// If the number of bytes to be written exceeds the size of the slice, write operations will
-/// return short writes: ultimately, `Ok(0)`; in this situation, `write_all` returns an error of
-/// kind `ErrorKind::WriteZero`.
+/// 如果要写入的字节数超过了切片的大小，写操作将返回短写（short write）：最终返回 `Ok(0)`；
+/// 在这种情况下，`write_all` 会返回一个种类为 `ErrorKind::WriteZero` 的错误。
 #[stable(feature = "rust1", since = "1.0.0")]
 impl Write for &mut [u8] {
     #[inline]
@@ -474,8 +467,7 @@ impl Write for &mut [u8] {
     }
 }
 
-/// Write is implemented for `Vec<u8>` by appending to the vector.
-/// The vector will grow as needed.
+/// `Vec<u8>` 的 Write 实现是通过追加到该向量来完成的。该向量会按需增长。
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<A: Allocator> Write for Vec<u8, A> {
     #[inline]
@@ -517,12 +509,11 @@ impl<A: Allocator> Write for Vec<u8, A> {
     }
 }
 
-/// Read is implemented for `VecDeque<u8>` by consuming bytes from the front of the `VecDeque`.
+/// `VecDeque<u8>` 的 Read 实现是通过从 `VecDeque` 前端消耗字节来完成的。
 #[stable(feature = "vecdeque_read_write", since = "1.63.0")]
 impl<A: Allocator> Read for VecDeque<u8, A> {
-    /// Fill `buf` with the contents of the "front" slice as returned by
-    /// [`as_slices`][`VecDeque::as_slices`]. If the contained byte slices of the `VecDeque` are
-    /// discontiguous, multiple calls to `read` will be needed to read the entire content.
+    /// 用由 [`as_slices`][`VecDeque::as_slices`] 返回的「前端」切片的内容填充 `buf`。如果该
+    /// `VecDeque` 所含的字节切片是不连续的，那么读取全部内容将需要多次调用 `read`。
     #[inline]
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         let (ref mut front, _) = self.as_slices();
@@ -535,8 +526,7 @@ impl<A: Allocator> Read for VecDeque<u8, A> {
     fn read_exact(&mut self, buf: &mut [u8]) -> io::Result<()> {
         let (front, back) = self.as_slices();
 
-        // Use only the front buffer if it is big enough to fill `buf`, else use
-        // the back buffer too.
+        // 如果前端缓冲区足够大，能填满 `buf`，就只用它；否则也要用上后端缓冲区。
         match buf.split_at_mut_checked(front.len()) {
             None => buf.copy_from_slice(&front[..buf.len()]),
             Some((buf_front, buf_back)) => match back.split_at_checked(buf_back.len()) {
@@ -590,7 +580,7 @@ impl<A: Allocator> Read for VecDeque<u8, A> {
 
     #[inline]
     fn read_to_end(&mut self, buf: &mut Vec<u8>) -> io::Result<usize> {
-        // The total len is known upfront so we can reserve it in a single call.
+        // 总长度事先已知，所以我们可以在单次调用中预留它。
         let len = self.len();
         buf.try_reserve(len)?;
 
@@ -603,17 +593,16 @@ impl<A: Allocator> Read for VecDeque<u8, A> {
 
     #[inline]
     fn read_to_string(&mut self, buf: &mut String) -> io::Result<usize> {
-        // SAFETY: We only append to the buffer
+        // 安全性：我们只对缓冲区进行追加
         unsafe { io::append_to_string(buf, |buf| self.read_to_end(buf)) }
     }
 }
 
-/// BufRead is implemented for `VecDeque<u8>` by reading bytes from the front of the `VecDeque`.
+/// `VecDeque<u8>` 的 BufRead 实现是通过从 `VecDeque` 前端读取字节来完成的。
 #[stable(feature = "vecdeque_buf_read", since = "1.75.0")]
 impl<A: Allocator> BufRead for VecDeque<u8, A> {
-    /// Returns the contents of the "front" slice as returned by
-    /// [`as_slices`][`VecDeque::as_slices`]. If the contained byte slices of the `VecDeque` are
-    /// discontiguous, multiple calls to `fill_buf` will be needed to read the entire content.
+    /// 返回由 [`as_slices`][`VecDeque::as_slices`] 返回的「前端」切片的内容。如果该 `VecDeque`
+    /// 所含的字节切片是不连续的，那么读取全部内容将需要多次调用 `fill_buf`。
     #[inline]
     fn fill_buf(&mut self) -> io::Result<&[u8]> {
         let (front, _) = self.as_slices();
@@ -626,7 +615,7 @@ impl<A: Allocator> BufRead for VecDeque<u8, A> {
     }
 }
 
-/// Write is implemented for `VecDeque<u8>` by appending to the `VecDeque`, growing it as needed.
+/// `VecDeque<u8>` 的 Write 实现是通过追加到该 `VecDeque`、按需让它增长来完成的。
 #[stable(feature = "vecdeque_read_write", since = "1.63.0")]
 impl<A: Allocator> Write for VecDeque<u8, A> {
     #[inline]

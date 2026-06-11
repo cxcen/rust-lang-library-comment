@@ -1,15 +1,15 @@
-//! Generic hashing support.
+//! 通用的 hash 支持。
 //!
-//! This module provides a generic way to compute the [hash] of a value.
-//! Hashes are most commonly used with [`HashMap`] and [`HashSet`].
+//! 本模块提供了一种计算某个值的 [hash] 的通用方式。
+//! hash 最常与 [`HashMap`] 和 [`HashSet`] 一起使用。
 //!
 //! [hash]: https://en.wikipedia.org/wiki/Hash_function
 //! [`HashMap`]: ../../std/collections/struct.HashMap.html
 //! [`HashSet`]: ../../std/collections/struct.HashSet.html
 //!
-//! The simplest way to make a type hashable is to use `#[derive(Hash)]`:
+//! 让一个类型可被 hash 的最简单方式是使用 `#[derive(Hash)]`：
 //!
-//! # Examples
+//! # 示例
 //!
 //! ```rust
 //! use std::hash::{DefaultHasher, Hash, Hasher};
@@ -41,8 +41,7 @@
 //! }
 //! ```
 //!
-//! If you need more control over how a value is hashed, you need to implement
-//! the [`Hash`] trait:
+//! 如果你需要对一个值如何被 hash 有更多的控制，那就需要实现 [`Hash`] trait：
 //!
 //! ```rust
 //! use std::hash::{DefaultHasher, Hash, Hasher};

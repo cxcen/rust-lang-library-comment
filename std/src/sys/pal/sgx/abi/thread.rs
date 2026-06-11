@@ -1,9 +1,8 @@
 use fortanix_sgx_abi::Tcs;
 
-/// Gets the ID for the current thread. The ID is guaranteed to be unique among
-/// all currently running threads in the enclave, and it is guaranteed to be
-/// constant for the lifetime of the thread. More specifically for SGX, there
-/// is a one-to-one correspondence of the ID to the address of the TCS.
+/// 获取当前线程的 ID。该 ID 保证在 enclave 中所有当前运行的线程之间唯一，并且
+/// 保证在该线程的生命周期内保持不变。更具体地说，对于 SGX，该 ID 与 TCS 的地址
+/// 之间存在一一对应关系。
 #[unstable(feature = "sgx_platform", issue = "56975")]
 pub fn current() -> Tcs {
     unsafe extern "C" {

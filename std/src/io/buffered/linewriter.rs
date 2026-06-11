@@ -2,25 +2,21 @@ use crate::fmt;
 use crate::io::buffered::LineWriterShim;
 use crate::io::{self, BufWriter, IntoInnerError, IoSlice, Write};
 
-/// Wraps a writer and buffers output to it, flushing whenever a newline
-/// (`0x0a`, `'\n'`) is detected.
+/// 包装一个 writer 并对写向它的输出进行缓冲，每当检测到换行符（`0x0a`，即 `'\n'`）时就刷新。
 ///
-/// The [`BufWriter`] struct wraps a writer and buffers its output.
-/// But it only does this batched write when it goes out of scope, or when the
-/// internal buffer is full. Sometimes, you'd prefer to write each line as it's
-/// completed, rather than the entire buffer at once. Enter `LineWriter`. It
-/// does exactly that.
+/// [`BufWriter`] 结构体会包装一个 writer 并对其输出进行缓冲。但它只在自身离开作用域、或内部
+/// 缓冲被填满时，才执行这种成批写出。有时你会更希望每完成一行就写出一行，而不是一次性写出整个
+/// 缓冲。`LineWriter` 应运而生，它做的正是这件事。
 ///
-/// Like [`BufWriter`], a `LineWriter`’s buffer will also be flushed when the
-/// `LineWriter` goes out of scope or when its internal buffer is full.
+/// 与 [`BufWriter`] 类似，`LineWriter` 的缓冲在 `LineWriter` 离开作用域、或其内部缓冲被
+/// 填满时也会被刷新。
 ///
-/// If there's still a partial line in the buffer when the `LineWriter` is
-/// dropped, it will flush those contents.
+/// 如果 `LineWriter` 被 drop 时缓冲里还残留着一行的一部分（尚未遇到换行符），它会把这些内容
+/// 刷新出去。
 ///
-/// # Examples
+/// # 示例
 ///
-/// We can use `LineWriter` to write one line at a time, significantly
-/// reducing the number of actual writes to the file.
+/// 我们可以用 `LineWriter` 来逐行写入，从而显著减少对文件的实际写入次数。
 ///
 /// ```no_run
 /// use std::fs::{self, File};
@@ -39,8 +35,7 @@ use crate::io::{self, BufWriter, IntoInnerError, IoSlice, Write};
 ///
 ///     file.write_all(b"I shall be telling this with a sigh")?;
 ///
-///     // No bytes are written until a newline is encountered (or
-///     // the internal buffer is filled).
+///     // 在遇到换行符（或内部缓冲被填满）之前，不会写出任何字节。
 ///     assert_eq!(fs::read_to_string("poem.txt")?, "");
 ///     file.write_all(b"\n")?;
 ///     assert_eq!(
@@ -48,18 +43,17 @@ use crate::io::{self, BufWriter, IntoInnerError, IoSlice, Write};
 ///         "I shall be telling this with a sigh\n",
 ///     );
 ///
-///     // Write the rest of the poem.
+///     // 写出这首诗的其余部分。
 ///     file.write_all(b"Somewhere ages and ages hence:
 /// Two roads diverged in a wood, and I -
 /// I took the one less traveled by,
 /// And that has made all the difference.")?;
 ///
-///     // The last line of the poem doesn't end in a newline, so
-///     // we have to flush or drop the `LineWriter` to finish
-///     // writing.
+///     // 这首诗的最后一行不以换行符结尾，所以我们必须 flush 或 drop 这个 `LineWriter`
+///     // 才能完成写入。
 ///     file.flush()?;
 ///
-///     // Confirm the whole poem was written.
+///     // 确认整首诗都已写出。
 ///     assert_eq!(fs::read("poem.txt")?, &road_not_taken[..]);
 ///     Ok(())
 /// }
@@ -70,9 +64,9 @@ pub struct LineWriter<W: ?Sized + Write> {
 }
 
 impl<W: Write> LineWriter<W> {
-    /// Creates a new `LineWriter`.
+    /// 创建一个新的 `LineWriter`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs::File;
@@ -86,14 +80,13 @@ impl<W: Write> LineWriter<W> {
     /// ```
     #[stable(feature = "rust1", since = "1.0.0")]
     pub fn new(inner: W) -> LineWriter<W> {
-        // Lines typically aren't that long, don't use a giant buffer
+        // 一行通常不会太长，所以不要用一个巨大的缓冲
         LineWriter::with_capacity(1024, inner)
     }
 
-    /// Creates a new `LineWriter` with at least the specified capacity for the
-    /// internal buffer.
+    /// 创建一个新的 `LineWriter`，其内部缓冲容量至少为指定的大小。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs::File;
@@ -110,12 +103,12 @@ impl<W: Write> LineWriter<W> {
         LineWriter { inner: BufWriter::with_capacity(capacity, inner) }
     }
 
-    /// Gets a mutable reference to the underlying writer.
+    /// 获取对底层 writer 的可变引用。
     ///
-    /// Caution must be taken when calling methods on the mutable reference
-    /// returned as extra writes could corrupt the output stream.
+    /// 在所返回的可变引用上调用方法时必须谨慎，因为额外的写入可能会破坏输出流（打乱
+    /// LineWriter 的行缓冲状态）。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs::File;
@@ -125,7 +118,7 @@ impl<W: Write> LineWriter<W> {
     ///     let file = File::create("poem.txt")?;
     ///     let mut file = LineWriter::new(file);
     ///
-    ///     // we can use reference just like file
+    ///     // 我们可以像使用 file 一样使用这个引用
     ///     let reference = file.get_mut();
     ///     Ok(())
     /// }
@@ -135,15 +128,15 @@ impl<W: Write> LineWriter<W> {
         self.inner.get_mut()
     }
 
-    /// Unwraps this `LineWriter`, returning the underlying writer.
+    /// 拆开（unwrap）这个 `LineWriter`，返回其底层 writer。
     ///
-    /// The internal buffer is written out before returning the writer.
+    /// 在返回 writer 之前，内部缓冲会先被写出。
     ///
     /// # Errors
     ///
-    /// An [`Err`] will be returned if an error occurs while flushing the buffer.
+    /// 如果在刷新缓冲时发生错误，将返回一个 [`Err`]。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs::File;
@@ -165,9 +158,9 @@ impl<W: Write> LineWriter<W> {
 }
 
 impl<W: ?Sized + Write> LineWriter<W> {
-    /// Gets a reference to the underlying writer.
+    /// 获取对底层 writer 的不可变引用。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs::File;

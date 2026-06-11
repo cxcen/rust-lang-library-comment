@@ -8,7 +8,7 @@ use crate::sys::helpers::run_path_with_cstr;
 use crate::sys::unsupported;
 use crate::{fmt, io};
 
-// Add a few symbols not in upstream `libc` just yet.
+// 补充一些目前在上游 `libc` 中尚未提供的符号。
 pub mod libc {
     pub use libc::*;
 
@@ -36,8 +36,7 @@ pub fn getcwd() -> io::Result<PathBuf> {
                 }
             }
 
-            // Trigger the internal buffer resizing logic of `Vec` by requiring
-            // more space than the current capacity.
+            // 通过要求比当前容量更多的空间，触发 `Vec` 内部的缓冲区扩容逻辑。
             let cap = buf.capacity();
             buf.set_len(cap);
             buf.reserve(1);

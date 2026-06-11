@@ -4,7 +4,7 @@ use crate::ptr::NonNull;
 use crate::time::Duration;
 
 pub fn available_parallelism() -> io::Result<NonZero<usize>> {
-    // UEFI is single threaded
+    // UEFI 是单线程的
     Ok(NonZero::new(1).unwrap())
 }
 
@@ -12,7 +12,7 @@ pub fn sleep(dur: Duration) {
     let boot_services: NonNull<r_efi::efi::BootServices> =
         crate::os::uefi::env::boot_services().expect("can't sleep").cast();
     let mut dur_ms = dur.as_micros();
-    // ceil up to the nearest microsecond
+    // 向上取整到最近的微秒
     if dur.subsec_nanos() % 1000 > 0 {
         dur_ms += 1;
     }

@@ -1,14 +1,13 @@
-//! On Emscripten Rust panics are wrapped in C++ exceptions, so we just forward
-//! to `__gxx_personality_v0` which is provided by Emscripten.
+//! 在 Emscripten 上，Rust panic 被包裹进 C++ 异常中，所以我们只是转发到
+//! 由 Emscripten 提供的 `__gxx_personality_v0`。
 
 use unwind as uw;
 
 use crate::ffi::c_int;
 
-// This is required by the compiler to exist (e.g., it's a lang item), but it's
-// never actually called by the compiler.  Emscripten EH doesn't use a
-// personality function at all, it instead uses __cxa_find_matching_catch.
-// Wasm error handling would use __gxx_personality_wasm0.
+// 编译器要求它存在（例如它是一个 lang item），但编译器实际上从不会调用它。
+// Emscripten 的 EH（异常处理）根本不使用 personality 函数，它转而使用
+// __cxa_find_matching_catch。Wasm 错误处理则会使用 __gxx_personality_wasm0。
 #[lang = "eh_personality"]
 unsafe extern "C" fn rust_eh_personality(
     _version: c_int,

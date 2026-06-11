@@ -1,146 +1,122 @@
-//! Utilities related to FFI bindings.
+//! 与 FFI 绑定相关的实用工具。
 //!
-//! This module provides utilities to handle data across non-Rust
-//! interfaces, like other programming languages and the underlying
-//! operating system. It is mainly of use for FFI (Foreign Function
-//! Interface) bindings and code that needs to exchange C-like strings
-//! with other languages.
+//! 本模块提供了在非 Rust 接口（例如其他编程语言以及底层操作系统）之间
+//! 处理数据的实用工具。它主要用于 FFI（Foreign Function Interface，外部
+//! 函数接口）绑定，以及需要与其他语言交换 C 风格字符串的代码。
 //!
 //! # Overview
 //!
-//! Rust represents owned strings with the [`String`] type, and
-//! borrowed slices of strings with the [`str`] primitive. Both are
-//! always in UTF-8 encoding, and may contain nul bytes in the middle,
-//! i.e., if you look at the bytes that make up the string, there may
-//! be a `\0` among them. Both `String` and `str` store their length
-//! explicitly; there are no nul terminators at the end of strings
-//! like in C.
+//! Rust 用 [`String`] 类型表示拥有所有权的字符串，用 [`str`] 原生类型
+//! 表示对字符串的借用切片。两者始终采用 UTF-8 编码，并且中间可以包含
+//! nul 字节，也就是说，如果你查看组成字符串的那些字节，其中可能存在
+//! `\0`。`String` 和 `str` 都显式存储自己的长度；它们不像 C 那样在字符串
+//! 末尾使用 nul 终止符。
 //!
-//! C strings are different from Rust strings:
+//! C 字符串与 Rust 字符串有所不同：
 //!
-//! * **Encodings** - Rust strings are UTF-8, but C strings may use
-//! other encodings. If you are using a string from C, you should
-//! check its encoding explicitly, rather than just assuming that it
-//! is UTF-8 like you can do in Rust.
+//! * **Encodings** - Rust 字符串是 UTF-8，但 C 字符串可能使用其他编码。
+//! 如果你使用来自 C 的字符串，应当显式检查它的编码，而不是像在 Rust 中
+//! 那样直接假设它是 UTF-8。
 //!
-//! * **Character size** - C strings may use `char` or `wchar_t`-sized
-//! characters; please **note** that C's `char` is different from Rust's.
-//! The C standard leaves the actual sizes of those types open to
-//! interpretation, but defines different APIs for strings made up of
-//! each character type. Rust strings are always UTF-8, so different
-//! Unicode characters will be encoded in a variable number of bytes
-//! each. The Rust type [`char`] represents a '[Unicode scalar
-//! value]', which is similar to, but not the same as, a '[Unicode
-//! code point]'.
+//! * **Character size** - C 字符串可能使用 `char` 或 `wchar_t` 大小的字符；
+//! 请**注意**：C 的 `char` 与 Rust 的 `char` 是不同的。C 标准并未规定这些
+//! 类型的实际大小，而是留给具体实现去解释，但为由每种字符类型组成的字符串
+//! 定义了不同的 API。Rust 字符串始终是 UTF-8，因此不同的 Unicode 字符各自
+//! 会被编码为数量不等的若干字节。Rust 类型 [`char`] 表示一个 '[Unicode scalar
+//! value]'（Unicode 标量值），它与 '[Unicode code point]'（Unicode 码点）
+//! 相似，但并不相同。
 //!
-//! * **Nul terminators and implicit string lengths** - Often, C
-//! strings are nul-terminated, i.e., they have a `\0` character at the
-//! end. The length of a string buffer is not stored, but has to be
-//! calculated; to compute the length of a string, C code must
-//! manually call a function like `strlen()` for `char`-based strings,
-//! or `wcslen()` for `wchar_t`-based ones. Those functions return
-//! the number of characters in the string excluding the nul
-//! terminator, so the buffer length is really `len+1` characters.
-//! Rust strings don't have a nul terminator; their length is always
-//! stored and does not need to be calculated. While in Rust
-//! accessing a string's length is an *O*(1) operation (because the
-//! length is stored); in C it is an *O*(*n*) operation because the
-//! length needs to be computed by scanning the string for the nul
-//! terminator.
+//! * **Nul terminators and implicit string lengths** - C 字符串通常以 nul
+//! 结尾，也就是说它们在末尾有一个 `\0` 字符。字符串缓冲区的长度并不被
+//! 存储，而必须计算得到；为了计算字符串的长度，C 代码必须手动调用类似
+//! `strlen()`（针对基于 `char` 的字符串）或 `wcslen()`（针对基于 `wchar_t`
+//! 的字符串）这样的函数。这些函数返回不包括 nul 终止符在内的字符数，因此
+//! 缓冲区长度实际上是 `len+1` 个字符。Rust 字符串没有 nul 终止符；它们的
+//! 长度始终被存储，无需计算。在 Rust 中访问字符串长度是一个 *O*(1) 操作
+//! （因为长度被存储了）；而在 C 中则是 *O*(*n*) 操作，因为需要通过扫描
+//! 字符串查找 nul 终止符来计算长度。
 //!
-//! * **Internal nul characters** - When C strings have a nul
-//! terminator character, this usually means that they cannot have nul
-//! characters in the middle — a nul character would essentially
-//! truncate the string. Rust strings *can* have nul characters in
-//! the middle, because nul does not have to mark the end of the
-//! string in Rust.
+//! * **Internal nul characters** - 当 C 字符串带有 nul 终止符时，这通常
+//! 意味着它们中间不能含有 nul 字符——一个 nul 字符本质上会截断字符串。
+//! Rust 字符串*可以*在中间含有 nul 字符，因为在 Rust 中 nul 不必标记
+//! 字符串的结尾。
 //!
 //! # Representations of non-Rust strings
 //!
-//! [`CString`] and [`CStr`] are useful when you need to transfer
-//! UTF-8 strings to and from languages with a C ABI, like Python.
+//! 当你需要在具有 C ABI 的语言（例如 Python）之间传入和传出 UTF-8 字符串
+//! 时，[`CString`] 和 [`CStr`] 很有用。
 //!
-//! * **From Rust to C:** [`CString`] represents an owned, C-friendly
-//! string: it is nul-terminated, and has no internal nul characters.
-//! Rust code can create a [`CString`] out of a normal string (provided
-//! that the string doesn't have nul characters in the middle), and
-//! then use a variety of methods to obtain a raw <code>\*mut [u8]</code> that can
-//! then be passed as an argument to functions which use the C
-//! conventions for strings.
+//! * **From Rust to C:** [`CString`] 表示一个拥有所有权、对 C 友好的
+//! 字符串：它以 nul 结尾，且内部没有 nul 字符。Rust 代码可以从普通字符串
+//! 创建一个 [`CString`]（前提是该字符串中间没有 nul 字符），然后使用各种
+//! 方法获得一个裸 <code>\*mut [u8]</code>，进而作为参数传给采用 C 字符串
+//! 约定的函数。
 //!
-//! * **From C to Rust:** [`CStr`] represents a borrowed C string; it
-//! is what you would use to wrap a raw <code>\*const [u8]</code> that you got from
-//! a C function. A [`CStr`] is guaranteed to be a nul-terminated array
-//! of bytes. Once you have a [`CStr`], you can convert it to a Rust
-//! <code>&[str]</code> if it's valid UTF-8, or lossily convert it by adding
-//! replacement characters.
+//! * **From C to Rust:** [`CStr`] 表示一个借用的 C 字符串；当你要包装一个
+//! 从 C 函数得到的裸 <code>\*const [u8]</code> 时就会用到它。[`CStr`] 保证
+//! 是一个以 nul 结尾的字节数组。一旦得到了 [`CStr`]，如果它是有效的 UTF-8，
+//! 就可以把它转换成 Rust 的 <code>&[str]</code>，或者通过添加替换字符进行
+//! 有损转换。
 //!
-//! [`OsString`] and [`OsStr`] are useful when you need to transfer
-//! strings to and from the operating system itself, or when capturing
-//! the output of external commands. Conversions between [`OsString`],
-//! [`OsStr`] and Rust strings work similarly to those for [`CString`]
-//! and [`CStr`].
+//! 当你需要在操作系统自身之间传入和传出字符串，或者捕获外部命令的输出时，
+//! [`OsString`] 和 [`OsStr`] 很有用。[`OsString`]、[`OsStr`] 与 Rust 字符串
+//! 之间的转换，工作方式与 [`CString`] 和 [`CStr`] 的转换类似。
 //!
-//! * [`OsString`] losslessly represents an owned platform string. However, this
-//! representation is not necessarily in a form native to the platform.
-//! In the Rust standard library, various APIs that transfer strings to/from the operating
-//! system use [`OsString`] instead of plain strings. For example,
-//! [`env::var_os()`] is used to query environment variables; it
-//! returns an <code>[Option]<[OsString]></code>. If the environment variable
-//! exists you will get a <code>[Some]\(os_string)</code>, which you can
-//! *then* try to convert to a Rust string. This yields a [`Result`], so that
-//! your code can detect errors in case the environment variable did
-//! not in fact contain valid Unicode data.
+//! * [`OsString`] 无损地表示一个拥有所有权的平台字符串。然而，这种表示
+//! 不一定是平台原生的形式。在 Rust 标准库中，各种在操作系统之间传入/传出
+//! 字符串的 API 使用 [`OsString`] 而非普通字符串。例如，[`env::var_os()`]
+//! 用于查询环境变量；它返回一个 <code>[Option]<[OsString]></code>。如果该
+//! 环境变量存在，你会得到一个 <code>[Some]\(os_string)</code>，*然后*你可以
+//! 尝试把它转换成 Rust 字符串。该转换得到一个 [`Result`]，这样在环境变量
+//! 实际上并不包含有效 Unicode 数据时，你的代码就能检测到错误。
 //!
-//! * [`OsStr`] losslessly represents a borrowed reference to a platform string.
-//! However, this representation is not necessarily in a form native to the platform.
-//! It can be converted into a UTF-8 Rust string slice in a similar way to
-//! [`OsString`].
+//! * [`OsStr`] 无损地表示对一个平台字符串的借用引用。然而，这种表示不一定
+//! 是平台原生的形式。它能以类似于 [`OsString`] 的方式转换成 UTF-8 的 Rust
+//! 字符串切片。
 //!
 //! # Conversions
 //!
 //! ## On Unix
 //!
-//! On Unix, [`OsStr`] implements the
-//! <code>std::os::unix::ffi::[OsStrExt][unix.OsStrExt]</code> trait, which
-//! augments it with two methods, [`from_bytes`] and [`as_bytes`].
-//! These do inexpensive conversions from and to byte slices.
+//! 在 Unix 上，[`OsStr`] 实现了
+//! <code>std::os::unix::ffi::[OsStrExt][unix.OsStrExt]</code> trait，它为
+//! [`OsStr`] 增加了两个方法：[`from_bytes`] 和 [`as_bytes`]。这些方法在
+//! 字节切片与 [`OsStr`] 之间进行廉价的转换。
 //!
-//! Additionally, on Unix [`OsString`] implements the
-//! <code>std::os::unix::ffi::[OsStringExt][unix.OsStringExt]</code> trait,
-//! which provides [`from_vec`] and [`into_vec`] methods that consume
-//! their arguments, and take or produce vectors of [`u8`].
+//! 此外，在 Unix 上 [`OsString`] 实现了
+//! <code>std::os::unix::ffi::[OsStringExt][unix.OsStringExt]</code> trait，
+//! 它提供 [`from_vec`] 和 [`into_vec`] 方法，这两个方法会消耗其参数，
+//! 并接受或产出 [`u8`] 向量。
 //!
 //! ## On Windows
 //!
-//! An [`OsStr`] can be losslessly converted to a native Windows string. And
-//! a native Windows string can be losslessly converted to an [`OsString`].
+//! [`OsStr`] 可以无损地转换为原生 Windows 字符串。原生 Windows 字符串也
+//! 可以无损地转换为 [`OsString`]。
 //!
-//! On Windows, [`OsStr`] implements the
-//! <code>std::os::windows::ffi::[OsStrExt][windows.OsStrExt]</code> trait,
-//! which provides an [`encode_wide`] method. This provides an
-//! iterator that can be [`collect`]ed into a vector of [`u16`]. After a nul
-//! characters is appended, this is the same as a native Windows string.
+//! 在 Windows 上，[`OsStr`] 实现了
+//! <code>std::os::windows::ffi::[OsStrExt][windows.OsStrExt]</code> trait，
+//! 它提供一个 [`encode_wide`] 方法。该方法提供一个迭代器，可以被
+//! [`collect`] 成一个 [`u16`] 向量。在追加一个 nul 字符之后，它就与原生
+//! Windows 字符串相同了。
 //!
-//! Additionally, on Windows [`OsString`] implements the
+//! 此外，在 Windows 上 [`OsString`] 实现了
 //! <code>std::os::windows:ffi::[OsStringExt][windows.OsStringExt]</code>
-//! trait, which provides a [`from_wide`] method to convert a native Windows
-//! string (without the terminating nul character) to an [`OsString`].
+//! trait，它提供一个 [`from_wide`] 方法，用于把一个原生 Windows 字符串
+//! （不含结尾的 nul 字符）转换成 [`OsString`]。
 //!
 //! ## Other platforms
 //!
-//! Many other platforms provide their own extension traits in a
-//! `std::os::*::ffi` module.
+//! 许多其他平台在 `std::os::*::ffi` 模块中提供它们各自的扩展 trait。
 //!
 //! ## On all platforms
 //!
-//! On all platforms, [`OsStr`] consists of a sequence of bytes that is encoded as a superset of
-//! UTF-8; see [`OsString`] for more details on its encoding on different platforms.
+//! 在所有平台上，[`OsStr`] 都由一串字节组成，这串字节被编码为 UTF-8 的
+//! 一个超集；关于它在不同平台上的编码的更多细节，参见 [`OsString`]。
 //!
-//! For limited, inexpensive conversions from and to bytes, see [`OsStr::as_encoded_bytes`] and
-//! [`OsStr::from_encoded_bytes_unchecked`].
+//! 关于字节与 [`OsStr`] 之间有限且廉价的转换，参见 [`OsStr::as_encoded_bytes`]
+//! 和 [`OsStr::from_encoded_bytes_unchecked`]。
 //!
-//! For basic string processing, see [`OsStr::slice_encoded_bytes`].
+//! 关于基本的字符串处理，参见 [`OsStr::slice_encoded_bytes`]。
 //!
 //! [Unicode scalar value]: https://www.unicode.org/glossary/#unicode_scalar_value
 //! [Unicode code point]: https://www.unicode.org/glossary/#code_point

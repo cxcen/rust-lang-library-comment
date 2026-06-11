@@ -8,22 +8,20 @@ use crate::io::{
     self, BorrowedCursor, BufRead, IoSlice, IoSliceMut, Read, Seek, SeekFrom, SizeHint, Write,
 };
 
-/// `Empty` ignores any data written via [`Write`], and will always be empty
-/// (returning zero bytes) when read via [`Read`].
+/// `Empty` 会忽略任何通过 [`Write`] 写入的数据，并且在通过 [`Read`] 读取时始终为空
+///（返回零个字节）。
 ///
-/// This struct is generally created by calling [`empty()`]. Please
-/// see the documentation of [`empty()`] for more details.
+/// 这个结构体通常通过调用 [`empty()`] 来创建。更多细节请参见 [`empty()`] 的文档。
 #[stable(feature = "rust1", since = "1.0.0")]
 #[non_exhaustive]
 #[derive(Copy, Clone, Debug, Default)]
 pub struct Empty;
 
-/// Creates a value that is always at EOF for reads, and ignores all data written.
+/// 创建一个值：对读取而言它始终处于 EOF，对写入而言它会忽略所有数据。
 ///
-/// All calls to [`write`] on the returned instance will return [`Ok(buf.len())`]
-/// and the contents of the buffer will not be inspected.
+/// 对返回实例的所有 [`write`] 调用都将返回 [`Ok(buf.len())`]，且缓冲的内容不会被检查。
 ///
-/// All calls to [`read`] from the returned reader will return [`Ok(0)`].
+/// 对返回 reader 的所有 [`read`] 调用都将返回 [`Ok(0)`]。
 ///
 /// [`Ok(buf.len())`]: Ok
 /// [`Ok(0)`]: Ok
@@ -31,7 +29,7 @@ pub struct Empty;
 /// [`write`]: Write::write
 /// [`read`]: Read::read
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```rust
 /// use std::io::{self, Write};
@@ -75,8 +73,8 @@ impl Read for Empty {
 
     #[inline]
     fn is_read_vectored(&self) -> bool {
-        // Do not force `Chain<Empty, T>` or `Chain<T, Empty>` to use vectored
-        // reads, unless the other reader is vectored.
+        // 不要强迫 `Chain<Empty, T>` 或 `Chain<T, Empty>` 去使用向量化读取，除非另一个
+        // reader 本身就是向量化的。
         false
     }
 
@@ -234,21 +232,19 @@ impl Write for &Empty {
     }
 }
 
-/// A reader which yields one byte over and over and over and over and over and...
+/// 一个 reader，它会一遍又一遍又一遍又一遍又一遍地……不断产出同一个字节。
 ///
-/// This struct is generally created by calling [`repeat()`]. Please
-/// see the documentation of [`repeat()`] for more details.
+/// 这个结构体通常通过调用 [`repeat()`] 来创建。更多细节请参见 [`repeat()`] 的文档。
 #[stable(feature = "rust1", since = "1.0.0")]
 pub struct Repeat {
     byte: u8,
 }
 
-/// Creates an instance of a reader that infinitely repeats one byte.
+/// 创建一个 reader 实例，它会无限地重复同一个字节。
 ///
-/// All reads from this reader will succeed by filling the specified buffer with
-/// the given byte.
+/// 对这个 reader 的所有读取都会成功，做法是用给定的字节填满指定的缓冲。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use std::io::{self, Read};
@@ -280,9 +276,9 @@ impl Read for Repeat {
 
     #[inline]
     fn read_buf(&mut self, mut buf: BorrowedCursor<'_>) -> io::Result<()> {
-        // SAFETY: No uninit bytes are being written.
+        // SAFETY: 没有写入任何未初始化的字节。
         unsafe { buf.as_mut() }.write_filled(self.byte);
-        // SAFETY: the entire unfilled portion of buf has been initialized.
+        // SAFETY: buf 的整个未填充部分都已被初始化。
         unsafe { buf.advance_unchecked(buf.capacity()) };
         Ok(())
     }
@@ -292,12 +288,12 @@ impl Read for Repeat {
         self.read_buf(buf)
     }
 
-    /// This function is not supported by `io::Repeat`, because there's no end of its data
+    /// `io::Repeat` 不支持这个函数，因为它的数据没有尽头
     fn read_to_end(&mut self, _: &mut Vec<u8>) -> io::Result<usize> {
         Err(io::Error::from(io::ErrorKind::OutOfMemory))
     }
 
-    /// This function is not supported by `io::Repeat`, because there's no end of its data
+    /// `io::Repeat` 不支持这个函数，因为它的数据没有尽头
     fn read_to_string(&mut self, _: &mut String) -> io::Result<usize> {
         Err(io::Error::from(io::ErrorKind::OutOfMemory))
     }
@@ -336,24 +332,22 @@ impl fmt::Debug for Repeat {
     }
 }
 
-/// A writer which will move data into the void.
+/// 一个 writer，它会把数据搬进虚空（即丢弃所有写入的数据）。
 ///
-/// This struct is generally created by calling [`sink()`]. Please
-/// see the documentation of [`sink()`] for more details.
+/// 这个结构体通常通过调用 [`sink()`] 来创建。更多细节请参见 [`sink()`] 的文档。
 #[stable(feature = "rust1", since = "1.0.0")]
 #[non_exhaustive]
 #[derive(Copy, Clone, Debug, Default)]
 pub struct Sink;
 
-/// Creates an instance of a writer which will successfully consume all data.
+/// 创建一个 writer 实例，它会成功地消费掉所有数据。
 ///
-/// All calls to [`write`] on the returned instance will return [`Ok(buf.len())`]
-/// and the contents of the buffer will not be inspected.
+/// 对返回实例的所有 [`write`] 调用都将返回 [`Ok(buf.len())`]，且缓冲的内容不会被检查。
 ///
 /// [`write`]: Write::write
 /// [`Ok(buf.len())`]: Ok
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```rust
 /// use std::io::{self, Write};

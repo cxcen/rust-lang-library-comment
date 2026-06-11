@@ -41,9 +41,9 @@ use crate::{fmt, io};
 )))]
 const MSG_NOSIGNAL: core::ffi::c_int = 0x0;
 
-/// A Unix datagram socket.
+/// 一个 Unix 数据报套接字（datagram socket）。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```no_run
 /// use std::os::unix::net::UnixDatagram;
@@ -60,7 +60,7 @@ const MSG_NOSIGNAL: core::ffi::c_int = 0x0;
 #[stable(feature = "unix_socket", since = "1.10.0")]
 pub struct UnixDatagram(Socket);
 
-/// Allows extension traits within `std`.
+/// 允许 `std` 内部使用的扩展 trait。
 #[unstable(feature = "sealed", issue = "none")]
 impl Sealed for UnixDatagram {}
 
@@ -80,9 +80,9 @@ impl fmt::Debug for UnixDatagram {
 }
 
 impl UnixDatagram {
-    /// Creates a Unix datagram socket bound to the given path.
+    /// 创建一个绑定到给定路径的 Unix 数据报套接字。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::os::unix::net::UnixDatagram;
@@ -107,9 +107,9 @@ impl UnixDatagram {
         }
     }
 
-    /// Creates a Unix datagram socket bound to an address.
+    /// 创建一个绑定到某个地址的 Unix 数据报套接字。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::os::unix::net::{UnixDatagram};
@@ -141,9 +141,9 @@ impl UnixDatagram {
         }
     }
 
-    /// Creates a Unix Datagram socket which is not bound to any address.
+    /// 创建一个不绑定到任何地址的 Unix 数据报套接字。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::os::unix::net::UnixDatagram;
@@ -162,11 +162,11 @@ impl UnixDatagram {
         Ok(UnixDatagram(inner))
     }
 
-    /// Creates an unnamed pair of connected sockets.
+    /// 创建一对未命名的、彼此相连的套接字。
     ///
-    /// Returns two `UnixDatagrams`s which are connected to each other.
+    /// 返回两个彼此相连的 `UnixDatagrams`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::os::unix::net::UnixDatagram;
@@ -185,16 +185,16 @@ impl UnixDatagram {
         Ok((UnixDatagram(i1), UnixDatagram(i2)))
     }
 
-    /// Connects the socket to the specified path address.
+    /// 将套接字连接到指定的路径地址。
     ///
-    /// The [`send`] method may be used to send data to the specified address.
-    /// [`recv`] and [`recv_from`] will only receive data from that address.
+    /// [`send`] 方法可用于向指定地址发送数据。
+    /// [`recv`] 与 [`recv_from`] 将只从该地址接收数据。
     ///
     /// [`send`]: UnixDatagram::send
     /// [`recv`]: UnixDatagram::recv
     /// [`recv_from`]: UnixDatagram::recv_from
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::os::unix::net::UnixDatagram;
@@ -221,9 +221,9 @@ impl UnixDatagram {
         Ok(())
     }
 
-    /// Connects the socket to an address.
+    /// 将套接字连接到某个地址。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::os::unix::net::{UnixDatagram};
@@ -255,13 +255,12 @@ impl UnixDatagram {
         Ok(())
     }
 
-    /// Creates a new independently owned handle to the underlying socket.
+    /// 为底层套接字创建一个新的、独立拥有所有权的句柄。
     ///
-    /// The returned `UnixDatagram` is a reference to the same socket that this
-    /// object references. Both handles can be used to accept incoming
-    /// connections and options set on one side will affect the other.
+    /// 返回的 `UnixDatagram` 引用的是与此对象所引用的同一个套接字。两个句柄都可用于接受
+    /// 入站连接，且在一侧设置的选项将影响另一侧。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::os::unix::net::UnixDatagram;
@@ -277,9 +276,9 @@ impl UnixDatagram {
         self.0.duplicate().map(UnixDatagram)
     }
 
-    /// Returns the address of this socket.
+    /// 返回此套接字的地址。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::os::unix::net::UnixDatagram;
@@ -295,13 +294,13 @@ impl UnixDatagram {
         SocketAddr::new(|addr, len| unsafe { libc::getsockname(self.as_raw_fd(), addr, len) })
     }
 
-    /// Returns the address of this socket's peer.
+    /// 返回此套接字对端的地址。
     ///
-    /// The [`connect`] method will connect the socket to a peer.
+    /// [`connect`] 方法会把套接字连接到一个对端。
     ///
     /// [`connect`]: UnixDatagram::connect
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::os::unix::net::UnixDatagram;
@@ -346,12 +345,11 @@ impl UnixDatagram {
         Ok((count as usize, addr))
     }
 
-    /// Receives data from the socket.
+    /// 从套接字接收数据。
     ///
-    /// On success, returns the number of bytes read and the address from
-    /// whence the data came.
+    /// 成功时，返回读取的字节数以及数据来源的地址。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::os::unix::net::UnixDatagram;
@@ -369,11 +367,11 @@ impl UnixDatagram {
         self.recv_from_flags(buf, 0)
     }
 
-    /// Receives data from the socket.
+    /// 从套接字接收数据。
     ///
-    /// On success, returns the number of bytes read.
+    /// 成功时，返回读取的字节数。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::os::unix::net::UnixDatagram;
@@ -390,11 +388,11 @@ impl UnixDatagram {
         self.0.read(buf)
     }
 
-    /// Receives data and ancillary data from socket.
+    /// 从套接字接收数据与辅助数据（ancillary data）。
     ///
-    /// On success, returns the number of bytes read, if the data was truncated and the address from whence the msg came.
+    /// 成功时，返回读取的字节数、数据是否被截断（truncated），以及消息来源的地址。
     ///
-    /// # Examples
+    /// # 示例
     ///
     #[cfg_attr(
         any(target_os = "android", target_os = "linux", target_os = "cygwin"),
@@ -446,11 +444,11 @@ impl UnixDatagram {
         Ok((count, truncated, addr))
     }
 
-    /// Receives data and ancillary data from socket.
+    /// 从套接字接收数据与辅助数据（ancillary data）。
     ///
-    /// On success, returns the number of bytes read and if the data was truncated.
+    /// 成功时，返回读取的字节数，以及数据是否被截断（truncated）。
     ///
-    /// # Examples
+    /// # 示例
     ///
     #[cfg_attr(
         any(target_os = "android", target_os = "linux", target_os = "cygwin"),
@@ -502,11 +500,11 @@ impl UnixDatagram {
         Ok((count, truncated))
     }
 
-    /// Sends data on the socket to the specified address.
+    /// 在套接字上向指定地址发送数据。
     ///
-    /// On success, returns the number of bytes written.
+    /// 成功时，返回写入的字节数。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::os::unix::net::UnixDatagram;
@@ -534,13 +532,13 @@ impl UnixDatagram {
         }
     }
 
-    /// Sends data on the socket to the specified [SocketAddr].
+    /// 在套接字上向指定的 [SocketAddr] 发送数据。
     ///
-    /// On success, returns the number of bytes written.
+    /// 成功时，返回写入的字节数。
     ///
     /// [SocketAddr]: crate::os::unix::net::SocketAddr
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::os::unix::net::{UnixDatagram};
@@ -569,14 +567,13 @@ impl UnixDatagram {
         }
     }
 
-    /// Sends data on the socket to the socket's peer.
+    /// 在套接字上向套接字的对端发送数据。
     ///
-    /// The peer address may be set by the `connect` method, and this method
-    /// will return an error if the socket has not already been connected.
+    /// 对端地址可由 `connect` 方法设置；如果该套接字尚未被连接，此方法将返回错误。
     ///
-    /// On success, returns the number of bytes written.
+    /// 成功时，返回写入的字节数。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::os::unix::net::UnixDatagram;
@@ -593,11 +590,11 @@ impl UnixDatagram {
         self.0.write(buf)
     }
 
-    /// Sends data and ancillary data on the socket to the specified address.
+    /// 在套接字上向指定地址发送数据与辅助数据（ancillary data）。
     ///
-    /// On success, returns the number of bytes written.
+    /// 成功时，返回写入的字节数。
     ///
-    /// # Examples
+    /// # 示例
     ///
     #[cfg_attr(
         any(target_os = "android", target_os = "linux", target_os = "cygwin"),
@@ -641,11 +638,11 @@ impl UnixDatagram {
         send_vectored_with_ancillary_to(&self.0, Some(path.as_ref()), bufs, ancillary)
     }
 
-    /// Sends data and ancillary data on the socket.
+    /// 在套接字上发送数据与辅助数据（ancillary data）。
     ///
-    /// On success, returns the number of bytes written.
+    /// 成功时，返回写入的字节数。
     ///
-    /// # Examples
+    /// # 示例
     ///
     #[cfg_attr(
         any(target_os = "android", target_os = "linux", target_os = "cygwin"),
@@ -688,16 +685,15 @@ impl UnixDatagram {
         send_vectored_with_ancillary_to(&self.0, None, bufs, ancillary)
     }
 
-    /// Sets the read timeout for the socket.
+    /// 设置套接字的读超时（read timeout）。
     ///
-    /// If the provided value is [`None`], then [`recv`] and [`recv_from`] calls will
-    /// block indefinitely. An [`Err`] is returned if the zero [`Duration`]
-    /// is passed to this method.
+    /// 如果所提供的值是 [`None`]，那么 [`recv`] 与 [`recv_from`] 调用将无限期阻塞。
+    /// 如果向此方法传入了零值 [`Duration`]，则返回 [`Err`]。
     ///
     /// [`recv`]: UnixDatagram::recv
     /// [`recv_from`]: UnixDatagram::recv_from
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::os::unix::net::UnixDatagram;
@@ -711,8 +707,7 @@ impl UnixDatagram {
     /// }
     /// ```
     ///
-    /// An [`Err`] is returned if the zero [`Duration`] is passed to this
-    /// method:
+    /// 如果向此方法传入了零值 [`Duration`]，则返回 [`Err`]：
     ///
     /// ```no_run
     /// use std::io;
@@ -732,16 +727,15 @@ impl UnixDatagram {
         self.0.set_timeout(timeout, libc::SO_RCVTIMEO)
     }
 
-    /// Sets the write timeout for the socket.
+    /// 设置套接字的写超时（write timeout）。
     ///
-    /// If the provided value is [`None`], then [`send`] and [`send_to`] calls will
-    /// block indefinitely. An [`Err`] is returned if the zero [`Duration`] is passed to this
-    /// method.
+    /// 如果所提供的值是 [`None`]，那么 [`send`] 与 [`send_to`] 调用将无限期阻塞。
+    /// 如果向此方法传入了零值 [`Duration`]，则返回 [`Err`]。
     ///
     /// [`send`]: UnixDatagram::send
     /// [`send_to`]: UnixDatagram::send_to
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::os::unix::net::UnixDatagram;
@@ -755,8 +749,7 @@ impl UnixDatagram {
     /// }
     /// ```
     ///
-    /// An [`Err`] is returned if the zero [`Duration`] is passed to this
-    /// method:
+    /// 如果向此方法传入了零值 [`Duration`]，则返回 [`Err`]：
     ///
     /// ```no_run
     /// use std::io;
@@ -776,9 +769,9 @@ impl UnixDatagram {
         self.0.set_timeout(timeout, libc::SO_SNDTIMEO)
     }
 
-    /// Returns the read timeout of this socket.
+    /// 返回此套接字的读超时（read timeout）。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::os::unix::net::UnixDatagram;
@@ -797,9 +790,9 @@ impl UnixDatagram {
         self.0.timeout(libc::SO_RCVTIMEO)
     }
 
-    /// Returns the write timeout of this socket.
+    /// 返回此套接字的写超时（write timeout）。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::os::unix::net::UnixDatagram;
@@ -818,9 +811,9 @@ impl UnixDatagram {
         self.0.timeout(libc::SO_SNDTIMEO)
     }
 
-    /// Moves the socket into or out of nonblocking mode.
+    /// 将套接字切换进入或退出非阻塞（nonblocking）模式。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::os::unix::net::UnixDatagram;
@@ -836,7 +829,7 @@ impl UnixDatagram {
         self.0.set_nonblocking(nonblocking)
     }
 
-    /// Set the id of the socket for network filtering purpose
+    /// 出于网络过滤（network filtering）目的设置套接字的 id
     ///
     #[cfg_attr(
         any(target_os = "linux", target_os = "freebsd", target_os = "openbsd"),
@@ -861,9 +854,9 @@ impl UnixDatagram {
         self.0.set_mark(mark)
     }
 
-    /// Returns the value of the `SO_ERROR` option.
+    /// 返回 `SO_ERROR` 选项的值。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::os::unix::net::UnixDatagram;
@@ -881,11 +874,10 @@ impl UnixDatagram {
         self.0.take_error()
     }
 
-    /// Shut down the read, write, or both halves of this connection.
+    /// 关闭此连接的读半边、写半边，或两者。
     ///
-    /// This function will cause all pending and future I/O calls on the
-    /// specified portions to immediately return with an appropriate value
-    /// (see the documentation of [`Shutdown`]).
+    /// 此函数将导致所指定部分上所有挂起的与未来的 I/O 调用立即返回一个适当的值
+    ///（参见 [`Shutdown`] 的文档）。
     ///
     /// ```no_run
     /// use std::os::unix::net::UnixDatagram;
@@ -902,14 +894,13 @@ impl UnixDatagram {
         self.0.shutdown(how)
     }
 
-    /// Receives data on the socket from the remote address to which it is
-    /// connected, without removing that data from the queue. On success,
-    /// returns the number of bytes peeked.
+    /// 从此套接字所连接的远程地址接收数据，但不将该数据从队列中移除。成功时，
+    /// 返回窥视（peeked）的字节数。
     ///
-    /// Successive calls return the same data. This is accomplished by passing
-    /// `MSG_PEEK` as a flag to the underlying `recv` system call.
+    /// 连续多次调用会返回相同的数据。这是通过把 `MSG_PEEK` 作为标志传给底层的 `recv`
+    /// 系统调用实现的。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// #![feature(unix_socket_peek)]
@@ -928,20 +919,19 @@ impl UnixDatagram {
         self.0.peek(buf)
     }
 
-    /// Receives a single datagram message on the socket, without removing it from the
-    /// queue. On success, returns the number of bytes read and the origin.
+    /// 在套接字上接收单条数据报消息，但不将其从队列中移除。成功时，返回读取的字节数
+    /// 以及来源（origin）。
     ///
-    /// The function must be called with valid byte array `buf` of sufficient size to
-    /// hold the message bytes. If a message is too long to fit in the supplied buffer,
-    /// excess bytes may be discarded.
+    /// 调用时必须传入一个有效且大小足以容纳消息字节的字节数组 `buf`。如果某条消息太长、
+    /// 无法装入所提供的缓冲区，超出的字节可能会被丢弃。
     ///
-    /// Successive calls return the same data. This is accomplished by passing
-    /// `MSG_PEEK` as a flag to the underlying `recvfrom` system call.
+    /// 连续多次调用会返回相同的数据。这是通过把 `MSG_PEEK` 作为标志传给底层的 `recvfrom`
+    /// 系统调用实现的。
     ///
-    /// Do not use this function to implement busy waiting, instead use `libc::poll` to
-    /// synchronize IO events on one or more sockets.
+    /// 不要用此函数来实现忙等待（busy waiting）；应改用 `libc::poll` 来同步一个或多个
+    /// 套接字上的 IO 事件。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// #![feature(unix_socket_peek)]
@@ -995,7 +985,7 @@ impl AsFd for UnixDatagram {
 
 #[stable(feature = "io_safety", since = "1.63.0")]
 impl From<UnixDatagram> for OwnedFd {
-    /// Takes ownership of a [`UnixDatagram`]'s socket file descriptor.
+    /// 取得一个 [`UnixDatagram`] 的套接字文件描述符的所有权。
     #[inline]
     fn from(unix_datagram: UnixDatagram) -> OwnedFd {
         unsafe { OwnedFd::from_raw_fd(unix_datagram.into_raw_fd()) }

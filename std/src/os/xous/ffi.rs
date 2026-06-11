@@ -274,17 +274,16 @@ fn connect_impl(address: ServerAddress, blocking: bool) -> Result<Connection, Er
     }
 }
 
-/// Connects to a Xous server represented by the specified `address`.
+/// 连接到由所指定 `address` 表示的 Xous 服务器。
 ///
-/// The current thread will block until the server is available. Returns
-/// an error if the server cannot accept any more connections.
+/// 当前线程将一直阻塞，直到该服务器可用为止。如果该服务器无法再接受更多连接，则返回错误。
 pub(crate) fn connect(address: ServerAddress) -> Result<Connection, Error> {
     connect_impl(address, true)
 }
 
-/// Attempts to connect to a Xous server represented by the specified `address`.
+/// 尝试连接到由所指定 `address` 表示的 Xous 服务器。
 ///
-/// If the server does not exist then None is returned.
+/// 如果该服务器不存在，则返回 None。
 pub(crate) fn try_connect(address: ServerAddress) -> Result<Option<Connection>, Error> {
     match connect_impl(address, false) {
         Ok(conn) => Ok(Some(conn)),
@@ -293,7 +292,7 @@ pub(crate) fn try_connect(address: ServerAddress) -> Result<Option<Connection>, 
     }
 }
 
-/// Terminates the current process and returns the specified code to the parent process.
+/// 终止当前进程，并把所指定的 code 返回给父进程。
 pub(crate) fn exit(return_code: u32) -> ! {
     let a0 = Syscall::TerminateProcess as usize;
     let a1 = return_code as usize;
@@ -320,9 +319,8 @@ pub(crate) fn exit(return_code: u32) -> ! {
     unreachable!();
 }
 
-/// Suspends the current thread and allow another thread to run. This thread may
-/// continue executing again immediately if there are no other threads available
-/// to run on the system.
+/// 挂起当前线程，让另一个线程得以运行。如果系统上没有其他可运行的线程，本线程可能会立即
+/// 继续执行下去。
 pub(crate) fn do_yield() {
     let a0 = Syscall::Yield as usize;
     let a1 = 0;
@@ -348,17 +346,15 @@ pub(crate) fn do_yield() {
     };
 }
 
-/// Allocates memory from the system.
+/// 从系统分配内存。
 ///
-/// An optional physical and/or virtual address may be specified in order to
-/// ensure memory is allocated at specific offsets, otherwise the kernel will
-/// select an address.
+/// 可以选择性地指定一个物理地址和/或虚拟地址，以确保内存被分配在特定的偏移处；否则内核将
+/// 自行选择一个地址。
 ///
-/// # Safety
+/// # 安全性(Safety）
 ///
-/// This function is safe unless a virtual address is specified. In that case,
-/// the kernel will return an alias to the existing range. This violates Rust's
-/// pointer uniqueness guarantee.
+/// 本函数是安全的，除非指定了虚拟地址。在那种情况下，内核会返回一个指向已有区间的别名
+/// （alias）。这违反了 Rust 的指针唯一性保证。
 pub(crate) unsafe fn map_memory<T>(
     phys: Option<core::ptr::NonNull<T>>,
     virt: Option<core::ptr::NonNull<T>>,
@@ -402,10 +398,10 @@ pub(crate) unsafe fn map_memory<T>(
     }
 }
 
-/// Destroys the given memory, returning it to the compiler.
+/// 销毁给定的内存，把它归还给编译器。
 ///
-/// Safety: The memory pointed to by `range` should not be used after this
-/// function returns, even if this function returns Err().
+/// Safety: 在本函数返回后，`range` 所指向的内存不应再被使用，即便本函数返回的是 Err()
+/// 也是如此。
 pub(crate) unsafe fn unmap_memory<T>(range: *mut [T]) -> Result<(), Error> {
     let mut a0 = Syscall::UnmapMemory as usize;
     let mut a1 = range.as_mut_ptr() as usize;
@@ -441,14 +437,13 @@ pub(crate) unsafe fn unmap_memory<T>(range: *mut [T]) -> Result<(), Error> {
     }
 }
 
-/// Adjusts the memory flags for the given range.
+/// 调整给定区间的内存标志（memory flags）。
 ///
-/// This can be used to remove flags from a given region in order to harden
-/// memory access. Note that flags may only be removed and may never be added.
+/// 这可用于从给定区域中移除标志，以加固（harden）内存访问。注意：标志只能被移除，
+/// 而绝不能被添加。
 ///
-/// Safety: The memory pointed to by `range` may become inaccessible or have its
-/// mutability removed. It is up to the caller to ensure that the flags specified
-/// by `new_flags` are upheld, otherwise the program will crash.
+/// Safety: `range` 所指向的内存可能变得不可访问，或被移除其可变性（mutability）。
+/// 由调用者负责确保 `new_flags` 所指定的标志得到遵守，否则程序将崩溃。
 pub(crate) unsafe fn update_memory_flags<T>(
     range: *mut [T],
     new_flags: MemoryFlags,
@@ -457,7 +452,7 @@ pub(crate) unsafe fn update_memory_flags<T>(
     let mut a1 = range.as_mut_ptr() as usize;
     let a2 = range.len() * size_of::<T>();
     let a3 = new_flags.bits();
-    let a4 = 0; // Process ID is currently None
+    let a4 = 0; // 进程 ID 当前为 None
     let a5 = 0;
     let a6 = 0;
     let a7 = 0;
@@ -487,7 +482,7 @@ pub(crate) unsafe fn update_memory_flags<T>(
     }
 }
 
-/// Creates a thread with a given stack and up to four arguments.
+/// 用给定的栈（stack）以及最多四个参数创建一个线程。
 pub(crate) fn create_thread(
     start: *mut usize,
     stack: *mut [u8],
@@ -530,7 +525,7 @@ pub(crate) fn create_thread(
     }
 }
 
-/// Waits for the given thread to terminate and returns the exit code from that thread.
+/// 等待给定线程终止，并返回该线程的退出码（exit code）。
 pub(crate) fn join_thread(thread_id: ThreadId) -> Result<usize, Error> {
     let mut a0 = Syscall::JoinThread as usize;
     let mut a1 = thread_id.into();
@@ -570,7 +565,7 @@ pub(crate) fn join_thread(thread_id: ThreadId) -> Result<usize, Error> {
     }
 }
 
-/// Gets the current thread's ID.
+/// 获取当前线程的 ID。
 pub(crate) fn thread_id() -> Result<ThreadId, Error> {
     let mut a0 = Syscall::GetThreadId as usize;
     let mut a1 = 0;
@@ -606,14 +601,11 @@ pub(crate) fn thread_id() -> Result<ThreadId, Error> {
     }
 }
 
-/// Adjusts the given `knob` limit to match the new value `new`. The current value must
-/// match the `current` in order for this to take effect.
+/// 把给定的 `knob` 限制调整为新值 `new`。当前值必须与 `current` 相匹配，本调整才会生效。
 ///
-/// The new value is returned as a result of this call. If the call fails, then the old
-/// value is returned. In either case, this function returns successfully.
+/// 本调用将以新值作为结果返回。如果调用失败，则返回旧值。无论哪种情况，本函数都会成功返回。
 ///
-/// An error is generated if the `knob` is not a valid limit, or if the call
-/// would not succeed.
+/// 如果 `knob` 不是一个有效的限制，或者本调用无法成功，则会产生一个错误。
 pub(crate) fn adjust_limit(knob: Limits, current: usize, new: usize) -> Result<usize, Error> {
     let mut a0 = Syscall::AdjustProcessLimit as usize;
     let mut a1 = knob as usize;

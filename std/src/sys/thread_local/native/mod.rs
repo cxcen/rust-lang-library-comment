@@ -1,33 +1,28 @@
-//! Thread local support for platforms with native TLS.
+//! 对拥有原生 TLS 的平台的线程本地（thread local）支持。
 //!
-//! To achieve the best performance, we choose from four different types for
-//! the TLS variable, depending on the method of initialization used (`const`
-//! or lazy) and the drop requirements of the stored type:
+//! 为了获得最佳性能，我们根据所用的初始化方式（`const` 还是惰性 lazy）
+//! 以及所存储类型的 drop 需求，从四种不同的类型中为 TLS 变量做选择：
 //!
 //! |         | `Drop`               | `!Drop`             |
 //! |--------:|:--------------------:|:-------------------:|
 //! | `const` | `EagerStorage<T>`    | `T`                 |
 //! | lazy    | `LazyStorage<T, ()>` | `LazyStorage<T, !>` |
 //!
-//! For `const` initialization and `!Drop` types, we simply use `T` directly,
-//! but for other situations, we implement a state machine to handle
-//! initialization of the variable and its destructor and destruction.
-//! Upon accessing the TLS variable, the current state is compared:
+//! 对于 `const` 初始化且 `!Drop` 的类型，我们直接使用 `T`；但对于其他情形，
+//! 我们实现了一个状态机来处理该变量的初始化、它的析构函数以及销毁。
+//! 在访问该 TLS 变量时，会比较当前的状态：
 //!
-//! 1. If the state is `Initial`, initialize the storage, transition the state
-//!    to `Alive` and (if applicable) register the destructor, and return a
-//!    reference to the value.
-//! 2. If the state is `Alive`, initialization was previously completed, so
-//!    return a reference to the value.
-//! 3. If the state is `Destroyed`, the destructor has been run already, so
-//!    return [`None`].
+//! 1. 如果状态是 `Initial`，则初始化存储、把状态转移为 `Alive`，并（在适用时）
+//!    注册析构函数，然后返回一个指向该值的引用。
+//! 2. 如果状态是 `Alive`，则说明此前已完成初始化，于是返回一个指向该值的引用。
+//! 3. 如果状态是 `Destroyed`，则说明析构函数已经运行过，于是返回 [`None`]。
 //!
-//! The TLS destructor sets the state to `Destroyed` and drops the current value.
+//! TLS 析构函数会把状态设置为 `Destroyed` 并 drop 当前的值。
 //!
-//! To simplify the code, we make `LazyStorage` generic over the destroyed state
-//! and use the `!` type (never type) as type parameter for `!Drop` types. This
-//! eliminates the `Destroyed` state for these values, which can allow more niche
-//! optimizations to occur for the `State` enum. For `Drop` types, `()` is used.
+//! 为简化代码，我们让 `LazyStorage` 在“已销毁状态”上是泛型的，并对 `!Drop`
+//! 类型使用 `!` 类型（never type）作为类型参数。这样就为这些值消除了
+//! `Destroyed` 状态，从而可以让 `State` 枚举发生更多的 niche 优化。
+//! 对于 `Drop` 类型，则使用 `()`。
 
 use crate::cell::Cell;
 use crate::ptr;
@@ -49,11 +44,11 @@ pub use lazy::Storage as LazyStorage;
 #[unstable(feature = "thread_local_internals", issue = "none")]
 #[rustc_macro_transparency = "semiopaque"]
 pub macro thread_local_inner {
-    // NOTE: we cannot import `LocalKey`, `LazyStorage` or `EagerStorage` with a `use` because that
-    // can shadow user provided type or type alias with a matching name. Please update the shadowing
-    // test in `tests/thread.rs` if these types are renamed.
+    // 注意：我们不能用 `use` 来导入 `LocalKey`、`LazyStorage` 或 `EagerStorage`，
+    // 因为那可能会遮蔽（shadow）用户提供的同名类型或类型别名。如果这些类型被重命名，
+    // 请更新 `tests/thread.rs` 中的遮蔽（shadowing）测试。
 
-    // Used to generate the `LocalKey` value for const-initialized thread locals.
+    // 用于为 const 初始化的线程本地变量生成 `LocalKey` 值。
     (@key $t:ty, $(#[$align_attr:meta])*, const $init:expr) => {{
         const __RUST_STD_INTERNAL_INIT: $t = $init;
 
@@ -79,7 +74,7 @@ pub macro thread_local_inner {
         }
     }},
 
-    // used to generate the `LocalKey` value for `thread_local!`
+    // 用于为 `thread_local!` 生成 `LocalKey` 值
     (@key $t:ty, $(#[$align_attr:meta])*, $init:expr) => {{
         #[inline]
         fn __rust_std_internal_init_fn() -> $t {

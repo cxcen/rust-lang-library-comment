@@ -1,6 +1,6 @@
 #![allow(nonstandard_style)]
 #![allow(unsafe_op_in_unsafe_fn)]
-// miri has some special hacks here that make things unused.
+// miri 在这里有一些特殊的 hack，会让某些东西变成未使用的。
 #![cfg_attr(miri, allow(unused))]
 
 #[cfg(test)]
@@ -102,9 +102,9 @@ use crate::{mem, ptr};
 
 pub struct File(FileDesc);
 
-// FIXME: This should be available on Linux with all `target_env`.
-// But currently only glibc exposes `statx` fn and structs.
-// We don't want to import unverified raw C structs here directly.
+// FIXME: 它应当在所有 `target_env` 的 Linux 上都可用。
+// 但目前只有 glibc 暴露了 `statx` 函数和相关结构体。
+// 我们不想在这里直接导入未经验证的原始 C 结构体。
 // https://github.com/rust-lang/rust/pull/67774
 macro_rules! cfg_has_statx {
     ({ $($then_tt:tt)* } else { $($else_tt:tt)* }) => {
@@ -134,10 +134,10 @@ cfg_has_statx! {{
 
     #[derive(Clone)]
     struct StatxExtraFields {
-        // This is needed to check if btime is supported by the filesystem.
+        // 这是检查文件系统是否支持 btime 所必需的。
         stx_mask: u32,
         stx_btime: libc::statx_timestamp,
-        // With statx, we can overcome 32-bit `time_t` too.
+        // 借助 statx，我们也能克服 32 位 `time_t` 的限制。
         #[cfg(target_pointer_width = "32")]
         stx_atime: libc::statx_timestamp,
         #[cfg(target_pointer_width = "32")]
@@ -147,9 +147,9 @@ cfg_has_statx! {{
 
     }
 
-    // We prefer `statx` on Linux if available, which contains file creation time,
-    // as well as 64-bit timestamps of all kinds.
-    // Default `stat64` contains no creation time and may have 32-bit `time_t`.
+    // 如果可用，我们在 Linux 上更倾向于使用 `statx`，因为它包含文件创建时间，
+    // 以及各种类型的 64 位时间戳。
+    // 默认的 `stat64` 不含创建时间，并且可能使用 32 位的 `time_t`。
     unsafe fn try_statx(
         fd: c_int,
         path: *const c_char,
@@ -158,9 +158,8 @@ cfg_has_statx! {{
     ) -> Option<io::Result<FileAttr>> {
         use crate::sync::atomic::{Atomic, AtomicU8, Ordering};
 
-        // Linux kernel prior to 4.11 or glibc prior to glibc 2.28 don't support `statx`.
-        // We check for it on first failure and remember availability to avoid having to
-        // do it again.
+        // 4.11 之前的 Linux 内核或 glibc 2.28 之前的 glibc 不支持 `statx`。
+        // 我们在首次失败时检查它，并记住其可用性，以避免不得不再次检查。
         #[repr(u8)]
         enum STATX_STATE{ Unknown = 0, Present, Unavailable }
         static STATX_SAVED_STATE: Atomic<u8> = AtomicU8::new(STATX_STATE::Unknown as u8);
@@ -186,17 +185,16 @@ cfg_has_statx! {{
                 return Some(Err(err));
             }
 
-            // We're not yet entirely sure whether `statx` is usable on this kernel
-            // or not. Syscalls can return errors from things other than the kernel
-            // per se, e.g. `EPERM` can be returned if seccomp is used to block the
-            // syscall, or `ENOSYS` might be returned from a faulty FUSE driver.
+            // 我们尚不完全确定 `statx` 在这个内核上是否可用。
+            // 系统调用返回的错误可能并非来自内核本身，
+            // 例如，如果用 seccomp 来阻止该系统调用，可能会返回 `EPERM`，
+            // 或者一个有缺陷的 FUSE 驱动可能会返回 `ENOSYS`。
             //
-            // Availability is checked by performing a call which expects `EFAULT`
-            // if the syscall is usable.
+            // 可用性的检查方式是：执行一次调用，如果该系统调用可用，它就应当返回 `EFAULT`。
             //
-            // See: https://github.com/rust-lang/rust/issues/65662
+            // 参见：https://github.com/rust-lang/rust/issues/65662
             //
-            // FIXME what about transient conditions like `ENOMEM`?
+            // FIXME 那像 `ENOMEM` 这样的瞬时（transient）情况又该怎么办呢？
             let err2 = cvt(statx(0, ptr::null(), 0, libc::STATX_BASIC_STATS | libc::STATX_BTIME, ptr::null_mut()))
                 .err()
                 .and_then(|e| e.raw_os_error());
@@ -212,9 +210,9 @@ cfg_has_statx! {{
             STATX_SAVED_STATE.store(STATX_STATE::Present as u8, Ordering::Relaxed);
         }
 
-        // We cannot fill `stat64` exhaustively because of private padding fields.
+        // 由于存在私有的填充字段（padding fields），我们无法穷尽式地填充 `stat64`。
         let mut stat: stat64 = mem::zeroed();
-        // `c_ulong` on gnu-mips, `dev_t` otherwise
+        // 在 gnu-mips 上是 `c_ulong`，其他平台上是 `dev_t`
         stat.st_dev = libc::makedev(buf.stx_dev_major, buf.stx_dev_minor) as _;
         stat.st_ino = buf.stx_ino as libc::ino64_t;
         stat.st_nlink = buf.stx_nlink as libc::nlink_t;
@@ -226,7 +224,7 @@ cfg_has_statx! {{
         stat.st_blksize = buf.stx_blksize as libc::blksize_t;
         stat.st_blocks = buf.stx_blocks as libc::blkcnt64_t;
         stat.st_atime = buf.stx_atime.tv_sec as libc::time_t;
-        // `i64` on gnu-x86_64-x32, `c_ulong` otherwise.
+        // 在 gnu-x86_64-x32 上是 `i64`，其他平台上是 `c_ulong`。
         stat.st_atime_nsec = buf.stx_atime.tv_nsec as _;
         stat.st_mtime = buf.stx_mtime.tv_sec as libc::time_t;
         stat.st_mtime_nsec = buf.stx_mtime.tv_nsec as _;
@@ -236,7 +234,7 @@ cfg_has_statx! {{
         let extra = StatxExtraFields {
             stx_mask: buf.stx_mask,
             stx_btime: buf.stx_btime,
-            // Store full times to avoid 32-bit `time_t` truncation.
+            // 存储完整的时间，以避免 32 位 `time_t` 截断。
             #[cfg(target_pointer_width = "32")]
             stx_atime: buf.stx_atime,
             #[cfg(target_pointer_width = "32")]
@@ -255,7 +253,7 @@ cfg_has_statx! {{
     }
 }}
 
-// all DirEntry's will have a reference to this struct
+// 所有 DirEntry 都会持有一个对该结构体的引用
 struct InnerReadDir {
     dirp: DirStream,
     root: PathBuf,
@@ -274,7 +272,7 @@ impl ReadDir {
 
 struct DirStream(*mut libc::DIR);
 
-// dir::Dir requires openat support
+// dir::Dir 需要 openat 支持
 cfg_select! {
     any(
         target_os = "redox",
@@ -333,17 +331,15 @@ fn get_path_from_fd(fd: c_int) -> Option<PathBuf> {
 
     #[cfg(any(target_vendor = "apple", target_os = "netbsd"))]
     fn get_path(fd: c_int) -> Option<PathBuf> {
-        // FIXME: The use of PATH_MAX is generally not encouraged, but it
-        // is inevitable in this case because Apple targets and NetBSD define `fcntl`
-        // with `F_GETPATH` in terms of `MAXPATHLEN`, and there are no
-        // alternatives. If a better method is invented, it should be used
-        // instead.
+        // FIXME: 通常不鼓励使用 PATH_MAX，但在这种情况下这是不可避免的，
+        // 因为 Apple 平台和 NetBSD 是用 `MAXPATHLEN` 来定义带 `F_GETPATH` 的 `fcntl` 的，
+        // 而且没有别的替代方案。如果有人发明了更好的方法，应当改用它。
         let mut buf = vec![0; libc::PATH_MAX as usize];
         let n = unsafe { libc::fcntl(fd, libc::F_GETPATH, buf.as_ptr()) };
         if n == -1 {
             cfg_select! {
                 target_os = "netbsd" => {
-                    // fallback to procfs as last resort
+                    // 作为最后手段，回退（fallback）到 procfs
                     let mut p = PathBuf::from("/proc/self/fd");
                     p.push(&fd.to_string());
                     return run_path_with_cstr(&p, &readlink).ok()
@@ -394,7 +390,7 @@ fn get_path_from_fd(fd: c_int) -> Option<PathBuf> {
         target_vendor = "apple",
     )))]
     fn get_path(_fd: c_int) -> Option<PathBuf> {
-        // FIXME(#24570): implement this for other Unix platforms
+        // FIXME(#24570): 为其他 Unix 平台实现这一点
         None
     }
 
@@ -418,15 +414,15 @@ fn get_path_from_fd(fd: c_int) -> Option<PathBuf> {
 pub struct DirEntry {
     dir: Arc<InnerReadDir>,
     entry: dirent64_min,
-    // We need to store an owned copy of the entry name on platforms that use
-    // readdir() (not readdir_r()), because a) struct dirent may use a flexible
-    // array to store the name, b) it lives only until the next readdir() call.
+    // 在使用 readdir()（而非 readdir_r()）的平台上，我们需要存储一份条目名称的
+    // 拥有副本（owned copy），因为：a) struct dirent 可能使用柔性数组（flexible array）
+    // 来存储名称；b) 它只在下一次调用 readdir() 之前有效。
     name: crate::ffi::CString,
 }
 
-// Define a minimal subset of fields we need from `dirent64`, especially since
-// we're not using the immediate `d_name` on these targets. Keeping this as an
-// `entry` field in `DirEntry` helps reduce the `cfg` boilerplate elsewhere.
+// 定义我们需要从 `dirent64` 中用到的一个最小字段子集，尤其因为在这些目标平台上
+// 我们并不直接使用就地的 `d_name`。把它作为 `DirEntry` 中的一个 `entry` 字段保存，
+// 有助于减少别处的 `cfg` 样板代码。
 #[cfg(any(
     target_os = "aix",
     target_os = "android",
@@ -469,20 +465,20 @@ struct dirent64_min {
 )))]
 pub struct DirEntry {
     dir: Arc<InnerReadDir>,
-    // The full entry includes a fixed-length `d_name`.
+    // 完整的条目包含一个定长的 `d_name`。
     entry: dirent64,
 }
 
 #[derive(Clone)]
 pub struct OpenOptions {
-    // generic
+    // 通用部分
     read: bool,
     write: bool,
     append: bool,
     truncate: bool,
     create: bool,
     create_new: bool,
-    // system-specific
+    // 系统特定部分
     custom_flags: i32,
     mode: mode_t,
 }
@@ -750,16 +746,16 @@ impl AsInner<stat64> for FileAttr {
 
 impl FilePermissions {
     pub fn readonly(&self) -> bool {
-        // check if any class (owner, group, others) has write permission
+        // 检查是否有任意一类（owner、group、others）拥有写权限
         self.mode & 0o222 == 0
     }
 
     pub fn set_readonly(&mut self, readonly: bool) {
         if readonly {
-            // remove write permission for all classes; equivalent to `chmod a-w <file>`
+            // 移除所有类别的写权限；等价于 `chmod a-w <file>`
             self.mode &= !0o222;
         } else {
-            // add write permission for all classes; equivalent to `chmod a+w <file>`
+            // 为所有类别添加写权限；等价于 `chmod a+w <file>`
             self.mode |= 0o222;
         }
     }
@@ -826,8 +822,8 @@ impl fmt::Debug for FilePermissions {
 
 impl fmt::Debug for ReadDir {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // This will only be called from std::fs::ReadDir, which will add a "ReadDir()" frame.
-        // Thus the result will be e g 'ReadDir("/home")'
+        // 它只会从 std::fs::ReadDir 中被调用，后者会添加一个 "ReadDir()" 帧。
+        // 因此结果会是例如 'ReadDir("/home")' 这样的形式。
         fmt::Debug::fmt(&*self.inner.root, f)
     }
 }
@@ -858,54 +854,48 @@ impl Iterator for ReadDir {
 
         unsafe {
             loop {
-                // As of POSIX.1-2017, readdir() is not required to be thread safe; only
-                // readdir_r() is. However, readdir_r() cannot correctly handle platforms
-                // with unlimited or variable NAME_MAX. Many modern platforms guarantee
-                // thread safety for readdir() as long an individual DIR* is not accessed
-                // concurrently, which is sufficient for Rust.
+                // 截至 POSIX.1-2017，readdir() 并不要求是线程安全的；只有
+                // readdir_r() 才要求线程安全。然而，readdir_r() 无法正确处理那些
+                // 具有无限或可变 NAME_MAX 的平台。许多现代平台保证：只要不并发访问
+                // 同一个 DIR*，readdir() 就是线程安全的，这对 Rust 来说已经足够。
                 set_errno(0);
                 let entry_ptr: *const dirent64 = readdir64(self.inner.dirp.0);
                 if entry_ptr.is_null() {
-                    // We either encountered an error, or reached the end. Either way,
-                    // the next call to next() should return None.
+                    // 我们要么遇到了一个错误，要么到达了末尾。无论哪种情况，
+                    // 下一次调用 next() 都应当返回 None。
                     self.end_of_stream = true;
 
-                    // To distinguish between errors and end-of-directory, we had to clear
-                    // errno beforehand to check for an error now.
+                    // 为了区分错误和目录结束（end-of-directory），我们必须事先清空
+                    // errno，以便现在能检查是否发生了错误。
                     return match errno() {
                         0 => None,
                         e => Some(Err(Error::from_raw_os_error(e))),
                     };
                 }
 
-                // The dirent64 struct is a weird imaginary thing that isn't ever supposed
-                // to be worked with by value. Its trailing d_name field is declared
-                // variously as [c_char; 256] or [c_char; 1] on different systems but
-                // either way that size is meaningless; only the offset of d_name is
-                // meaningful. The dirent64 pointers that libc returns from readdir64 are
-                // allowed to point to allocations smaller _or_ LARGER than implied by the
-                // definition of the struct.
+                // dirent64 结构体是个奇怪的、想象出来的东西，本就不该按值（by value）来使用。
+                // 它末尾的 d_name 字段在不同系统上被声明为 [c_char; 256] 或 [c_char; 1]，
+                // 但无论哪种方式，那个大小都没有意义；只有 d_name 的偏移量才是有意义的。
+                // libc 从 readdir64 返回的 dirent64 指针，允许指向比该结构体定义所暗示的
+                // 大小更小 _或_ 更大的分配（allocation）。
                 //
-                // As such, we need to be even more careful with dirent64 than if its
-                // contents were "simply" partially initialized data.
+                // 因此，相比于其内容“只是”部分初始化的数据，我们需要对 dirent64 更加小心。
                 //
-                // Like for uninitialized contents, converting entry_ptr to `&dirent64`
-                // would not be legal. However, we can use `&raw const (*entry_ptr).d_name`
-                // to refer the fields individually, because that operation is equivalent
-                // to `byte_offset` and thus does not require the full extent of `*entry_ptr`
-                // to be in bounds of the same allocation, only the offset of the field
-                // being referenced.
+                // 和未初始化内容的情况一样，把 entry_ptr 转换为 `&dirent64` 是不合法的。
+                // 不过，我们可以使用 `&raw const (*entry_ptr).d_name` 来单独引用各个字段，
+                // 因为该操作等价于 `byte_offset`，因此并不要求 `*entry_ptr` 的完整范围
+                // 都落在同一个分配的边界内，而只要求所引用字段的那个偏移量落在边界内。
 
-                // d_name is guaranteed to be null-terminated.
+                // d_name 保证以 null 结尾。
                 let name = CStr::from_ptr((&raw const (*entry_ptr).d_name).cast());
                 let name_bytes = name.to_bytes();
                 if name_bytes == b"." || name_bytes == b".." {
                     continue;
                 }
 
-                // When loading from a field, we can skip the `&raw const`; `(*entry_ptr).d_ino` as
-                // a value expression will do the right thing: `byte_offset` to the field and then
-                // only access those bytes.
+                // 从字段加载（load）时，我们可以省略 `&raw const`；作为值表达式的
+                // `(*entry_ptr).d_ino` 会做正确的事：先 `byte_offset` 到该字段，
+                // 然后只访问那些字节。
                 #[cfg(not(target_os = "vita"))]
                 let entry = dirent64_min {
                     #[cfg(target_os = "freebsd")]
@@ -959,10 +949,9 @@ impl Iterator for ReadDir {
                 let err = readdir64_r(self.inner.dirp.0, &mut ret.entry, &mut entry_ptr);
                 if err != 0 {
                     if entry_ptr.is_null() {
-                        // We encountered an error (which will be returned in this iteration), but
-                        // we also reached the end of the directory stream. The `end_of_stream`
-                        // flag is enabled to make sure that we return `None` in the next iteration
-                        // (instead of looping forever)
+                        // 我们遇到了一个错误（它将在本次迭代中返回），但同时也
+                        // 到达了目录流（directory stream）的末尾。启用 `end_of_stream`
+                        // 标志，以确保我们在下一次迭代中返回 `None`（而不是永远循环下去）。
                         self.end_of_stream = true;
                     }
                     return Some(Err(Error::from_raw_os_error(err)));
@@ -978,19 +967,18 @@ impl Iterator for ReadDir {
     }
 }
 
-/// Aborts the process if a file desceriptor is not open, if debug asserts are enabled
+/// 如果启用了 debug assert，当某个文件描述符未打开时，中止（abort）进程
 ///
-/// Many IO syscalls can't be fully trusted about EBADF error codes because those
-/// might get bubbled up from a remote FUSE server rather than the file descriptor
-/// in the current process being invalid.
+/// 许多 IO 系统调用在 EBADF 错误码方面无法被完全信任，因为这些错误码可能是从
+/// 远程 FUSE 服务器冒泡上来的，而不一定是当前进程中的文件描述符真的无效。
 ///
-/// So we check file flags instead which live on the file descriptor and not the underlying file.
-/// The downside is that it costs an extra syscall, so we only do it for debug.
+/// 因此，我们转而检查文件标志（file flags），它存在于文件描述符上而非底层文件上。
+/// 缺点是这会多花一次系统调用，所以我们只在 debug 时这么做。
 #[inline]
 pub(crate) fn debug_assert_fd_is_open(fd: RawFd) {
     use crate::sys::io::errno;
 
-    // this is similar to assert_unsafe_precondition!() but it doesn't require const
+    // 这类似于 assert_unsafe_precondition!()，但它不要求 const
     if core::ub_checks::check_library_ub() {
         if unsafe { libc::fcntl(fd, libc::F_GETFD) } == -1 && errno() == libc::EBADF {
             rtabort!("IO Safety violation: owned file descriptor already closed");
@@ -1000,7 +988,7 @@ pub(crate) fn debug_assert_fd_is_open(fd: RawFd) {
 
 impl Drop for DirStream {
     fn drop(&mut self) {
-        // dirfd isn't supported everywhere
+        // dirfd 并非所有平台都支持
         #[cfg(not(any(
             miri,
             target_os = "redox",
@@ -1026,8 +1014,8 @@ impl Drop for DirStream {
     }
 }
 
-// SAFETY: `int dirfd (DIR *dirstream)` is MT-safe, implying that the pointer
-// may be safely sent among threads.
+// SAFETY: `int dirfd (DIR *dirstream)` 是 MT-safe（多线程安全）的，这意味着该指针
+// 可以安全地在线程之间传递。
 unsafe impl Send for DirStream {}
 unsafe impl Sync for DirStream {}
 
@@ -1155,8 +1143,7 @@ impl DirEntry {
 
     #[cfg(target_os = "nuttx")]
     pub fn ino(&self) -> u64 {
-        // Leave this 0 for now, as NuttX does not provide an inode number
-        // in its directory entries.
+        // 暂且把它保留为 0，因为 NuttX 在其目录条目中不提供 inode 编号。
         0
     }
 
@@ -1228,14 +1215,14 @@ impl DirEntry {
 impl OpenOptions {
     pub fn new() -> OpenOptions {
         OpenOptions {
-            // generic
+            // 通用部分
             read: false,
             write: false,
             append: false,
             truncate: false,
             create: false,
             create_new: false,
-            // system-specific
+            // 系统特定部分
             custom_flags: 0,
             mode: 0o666,
         }
@@ -1276,8 +1263,8 @@ impl OpenOptions {
             (false, _, true) => Ok(libc::O_WRONLY | libc::O_APPEND),
             (true, _, true) => Ok(libc::O_RDWR | libc::O_APPEND),
             (false, false, false) => {
-                // If no access mode is set, check if any creation flags are set
-                // to provide a more descriptive error message
+                // 如果没有设置任何访问模式，检查是否设置了任何创建标志（creation flags），
+                // 以便提供一条更具描述性的错误信息
                 if self.create || self.create_new || self.truncate {
                     Err(io::Error::new(
                         io::ErrorKind::InvalidInput,
@@ -1351,10 +1338,10 @@ impl File {
             | opts.get_access_mode()?
             | opts.get_creation_mode()?
             | (opts.custom_flags as c_int & !libc::O_ACCMODE);
-        // The third argument of `open64` is documented to have type `mode_t`. On
-        // some platforms (like macOS, where `open64` is actually `open`), `mode_t` is `u16`.
-        // However, since this is a variadic function, C integer promotion rules mean that on
-        // the ABI level, this still gets passed as `c_int` (aka `u32` on Unix platforms).
+        // `open64` 的第三个参数被文档规定为 `mode_t` 类型。在某些平台上
+        // （例如 macOS，那里 `open64` 实际上就是 `open`），`mode_t` 是 `u16`。
+        // 然而，由于这是一个可变参数（variadic）函数，根据 C 的整数提升（integer promotion）
+        // 规则，在 ABI 层面它仍然会作为 `c_int`（在 Unix 平台上即 `u32`）传递。
         let fd = cvt_r(|| unsafe { open64(path.as_ptr(), flags, opts.mode as c_int) })?;
         Ok(File(unsafe { FileDesc::from_raw_fd(fd) }))
     }
@@ -1747,8 +1734,8 @@ impl File {
 
     pub fn seek(&self, pos: SeekFrom) -> io::Result<u64> {
         let (whence, pos) = match pos {
-            // Casting to `i64` is fine, too large values will end up as
-            // negative which will cause an error in `lseek64`.
+            // 转换为 `i64` 是没问题的，过大的值会变成负数，
+            // 这会在 `lseek64` 中导致一个错误。
             SeekFrom::Start(off) => (libc::SEEK_SET, off as i64),
             SeekFrom::End(off) => (libc::SEEK_END, off),
             SeekFrom::Current(off) => (libc::SEEK_CUR, off),
@@ -1759,8 +1746,8 @@ impl File {
 
     pub fn size(&self) -> Option<io::Result<u64>> {
         match self.file_attr().map(|attr| attr.size()) {
-            // Fall back to default implementation if the returned size is 0,
-            // we might be in a proc mount.
+            // 如果返回的大小为 0，则回退到默认实现，
+            // 因为我们可能处于一个 proc 挂载点（proc mount）中。
             Ok(0) => None,
             result => Some(result),
         }
@@ -1782,9 +1769,9 @@ impl File {
     pub fn set_times(&self, times: FileTimes) -> io::Result<()> {
         cfg_select! {
             any(target_os = "redox", target_os = "espidf", target_os = "horizon", target_os = "nuttx") => {
-                // Redox doesn't appear to support `UTIME_OMIT`.
-                // ESP-IDF and HorizonOS do not support `futimens` at all and the behavior for those OS is therefore
-                // the same as for Redox.
+                // Redox 似乎不支持 `UTIME_OMIT`。
+                // ESP-IDF 和 HorizonOS 完全不支持 `futimens`，因此这些操作系统的行为
+                // 与 Redox 相同。
                 let _ = times;
                 Err(io::const_error!(
                     io::ErrorKind::Unsupported,
@@ -1804,7 +1791,7 @@ impl File {
             }
             target_os = "android" => {
                 let times = [file_time_to_timespec(times.accessed)?, file_time_to_timespec(times.modified)?];
-                // futimens requires Android API level 19
+                // futimens 要求 Android API level 19
                 cvt(unsafe {
                     weak!(
                         fn futimens(fd: c_int, times: *const libc::timespec) -> c_int;
@@ -1824,7 +1811,7 @@ impl File {
                 {
                     use crate::sys::{time::__timespec64, weak::weak};
 
-                    // Added in glibc 2.34
+                    // 在 glibc 2.34 中添加
                     weak!(
                         fn __futimens64(fd: c_int, times: *const __timespec64) -> c_int;
                     );
@@ -1995,14 +1982,14 @@ impl fmt::Debug for File {
     }
 }
 
-// Format in octal, followed by the mode format used in `ls -l`.
+// 以八进制格式输出，后跟 `ls -l` 中使用的 mode 格式。
 //
-// References:
+// 参考资料：
 //   https://pubs.opengroup.org/onlinepubs/009696899/utilities/ls.html
 //   https://www.gnu.org/software/libc/manual/html_node/Testing-File-Type.html
 //   https://www.gnu.org/software/libc/manual/html_node/Permission-Bits.html
 //
-// Example:
+// 示例：
 //   0o100664 (-rw-rw-r--)
 impl fmt::Debug for Mode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -2022,39 +2009,39 @@ impl fmt::Debug for Mode {
         f.write_str(" (")?;
         f.write_char(entry_type)?;
 
-        // Owner permissions
+        // 属主（Owner）权限
         f.write_char(if mode & libc::S_IRUSR != 0 { 'r' } else { '-' })?;
         f.write_char(if mode & libc::S_IWUSR != 0 { 'w' } else { '-' })?;
         let owner_executable = mode & libc::S_IXUSR != 0;
         let setuid = mode as c_int & libc::S_ISUID as c_int != 0;
         f.write_char(match (owner_executable, setuid) {
-            (true, true) => 's',  // executable and setuid
-            (false, true) => 'S', // setuid
-            (true, false) => 'x', // executable
+            (true, true) => 's',  // 可执行且设置了 setuid
+            (false, true) => 'S', // 设置了 setuid
+            (true, false) => 'x', // 可执行
             (false, false) => '-',
         })?;
 
-        // Group permissions
+        // 用户组（Group）权限
         f.write_char(if mode & libc::S_IRGRP != 0 { 'r' } else { '-' })?;
         f.write_char(if mode & libc::S_IWGRP != 0 { 'w' } else { '-' })?;
         let group_executable = mode & libc::S_IXGRP != 0;
         let setgid = mode as c_int & libc::S_ISGID as c_int != 0;
         f.write_char(match (group_executable, setgid) {
-            (true, true) => 's',  // executable and setgid
-            (false, true) => 'S', // setgid
-            (true, false) => 'x', // executable
+            (true, true) => 's',  // 可执行且设置了 setgid
+            (false, true) => 'S', // 设置了 setgid
+            (true, false) => 'x', // 可执行
             (false, false) => '-',
         })?;
 
-        // Other permissions
+        // 其他用户（Other）权限
         f.write_char(if mode & libc::S_IROTH != 0 { 'r' } else { '-' })?;
         f.write_char(if mode & libc::S_IWOTH != 0 { 'w' } else { '-' })?;
         let other_executable = mode & libc::S_IXOTH != 0;
         let sticky = mode as c_int & libc::S_ISVTX as c_int != 0;
         f.write_char(match (entry_type, other_executable, sticky) {
-            ('d', true, true) => 't',  // searchable and restricted deletion
-            ('d', false, true) => 'T', // restricted deletion
-            (_, true, _) => 'x',       // executable
+            ('d', true, true) => 't',  // 可搜索且受限删除（restricted deletion）
+            ('d', false, true) => 'T', // 受限删除（restricted deletion）
+            (_, true, _) => 'x',       // 可执行
             (_, false, _) => '-',
         })?;
 
@@ -2108,9 +2095,8 @@ pub fn readlink(c_path: &CStr) -> io::Result<PathBuf> {
             return Ok(PathBuf::from(OsString::from_vec(buf)));
         }
 
-        // Trigger the internal buffer resizing logic of `Vec` by requiring
-        // more space than the current capacity. The length is guaranteed to be
-        // the same as the capacity due to the if statement above.
+        // 通过要求比当前容量更多的空间，来触发 `Vec` 内部的缓冲区扩容逻辑。
+        // 由于上面的 if 语句，长度（length）保证与容量（capacity）相同。
         buf.reserve(1);
     }
 }
@@ -2122,20 +2108,19 @@ pub fn symlink(original: &CStr, link: &CStr) -> io::Result<()> {
 pub fn link(original: &CStr, link: &CStr) -> io::Result<()> {
     cfg_select! {
         any(
-            // VxWorks, Redox and ESP-IDF lack `linkat`, so use `link` instead.
-            // POSIX leaves it implementation-defined whether `link` follows
-            // symlinks, so rely on the `symlink_hard_link` test in
-            // library/std/src/fs/tests.rs to check the behavior.
+            // VxWorks、Redox 和 ESP-IDF 缺少 `linkat`，因此改用 `link`。
+            // POSIX 把 `link` 是否跟随符号链接（symlinks）留作由实现定义（implementation-defined），
+            // 因此依赖 library/std/src/fs/tests.rs 中的 `symlink_hard_link` 测试来检查其行为。
             target_os = "vxworks",
             target_os = "redox",
             target_os = "espidf",
-            // Android has `linkat` on newer versions, but we happen to know
-            // `link` always has the correct behavior, so it's here as well.
+            // Android 在较新版本上有 `linkat`，但我们恰好知道
+            // `link` 始终具有正确的行为，所以它也列在这里。
             target_os = "android",
-            // wasi-sdk-29-and-prior have a buggy `linkat` so use `link` instead
-            // until wasi-sdk is updated (see WebAssembly/wasi-libc#690)
+            // wasi-sdk-29 及更早版本的 `linkat` 有 bug，因此在 wasi-sdk 更新之前
+            // 改用 `link`（参见 WebAssembly/wasi-libc#690）
             target_os = "wasi",
-            // Other misc platforms
+            // 其他杂项平台
             target_os = "horizon",
             target_os = "vita",
             target_env = "nto70",
@@ -2143,8 +2128,8 @@ pub fn link(original: &CStr, link: &CStr) -> io::Result<()> {
             cvt(unsafe { libc::link(original.as_ptr(), link.as_ptr()) })?;
         }
         _ => {
-            // Where we can, use `linkat` instead of `link`; see the comment above
-            // this one for details on why.
+            // 在可以的情况下，使用 `linkat` 而非 `link`；关于原因的细节，
+            // 参见上面那条注释。
             cvt(unsafe { libc::linkat(libc::AT_FDCWD, original.as_ptr(), libc::AT_FDCWD, link.as_ptr(), 0) })?;
         }
     }
@@ -2219,7 +2204,7 @@ fn set_times_impl(p: &CStr, times: FileTimes, follow_symlinks: bool) -> io::Resu
             ))
        }
        target_vendor = "apple" => {
-            // Apple platforms use setattrlist which supports setting times on symlinks
+            // Apple 平台使用 setattrlist，它支持在符号链接上设置时间
             let ta = TimesAttrlist::from_times(&times)?;
             let options = if follow_symlinks {
                 0
@@ -2239,7 +2224,7 @@ fn set_times_impl(p: &CStr, times: FileTimes, follow_symlinks: bool) -> io::Resu
        target_os = "android" => {
             let times = [file_time_to_timespec(times.accessed)?, file_time_to_timespec(times.modified)?];
             let flags = if follow_symlinks { 0 } else { libc::AT_SYMLINK_NOFOLLOW };
-            // utimensat requires Android API level 19
+            // utimensat 要求 Android API level 19
             cvt(unsafe {
                 weak!(
                     fn utimensat(dirfd: c_int, path: *const libc::c_char, times: *const libc::timespec, flags: c_int) -> c_int;
@@ -2260,7 +2245,7 @@ fn set_times_impl(p: &CStr, times: FileTimes, follow_symlinks: bool) -> io::Resu
             {
                 use crate::sys::{time::__timespec64, weak::weak};
 
-                // Added in glibc 2.34
+                // 在 glibc 2.34 中添加
                 weak!(
                     fn __utimensat64(dirfd: c_int, path: *const c_char, times: *const __timespec64, flags: c_int) -> c_int;
                 );
@@ -2311,19 +2296,18 @@ fn open_to_and_set_permissions(
 
     let perm = reader_metadata.permissions();
     let writer = OpenOptions::new()
-        // create the file with the correct mode right away
+        // 立即以正确的 mode 创建文件
         .mode(perm.mode())
         .write(true)
         .create(true)
         .truncate(true)
         .open(to)?;
     let writer_metadata = writer.metadata()?;
-    // fchmod is broken on vita
+    // fchmod 在 vita 上有问题
     #[cfg(not(target_os = "vita"))]
     if writer_metadata.is_file() {
-        // Set the correct file permissions, in case the file already existed.
-        // Don't set the permissions on already existing non-files like
-        // pipes/FIFOs or device nodes.
+        // 设置正确的文件权限，以防该文件已经存在。
+        // 不要对已存在的非普通文件（如管道/FIFO 或设备节点）设置权限。
         writer.set_permissions(perm)?;
     }
     Ok((writer, writer_metadata))
@@ -2395,10 +2379,10 @@ pub fn copy(from: &Path, to: &Path) -> io::Result<u64> {
     struct FreeOnDrop(libc::copyfile_state_t);
     impl Drop for FreeOnDrop {
         fn drop(&mut self) {
-            // The code below ensures that `FreeOnDrop` is never a null pointer
+            // 下面的代码确保 `FreeOnDrop` 永远不会是空指针
             unsafe {
-                // `copyfile_state_free` returns -1 if the `to` or `from` files
-                // cannot be closed. However, this is not considered an error.
+                // 如果 `to` 或 `from` 文件无法被关闭，`copyfile_state_free` 会返回 -1。
+                // 然而，这并不被视为一个错误。
                 libc::copyfile_state_free(self.0);
             }
         }
@@ -2412,20 +2396,19 @@ pub fn copy(from: &Path, to: &Path) -> io::Result<u64> {
     match clonefile_result {
         Ok(_) => return Ok(reader_metadata.len()),
         Err(e) => match e.raw_os_error() {
-            // `fclonefileat` will fail on non-APFS volumes, if the
-            // destination already exists, or if the source and destination
-            // are on different devices. In all these cases `fcopyfile`
-            // should succeed.
+            // 在以下情况下，`fclonefileat` 会失败：卷不是 APFS、目标已存在，
+            // 或者源和目标位于不同的设备上。在所有这些情况下，`fcopyfile`
+            // 应当能够成功。
             Some(libc::ENOTSUP) | Some(libc::EEXIST) | Some(libc::EXDEV) => (),
             _ => return Err(e),
         },
     }
 
-    // Fall back to using `fcopyfile` if `fclonefileat` does not succeed.
+    // 如果 `fclonefileat` 未能成功，则回退到使用 `fcopyfile`。
     let (writer, writer_metadata) = open_to_and_set_permissions(to, &reader_metadata)?;
 
-    // We ensure that `FreeOnDrop` never contains a null pointer so it is
-    // always safe to call `copyfile_state_free`
+    // 我们确保 `FreeOnDrop` 永远不会包含空指针，因此调用
+    // `copyfile_state_free` 始终是安全的
     let state = unsafe {
         let state = libc::copyfile_state_alloc();
         if state.is_null() {
@@ -2497,7 +2480,7 @@ pub fn mkfifo(path: &Path, mode: u32) -> io::Result<()> {
 
 pub use remove_dir_impl::remove_dir_all;
 
-// Fallback for REDOX, ESP-ID, Horizon, Vita, Vxworks and Miri
+// 针对 REDOX、ESP-ID、Horizon、Vita、Vxworks 和 Miri 的回退实现
 #[cfg(any(
     target_os = "redox",
     target_os = "espidf",
@@ -2511,7 +2494,7 @@ mod remove_dir_impl {
     pub use crate::sys::fs::common::remove_dir_all;
 }
 
-// Modern implementation using openat(), unlinkat() and fdopendir()
+// 使用 openat()、unlinkat() 和 fdopendir() 的现代实现
 #[cfg(not(any(
     target_os = "redox",
     target_os = "espidf",
@@ -2554,10 +2537,9 @@ mod remove_dir_impl {
             return Err(io::Error::last_os_error());
         }
         let dirp = DirStream(ptr);
-        // file descriptor is automatically closed by libc::closedir() now, so give up ownership
+        // 现在文件描述符会由 libc::closedir() 自动关闭，因此放弃其所有权（ownership）
         let new_parent_fd = dir_fd.into_raw_fd();
-        // a valid root is not needed because we do not call any functions involving the full path
-        // of the `DirEntry`s.
+        // 不需要一个有效的 root，因为我们不会调用任何涉及 `DirEntry` 完整路径的函数。
         let dummy_root = PathBuf::new();
         let inner = InnerReadDir { dirp, root: dummy_root };
         Ok((ReadDir::new(inner), new_parent_fd))
@@ -2600,41 +2582,38 @@ mod remove_dir_impl {
     }
 
     fn remove_dir_all_recursive(parent_fd: Option<RawFd>, path: &CStr) -> io::Result<()> {
-        // try opening as directory
+        // 尝试以目录方式打开
         let fd = match openat_nofollow_dironly(parent_fd, &path) {
             Err(err) if matches!(err.raw_os_error(), Some(libc::ENOTDIR | libc::ELOOP)) => {
-                // not a directory - don't traverse further
-                // (for symlinks, older Linux kernels may return ELOOP instead of ENOTDIR)
+                // 不是目录——不再继续向下遍历
+                //（对于符号链接，较早版本的 Linux 内核可能返回 ELOOP 而非 ENOTDIR）
                 return match parent_fd {
-                    // unlink...
+                    // unlink……
                     Some(parent_fd) => {
                         cvt(unsafe { unlinkat(parent_fd, path.as_ptr(), 0) }).map(drop)
                     }
-                    // ...unless this was supposed to be the deletion root directory
+                    // ……除非这本应是删除操作的根目录
                     None => Err(err),
                 };
             }
             result => result?,
         };
 
-        // open the directory passing ownership of the fd
+        // 打开该目录，并将 fd 的所有权传递出去
         let (dir, fd) = fdreaddir(fd)?;
 
-        // For WASI all directory entries for this directory are read first
-        // before any removal is done. This works around the fact that the
-        // WASIp1 API for reading directories is not well-designed for handling
-        // mutations between invocations of reading a directory. By reading all
-        // the entries at once this ensures that, at least without concurrent
-        // modifications, it should be possible to delete everything.
+        // 对于 WASI，会先读取该目录的所有目录条目，然后才进行任何删除操作。
+        // 这是为了绕开如下事实：WASIp1 用于读取目录的 API 在设计上不擅长处理
+        // 多次读取目录调用之间的改动（mutations）。通过一次性读取所有条目，
+        // 这确保了——至少在没有并发修改的情况下——应当能够删除所有内容。
         #[cfg(target_os = "wasi")]
         let dir = dir.collect::<Vec<_>>();
 
         for child in dir {
             let child = child?;
             let child_name = child.name_cstr();
-            // we need an inner try block, because if one of these
-            // directories has already been deleted, then we need to
-            // continue the loop, not return ok.
+            // 我们需要一个内层 try 块，因为如果这些目录中有一个已经被删除了，
+            // 那么我们需要继续循环，而不是返回 ok。
             let result: io::Result<()> = try {
                 match is_dir(&child) {
                     Some(true) => {
@@ -2644,10 +2623,10 @@ mod remove_dir_impl {
                         cvt(unsafe { unlinkat(fd, child_name.as_ptr(), 0) })?;
                     }
                     None => {
-                        // POSIX specifies that calling unlink()/unlinkat(..., 0) on a directory can succeed
-                        // if the process has the appropriate privileges. This however can causing orphaned
-                        // directories requiring an fsck e.g. on Solaris and Illumos. So we try recursing
-                        // into it first instead of trying to unlink() it.
+                        // POSIX 规定，如果进程拥有相应的权限，对一个目录调用
+                        // unlink()/unlinkat(..., 0) 是可以成功的。然而这可能导致
+                        // 孤立（orphaned）目录、需要执行 fsck，例如在 Solaris 和 Illumos 上。
+                        // 所以我们先尝试递归进入它，而不是尝试 unlink() 它。
                         remove_dir_all_recursive(Some(fd), child_name)?;
                     }
                 }
@@ -2657,7 +2636,7 @@ mod remove_dir_impl {
             }
         }
 
-        // unlink the directory after removing its contents
+        // 在删除目录的内容之后，再 unlink 该目录本身
         ignore_notfound(cvt(unsafe {
             unlinkat(parent_fd.unwrap_or(libc::AT_FDCWD), path.as_ptr(), libc::AT_REMOVEDIR)
         }))?;
@@ -2665,9 +2644,9 @@ mod remove_dir_impl {
     }
 
     fn remove_dir_all_modern(p: &CStr) -> io::Result<()> {
-        // We cannot just call remove_dir_all_recursive() here because that would not delete a passed
-        // symlink. No need to worry about races, because remove_dir_all_recursive() does not recurse
-        // into symlinks.
+        // 这里我们不能直接调用 remove_dir_all_recursive()，因为那样不会删除传入的
+        // 符号链接。无需担心竞态（races），因为 remove_dir_all_recursive() 不会
+        // 递归进入符号链接。
         let attr = lstat(p)?;
         if attr.file_type().is_symlink() {
             super::unlink(p)

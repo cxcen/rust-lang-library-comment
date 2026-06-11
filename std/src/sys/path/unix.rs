@@ -21,23 +21,21 @@ pub const HAS_PREFIXES: bool = false;
 pub const MAIN_SEP_STR: &str = "/";
 pub const MAIN_SEP: char = '/';
 
-/// Make a POSIX path absolute without changing its semantics.
+/// 在不改变语义的前提下，把一个 POSIX 路径变为绝对路径。
 pub(crate) fn absolute(path: &Path) -> io::Result<PathBuf> {
-    // This is mostly a wrapper around collecting `Path::components`, with
-    // exceptions made where this conflicts with the POSIX specification.
-    // See 4.13 Pathname Resolution, IEEE Std 1003.1-2017
+    // 这基本上是对收集 `Path::components` 的一层包装，仅在与 POSIX 规范
+    // 冲突的地方做了例外处理。
+    // 参见 4.13 Pathname Resolution, IEEE Std 1003.1-2017
     // https://pubs.opengroup.org/onlinepubs/9699919799/basedefs/V1_chap04.html#tag_04_13
 
-    // Get the components, skipping the redundant leading "." component if it exists.
+    // 获取各个组件，如果存在多余的前导 "." 组件则将其跳过。
     let mut components = path.strip_prefix(".").unwrap_or(path).components();
     let path_os = path.as_os_str().as_encoded_bytes();
 
     let mut normalized = if path.is_absolute() {
-        // "If a pathname begins with two successive <slash> characters, the
-        // first component following the leading <slash> characters may be
-        // interpreted in an implementation-defined manner, although more than
-        // two leading <slash> characters shall be treated as a single <slash>
-        // character."
+        // 「如果一个路径名以两个连续的 <slash> 字符开头，则跟在这些前导
+        // <slash> 字符之后的第一个组件可以以实现自定义的方式来解释，不过
+        // 超过两个的前导 <slash> 字符应当被当作单个 <slash> 字符来处理。」
         if path_os.starts_with(b"//") && !path_os.starts_with(b"///") {
             components.next();
             PathBuf::from("//")
@@ -49,12 +47,11 @@ pub(crate) fn absolute(path: &Path) -> io::Result<PathBuf> {
     };
     normalized.extend(components);
 
-    // "Interfaces using pathname resolution may specify additional constraints
-    // when a pathname that does not name an existing directory contains at
-    // least one non- <slash> character and contains one or more trailing
-    // <slash> characters".
-    // A trailing <slash> is also meaningful if "a symbolic link is
-    // encountered during pathname resolution".
+    // 「使用路径名解析的接口可以指定额外的约束：当一个并不命名某个已存在
+    // 目录的路径名包含至少一个非 <slash> 字符、并且包含一个或多个尾部
+    // <slash> 字符时。」
+    // 如果「在路径名解析过程中遇到一个符号链接」，那么尾部的 <slash>
+    // 也是有意义的。
     if path_os.ends_with(b"/") {
         normalized.push("");
     }

@@ -2,10 +2,9 @@ use core::sync::atomic::{Atomic, AtomicU32, Ordering};
 
 use crate::os::xous::ffi::Connection;
 
-/// Group a `usize` worth of bytes into a `usize` and return it, beginning from
-/// `offset` * sizeof(usize) bytes from the start. For example,
-/// `group_or_null([1,2,3,4,5,6,7,8], 1)` on a 32-bit system will return a
-/// `usize` with 5678 packed into it.
+/// 把 `usize` 大小的若干字节组合（group）成一个 `usize` 并返回，起点为距数据起始处
+/// `offset` * sizeof(usize) 个字节。例如，在 32 位系统上对
+/// `group_or_null([1,2,3,4,5,6,7,8], 1)` 调用，将返回一个其中打包了 5678 的 `usize`。
 fn group_or_null(data: &[u8], offset: usize) -> usize {
     let start = offset * size_of::<usize>();
     let mut out_array = [0u8; size_of::<usize>()];
@@ -18,10 +17,10 @@ fn group_or_null(data: &[u8], offset: usize) -> usize {
 }
 
 pub(crate) enum LogScalar<'a> {
-    /// A panic occurred, and a panic log is forthcoming
+    /// 发生了一次 panic，随后将有一条 panic 日志到来
     BeginPanic,
 
-    /// Some number of bytes will be appended to the log message
+    /// 会有若干字节被追加到日志消息中
     AppendPanicMessage(&'a [u8]),
 }
 
@@ -30,9 +29,8 @@ impl<'a> Into<[usize; 5]> for LogScalar<'a> {
         match self {
             LogScalar::BeginPanic => [1000, 0, 0, 0, 0],
             LogScalar::AppendPanicMessage(c) =>
-            // Text is grouped into 4x `usize` words. The id is 1100 plus
-            // the number of characters in this message.
-            // Ignore errors since we're already panicking.
+            // 文本被分组为 4 个 `usize` 字（word）。id 是 1100 加上本条消息中的字符数。
+            // 由于我们已经在 panic 之中了，忽略各种错误。
             {
                 [
                     1100 + c.len(),
@@ -57,12 +55,11 @@ impl Into<usize> for LogLend {
     }
 }
 
-/// Returns a `Connection` to the log server, which is used for printing messages to
-/// the console and reporting panics.
+/// 返回一个到日志服务器（log server）的 `Connection`，该服务器用于向控制台打印消息以及
+/// 报告 panic。
 ///
-/// If the log server has not yet started, this will block until the server is
-/// running. It is safe to call this multiple times, because the address is
-/// shared among all threads in a process.
+/// 如果日志服务器尚未启动，本调用将一直阻塞，直到该服务器运行起来。多次调用本函数是安全的，
+/// 因为该地址会在一个进程内的所有线程之间共享。
 pub(crate) fn log_server() -> Connection {
     static LOG_SERVER_CONNECTION: Atomic<u32> = AtomicU32::new(0);
 

@@ -27,8 +27,8 @@ pub fn park_timeout(dur: Duration, _hint: usize) {
 
 pub fn unpark(id: ThreadId, _hint: usize) {
     match unsafe { abi::wup_tsk(id) } {
-        // It is allowed to try to wake up a destroyed or unrelated task, so we ignore all
-        // errors that could result from that situation.
+        // 允许尝试唤醒一个已被销毁或无关的任务，因此我们忽略所有可能由此情形
+        // 产生的错误。
         abi::E_OK | abi::E_NOEXS | abi::E_OBJ | abi::E_QOVR => {}
         err => {
             expect_success_aborting(err, &"wup_tsk");

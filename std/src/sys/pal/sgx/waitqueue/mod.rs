@@ -1,14 +1,13 @@
-//! A simple queue implementation for synchronization primitives.
+//! 一个用于同步原语的简单队列实现。
 //!
-//! This queue is used to implement condition variable and mutexes.
+//! 这个队列被用来实现条件变量与互斥锁。
 //!
-//! Users of this API are expected to use the `WaitVariable<T>` type. Since
-//! that type is not `Sync`, it needs to be protected by e.g., a `SpinMutex` to
-//! allow shared access.
+//! 本 API 的使用者应当使用 `WaitVariable<T>` 类型。由于该类型不是 `Sync`，
+//! 它需要由例如 `SpinMutex` 之类的同步原语加以保护，以允许共享访问。
 //!
-//! Since userspace may send spurious wake-ups, the wakeup event state is
-//! recorded in the enclave. The wakeup event state is protected by a spinlock.
-//! The queue and associated wait state are stored in a `WaitVariable`.
+//! 由于用户空间（userspace）可能发送虚假唤醒（spurious wake-up），唤醒事件状态
+//! 被记录在 enclave 内。该唤醒事件状态由一个自旋锁（spinlock）保护。队列及其
+//! 关联的等待状态存储在一个 `WaitVariable` 中。
 
 #[cfg(test)]
 mod tests;
@@ -26,19 +25,18 @@ use crate::ops::{Deref, DerefMut};
 use crate::panic::{self, AssertUnwindSafe};
 use crate::time::Duration;
 
-/// An queue entry in a `WaitQueue`.
+/// `WaitQueue` 中的一个队列条目（entry）。
 struct WaitEntry {
-    /// TCS address of the thread that is waiting
+    /// 正在等待的线程的 TCS 地址
     tcs: Tcs,
-    /// Whether this thread has been notified to be awoken
+    /// 该线程是否已被通知唤醒
     wake: bool,
 }
 
-/// Data stored with a `WaitQueue` alongside it. This ensures accesses to the
-/// queue and the data are synchronized, since the type itself is not `Sync`.
+/// 与 `WaitQueue` 一同存储的数据。由于该类型本身不是 `Sync`，这确保了对队列与
+/// 该数据的访问是同步的。
 ///
-/// Consumers of this API should use a synchronization primitive for shared
-/// access, such as `SpinMutex`.
+/// 本 API 的使用者应当使用一种同步原语（如 `SpinMutex`）来进行共享访问。
 #[derive(Default)]
 pub struct WaitVariable<T> {
     queue: WaitQueue,
@@ -65,23 +63,19 @@ pub enum NotifiedTcs {
     All { _count: NonZero<usize> },
 }
 
-/// An RAII guard that will notify a set of target threads as well as unlock
-/// a mutex on drop.
+/// 一个 RAII 守卫，在 drop 时会通知一组目标线程，并同时解锁一个互斥锁。
 pub struct WaitGuard<'a, T: 'a> {
     mutex_guard: Option<SpinMutexGuard<'a, WaitVariable<T>>>,
     notified_tcs: NotifiedTcs,
 }
 
-/// A queue of threads that are waiting on some synchronization primitive.
+/// 一个正在某个同步原语上等待的线程队列。
 ///
-/// `UnsafeList` entries are allocated on the waiting thread's stack. This
-/// avoids any global locking that might happen in the heap allocator. This is
-/// safe because the waiting thread will not return from that stack frame until
-/// after it is notified. The notifying thread ensures to clean up any
-/// references to the list entries before sending the wakeup event.
+/// `UnsafeList` 的条目（entry）被分配在等待线程的栈上。这避免了堆分配器中可能
+/// 发生的任何全局加锁。这是安全的，因为等待线程在被通知之前不会从那个栈帧返回。
+/// 通知线程会确保在发送唤醒事件之前清理掉对这些链表条目的任何引用。
 pub struct WaitQueue {
-    // We use an inner Mutex here to protect the data in the face of spurious
-    // wakeups.
+    // 我们在这里使用一个内部 Mutex，以在面对虚假唤醒（spurious wakeup）时保护数据。
     inner: UnsafeList<SpinMutex<WaitEntry>>,
 }
 unsafe impl Send for WaitQueue {}
@@ -122,13 +116,12 @@ impl WaitQueue {
         WaitQueue { inner: UnsafeList::new() }
     }
 
-    /// Adds the calling thread to the `WaitVariable`'s wait queue, then wait
-    /// until a wakeup event.
+    /// 将调用线程加入到 `WaitVariable` 的等待队列中，然后等待，直到出现唤醒事件。
     ///
-    /// This function does not return until this thread has been awoken. When `before_wait` panics,
-    /// this function will abort.
+    /// 在本线程被唤醒之前，此函数不会返回。当 `before_wait` panic 时，此函数将
+    /// 中止（abort）。
     pub fn wait<T, F: FnOnce()>(mut guard: SpinMutexGuard<'_, WaitVariable<T>>, before_wait: F) {
-        // very unsafe: check requirements of UnsafeList::push
+        // 非常 unsafe：请核对 UnsafeList::push 的各项要求
         unsafe {
             let mut entry = UnsafeListEntry::new(SpinMutex::new(WaitEntry {
                 tcs: thread::current(),
@@ -140,26 +133,25 @@ impl WaitQueue {
                 rtabort!("Panic before wait on wakeup event")
             }
             while !entry.lock().wake {
-                // `entry.wake` is only set in `notify_one` and `notify_all` functions. Both ensure
-                // the entry is removed from the queue _before_ setting this bool. There are no
-                // other references to `entry`.
-                // don't panic, this would invalidate `entry` during unwinding
+                // `entry.wake` 只在 `notify_one` 和 `notify_all` 函数中被设置。二者都
+                // 确保在设置该 bool 之前先把该 entry 从队列中移除。不存在对 `entry`
+                // 的其他引用。
+                // 不要 panic，否则会在栈展开（unwinding）期间使 `entry` 失效
                 let eventset = rtunwrap!(Ok, usercalls::wait(EV_UNPARK, WAIT_INDEFINITE));
                 rtassert!(eventset & EV_UNPARK == EV_UNPARK);
             }
         }
     }
 
-    /// Adds the calling thread to the `WaitVariable`'s wait queue, then wait
-    /// until a wakeup event or timeout. If event was observed, returns true.
-    /// If not, it will remove the calling thread from the wait queue.
-    /// When `before_wait` panics, this function will abort.
+    /// 将调用线程加入到 `WaitVariable` 的等待队列中，然后等待，直到出现唤醒事件
+    /// 或超时。如果观察到了事件，则返回 true。否则，它会把调用线程从等待队列中
+    /// 移除。当 `before_wait` panic 时，此函数将中止（abort）。
     pub fn wait_timeout<T, F: FnOnce()>(
         lock: &SpinMutex<WaitVariable<T>>,
         timeout: Duration,
         before_wait: F,
     ) -> bool {
-        // very unsafe: check requirements of UnsafeList::push
+        // 非常 unsafe：请核对 UnsafeList::push 的各项要求
         unsafe {
             let mut entry = UnsafeListEntry::new(SpinMutex::new(WaitEntry {
                 tcs: thread::current(),
@@ -170,31 +162,28 @@ impl WaitQueue {
                 rtabort!("Panic before wait on wakeup event or timeout")
             }
             usercalls::wait_timeout(EV_UNPARK, timeout, || entry_lock.lock().wake);
-            // acquire the wait queue's lock first to avoid deadlock
-            // and ensure no other function can simultaneously access the list
-            // (e.g., `notify_one` or `notify_all`)
+            // 先获取等待队列的锁，以避免死锁，并确保没有其他函数能够同时访问该链表
+            // （例如 `notify_one` 或 `notify_all`）
             let mut guard = lock.lock();
             let success = entry_lock.lock().wake;
             if !success {
-                // nobody is waking us up, so remove our entry from the wait queue.
+                // 没有人在唤醒我们，所以把我们的 entry 从等待队列中移除。
                 guard.queue.inner.remove(&mut entry);
             }
             success
         }
     }
 
-    /// Either find the next waiter on the wait queue, or return the mutex
-    /// guard unchanged.
+    /// 要么在等待队列上找到下一个等待者，要么原样返回该 mutex 守卫。
     ///
-    /// If a waiter is found, a `WaitGuard` is returned which will notify the
-    /// waiter when it is dropped.
+    /// 如果找到了一个等待者，则返回一个 `WaitGuard`，它会在被 drop 时通知该
+    /// 等待者。
     pub fn notify_one<T>(
         mut guard: SpinMutexGuard<'_, WaitVariable<T>>,
     ) -> Result<WaitGuard<'_, T>, SpinMutexGuard<'_, WaitVariable<T>>> {
-        // SAFETY: lifetime of the pop() return value is limited to the map
-        // closure (The closure return value is 'static). The underlying
-        // stack frame won't be freed until after the lock on the queue is released
-        // (i.e., `guard` is dropped).
+        // SAFETY: pop() 返回值的生命周期被限定在 map 闭包内（该闭包的返回值是
+        // 'static 的）。在队列上的锁被释放（即 `guard` 被 drop）之前，底层栈帧
+        // 不会被释放。
         unsafe {
             let tcs = guard.queue.inner.pop().map(|entry| -> Tcs {
                 let mut entry_guard = entry.lock();
@@ -210,17 +199,15 @@ impl WaitQueue {
         }
     }
 
-    /// Either find any and all waiters on the wait queue, or return the mutex
-    /// guard unchanged.
+    /// 要么找出等待队列上所有的等待者，要么原样返回该 mutex 守卫。
     ///
-    /// If at least one waiter is found, a `WaitGuard` is returned which will
-    /// notify all waiters when it is dropped.
+    /// 如果至少找到一个等待者，则返回一个 `WaitGuard`，它会在被 drop 时通知所有
+    /// 等待者。
     pub fn notify_all<T>(
         mut guard: SpinMutexGuard<'_, WaitVariable<T>>,
     ) -> Result<WaitGuard<'_, T>, SpinMutexGuard<'_, WaitVariable<T>>> {
-        // SAFETY: lifetime of the pop() return values are limited to the
-        // while loop body. The underlying stack frames won't be freed until
-        // after the lock on the queue is released (i.e., `guard` is dropped).
+        // SAFETY: pop() 各返回值的生命周期被限定在 while 循环体内。在队列上的锁
+        // 被释放（即 `guard` 被 drop）之前，底层栈帧不会被释放。
         unsafe {
             let mut count = 0;
             while let Some(entry) = guard.queue.inner.pop() {

@@ -1,6 +1,5 @@
-/// Flags to be passed to the MapMemory struct.
-/// Note that it is an error to have memory be
-/// writable and not readable.
+/// 要传递给 MapMemory struct 的标志（flags）。
+/// 注意：让内存可写（writable）却不可读（readable）是一种错误。
 #[derive(Copy, PartialEq, Eq, Clone, PartialOrd, Ord, Hash, Debug)]
 #[stable(feature = "rust1", since = "1.0.0")]
 pub struct MemoryFlags {
@@ -8,25 +7,24 @@ pub struct MemoryFlags {
 }
 
 impl MemoryFlags {
-    /// Free this memory
+    /// 释放（free）这块内存
     #[stable(feature = "rust1", since = "1.0.0")]
     pub const FREE: Self = Self { bits: 0b0000_0000 };
 
-    /// Immediately allocate this memory.  Otherwise it will
-    /// be demand-paged.  This is implicitly set when `phys`
-    /// is not 0.
+    /// 立即分配这块内存。否则它将按需分页（demand-paged）。当 `phys` 不为 0 时，
+    /// 该标志会被隐式设置。
     #[stable(feature = "rust1", since = "1.0.0")]
     pub const RESERVE: Self = Self { bits: 0b0000_0001 };
 
-    /// Allow the CPU to read from this page.
+    /// 允许 CPU 从此页（page）读取。
     #[stable(feature = "rust1", since = "1.0.0")]
     pub const R: Self = Self { bits: 0b0000_0010 };
 
-    /// Allow the CPU to write to this page.
+    /// 允许 CPU 向此页（page）写入。
     #[stable(feature = "rust1", since = "1.0.0")]
     pub const W: Self = Self { bits: 0b0000_0100 };
 
-    /// Allow the CPU to execute from this page.
+    /// 允许 CPU 从此页（page）执行。
     #[stable(feature = "rust1", since = "1.0.0")]
     pub const X: Self = Self { bits: 0b0000_1000 };
 
@@ -88,7 +86,7 @@ impl core::fmt::UpperHex for MemoryFlags {
 impl core::ops::BitOr for MemoryFlags {
     type Output = Self;
 
-    /// Returns the union of the two sets of flags.
+    /// 返回这两组标志的并集（union）。
     #[inline]
     fn bitor(self, other: MemoryFlags) -> Self {
         Self { bits: self.bits | other.bits }
@@ -97,7 +95,7 @@ impl core::ops::BitOr for MemoryFlags {
 
 #[stable(feature = "rust1", since = "1.0.0")]
 impl core::ops::BitOrAssign for MemoryFlags {
-    /// Adds the set of flags.
+    /// 加入这组标志。
     #[inline]
     fn bitor_assign(&mut self, other: Self) {
         self.bits |= other.bits;
@@ -108,7 +106,7 @@ impl core::ops::BitOrAssign for MemoryFlags {
 impl core::ops::BitXor for MemoryFlags {
     type Output = Self;
 
-    /// Returns the left flags, but with all the right flags toggled.
+    /// 返回左侧标志，但其中所有右侧标志位都被翻转（toggle）。
     #[inline]
     fn bitxor(self, other: Self) -> Self {
         Self { bits: self.bits ^ other.bits }
@@ -117,7 +115,7 @@ impl core::ops::BitXor for MemoryFlags {
 
 #[stable(feature = "rust1", since = "1.0.0")]
 impl core::ops::BitXorAssign for MemoryFlags {
-    /// Toggles the set of flags.
+    /// 翻转（toggle）这组标志。
     #[inline]
     fn bitxor_assign(&mut self, other: Self) {
         self.bits ^= other.bits;
@@ -128,7 +126,7 @@ impl core::ops::BitXorAssign for MemoryFlags {
 impl core::ops::BitAnd for MemoryFlags {
     type Output = Self;
 
-    /// Returns the intersection between the two sets of flags.
+    /// 返回这两组标志之间的交集（intersection）。
     #[inline]
     fn bitand(self, other: Self) -> Self {
         Self { bits: self.bits & other.bits }
@@ -137,7 +135,7 @@ impl core::ops::BitAnd for MemoryFlags {
 
 #[stable(feature = "rust1", since = "1.0.0")]
 impl core::ops::BitAndAssign for MemoryFlags {
-    /// Disables all flags disabled in the set.
+    /// 禁用集合中所有被禁用的标志。
     #[inline]
     fn bitand_assign(&mut self, other: Self) {
         self.bits &= other.bits;
@@ -148,7 +146,7 @@ impl core::ops::BitAndAssign for MemoryFlags {
 impl core::ops::Sub for MemoryFlags {
     type Output = Self;
 
-    /// Returns the set difference of the two sets of flags.
+    /// 返回这两组标志的集合差（set difference）。
     #[inline]
     fn sub(self, other: Self) -> Self {
         Self { bits: self.bits & !other.bits }
@@ -157,7 +155,7 @@ impl core::ops::Sub for MemoryFlags {
 
 #[stable(feature = "rust1", since = "1.0.0")]
 impl core::ops::SubAssign for MemoryFlags {
-    /// Disables all flags enabled in the set.
+    /// 禁用集合中所有已启用的标志。
     #[inline]
     fn sub_assign(&mut self, other: Self) {
         self.bits &= !other.bits;
@@ -168,7 +166,7 @@ impl core::ops::SubAssign for MemoryFlags {
 impl core::ops::Not for MemoryFlags {
     type Output = Self;
 
-    /// Returns the complement of this set of flags.
+    /// 返回这组标志的补集（complement）。
     #[inline]
     fn not(self) -> Self {
         Self { bits: !self.bits } & MemoryFlags { bits: 15 }

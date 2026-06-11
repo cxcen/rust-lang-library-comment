@@ -7,7 +7,7 @@ use crate::sys::pal::fuchsia::*;
 use crate::{fmt, io, mem, ptr};
 
 ////////////////////////////////////////////////////////////////////////////////
-// Command
+// 命令（Command）
 ////////////////////////////////////////////////////////////////////////////////
 
 impl Command {
@@ -42,7 +42,7 @@ impl Command {
 
         match self.setup_io(default, true) {
             Ok((_, _)) => {
-                // FIXME: This is tough because we don't support the exec syscalls
+                // FIXME: 这很棘手，因为我们不支持 exec 系列系统调用
                 unimplemented!();
             }
             Err(e) => e,
@@ -55,8 +55,7 @@ impl Command {
         maybe_envp: Option<&CStringArray>,
     ) -> io::Result<zx_handle_t> {
         let envp = match maybe_envp {
-            // None means to clone the current environment, which is done in the
-            // flags below.
+            // None 表示克隆当前的环境，这是通过下面的 flags 来完成的。
             None => ptr::null(),
             Some(envp) => envp.as_ptr(),
         };
@@ -71,15 +70,14 @@ impl Command {
                 })
             } else {
                 if let ChildStdio::Null = local_io {
-                    // acts as no-op
+                    // 充当空操作（no-op）
                     return Ok(Default::default());
                 }
 
                 let mut handle = ZX_HANDLE_INVALID;
                 let status = fdio_fd_clone(target_fd, &mut handle);
                 if status == ZX_ERR_INVALID_ARGS || status == ZX_ERR_NOT_SUPPORTED {
-                    // This descriptor is closed; skip it rather than generating an
-                    // error.
+                    // 这个描述符已被关闭；跳过它，而不是生成一个错误。
                     return Ok(Default::default());
                 }
                 zx_cvt(status)?;
@@ -96,14 +94,14 @@ impl Command {
             }
         };
 
-        // Clone stdin, stdout, and stderr
+        // 克隆 stdin、stdout 和 stderr
         let action1 = make_action(&stdio.stdin, 0)?;
         let action2 = make_action(&stdio.stdout, 1)?;
         let action3 = make_action(&stdio.stderr, 2)?;
         let actions = [action1, action2, action3];
 
-        // We don't want FileDesc::drop to be called on any stdio. fdio_spawn_etc
-        // always consumes transferred file descriptors.
+        // 我们不希望对任何 stdio 调用 FileDesc::drop。fdio_spawn_etc 总是会消耗（consume）
+        // 被转移走的文件描述符。
         mem::forget(stdio);
 
         for callback in self.get_closures().iter_mut() {
@@ -116,7 +114,7 @@ impl Command {
             FDIO_SPAWN_CLONE_JOB
                 | FDIO_SPAWN_CLONE_LDSVC
                 | FDIO_SPAWN_CLONE_NAMESPACE
-                | FDIO_SPAWN_CLONE_ENVIRON // this is ignored when envp is non-null
+                | FDIO_SPAWN_CLONE_ENVIRON // 当 envp 非 null 时，这一项会被忽略
                 | FDIO_SPAWN_CLONE_UTC_CLOCK,
             self.get_program_cstr().as_ptr(),
             self.get_argv().as_ptr(),
@@ -126,14 +124,14 @@ impl Command {
             &mut process_handle,
             ptr::null_mut(),
         ))?;
-        // FIXME: See if we want to do something with that err_msg
+        // FIXME: 看看我们是否想对那个 err_msg 做些什么
 
         Ok(process_handle)
     }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// Processes
+// 进程（Processes）
 ////////////////////////////////////////////////////////////////////////////////
 
 pub struct Process {
@@ -154,7 +152,7 @@ impl Process {
     }
 
     pub fn send_signal(&self, _signal: i32) -> io::Result<()> {
-        // Fuchsia doesn't have a direct equivalent for signals
+        // Fuchsia 没有与信号（signals）直接对应的等价物
         unimplemented!()
     }
 
@@ -236,7 +234,7 @@ impl ExitStatus {
     }
 
     pub fn code(&self) -> Option<i32> {
-        // FIXME: support extracting return code as an i64
+        // FIXME: 支持把返回码（return code）提取为 i64
         self.0.try_into().ok()
     }
 
@@ -244,14 +242,12 @@ impl ExitStatus {
         None
     }
 
-    // FIXME: The actually-Unix implementation in unix.rs uses WSTOPSIG, WCOREDUMP et al.
-    // I infer from the implementation of `success`, `code` and `signal` above that these are not
-    // available on Fuchsia.
+    // FIXME: unix.rs 中真正的 Unix 实现使用了 WSTOPSIG、WCOREDUMP 等等。
+    // 从上面 `success`、`code` 和 `signal` 的实现来看，我推断这些在 Fuchsia 上不可用。
     //
-    // It does not appear that Fuchsia is Unix-like enough to implement ExitStatus (or indeed many
-    // other things from std::os::unix) properly. This veneer is always going to be a bodge. So
-    // while I don't know if these implementations are actually correct, I think they will do for
-    // now at least.
+    // 看起来 Fuchsia 并没有 Unix-like 到足以正确实现 ExitStatus（或者说 std::os::unix 中
+    // 许多其他东西）。这层贴皮（veneer）注定总是个权宜之计（bodge）。因此，尽管我不知道
+    // 这些实现是否真的正确，但我认为它们至少目前够用了。
     pub fn core_dumped(&self) -> bool {
         false
     }
@@ -263,33 +259,30 @@ impl ExitStatus {
     }
 
     pub fn into_raw(&self) -> c_int {
-        // We don't know what someone who calls into_raw() will do with this value, but it should
-        // have the conventional Unix representation. Despite the fact that this is not
-        // standardised in SuS or POSIX, all Unix systems encode the signal and exit status the
-        // same way. (Ie the WIFEXITED, WEXITSTATUS etc. macros have identical behavior on every
-        // Unix.)
+        // 我们不知道调用 into_raw() 的人会拿这个值做什么，但它应当具有惯常的
+        // Unix 表示形式。尽管这一点在 SuS 或 POSIX 中并未标准化，但所有 Unix 系统
+        // 都以相同的方式编码信号和退出状态。（即 WIFEXITED、WEXITSTATUS 等宏在每个
+        // Unix 上都有完全相同的行为。）
         //
-        // The caller of `std::os::unix::into_raw` is probably wanting a Unix exit status, and may
-        // do their own shifting and masking, or even pass the status to another computer running a
-        // different Unix variant.
+        // `std::os::unix::into_raw` 的调用者大概是想要一个 Unix 退出状态，并且可能会
+        // 自己进行移位和掩码操作，甚至把该状态传给另一台运行不同 Unix 变体的计算机。
         //
-        // The other view would be to say that the caller on Fuchsia ought to know that `into_raw`
-        // will give a raw Fuchsia status (whatever that is - I don't know, personally). That is
-        // not possible here because we must return a c_int because that's what Unix (including
-        // SuS and POSIX) say a wait status is, but Fuchsia apparently uses a u64, so it won't
-        // necessarily fit.
+        // 另一种看法是说：Fuchsia 上的调用者本应知道 `into_raw` 会给出一个原始的
+        // Fuchsia 状态（不管那是什么——我个人也不清楚）。但这里做不到，因为我们必须返回
+        // 一个 c_int，因为 Unix（包括 SuS 和 POSIX）规定 wait status 就是 c_int，
+        // 而 Fuchsia 显然使用 u64，所以它不一定能放得下。
         //
-        // It seems to me that the right answer would be to provide std::os::fuchsia with its
-        // own ExitStatusExt, rather that trying to provide a not very convincing imitation of
-        // Unix. Ie, std::os::unix::process:ExitStatusExt ought not to exist on Fuchsia. But
-        // fixing this up that is beyond the scope of my efforts now.
+        // 在我看来，正确的答案应该是为 std::os::fuchsia 提供它自己的 ExitStatusExt，
+        // 而不是去尝试提供一个不那么令人信服的、对 Unix 的模仿。也就是说，
+        // std::os::unix::process:ExitStatusExt 本不应在 Fuchsia 上存在。但把这一点修好
+        // 已超出我现在的精力范围。
         let exit_status_as_if_unix: u8 = self.0.try_into().expect("Fuchsia process return code bigger than 8 bits, but std::os::unix::ExitStatusExt::into_raw() was called to try to convert the value into a traditional Unix-style wait status, which cannot represent values greater than 255.");
         let wait_status_as_if_unix = (exit_status_as_if_unix as c_int) << 8;
         wait_status_as_if_unix
     }
 }
 
-/// Converts a raw `c_int` to a type-safe `ExitStatus` by wrapping it without copying.
+/// 通过包装一个原始的 `c_int`（不进行拷贝）来把它转换为类型安全的 `ExitStatus`。
 impl From<c_int> for ExitStatus {
     fn from(a: c_int) -> ExitStatus {
         ExitStatus(a as i64)
@@ -313,7 +306,7 @@ impl Into<ExitStatus> for ExitStatusError {
 
 impl ExitStatusError {
     pub fn code(self) -> Option<NonZero<i32>> {
-        // fixme: affected by the same bug as ExitStatus::code()
+        // fixme: 受与 ExitStatus::code() 相同的 bug 影响
         ExitStatus(self.0.into()).code().map(|st| st.try_into().unwrap())
     }
 }

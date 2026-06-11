@@ -1,4 +1,4 @@
-//! Raw type definitions for the ESP-IDF framework.
+//! 针对 ESP-IDF 框架的原始类型定义。
 
 #![stable(feature = "raw_ext", since = "1.1.0")]
 #![deprecated(

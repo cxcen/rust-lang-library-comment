@@ -1,6 +1,6 @@
-//! macOS allows registering destructors through _tlv_atexit. But since calling
-//! it while TLS destructors are running is UB, we still need to keep our own
-//! list of destructors.
+//! macOS 允许通过 _tlv_atexit 注册析构函数（destructors）。但由于在 TLS
+//! 析构函数正在运行期间调用它属于 UB（未定义行为），我们仍然需要维护
+//! 自己的一份析构函数列表。
 
 use crate::cell::Cell;
 use crate::ptr;
@@ -15,9 +15,9 @@ pub fn enable() {
     }
 
     if !REGISTERED.replace(true) {
-        // SAFETY: Calling _tlv_atexit while TLS destructors are running is UB.
-        // But as run_dtors is only called after being registered, this point
-        // cannot be reached from it.
+        // SAFETY：在 TLS 析构函数正在运行期间调用 _tlv_atexit 属于 UB。
+        // 但由于 run_dtors 只会在注册完成之后被调用，因此无法从它内部
+        // 到达这一点。
         unsafe {
             _tlv_atexit(run_dtors, ptr::null_mut());
         }

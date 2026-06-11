@@ -6,23 +6,19 @@ use crate::cmp;
 use crate::io::prelude::*;
 use crate::io::{self, BorrowedCursor, ErrorKind, IoSlice, IoSliceMut, SeekFrom};
 
-/// A `Cursor` wraps an in-memory buffer and provides it with a
-/// [`Seek`] implementation.
+/// `Cursor` 包装一个内存中的缓冲，并为它提供一个 [`Seek`] 实现。
 ///
-/// `Cursor`s are used with in-memory buffers, anything implementing
-/// <code>[AsRef]<\[u8]></code>, to allow them to implement [`Read`] and/or [`Write`],
-/// allowing these buffers to be used anywhere you might use a reader or writer
-/// that does actual I/O.
+/// `Cursor` 与内存缓冲（任何实现了 <code>[AsRef]<\[u8]></code> 的类型）配合使用，使这些
+/// 缓冲能够实现 [`Read`] 和/或 [`Write`]，从而让它们可以用在任何你本会使用“做真实 I/O 的
+/// reader 或 writer”的地方。
 ///
-/// The standard library implements some I/O traits on various types which
-/// are commonly used as a buffer, like <code>Cursor<[Vec]\<u8>></code> and
-/// <code>Cursor<[&\[u8\]][bytes]></code>.
+/// 标准库为若干常被用作缓冲的类型实现了一些 I/O traits，例如 <code>Cursor<[Vec]\<u8>></code>
+/// 和 <code>Cursor<[&\[u8\]][bytes]></code>。
 ///
-/// # Examples
+/// # 示例
 ///
-/// We may want to write bytes to a [`File`] in our production
-/// code, but use an in-memory buffer in our tests. We can do this with
-/// `Cursor`:
+/// 在生产代码中我们可能想把字节写入一个 [`File`]，但在测试中却想用一块内存缓冲。借助
+/// `Cursor` 我们可以做到这一点：
 ///
 /// [bytes]: crate::slice "slice"
 /// [`File`]: crate::fs::File
@@ -32,7 +28,7 @@ use crate::io::{self, BorrowedCursor, ErrorKind, IoSlice, IoSliceMut, SeekFrom};
 /// use std::io::{self, SeekFrom};
 /// use std::fs::File;
 ///
-/// // a library function we've written
+/// // 我们写的一个库函数
 /// fn write_ten_bytes_at_end<W: Write + Seek>(mut writer: W) -> io::Result<()> {
 ///     writer.seek(SeekFrom::End(-10))?;
 ///
@@ -40,28 +36,26 @@ use crate::io::{self, BorrowedCursor, ErrorKind, IoSlice, IoSliceMut, SeekFrom};
 ///         writer.write(&[i])?;
 ///     }
 ///
-///     // all went well
+///     // 一切顺利
 ///     Ok(())
 /// }
 ///
 /// # fn foo() -> io::Result<()> {
-/// // Here's some code that uses this library function.
+/// // 这是一段使用上述库函数的代码。
 /// //
-/// // We might want to use a BufReader here for efficiency, but let's
-/// // keep this example focused.
+/// // 出于效率考虑我们这里也许会想用一个 BufReader，但为了让示例保持聚焦，就不用了。
 /// let mut file = File::create("foo.txt")?;
-/// // First, we need to allocate 10 bytes to be able to write into.
+/// // 首先，我们需要分配 10 个字节以便能向其中写入。
 /// file.set_len(10)?;
 ///
 /// write_ten_bytes_at_end(&mut file)?;
 /// # Ok(())
 /// # }
 ///
-/// // now let's write a test
+/// // 现在我们来写一个测试
 /// #[test]
 /// fn test_writes_bytes() {
-///     // setting up a real File is much slower than an in-memory buffer,
-///     // let's use a cursor instead
+///     // 创建一个真实的 File 比内存缓冲慢得多，所以我们改用 cursor
 ///     use std::io::Cursor;
 ///     let mut buff = Cursor::new(vec![0; 15]);
 ///
@@ -78,13 +72,12 @@ pub struct Cursor<T> {
 }
 
 impl<T> Cursor<T> {
-    /// Creates a new cursor wrapping the provided underlying in-memory buffer.
+    /// 创建一个新的 cursor，包装所提供的底层内存缓冲。
     ///
-    /// Cursor initial position is `0` even if underlying buffer (e.g., [`Vec`])
-    /// is not empty. So writing to cursor starts with overwriting [`Vec`]
-    /// content, not with appending to it.
+    /// 即便底层缓冲（例如 [`Vec`]）非空，cursor 的初始位置也是 `0`。因此，向 cursor 写入
+    /// 是从覆写 [`Vec`] 的内容开始的，而不是追加到其末尾。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::io::Cursor;
@@ -99,9 +92,9 @@ impl<T> Cursor<T> {
         Cursor { pos: 0, inner }
     }
 
-    /// Consumes this cursor, returning the underlying value.
+    /// 消耗这个 cursor，返回其底层值。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::io::Cursor;
@@ -117,9 +110,9 @@ impl<T> Cursor<T> {
         self.inner
     }
 
-    /// Gets a reference to the underlying value in this cursor.
+    /// 获取对这个 cursor 中底层值的不可变引用。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::io::Cursor;
@@ -136,12 +129,11 @@ impl<T> Cursor<T> {
         &self.inner
     }
 
-    /// Gets a mutable reference to the underlying value in this cursor.
+    /// 获取对这个 cursor 中底层值的可变引用。
     ///
-    /// Care should be taken to avoid modifying the internal I/O state of the
-    /// underlying value as it may corrupt this cursor's position.
+    /// 应当注意避免修改底层值的内部 I/O 状态，因为那可能会破坏（搞乱）这个 cursor 的位置。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::io::Cursor;
@@ -158,9 +150,9 @@ impl<T> Cursor<T> {
         &mut self.inner
     }
 
-    /// Returns the current position of this cursor.
+    /// 返回这个 cursor 的当前位置。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::io::Cursor;
@@ -183,9 +175,9 @@ impl<T> Cursor<T> {
         self.pos
     }
 
-    /// Sets the position of this cursor.
+    /// 设置这个 cursor 的位置。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::io::Cursor;
@@ -211,9 +203,9 @@ impl<T> Cursor<T>
 where
     T: AsRef<[u8]>,
 {
-    /// Splits the underlying slice at the cursor position and returns them.
+    /// 在 cursor 位置处把底层切片一分为二，并返回这两部分。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(cursor_split)]
@@ -241,10 +233,9 @@ impl<T> Cursor<T>
 where
     T: AsMut<[u8]>,
 {
-    /// Splits the underlying slice at the cursor position and returns them
-    /// mutably.
+    /// 在 cursor 位置处把底层切片一分为二，并以可变方式返回这两部分。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(cursor_split)]
@@ -362,7 +353,7 @@ where
 
         match result {
             Ok(_) => self.pos += buf.len() as u64,
-            // The only possible error condition is EOF, so place the cursor at "EOF"
+            // 唯一可能出现的错误情形是 EOF，所以把 cursor 置于“EOF”处
             Err(_) => self.pos = self.inner.as_ref().len() as u64,
         }
 
@@ -413,7 +404,7 @@ where
     }
 }
 
-// Non-resizing write implementation
+// 不会改变大小（non-resizing）的 write 实现
 #[inline]
 fn slice_write(pos_mut: &mut u64, slice: &mut [u8], buf: &[u8]) -> io::Result<usize> {
     let pos = cmp::min(*pos_mut, slice.len() as u64);
@@ -460,7 +451,7 @@ fn slice_write_all_vectored(
     Ok(())
 }
 
-/// Reserves the required space, and pads the vec with 0s if necessary.
+/// 预留所需的空间，并在必要时用 0 对 vec 进行填充（padding）。
 fn reserve_and_pad<A: Allocator>(
     pos_mut: &mut u64,
     vec: &mut Vec<u8, A>,
@@ -473,26 +464,22 @@ fn reserve_and_pad<A: Allocator>(
         )
     })?;
 
-    // For safety reasons, we don't want these numbers to overflow
-    // otherwise our allocation won't be enough
+    // 出于安全考虑，我们不希望这些数值发生溢出，否则我们的分配就会不够用
     let desired_cap = pos.saturating_add(buf_len);
     if desired_cap > vec.capacity() {
-        // We want our vec's total capacity
-        // to have room for (pos+buf_len) bytes. Reserve allocates
-        // based on additional elements from the length, so we need to
-        // reserve the difference
+        // 我们希望 vec 的总容量能为 (pos+buf_len) 个字节腾出空间。reserve 是基于“在现有
+        // 长度之外再增加多少元素”来分配的，所以我们需要预留两者之间的差值
         vec.reserve(desired_cap - vec.len());
     }
-    // Pad if pos is above the current len.
+    // 如果 pos 超出了当前的 len，就进行填充。
     if pos > vec.len() {
         let diff = pos - vec.len();
-        // Unfortunately, `resize()` would suffice but the optimiser does not
-        // realise the `reserve` it does can be eliminated. So we do it manually
-        // to eliminate that extra branch
+        // 遗憾的是，`resize()` 本可以胜任，但优化器没意识到它内部所做的 `reserve` 是可以被
+        // 消除的。所以我们手动来做，以消除那一个多余的分支
         let spare = vec.spare_capacity_mut();
         debug_assert!(spare.len() >= diff);
-        // Safety: we have allocated enough capacity for this.
-        // And we are only writing, not reading
+        // Safety: 我们已经为此分配了足够的容量。
+        // 而且我们只是在写入，并不读取
         unsafe {
             spare.get_unchecked_mut(..diff).fill(core::mem::MaybeUninit::new(0));
             vec.set_len(pos);
@@ -502,11 +489,11 @@ fn reserve_and_pad<A: Allocator>(
     Ok(pos)
 }
 
-/// Writes the slice to the vec without allocating.
+/// 在不分配的前提下把切片写入 vec。
 ///
 /// # Safety
 ///
-/// `vec` must have `buf.len()` spare capacity.
+/// `vec` 必须拥有 `buf.len()` 这么多的空闲容量。
 unsafe fn vec_write_all_unchecked<A>(pos: usize, vec: &mut Vec<u8, A>, buf: &[u8]) -> usize
 where
     A: Allocator,
@@ -516,15 +503,13 @@ where
     pos + buf.len()
 }
 
-/// Resizing `write_all` implementation for [`Cursor`].
+/// 为 [`Cursor`] 实现的、会改变大小（resizing）的 `write_all`。
 ///
-/// Cursor is allowed to have a pre-allocated and initialised
-/// vector body, but with a position of 0. This means the [`Write`]
-/// will overwrite the contents of the vec.
+/// 允许 Cursor 拥有一个已预先分配并初始化的 vector 内容、但位置却为 0。这意味着 [`Write`]
+/// 将覆写 vec 的内容。
 ///
-/// This also allows for the vec body to be empty, but with a position of N.
-/// This means that [`Write`] will pad the vec with 0 initially,
-/// before writing anything from that point
+/// 这也允许 vec 的内容为空、但位置却为 N。这意味着 [`Write`] 会先用 0 对 vec 进行填充，
+/// 然后再从那个位置开始写入任何东西
 fn vec_write_all<A>(pos_mut: &mut u64, vec: &mut Vec<u8, A>, buf: &[u8]) -> io::Result<usize>
 where
     A: Allocator,
@@ -532,9 +517,8 @@ where
     let buf_len = buf.len();
     let mut pos = reserve_and_pad(pos_mut, vec, buf_len)?;
 
-    // Write the buf then progress the vec forward if necessary
-    // Safety: we have ensured that the capacity is available
-    // and that all bytes get written up to pos
+    // 写入 buf，然后在必要时让 vec 向前推进
+    // Safety: 我们已确保容量可用，且直到 pos 为止的所有字节都会被写入
     unsafe {
         pos = vec_write_all_unchecked(pos, vec, buf);
         if pos > vec.len() {
@@ -542,20 +526,18 @@ where
         }
     };
 
-    // Bump us forward
+    // 让我们向前推进
     *pos_mut += buf_len as u64;
     Ok(buf_len)
 }
 
-/// Resizing `write_all_vectored` implementation for [`Cursor`].
+/// 为 [`Cursor`] 实现的、会改变大小（resizing）的 `write_all_vectored`。
 ///
-/// Cursor is allowed to have a pre-allocated and initialised
-/// vector body, but with a position of 0. This means the [`Write`]
-/// will overwrite the contents of the vec.
+/// 允许 Cursor 拥有一个已预先分配并初始化的 vector 内容、但位置却为 0。这意味着 [`Write`]
+/// 将覆写 vec 的内容。
 ///
-/// This also allows for the vec body to be empty, but with a position of N.
-/// This means that [`Write`] will pad the vec with 0 initially,
-/// before writing anything from that point
+/// 这也允许 vec 的内容为空、但位置却为 N。这意味着 [`Write`] 会先用 0 对 vec 进行填充，
+/// 然后再从那个位置开始写入任何东西
 fn vec_write_all_vectored<A>(
     pos_mut: &mut u64,
     vec: &mut Vec<u8, A>,
@@ -564,14 +546,13 @@ fn vec_write_all_vectored<A>(
 where
     A: Allocator,
 {
-    // For safety reasons, we don't want this sum to overflow ever.
-    // If this saturates, the reserve should panic to avoid any unsound writing.
+    // 出于安全考虑，我们绝不希望这个累加和发生溢出。
+    // 如果它发生饱和（saturate），reserve 应当 panic，以避免任何不可靠（unsound）的写入。
     let buf_len = bufs.iter().fold(0usize, |a, b| a.saturating_add(b.len()));
     let mut pos = reserve_and_pad(pos_mut, vec, buf_len)?;
 
-    // Write the buf then progress the vec forward if necessary
-    // Safety: we have ensured that the capacity is available
-    // and that all bytes get written up to the last pos
+    // 写入 buf，然后在必要时让 vec 向前推进
+    // Safety: 我们已确保容量可用，且直到最后一个 pos 为止的所有字节都会被写入
     unsafe {
         for buf in bufs {
             pos = vec_write_all_unchecked(pos, vec, buf);
@@ -581,7 +562,7 @@ where
         }
     }
 
-    // Bump us forward
+    // 让我们向前推进
     *pos_mut += buf_len as u64;
     Ok(buf_len)
 }

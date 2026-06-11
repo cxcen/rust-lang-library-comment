@@ -5,9 +5,9 @@ use crate::sys::net::Socket;
 use crate::sys::{AsInner, FromInner, IntoInner, cvt};
 use crate::{fmt, io, mem};
 
-/// A structure representing a Unix domain socket server.
+/// 表示一个 Unix 域套接字（domain socket）服务器的结构体。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```no_run
 /// use std::thread;
@@ -20,15 +20,15 @@ use crate::{fmt, io, mem};
 /// fn main() -> std::io::Result<()> {
 ///     let listener = UnixListener::bind("/path/to/the/socket")?;
 ///
-///     // accept connections and process them, spawning a new thread for each one
+///     // 接受连接并处理它们，为每个连接派生一个新线程
 ///     for stream in listener.incoming() {
 ///         match stream {
 ///             Ok(stream) => {
-///                 /* connection succeeded */
+///                 /* 连接成功 */
 ///                 thread::spawn(|| handle_client(stream));
 ///             }
 ///             Err(err) => {
-///                 /* connection failed */
+///                 /* 连接失败 */
 ///                 break;
 ///             }
 ///         }
@@ -52,9 +52,9 @@ impl fmt::Debug for UnixListener {
 }
 
 impl UnixListener {
-    /// Creates a new `UnixListener` bound to the specified socket.
+    /// 创建一个绑定到指定套接字的新 `UnixListener`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::os::unix::net::UnixListener;
@@ -80,13 +80,13 @@ impl UnixListener {
             ))]
             const backlog: core::ffi::c_int = 128;
             #[cfg(any(
-                // Silently capped to `/proc/sys/net/core/somaxconn`.
+                // 被静默地限制到 `/proc/sys/net/core/somaxconn`。
                 target_os = "linux",
-                // Silently capped to `kern.ipc.soacceptqueue`.
+                // 被静默地限制到 `kern.ipc.soacceptqueue`。
                 target_os = "freebsd",
-                // Silently capped to `kern.somaxconn sysctl`.
+                // 被静默地限制到 `kern.somaxconn sysctl`。
                 target_os = "openbsd",
-                // Silently capped to the default 128.
+                // 被静默地限制到默认值 128。
                 target_vendor = "apple",
             ))]
             const backlog: core::ffi::c_int = -1;
@@ -109,11 +109,11 @@ impl UnixListener {
         }
     }
 
-    /// Creates a new `UnixListener` bound to the specified [`socket address`].
+    /// 创建一个绑定到指定[`套接字地址`]的新 `UnixListener`。
     ///
-    /// [`socket address`]: crate::os::unix::net::SocketAddr
+    /// [`套接字地址`]: crate::os::unix::net::SocketAddr
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::os::unix::net::{UnixListener};
@@ -150,15 +150,14 @@ impl UnixListener {
         }
     }
 
-    /// Accepts a new incoming connection to this listener.
+    /// 接受一个到此监听器的新入站连接。
     ///
-    /// This function will block the calling thread until a new Unix connection
-    /// is established. When established, the corresponding [`UnixStream`] and
-    /// the remote peer's address will be returned.
+    /// 此函数会阻塞调用线程，直到一个新的 Unix 连接建立。建立之后，将返回相应的
+    /// [`UnixStream`] 以及远程对端的地址。
     ///
     /// [`UnixStream`]: crate::os::unix::net::UnixStream
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::os::unix::net::UnixListener;
@@ -182,13 +181,12 @@ impl UnixListener {
         Ok((UnixStream(sock), addr))
     }
 
-    /// Creates a new independently owned handle to the underlying socket.
+    /// 为底层套接字创建一个新的、独立拥有所有权的句柄。
     ///
-    /// The returned `UnixListener` is a reference to the same socket that this
-    /// object references. Both handles can be used to accept incoming
-    /// connections and options set on one listener will affect the other.
+    /// 返回的 `UnixListener` 引用的是与此对象所引用的同一个套接字。两个句柄都可用于接受
+    /// 入站连接，且在一个监听器上设置的选项将影响另一个。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::os::unix::net::UnixListener;
@@ -204,9 +202,9 @@ impl UnixListener {
         self.0.duplicate().map(UnixListener)
     }
 
-    /// Returns the local socket address of this listener.
+    /// 返回此监听器的本地套接字地址。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::os::unix::net::UnixListener;
@@ -222,15 +220,13 @@ impl UnixListener {
         SocketAddr::new(|addr, len| unsafe { libc::getsockname(self.as_raw_fd(), addr, len) })
     }
 
-    /// Moves the socket into or out of nonblocking mode.
+    /// 将套接字切换进入或退出非阻塞（nonblocking）模式。
     ///
-    /// This will result in the `accept` operation becoming nonblocking,
-    /// i.e., immediately returning from their calls. If the IO operation is
-    /// successful, `Ok` is returned and no further action is required. If the
-    /// IO operation could not be completed and needs to be retried, an error
-    /// with kind [`io::ErrorKind::WouldBlock`] is returned.
+    /// 这会使 `accept` 操作变为非阻塞，即从其调用中立即返回。如果该 IO 操作成功，
+    /// 返回 `Ok` 且无需进一步操作。如果该 IO 操作无法完成、需要重试，则返回一个类型为
+    /// [`io::ErrorKind::WouldBlock`] 的错误。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::os::unix::net::UnixListener;
@@ -246,9 +242,9 @@ impl UnixListener {
         self.0.set_nonblocking(nonblocking)
     }
 
-    /// Returns the value of the `SO_ERROR` option.
+    /// 返回 `SO_ERROR` 选项的值。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::os::unix::net::UnixListener;
@@ -264,18 +260,17 @@ impl UnixListener {
     /// ```
     ///
     /// # Platform specific
-    /// On Redox this always returns `None`.
+    /// 在 Redox 上，这总是返回 `None`。
     #[stable(feature = "unix_socket", since = "1.10.0")]
     pub fn take_error(&self) -> io::Result<Option<io::Error>> {
         self.0.take_error()
     }
 
-    /// Returns an iterator over incoming connections.
+    /// 返回一个遍历入站连接的迭代器。
     ///
-    /// The iterator will never return [`None`] and will also not yield the
-    /// peer's [`SocketAddr`] structure.
+    /// 该迭代器永远不会返回 [`None`]，也不会产出对端的 [`SocketAddr`] 结构体。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::thread;
@@ -349,7 +344,7 @@ impl From<OwnedFd> for UnixListener {
 
 #[stable(feature = "io_safety", since = "1.63.0")]
 impl From<UnixListener> for OwnedFd {
-    /// Takes ownership of a [`UnixListener`]'s socket file descriptor.
+    /// 取得一个 [`UnixListener`] 的套接字文件描述符的所有权。
     #[inline]
     fn from(listener: UnixListener) -> OwnedFd {
         listener.0.into_inner().into_inner()
@@ -366,11 +361,11 @@ impl<'a> IntoIterator for &'a UnixListener {
     }
 }
 
-/// An iterator over incoming connections to a [`UnixListener`].
+/// 一个遍历到某个 [`UnixListener`] 的入站连接的迭代器。
 ///
-/// It will never return [`None`].
+/// 它永远不会返回 [`None`]。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```no_run
 /// use std::thread;

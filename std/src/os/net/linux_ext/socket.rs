@@ -1,29 +1,27 @@
-//! Linux and Android-specific socket functionality.
+//! Linux 与 Android 特有的套接字功能。
 
 use crate::io;
 use crate::os::unix::net;
 use crate::sealed::Sealed;
 use crate::sys::AsInner;
 
-/// Linux-specific functionality for `AF_UNIX` sockets [`UnixDatagram`]
-/// and [`UnixStream`].
+/// 针对 `AF_UNIX` 套接字 [`UnixDatagram`] 与 [`UnixStream`] 的 Linux 特有功能。
 ///
 /// [`UnixDatagram`]: net::UnixDatagram
 /// [`UnixStream`]: net::UnixStream
 #[unstable(feature = "unix_socket_ancillary_data", issue = "76915")]
 pub trait UnixSocketExt: Sealed {
-    /// Query the current setting of socket option `SO_PASSCRED`.
+    /// 查询套接字选项 `SO_PASSCRED` 的当前设置。
     #[unstable(feature = "unix_socket_ancillary_data", issue = "76915")]
     fn passcred(&self) -> io::Result<bool>;
 
-    /// Enable or disable socket option `SO_PASSCRED`.
+    /// 启用或禁用套接字选项 `SO_PASSCRED`。
     ///
-    /// This option enables the credentials of the sending process to be
-    /// received as a control message in [`AncillaryData`].
+    /// 该选项使得发送进程的凭据能够作为一条控制消息在 [`AncillaryData`] 中被接收。
     ///
     /// [`AncillaryData`]: net::AncillaryData
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// #![feature(unix_socket_ancillary_data)]

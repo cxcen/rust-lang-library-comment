@@ -1,9 +1,9 @@
-//! Utilities for parsing DWARF-encoded data streams.
-//! See <http://www.dwarfstd.org>,
-//! DWARF-4 standard, Section 7 - "Data Representation"
+//! 用于解析 DWARF 编码数据流的工具。
+//! 参见 <http://www.dwarfstd.org>，
+//! DWARF-4 标准，第 7 节 —— "Data Representation"
 
-// This module is used only by x86_64-pc-windows-gnu for now, but we
-// are compiling it everywhere to avoid regressions.
+// 目前此模块仅被 x86_64-pc-windows-gnu 使用，但我们在所有平台上都编译它，
+// 以避免回归（regressions）。
 #![allow(unused)]
 #![forbid(unsafe_op_in_unsafe_fn)]
 
@@ -21,9 +21,9 @@ impl DwarfReader {
         DwarfReader { ptr }
     }
 
-    /// Read a type T and then bump the pointer by that amount.
+    /// 读取一个类型 T，然后把指针前移相应的字节数。
     ///
-    /// DWARF streams are "packed", so all types must be read at align 1.
+    /// DWARF 流是“紧凑（packed）”的，因此所有类型都必须按对齐 1 来读取。
     pub unsafe fn read<T: Copy>(&mut self) -> T {
         unsafe {
             let result = self.ptr.cast::<T>().read_unaligned();
@@ -32,7 +32,7 @@ impl DwarfReader {
         }
     }
 
-    /// ULEB128 and SLEB128 encodings are defined in Section 7.6 - "Variable Length Data".
+    /// ULEB128 和 SLEB128 编码定义于第 7.6 节 —— "Variable Length Data"。
     pub unsafe fn read_uleb128(&mut self) -> u64 {
         let mut shift: usize = 0;
         let mut result: u64 = 0;
@@ -60,7 +60,7 @@ impl DwarfReader {
                 break;
             }
         }
-        // sign-extend
+        // 符号扩展（sign-extend）
         if shift < u64::BITS && (byte & 0x40) != 0 {
             result |= (!0 as u64) << shift;
         }

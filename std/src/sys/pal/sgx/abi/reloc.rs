@@ -18,10 +18,10 @@ pub fn relocate_elf_rela() {
 
     if unsafe { RELACOUNT } == 0 {
         return;
-    } // unsafe ok: link-time constant
+    } // unsafe ok: 链接期常量
 
     let relas = unsafe {
-        from_raw_parts::<Rela<u64>>(mem::rel_ptr(RELA), RELACOUNT) // unsafe ok: link-time constant
+        from_raw_parts::<Rela<u64>>(mem::rel_ptr(RELA), RELACOUNT) // unsafe ok: 链接期常量
     };
     for rela in relas {
         if rela.info != (/*0 << 32 |*/R_X86_64_RELATIVE as u64) {

@@ -4,11 +4,11 @@ use crate::iter;
 use crate::sync::Arc;
 
 crate::thread_local! {
-    /// A thread local linked list of spawn hooks.
+    /// 一个由 spawn hook 构成的线程局部链表。
     ///
-    /// It is a linked list of Arcs, such that it can very cheaply be inherited by spawned threads.
+    /// 它是一个由 Arc 构成的链表，因此可以极其廉价地被派生线程继承。
     ///
-    /// (That technically makes it a set of linked lists with shared tails, so a linked tree.)
+    ///（严格来说这使它成为一组共享尾部的链表，所以是一棵链树。）
     static SPAWN_HOOKS: Cell<SpawnHooks> = const { Cell::new(SpawnHooks { first: None }) };
 }
 
@@ -17,7 +17,7 @@ struct SpawnHooks {
     first: Option<Arc<SpawnHook>>,
 }
 
-// Manually implement drop to prevent deep recursion when dropping linked Arc list.
+// 手动实现 drop，以防止在丢弃由 Arc 构成的链表时出现深度递归。
 impl Drop for SpawnHooks {
     fn drop(&mut self) {
         let mut next = self.first.take();
@@ -33,20 +33,18 @@ struct SpawnHook {
     next: Option<Arc<SpawnHook>>,
 }
 
-/// Registers a function to run for every newly thread spawned.
+/// 注册一个函数，使其为每个新派生的线程运行。
 ///
-/// The hook is executed in the parent thread, and returns a function
-/// that will be executed in the new thread.
+/// 这个 hook 在父线程中执行，并返回一个将在新线程中执行的函数。
 ///
-/// The hook is called with the `Thread` handle for the new thread.
+/// 调用这个 hook 时会以新线程的 `Thread` 句柄作为参数。
 ///
-/// The hook will only be added for the current thread and is inherited by the threads it spawns.
-/// In other words, adding a hook has no effect on already running threads (other than the current
-/// thread) and the threads they might spawn in the future.
+/// 这个 hook 只会为当前线程添加，并由它所派生的线程继承。换句话说，添加一个
+/// hook 对已经在运行的线程（当前线程除外）以及它们将来可能派生的线程没有影响。
 ///
-/// Hooks can only be added, not removed.
+/// hook 只能添加，不能移除。
 ///
-/// The hooks will run in reverse order, starting with the most recently added.
+/// 这些 hook 会以相反的顺序运行，从最近添加的那个开始。
 ///
 /// # Usage
 ///
@@ -54,16 +52,16 @@ struct SpawnHook {
 /// #![feature(thread_spawn_hook)]
 ///
 /// std::thread::add_spawn_hook(|_| {
-///     ..; // This will run in the parent (spawning) thread.
+///     ..; // 这会在父（派生方）线程中运行。
 ///     move || {
-///         ..; // This will run it the child (spawned) thread.
+///         ..; // 这会在子（被派生）线程中运行。
 ///     }
 /// });
 /// ```
 ///
 /// # Example
 ///
-/// A spawn hook can be used to "inherit" a thread local from the parent thread:
+/// spawn hook 可用于从父线程“继承”一个线程局部变量：
 ///
 /// ```
 /// #![feature(thread_spawn_hook)]
@@ -74,11 +72,11 @@ struct SpawnHook {
 ///     static X: Cell<u32> = Cell::new(0);
 /// }
 ///
-/// // This needs to be done once in the main thread before spawning any threads.
+/// // 这需要在主线程中、派生任何线程之前完成一次。
 /// std::thread::add_spawn_hook(|_| {
-///     // Get the value of X in the spawning thread.
+///     // 获取派生方线程中 X 的值。
 ///     let value = X.get();
-///     // Set the value of X in the newly spawned thread.
+///     // 在新派生的线程中设置 X 的值。
 ///     move || X.set(value)
 /// });
 ///
@@ -105,37 +103,37 @@ where
     });
 }
 
-/// Runs all the spawn hooks.
+/// 运行所有的 spawn hook。
 ///
-/// Called on the parent thread.
+/// 在父线程上调用。
 ///
-/// Returns the functions to be called on the newly spawned thread.
+/// 返回那些将在新派生线程上调用的函数。
 pub(super) fn run_spawn_hooks(thread: &Thread) -> ChildSpawnHooks {
-    // Get a snapshot of the spawn hooks.
-    // (Increments the refcount to the first node.)
+    // 获取 spawn hook 的一份快照。
+    //（这会递增对首节点的引用计数。）
     if let Ok(hooks) = SPAWN_HOOKS.try_with(|hooks| {
         let snapshot = hooks.take();
         hooks.set(snapshot.clone());
         snapshot
     }) {
-        // Iterate over the hooks, run them, and collect the results in a vector.
+        // 遍历这些 hook，运行它们，并把结果收集到一个 vector 中。
         let to_run: Vec<_> = iter::successors(hooks.first.as_deref(), |hook| hook.next.as_deref())
             .map(|hook| (hook.hook)(thread))
             .collect();
-        // Pass on the snapshot of the hooks and the results to the new thread,
-        // which will then run SpawnHookResults::run().
+        // 把 hook 的快照和结果传递给新线程，新线程随后会运行
+        // SpawnHookResults::run()。
         ChildSpawnHooks { hooks, to_run }
     } else {
-        // TLS has been destroyed. Skip running the hooks.
-        // See https://github.com/rust-lang/rust/issues/138696
+        // TLS 已被销毁。跳过运行这些 hook。
+        // 参见 https://github.com/rust-lang/rust/issues/138696
         ChildSpawnHooks::default()
     }
 }
 
-/// The results of running the spawn hooks.
+/// 运行 spawn hook 之后的结果。
 ///
-/// This struct is sent to the new thread.
-/// It contains the inherited hooks and the closures to be run.
+/// 这个 struct 会被发送到新线程。
+/// 它包含被继承的 hook 以及将要运行的闭包。
 #[derive(Default)]
 pub(super) struct ChildSpawnHooks {
     hooks: SpawnHooks,
@@ -143,7 +141,7 @@ pub(super) struct ChildSpawnHooks {
 }
 
 impl ChildSpawnHooks {
-    // This is run on the newly spawned thread, directly at the start.
+    // 这会在新派生的线程上、于线程开始处直接运行。
     pub(super) fn run(self) {
         SPAWN_HOOKS.set(self.hooks);
         for run in self.to_run {

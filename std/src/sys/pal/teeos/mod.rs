@@ -1,7 +1,6 @@
-//! System bindings for the Teeos platform
+//! Teeos 平台的系统绑定（System bindings）
 //!
-//! This module contains the facade (aka platform-specific) implementations of
-//! OS level functionality for Teeos.
+//! 本模块包含 Teeos 上 OS 级功能的门面（facade，即平台特定）实现。
 #![deny(unsafe_op_in_unsafe_fn)]
 #![allow(unused_variables)]
 #![allow(dead_code)]
@@ -25,16 +24,16 @@ pub fn abort_internal() -> ! {
     unsafe { libc::abort() }
 }
 
-// Trusted Applications are loaded as dynamic libraries on Teeos,
-// so this should never be called.
+// 在 Teeos 上，可信应用（Trusted Application）是作为动态库加载的，
+// 因此这个函数永远不应该被调用。
 pub fn init(argc: isize, argv: *const *const u8, sigpipe: u8) {}
 
-// SAFETY: must be called only once during runtime cleanup.
-// this is not guaranteed to run, for example when the program aborts.
+// SAFETY: 必须在运行时清理期间仅调用一次。
+// 不保证一定会被运行，例如当程序中止（abort）时。
 pub unsafe fn cleanup() {
     unimplemented!()
-    // We do NOT have stack overflow handler, because TEE OS will kill TA when it happens.
-    // So cleanup is commented
+    // 我们没有栈溢出（stack overflow）处理器，因为当它发生时 TEE OS 会直接杀死 TA。
+    // 因此 cleanup 被注释掉了
     // stack_overflow::cleanup();
 }
 

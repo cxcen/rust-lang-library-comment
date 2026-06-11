@@ -1,4 +1,4 @@
-//! Linux-specific raw type definitions.
+//! Linux 平台特有的原始类型定义。
 
 #![stable(feature = "raw_ext", since = "1.1.0")]
 #![deprecated(
@@ -247,7 +247,7 @@ mod arch {
 
 #[cfg(any(
     target_arch = "aarch64",
-    // Arm64EC is Windows-only, but docs are always build as Linux, so re-use AArch64 for Arm64EC.
+    // Arm64EC 仅用于 Windows，但文档始终按 Linux 构建，因此 Arm64EC 复用 AArch64。
     all(doc, target_arch = "arm64ec")
 ))]
 mod arch {

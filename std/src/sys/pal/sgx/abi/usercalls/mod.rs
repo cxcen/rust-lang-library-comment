@@ -11,10 +11,10 @@ mod tests;
 
 use self::raw::*;
 
-/// Usercall `read`. See the ABI documentation for more information.
+/// Usercall `read`。更多信息请参见 ABI 文档。
 ///
-/// This will do a single `read` usercall and scatter the read data among
-/// `bufs`. To read to a single buffer, just pass a slice of length one.
+/// 它会执行一次 `read` usercall，并把读到的数据分散写入 `bufs`。若要读入单个
+/// 缓冲区，只需传入一个长度为 1 的切片。
 #[unstable(feature = "sgx_platform", issue = "56975")]
 pub fn read(fd: Fd, bufs: &mut [IoSliceMut<'_>]) -> io::Result<usize> {
     unsafe {
@@ -36,8 +36,7 @@ pub fn read(fd: Fd, bufs: &mut [IoSliceMut<'_>]) -> io::Result<usize> {
     }
 }
 
-/// Usercall `read` with an uninitialized buffer. See the ABI documentation for
-/// more information.
+/// 使用未初始化缓冲区的 Usercall `read`。更多信息请参见 ABI 文档。
 #[unstable(feature = "sgx_platform", issue = "56975")]
 pub fn read_buf(fd: Fd, mut buf: BorrowedCursor<'_>) -> io::Result<()> {
     unsafe {
@@ -49,7 +48,7 @@ pub fn read_buf(fd: Fd, mut buf: BorrowedCursor<'_>) -> io::Result<()> {
     }
 }
 
-/// Usercall `read_alloc`. See the ABI documentation for more information.
+/// Usercall `read_alloc`。更多信息请参见 ABI 文档。
 #[unstable(feature = "sgx_platform", issue = "56975")]
 pub fn read_alloc(fd: Fd) -> io::Result<Vec<u8>> {
     unsafe {
@@ -60,10 +59,10 @@ pub fn read_alloc(fd: Fd) -> io::Result<Vec<u8>> {
     }
 }
 
-/// Usercall `write`. See the ABI documentation for more information.
+/// Usercall `write`。更多信息请参见 ABI 文档。
 ///
-/// This will do a single `write` usercall and gather the written data from
-/// `bufs`. To write from a single buffer, just pass a slice of length one.
+/// 它会执行一次 `write` usercall，并把要写入的数据从 `bufs` 中聚集起来。若要从
+/// 单个缓冲区写出，只需传入一个长度为 1 的切片。
 #[unstable(feature = "sgx_platform", issue = "56975")]
 pub fn write(fd: Fd, bufs: &[IoSlice<'_>]) -> io::Result<usize> {
     unsafe {
@@ -83,13 +82,13 @@ pub fn write(fd: Fd, bufs: &[IoSlice<'_>]) -> io::Result<usize> {
     }
 }
 
-/// Usercall `flush`. See the ABI documentation for more information.
+/// Usercall `flush`。更多信息请参见 ABI 文档。
 #[unstable(feature = "sgx_platform", issue = "56975")]
 pub fn flush(fd: Fd) -> io::Result<()> {
     unsafe { raw::flush(fd).from_sgx_result() }
 }
 
-/// Usercall `close`. See the ABI documentation for more information.
+/// Usercall `close`。更多信息请参见 ABI 文档。
 #[unstable(feature = "sgx_platform", issue = "56975")]
 pub fn close(fd: Fd) {
     unsafe { raw::close(fd) }
@@ -100,7 +99,7 @@ fn string_from_bytebuffer(buf: &alloc::UserRef<ByteBuffer>, usercall: &str, arg:
         .unwrap_or_else(|_| rtabort!("Usercall {usercall}: expected {arg} to be valid UTF-8"))
 }
 
-/// Usercall `bind_stream`. See the ABI documentation for more information.
+/// Usercall `bind_stream`。更多信息请参见 ABI 文档。
 #[unstable(feature = "sgx_platform", issue = "56975")]
 pub fn bind_stream(addr: &str) -> io::Result<(Fd, String)> {
     unsafe {
@@ -113,13 +112,13 @@ pub fn bind_stream(addr: &str) -> io::Result<(Fd, String)> {
     }
 }
 
-/// Usercall `accept_stream`. See the ABI documentation for more information.
+/// Usercall `accept_stream`。更多信息请参见 ABI 文档。
 #[unstable(feature = "sgx_platform", issue = "56975")]
 pub fn accept_stream(fd: Fd) -> io::Result<(Fd, String, String)> {
     unsafe {
         let mut bufs = alloc::User::<[ByteBuffer; 2]>::uninitialized();
-        let mut buf_it = alloc::UserRef::iter_mut(&mut *bufs); // FIXME: can this be done
-        // without forcing coercion?
+        let mut buf_it = alloc::UserRef::iter_mut(&mut *bufs); // FIXME: 能否在不强制
+        // 类型强转（coercion）的情况下做到这一点？
         let (local, peer) = (buf_it.next().unwrap(), buf_it.next().unwrap());
         let fd = raw::accept_stream(fd, local.as_raw_mut_ptr(), peer.as_raw_mut_ptr())
             .from_sgx_result()?;
@@ -129,14 +128,14 @@ pub fn accept_stream(fd: Fd) -> io::Result<(Fd, String, String)> {
     }
 }
 
-/// Usercall `connect_stream`. See the ABI documentation for more information.
+/// Usercall `connect_stream`。更多信息请参见 ABI 文档。
 #[unstable(feature = "sgx_platform", issue = "56975")]
 pub fn connect_stream(addr: &str) -> io::Result<(Fd, String, String)> {
     unsafe {
         let addr_user = alloc::User::new_from_enclave(addr.as_bytes());
         let mut bufs = alloc::User::<[ByteBuffer; 2]>::uninitialized();
-        let mut buf_it = alloc::UserRef::iter_mut(&mut *bufs); // FIXME: can this be done
-        // without forcing coercion?
+        let mut buf_it = alloc::UserRef::iter_mut(&mut *bufs); // FIXME: 能否在不强制
+        // 类型强转（coercion）的情况下做到这一点？
         let (local, peer) = (buf_it.next().unwrap(), buf_it.next().unwrap());
         let fd = raw::connect_stream(
             addr_user.as_ptr(),
@@ -151,30 +150,28 @@ pub fn connect_stream(addr: &str) -> io::Result<(Fd, String, String)> {
     }
 }
 
-/// Usercall `launch_thread`. See the ABI documentation for more information.
+/// Usercall `launch_thread`。更多信息请参见 ABI 文档。
 #[unstable(feature = "sgx_platform", issue = "56975")]
 pub unsafe fn launch_thread() -> io::Result<()> {
-    // SAFETY: The caller must uphold the safety contract for `launch_thread`.
+    // SAFETY: 调用方必须遵守 `launch_thread` 的安全契约。
     unsafe { raw::launch_thread().from_sgx_result() }
 }
 
-/// Usercall `exit`. See the ABI documentation for more information.
+/// Usercall `exit`。更多信息请参见 ABI 文档。
 #[unstable(feature = "sgx_platform", issue = "56975")]
 pub fn exit(panic: bool) -> ! {
     unsafe { raw::exit(panic) }
 }
 
-/// Usercall `wait`. See the ABI documentation for more information.
+/// Usercall `wait`。更多信息请参见 ABI 文档。
 #[unstable(feature = "sgx_platform", issue = "56975")]
 pub fn wait(event_mask: u64, mut timeout: u64) -> io::Result<u64> {
     if timeout != WAIT_NO && timeout != WAIT_INDEFINITE {
-        // We don't want people to rely on accuracy of timeouts to make
-        // security decisions in an SGX enclave. That's why we add a random
-        // amount not exceeding +/- 10% to the timeout value to discourage
-        // people from relying on accuracy of timeouts while providing a way
-        // to make things work in other cases. Note that in the SGX threat
-        // model the enclave runner which is serving the wait usercall is not
-        // trusted to ensure accurate timeouts.
+        // 我们不希望人们依赖超时的精确度来在 SGX enclave 中做出安全决策。这就是
+        // 为什么我们会给超时值加上一个不超过 +/- 10% 的随机量，以打消人们依赖
+        // 超时精确度的念头，同时又提供了一种让事情在其他情况下能正常工作的方式。
+        // 注意，在 SGX 威胁模型中，负责服务 wait usercall 的 enclave runner 并
+        // 不被信任去保证超时的准确性。
         if let Ok(timeout_signed) = i64::try_from(timeout) {
             let tenth = timeout_signed / 10;
             let deviation = random::<i64>(..).checked_rem(tenth).unwrap_or(0);
@@ -184,23 +181,20 @@ pub fn wait(event_mask: u64, mut timeout: u64) -> io::Result<u64> {
     unsafe { raw::wait(event_mask, timeout).from_sgx_result() }
 }
 
-/// Makes an effort to wait for a non-spurious event at least as long as
-/// `duration`.
+/// 尽力等待一个非虚假（non-spurious）事件，等待时长至少不少于 `duration`。
 ///
-/// Note that in general there is no guarantee about accuracy of time and
-/// timeouts in SGX model. The enclave runner serving usercalls may lie about
-/// current time and/or ignore timeout values.
+/// 注意，总体而言，在 SGX 模型中对时间和超时的准确性没有任何保证。服务 usercall
+/// 的 enclave runner 可能在当前时间上撒谎，并且/或者忽略超时值。
 ///
-/// Once the event is observed, `should_wake_up` will be used to determine
-/// whether or not the event was spurious.
+/// 一旦观察到该事件，将使用 `should_wake_up` 来判断该事件是否为虚假事件。
 #[unstable(feature = "sgx_platform", issue = "56975")]
 pub fn wait_timeout<F>(event_mask: u64, duration: Duration, should_wake_up: F)
 where
     F: Fn() -> bool,
 {
-    // Calls the wait usercall and checks the result. Returns true if event was
-    // returned, and false if WouldBlock/TimedOut was returned.
-    // If duration is None, it will use WAIT_NO.
+    // 调用 wait usercall 并检查结果。如果返回了事件则返回 true，如果返回的是
+    // WouldBlock/TimedOut 则返回 false。
+    // 如果 duration 为 None，它将使用 WAIT_NO。
     fn wait_checked(event_mask: u64, duration: Option<Duration>) -> bool {
         let timeout = duration.map_or(raw::WAIT_NO, |duration| {
             cmp::min((u64::MAX - 1) as u128, duration.as_nanos()) as u64
@@ -223,33 +217,32 @@ where
     }
 
     match wait_checked(event_mask, Some(duration)) {
-        false => return,                    // timed out
-        true if should_wake_up() => return, // woken up
-        true => {}                          // spurious event
+        false => return,                    // 超时
+        true if should_wake_up() => return, // 被唤醒
+        true => {}                          // 虚假事件
     }
 
-    // Drain all cached events.
-    // Note that `event_mask != 0` is implied if we get here.
+    // 排空所有已缓存的事件。
+    // 注意，如果执行到这里，则隐含了 `event_mask != 0`。
     loop {
         match wait_checked(event_mask, None) {
-            false => break,                     // no more cached events
-            true if should_wake_up() => return, // woken up
-            true => {}                          // spurious event
+            false => break,                     // 没有更多已缓存的事件
+            true if should_wake_up() => return, // 被唤醒
+            true => {}                          // 虚假事件
         }
     }
 
-    // Continue waiting, but take note of time spent waiting so we don't wait
-    // forever. We intentionally don't call `Instant::now()` before this point
-    // to avoid the cost of the `insecure_time` usercall in case there are no
-    // spurious wakeups.
+    // 继续等待，但记下已花费的等待时间，以免我们永远等下去。我们刻意不在此点之前
+    // 调用 `Instant::now()`，以避免在没有虚假唤醒时仍要承担 `insecure_time`
+    // usercall 的开销。
 
     let start = Instant::now();
     let mut remaining = duration;
     loop {
         match wait_checked(event_mask, Some(remaining)) {
-            false => return,                    // timed out
-            true if should_wake_up() => return, // woken up
-            true => {}                          // spurious event
+            false => return,                    // 超时
+            true if should_wake_up() => return, // 被唤醒
+            true => {}                          // 虚假事件
         }
         remaining = match duration.checked_sub(start.elapsed()) {
             Some(remaining) => remaining,
@@ -258,20 +251,20 @@ where
     }
 }
 
-/// Usercall `send`. See the ABI documentation for more information.
+/// Usercall `send`。更多信息请参见 ABI 文档。
 #[unstable(feature = "sgx_platform", issue = "56975")]
 pub fn send(event_set: u64, tcs: Option<Tcs>) -> io::Result<()> {
     unsafe { raw::send(event_set, tcs).from_sgx_result() }
 }
 
-/// Usercall `insecure_time`. See the ABI documentation for more information.
+/// Usercall `insecure_time`。更多信息请参见 ABI 文档。
 #[unstable(feature = "sgx_platform", issue = "56975")]
 pub fn insecure_time() -> Duration {
     let t = unsafe { raw::insecure_time().0 };
     Duration::new(t / 1_000_000_000, (t % 1_000_000_000) as _)
 }
 
-/// Usercall `alloc`. See the ABI documentation for more information.
+/// Usercall `alloc`。更多信息请参见 ABI 文档。
 #[unstable(feature = "sgx_platform", issue = "56975")]
 pub fn alloc(size: usize, alignment: usize) -> io::Result<*mut u8> {
     unsafe { raw::alloc(size, alignment).from_sgx_result() }
@@ -282,7 +275,7 @@ pub fn alloc(size: usize, alignment: usize) -> io::Result<*mut u8> {
 pub use self::raw::free;
 
 fn check_os_error(err: Result) -> i32 {
-    // FIXME: not sure how to make sure all variants of Error are covered
+    // FIXME: 不确定如何确保 Error 的所有变体都被覆盖到
     if err == Error::NotFound as _
         || err == Error::PermissionDenied as _
         || err == Error::ConnectionRefused as _
@@ -309,13 +302,13 @@ fn check_os_error(err: Result) -> i32 {
     }
 }
 
-/// Translate the raw result of an SGX usercall.
+/// 翻译 SGX usercall 的原始结果。
 #[unstable(feature = "sgx_platform", issue = "56975")]
 pub trait FromSgxResult {
-    /// Return type
+    /// 返回类型
     type Return;
 
-    /// Translate the raw result of an SGX usercall.
+    /// 翻译 SGX usercall 的原始结果。
     fn from_sgx_result(self) -> io::Result<Self::Return>;
 }
 

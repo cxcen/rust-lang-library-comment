@@ -1,41 +1,36 @@
 use crate::io;
 use crate::sys::{FromInner, IntoInner, pipe as imp};
 
-/// Creates an anonymous pipe.
+/// 创建一个匿名管道（anonymous pipe）。
 ///
 /// # Behavior
 ///
-/// A pipe is a one-way data channel provided by the OS, which works across processes. A pipe is
-/// typically used to communicate between two or more separate processes, as there are better,
-/// faster ways to communicate within a single process.
+/// 管道是由操作系统提供的单向数据通道，可跨进程工作。管道通常用于在两个或多个相互独立的进程
+/// 之间通信，因为在单个进程内部有更好、更快的通信方式。
 ///
-/// In particular:
+/// 具体来说：
 ///
-/// * A read on a [`PipeReader`] blocks until the pipe is non-empty.
-/// * A write on a [`PipeWriter`] blocks when the pipe is full.
-/// * When all copies of a [`PipeWriter`] are closed, a read on the corresponding [`PipeReader`]
-///   returns EOF.
-/// * [`PipeWriter`] can be shared, and multiple processes or threads can write to it at once, but
-///   writes (above a target-specific threshold) may have their data interleaved.
-/// * [`PipeReader`] can be shared, and multiple processes or threads can read it at once. Any
-///   given byte will only get consumed by one reader. There are no guarantees about data
-///   interleaving.
-/// * Portable applications cannot assume any atomicity of messages larger than a single byte.
+/// * 对 [`PipeReader`] 的读取会阻塞，直到管道非空。
+/// * 对 [`PipeWriter`] 的写入会在管道已满时阻塞。
+/// * 当某个 [`PipeWriter`] 的所有副本都被关闭后，对相应 [`PipeReader`] 的读取会返回 EOF。
+/// * [`PipeWriter`] 可以被共享，多个进程或线程可以同时向它写入，但写入（超过某个由目标平台
+///   决定的阈值时）的数据可能会相互交错（interleaved）。
+/// * [`PipeReader`] 可以被共享，多个进程或线程可以同时读取它。任意给定的字节只会被一个
+///   reader 消费。对于数据交错不作任何保证。
+/// * 可移植的应用程序不能假设大于单个字节的消息具有任何原子性（atomicity）。
 ///
 /// # Platform-specific behavior
 ///
-/// This function currently corresponds to the `pipe` function on Unix and the
-/// `CreatePipe` function on Windows.
+/// 本函数当前在 Unix 上对应 `pipe` 函数，在 Windows 上对应 `CreatePipe` 函数。
 ///
-/// Note that this [may change in the future][changes].
+/// 注意：这[将来可能会改变][changes]。
 ///
 /// # Capacity
 ///
-/// Pipe capacity is platform dependent. To quote the Linux [man page]:
+/// 管道容量与平台相关。引用 Linux 的 [man page]：
 ///
-/// > Different implementations have different limits for the pipe capacity. Applications should
-/// > not rely on a particular capacity: an application should be designed so that a reading process
-/// > consumes data as soon as it is available, so that a writing process does not remain blocked.
+/// > 不同的实现对管道容量有不同的限制。应用程序不应依赖某个特定的容量：应用程序的设计应当做到
+/// > 让“读取进程”一旦有数据可用就立即消费，从而使“写入进程”不会一直被阻塞。
 ///
 /// # Example
 ///
@@ -48,32 +43,31 @@ use crate::sys::{FromInner, IntoInner, pipe as imp};
 /// let (ping_reader, mut ping_writer) = pipe()?;
 /// let (mut pong_reader, pong_writer) = pipe()?;
 ///
-/// // Spawn a child process that echoes its input.
+/// // 派生（spawn）一个子进程，它会回显（echo）自己的输入。
 /// let mut echo_command = Command::new("cat");
 /// echo_command.stdin(ping_reader);
 /// echo_command.stdout(pong_writer);
 /// let mut echo_child = echo_command.spawn()?;
 ///
-/// // Send input to the child process. Note that because we're writing all the input before we
-/// // read any output, this could deadlock if the child's input and output pipe buffers both
-/// // filled up. Those buffers are usually at least a few KB, so "hello" is fine, but for longer
-/// // inputs we'd need to read and write at the same time, e.g. using threads.
+/// // 向子进程发送输入。注意：由于我们是在读取任何输出之前就把全部输入写出，如果子进程的输入
+/// // 和输出管道缓冲都被填满，这里可能会死锁。这些缓冲通常至少有几 KB，所以 "hello" 没问题，
+/// // 但对于更长的输入，我们就需要同时进行读和写，例如借助线程。
 /// ping_writer.write_all(b"hello")?;
 ///
-/// // `cat` exits when it reads EOF from stdin, but that can't happen while any ping writer
-/// // remains open. We need to drop our ping writer, or read_to_string will deadlock below.
+/// // `cat` 在从 stdin 读到 EOF 时退出，但只要还有任何 ping writer 处于打开状态，EOF 就
+/// // 不会发生。我们需要 drop 掉自己的 ping writer，否则下面的 read_to_string 会死锁。
 /// drop(ping_writer);
 ///
-/// // The pong reader can't report EOF while any pong writer remains open. Our Command object is
-/// // holding a pong writer, and again read_to_string will deadlock if we don't drop it.
+/// // 只要还有任何 pong writer 处于打开状态，pong reader 就无法报告 EOF。我们的 Command
+/// // 对象正持有一个 pong writer，同样地，如果我们不 drop 它，read_to_string 就会死锁。
 /// drop(echo_command);
 ///
 /// let mut buf = String::new();
-/// // Block until `cat` closes its stdout (a pong writer).
+/// // 阻塞，直到 `cat` 关闭它的 stdout（一个 pong writer）。
 /// pong_reader.read_to_string(&mut buf)?;
 /// assert_eq!(&buf, "hello");
 ///
-/// // At this point we know `cat` has exited, but we still need to wait to clean up the "zombie".
+/// // 此时我们知道 `cat` 已经退出，但我们仍需 wait 以清理掉那个“僵尸（zombie）”进程。
 /// echo_child.wait()?;
 /// # Ok(())
 /// # }
@@ -86,12 +80,12 @@ pub fn pipe() -> io::Result<(PipeReader, PipeWriter)> {
     imp::pipe().map(|(reader, writer)| (PipeReader(reader), PipeWriter(writer)))
 }
 
-/// Read end of an anonymous pipe.
+/// 匿名管道的读取端。
 #[stable(feature = "anonymous_pipe", since = "1.87.0")]
 #[derive(Debug)]
 pub struct PipeReader(pub(crate) imp::Pipe);
 
-/// Write end of an anonymous pipe.
+/// 匿名管道的写入端。
 #[stable(feature = "anonymous_pipe", since = "1.87.0")]
 #[derive(Debug)]
 pub struct PipeWriter(pub(crate) imp::Pipe);
@@ -121,9 +115,9 @@ impl IntoInner<imp::Pipe> for PipeWriter {
 }
 
 impl PipeReader {
-    /// Creates a new [`PipeReader`] instance that shares the same underlying file description.
+    /// 创建一个新的 [`PipeReader`] 实例，它与原实例共享同一个底层文件描述（file description）。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// # #[cfg(miri)] fn main() {}
@@ -139,12 +133,11 @@ impl PipeReader {
     /// let mut jobs = vec![];
     /// let (reader, mut writer) = pipe()?;
     ///
-    /// // Write NUM_SLOT characters the pipe.
+    /// // 向管道写入 NUM_SLOT 个字符。
     /// writer.write_all(&[b'|'; NUM_SLOT as usize])?;
     ///
-    /// // Spawn several processes that read a character from the pipe, do some work, then
-    /// // write back to the pipe. When the pipe is empty, the processes block, so only
-    /// // NUM_SLOT processes can be working at any given time.
+    /// // 派生若干进程，它们从管道读取一个字符、做一些工作、再写回管道。当管道为空时，这些
+    /// // 进程会阻塞，因此在任意时刻最多只有 NUM_SLOT 个进程在工作。
     /// for _ in 0..NUM_PROC {
     ///     jobs.push(
     ///         Command::new("bash")
@@ -161,12 +154,12 @@ impl PipeReader {
     ///     );
     /// }
     ///
-    /// // Wait for all jobs to finish.
+    /// // 等待所有 job 完成。
     /// for mut job in jobs {
     ///     job.wait()?;
     /// }
     ///
-    /// // Check our work and clean up.
+    /// // 检查工作结果并做清理。
     /// let xs = fs::read_to_string(OUTPUT)?;
     /// fs::remove_file(OUTPUT)?;
     /// assert_eq!(xs, "x".repeat(NUM_PROC.into()));
@@ -180,9 +173,9 @@ impl PipeReader {
 }
 
 impl PipeWriter {
-    /// Creates a new [`PipeWriter`] instance that shares the same underlying file description.
+    /// 创建一个新的 [`PipeWriter`] 实例，它与原实例共享同一个底层文件描述（file description）。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// # #[cfg(miri)] fn main() {}
@@ -192,7 +185,7 @@ impl PipeWriter {
     /// use std::io::{pipe, Read};
     /// let (mut reader, writer) = pipe()?;
     ///
-    /// // Spawn a process that writes to stdout and stderr.
+    /// // 派生一个进程，它会向 stdout 和 stderr 写入数据。
     /// let mut peer = Command::new("bash")
     ///     .args([
     ///         "-c",
@@ -203,7 +196,7 @@ impl PipeWriter {
     ///     .stderr(writer)
     ///     .spawn()?;
     ///
-    /// // Read and check the result.
+    /// // 读取并检查结果。
     /// let mut msg = String::new();
     /// reader.read_to_string(&mut msg)?;
     /// assert_eq!(&msg, "foobar");

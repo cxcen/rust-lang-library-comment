@@ -1,31 +1,29 @@
-/// Xous passes a pointer to the parameter block as the second argument.
-/// This is used for passing flags such as environment variables. The
-/// format of the argument block is:
+/// Xous 把指向参数块（parameter block）的指针作为第二个参数传入。
+/// 它用于传递诸如环境变量之类的标志。该参数块的格式为：
 ///
 /// #[repr(C)]
 /// struct BlockHeader {
-///     /// Magic number that identifies this block. Must be printable ASCII.
+///     /// 标识此块的魔数。必须是可打印的 ASCII。
 ///     magic: [u8; 4],
 ///
-///     /// The size of the data block. Does not include this header. May be 0.
+///     /// 数据块的大小。不包含此 header。可以为 0。
 ///     size: u32,
 ///
-///     /// The contents of this block. Varies depending on the block type.
+///     /// 此块的内容。依块类型而异。
 ///     data: [u8; 0],
 /// }
 ///
-/// There is a BlockHeader at the start that has magic `AppP`, and the data
-/// that follows is the number of blocks present:
+/// 起始处有一个魔数为 `AppP` 的 BlockHeader，其后的数据为存在的块的数量：
 ///
 /// #[repr(C)]
 /// struct ApplicationParameters {
 ///     magic: b"AppP",
 ///     size: 4u32,
 ///
-///     /// The size of the entire application slice, in bytes, including all headers
+///     /// 整个 application slice 的大小（以字节计），包含所有 header
 ///     length: u32,
 ///
-///     /// Number of application parameters present. Must be at least 1 (this block)
+///     /// 存在的 application 参数的数量。必须至少为 1（即此块本身）
 ///     entries: (parameter_count as u32).to_bytes_le(),
 /// }
 ///
@@ -33,18 +31,17 @@
 /// struct EnvironmentBlock {
 ///     magic: b"EnvB",
 ///
-///     /// Total number of bytes, excluding this header
+///     /// 总字节数，不含此 header
 ///     size: 2+data.len(),
 ///
-///     /// The number of environment variables
+///     /// 环境变量的数量
 ///     count: u16,
 ///
-///     /// Environment variable iteration
+///     /// 环境变量迭代
 ///     data: [u8; 0],
 /// }
 ///
-/// Environment variables are present in an `EnvB` block. The `data` section is
-/// a sequence of bytes of the form:
+/// 环境变量存在于一个 `EnvB` 块中。其 `data` 段是如下形式的字节序列：
 ///
 ///      (u16 /* key_len */; [0u8; key_len as usize] /* key */,
 ///       u16 /* val_len */ [0u8; val_len as usize])
@@ -53,31 +50,31 @@
 /// struct ArgumentList {
 ///     magic: b"ArgL",
 ///
-///     /// Total number of bytes, excluding this header
+///     /// 总字节数，不含此 header
 ///     size: 2+data.len(),
 ///
-///     /// The number of arguments variables
+///     /// 参数变量的数量
 ///     count: u16,
 ///
-///     /// Argument variable iteration
+///     /// 参数变量迭代
 ///     data: [u8; 0],
 /// }
 ///
-/// Args are just an array of strings that represent command line arguments.
-/// They are a sequence of the form:
+/// Args 只是一个表示命令行参数的字符串数组。
+/// 它们是如下形式的序列：
 ///
 ///      (u16 /* val_len */ [0u8; val_len as usize])
 use core::slice;
 
 use crate::ffi::OsString;
 
-/// Magic number indicating we have an environment block
+/// 表示存在一个环境块的魔数
 const ENV_MAGIC: [u8; 4] = *b"EnvB";
 
-/// Command line arguments list
+/// 命令行参数列表
 const ARGS_MAGIC: [u8; 4] = *b"ArgL";
 
-/// Magic number indicating the loader has passed application parameters
+/// 表示加载器（loader）已传入 application 参数的魔数
 const PARAMS_MAGIC: [u8; 4] = *b"AppP";
 
 #[cfg(test)]
@@ -106,7 +103,7 @@ impl ApplicationParameters {
             u32::from_le_bytes(slice::from_raw_parts(data.add(12), 4).try_into().ok()?) as usize
         };
 
-        // Check for the main header
+        // 检查主 header
         if data_length < 16 || magic != PARAMS_MAGIC || block_length != 8 {
             return None;
         }
@@ -121,14 +118,14 @@ impl Iterator for ApplicationParameters {
     type Item = ApplicationParameter;
 
     fn next(&mut self) -> Option<Self::Item> {
-        // Fetch magic, ensuring we don't run off the end
+        // 读取 magic，确保不会越过末尾
         if self.offset + 4 > self.data.len() {
             return None;
         }
         let magic = &self.data[self.offset..self.offset + 4];
         self.offset += 4;
 
-        // Fetch header size
+        // 读取 header size
         if self.offset + 4 > self.data.len() {
             return None;
         }
@@ -136,7 +133,7 @@ impl Iterator for ApplicationParameters {
             as usize;
         self.offset += 4;
 
-        // Fetch data contents
+        // 读取 data 内容
         if self.offset + size > self.data.len() {
             return None;
         }

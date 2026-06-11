@@ -1,46 +1,38 @@
-//! SOLID-specific extensions to general I/O primitives
+//! 针对通用 I/O 基础类型的 SOLID 平台特定扩展
 //!
-//! Just like raw pointers, raw SOLID Sockets file descriptors point to
-//! resources with dynamic lifetimes, and they can dangle if they outlive their
-//! resources or be forged if they're created from invalid values.
+//! 就像裸指针一样，原始 SOLID Sockets 文件描述符指向具有动态生命周期的资源，
+//! 如果它们的存活时间超过了所指向的资源，便可能成为悬垂（dangle）描述符；
+//! 如果它们由无效值创建，则可能是伪造（forged）的。
 //!
-//! This module provides three types for representing raw file descriptors
-//! with different ownership properties: raw, borrowed, and owned, which are
-//! analogous to types used for representing pointers:
+//! 本模块提供了三种类型，用于表示具有不同所有权属性的原始文件描述符：raw（裸）、
+//! borrowed（借用）和 owned（拥有），它们分别类比于用于表示指针的各类型：
 //!
-//! | Type               | Analogous to |
+//! | 类型               | 类比于       |
 //! | ------------------ | ------------ |
 //! | [`RawFd`]          | `*const _`   |
 //! | [`BorrowedFd<'a>`] | `&'a _`      |
 //! | [`OwnedFd`]        | `Box<_>`     |
 //!
-//! Like raw pointers, `RawFd` values are primitive values. And in new code,
-//! they should be considered unsafe to do I/O on (analogous to dereferencing
-//! them). Rust did not always provide this guidance, so existing code in the
-//! Rust ecosystem often doesn't mark `RawFd` usage as unsafe. Once the
-//! `io_safety` feature is stable, libraries will be encouraged to migrate,
-//! either by adding `unsafe` to APIs that dereference `RawFd` values, or by
-//! using to `BorrowedFd` or `OwnedFd` instead.
+//! 与裸指针一样，`RawFd` 值是基础值（primitive values）。在新代码中，对其进行 I/O
+//! 操作应被视为不安全（类比于对它们解引用）。Rust 并非一直提供这一指导，因此 Rust
+//! 生态系统中的现有代码常常没有将 `RawFd` 的使用标记为 unsafe。一旦 `io_safety`
+//! 特性稳定，库将被鼓励进行迁移，方式或是为解引用 `RawFd` 值的 API 添加 `unsafe`，
+//! 或是改用 `BorrowedFd` 或 `OwnedFd`。
 //!
-//! Like references, `BorrowedFd` values are tied to a lifetime, to ensure
-//! that they don't outlive the resource they point to. These are safe to
-//! use. `BorrowedFd` values may be used in APIs which provide safe access to
-//! any system call except for:
+//! 与引用一样，`BorrowedFd` 值与某个生命周期绑定，以确保它们的存活时间不会超过其所
+//! 指向的资源。这些值的使用是安全的。`BorrowedFd` 值可用于为以下系统调用之外的任意
+//! 系统调用提供安全访问的 API：
 //!
-//!  - `close`, because that would end the dynamic lifetime of the resource
-//!    without ending the lifetime of the file descriptor.
+//!  - `close`，因为这会在不结束文件描述符生命周期的情况下结束资源的动态生命周期。
 //!
-//!  - `dup2`/`dup3`, in the second argument, because this argument is
-//!    closed and assigned a new resource, which may break the assumptions
-//!    other code using that file descriptor.
+//!  - `dup2`/`dup3` 的第二个参数，因为该参数会被关闭并被赋予一个新资源，这可能会破坏
+//!    使用该文件描述符的其他代码所持有的假设。
 //!
-//! `BorrowedFd` values may be used in APIs which provide safe access to `dup`
-//! system calls, so types implementing `AsFd` or `From<OwnedFd>` should not
-//! assume they always have exclusive access to the underlying file
-//! description.
+//! `BorrowedFd` 值可用于为 `dup` 系统调用提供安全访问的 API，因此实现了 `AsFd` 或
+//! `From<OwnedFd>` 的类型不应假设它们始终对底层的文件描述（file description）拥有独占访问权。
 //!
-//! Like boxes, `OwnedFd` values conceptually own the resource they point to,
-//! and free (close) it when they are dropped.
+//! 与 box 一样，`OwnedFd` 值在概念上拥有它们所指向的资源，并在被丢弃（drop）时
+//! 释放（关闭）该资源。
 //!
 //! [`BorrowedFd<'a>`]: crate::os::solid::io::BorrowedFd
 
@@ -51,25 +43,22 @@ use crate::mem::ManuallyDrop;
 use crate::sys::{AsInner, FromInner, IntoInner};
 use crate::{fmt, io, net, sys};
 
-/// Raw file descriptors.
+/// 原始文件描述符。
 pub type RawFd = i32;
 
-// The max of this is -2, in two's complement. -1 is `SOLID_NET_INVALID_FD`.
+// 以二进制补码表示，它的最大值为 -2。-1 是 `SOLID_NET_INVALID_FD`。
 type ValidRawFd = core::num::niche_types::NotAllOnes<RawFd>;
 
-/// A borrowed SOLID Sockets file descriptor.
+/// 一个借用的 SOLID Sockets 文件描述符。
 ///
-/// This has a lifetime parameter to tie it to the lifetime of something that
-/// owns the socket.
+/// 它带有一个生命周期参数，用以将其与拥有该套接字之物的生命周期绑定。
 ///
-/// This uses `repr(transparent)` and has the representation of a host file
-/// descriptor, so it can be used in FFI in places where a socket is passed as
-/// an argument, it is not captured or consumed, and it never has the value
-/// `SOLID_NET_INVALID_FD`.
+/// 它使用 `repr(transparent)`，且具有宿主文件描述符（host file descriptor）的表示形式，
+/// 因此可在 FFI 中用于将套接字作为参数传递的场景 —— 此时它不会被捕获或消耗，且其值
+/// 永远不会是 `SOLID_NET_INVALID_FD`。
 ///
-/// This type's `.to_owned()` implementation returns another `BorrowedFd`
-/// rather than an `OwnedFd`. It just makes a trivial copy of the raw
-/// socket, which is then borrowed under the same lifetime.
+/// 此类型的 `.to_owned()` 实现返回的是另一个 `BorrowedFd` 而非 `OwnedFd`。它只是对
+/// 原始套接字做一次平凡的拷贝，随后在相同的生命周期下被借用。
 #[derive(Copy, Clone)]
 #[repr(transparent)]
 #[rustc_nonnull_optimization_guaranteed]
@@ -78,14 +67,13 @@ pub struct BorrowedFd<'socket> {
     _phantom: PhantomData<&'socket OwnedFd>,
 }
 
-/// An owned SOLID Sockets file descriptor.
+/// 一个拥有所有权的 SOLID Sockets 文件描述符。
 ///
-/// This closes the file descriptor on drop.
+/// 它会在丢弃（drop）时关闭该文件描述符。
 ///
-/// This uses `repr(transparent)` and has the representation of a host file
-/// descriptor, so it can be used in FFI in places where a socket is passed as
-/// an argument, it is not captured or consumed, and it never has the value
-/// `SOLID_NET_INVALID_FD`.
+/// 它使用 `repr(transparent)`，且具有宿主文件描述符（host file descriptor）的表示形式，
+/// 因此可在 FFI 中用于将套接字作为参数传递的场景 —— 此时它不会被捕获或消耗，且其值
+/// 永远不会是 `SOLID_NET_INVALID_FD`。
 #[repr(transparent)]
 #[rustc_nonnull_optimization_guaranteed]
 pub struct OwnedFd {
@@ -93,13 +81,12 @@ pub struct OwnedFd {
 }
 
 impl BorrowedFd<'_> {
-    /// Returns a `BorrowedFd` holding the given raw file descriptor.
+    /// 返回一个持有给定原始文件描述符的 `BorrowedFd`。
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// The resource pointed to by `fd` must remain open for the duration of
-    /// the returned `BorrowedFd`, and it must not have the value
-    /// `SOLID_NET_INVALID_FD`.
+    /// 在返回的 `BorrowedFd` 存续期间，`fd` 所指向的资源必须保持打开状态，且其值
+    /// 不能是 `SOLID_NET_INVALID_FD`。
     #[inline]
     #[track_caller]
     pub const unsafe fn borrow_raw(fd: RawFd) -> Self {
@@ -108,16 +95,14 @@ impl BorrowedFd<'_> {
 }
 
 impl OwnedFd {
-    /// Creates a new `OwnedFd` instance that shares the same underlying file
-    /// description as the existing `OwnedFd` instance.
+    /// 创建一个新的 `OwnedFd` 实例，它与现有的 `OwnedFd` 实例共享同一个底层文件描述（file description）。
     pub fn try_clone(&self) -> io::Result<Self> {
         self.as_fd().try_clone_to_owned()
     }
 }
 
 impl BorrowedFd<'_> {
-    /// Creates a new `OwnedFd` instance that shares the same underlying file
-    /// description as the existing `BorrowedFd` instance.
+    /// 创建一个新的 `OwnedFd` 实例，它与现有的 `BorrowedFd` 实例共享同一个底层文件描述（file description）。
     pub fn try_clone_to_owned(&self) -> io::Result<OwnedFd> {
         let fd = sys::net::cvt(unsafe { crate::sys::abi::sockets::dup(self.as_raw_fd()) })?;
         Ok(unsafe { OwnedFd::from_raw_fd(fd) })
@@ -146,12 +131,12 @@ impl IntoRawFd for OwnedFd {
 }
 
 impl FromRawFd for OwnedFd {
-    /// Constructs a new instance of `Self` from the given raw file descriptor.
+    /// 从给定的原始文件描述符构造一个新的 `Self` 实例。
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// The resource pointed to by `fd` must be open and suitable for assuming
-    /// ownership. The resource must not require any cleanup other than `close`.
+    /// `fd` 所指向的资源必须处于打开状态且适合取得其所有权。该资源除 `close` 之外
+    /// 不得需要任何其他清理操作。
     #[inline]
     #[track_caller]
     unsafe fn from_raw_fd(fd: RawFd) -> Self {
@@ -195,10 +180,9 @@ macro_rules! impl_is_terminal {
 
 impl_is_terminal!(BorrowedFd<'_>, OwnedFd);
 
-/// A trait to borrow the SOLID Sockets file descriptor from an underlying
-/// object.
+/// 用于从底层对象中借用 SOLID Sockets 文件描述符的 trait。
 pub trait AsFd {
-    /// Borrows the file descriptor.
+    /// 借用该文件描述符。
     fn as_fd(&self) -> BorrowedFd<'_>;
 }
 
@@ -226,9 +210,8 @@ impl AsFd for BorrowedFd<'_> {
 impl AsFd for OwnedFd {
     #[inline]
     fn as_fd(&self) -> BorrowedFd<'_> {
-        // Safety: `OwnedFd` and `BorrowedFd` have the same validity
-        // invariants, and the `BorrowedFd` is bounded by the lifetime
-        // of `&self`.
+        // 安全性：`OwnedFd` 与 `BorrowedFd` 具有相同的有效性
+        // 不变式，并且该 `BorrowedFd` 受 `&self` 的生命周期约束。
         unsafe { BorrowedFd::borrow_raw(self.as_raw_fd()) }
     }
 }
@@ -259,7 +242,7 @@ macro_rules! impl_owned_fd_traits {
 }
 impl_owned_fd_traits! { TcpStream TcpListener UdpSocket }
 
-/// This impl allows implementing traits that require `AsFd` on Arc.
+/// 此 impl 允许在 Arc 上实现需要 `AsFd` 的 trait。
 /// ```
 /// # #[cfg(target_os = "solid_asp3")] mod group_cfg {
 /// # use std::os::solid::io::AsFd;
@@ -292,49 +275,40 @@ impl<T: AsFd> AsFd for Box<T> {
     }
 }
 
-/// A trait to extract the raw SOLID Sockets file descriptor from an underlying
-/// object.
+/// 用于从底层对象中提取原始 SOLID Sockets 文件描述符的 trait。
 pub trait AsRawFd {
-    /// Extracts the raw file descriptor.
+    /// 提取原始文件描述符。
     ///
-    /// This method does **not** pass ownership of the raw file descriptor
-    /// to the caller. The descriptor is only guaranteed to be valid while
-    /// the original object has not yet been destroyed.
+    /// 本方法**不会**将原始文件描述符的所有权转交给调用方。仅在原始对象尚未被销毁期间，
+    /// 该描述符才保证有效。
     fn as_raw_fd(&self) -> RawFd;
 }
 
-/// A trait to express the ability to construct an object from a raw file
-/// descriptor.
+/// 用于表达从原始文件描述符构造对象之能力的 trait。
 pub trait FromRawFd {
-    /// Constructs a new instance of `Self` from the given raw file
-    /// descriptor.
+    /// 从给定的原始文件描述符构造一个新的 `Self` 实例。
     ///
-    /// This function is typically used to **consume ownership** of the
-    /// specified file descriptor. When used in this way, the returned object
-    /// will take responsibility for closing it when the object goes out of
-    /// scope.
+    /// 本函数通常用于**取得（consume）**所指定文件描述符的所有权。以这种方式使用时，
+    /// 返回的对象将负责在其离开作用域时关闭该描述符。
     ///
-    /// However, consuming ownership is not strictly required. Use a
-    /// [`From<OwnedFd>::from`] implementation for an API which strictly
-    /// consumes ownership.
+    /// 然而，取得所有权并非严格必需。对于严格取得所有权的 API，请使用
+    /// [`From<OwnedFd>::from`] 实现。
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// The `fd` passed in must be an [owned file descriptor][io-safety];
-    /// in particular, it must be open.
+    /// 传入的 `fd` 必须是一个[拥有所有权的文件描述符][io-safety]；
+    /// 特别地，它必须处于打开状态。
     ///
     /// [io-safety]: io#io-safety
     unsafe fn from_raw_fd(fd: RawFd) -> Self;
 }
 
-/// A trait to express the ability to consume an object and acquire ownership of
-/// its raw file descriptor.
+/// 用于表达消耗一个对象并取得其原始文件描述符所有权之能力的 trait。
 pub trait IntoRawFd {
-    /// Consumes this object, returning the raw underlying file descriptor.
+    /// 消耗此对象，返回底层的原始文件描述符。
     ///
-    /// This function **transfers ownership** of the underlying file descriptor
-    /// to the caller. Callers are then the unique owners of the file descriptor
-    /// and must close the descriptor once it's no longer needed.
+    /// 本函数将底层文件描述符的所有权**转移（transfer）**给调用方。此后调用方是该文件
+    /// 描述符的唯一所有者，必须在不再需要时关闭该描述符。
     #[must_use = "losing the raw file descriptor may leak resources"]
     fn into_raw_fd(self) -> RawFd;
 }

@@ -1,4 +1,4 @@
-#![cfg_attr(test, allow(dead_code))] // why is this necessary?
+#![cfg_attr(test, allow(dead_code))] // 这为什么是必要的？
 
 use crate::io;
 use crate::sys::pal::abi::{thread, usercalls};
@@ -45,7 +45,7 @@ mod task_queue {
         }
     }
 
-    // Specifying linkage/symbol name is solely to ensure a single instance between this crate and its unit tests
+    // 指定 linkage/符号名，纯粹是为了确保本 crate 与其单元测试之间只有一个实例
     #[cfg_attr(test, linkage = "available_externally")]
     #[unsafe(export_name = "_ZN16__rust_internals3std3sys3pal3sgx6thread10TASK_QUEUEE")]
     static TASK_QUEUE: Mutex<Vec<Task>> = Mutex::new(Vec::new());
@@ -55,10 +55,9 @@ mod task_queue {
     }
 }
 
-/// This module provides a synchronization primitive that does not use thread
-/// local variables. This is needed for signaling that a thread has finished
-/// execution. The signal is sent once all TLS destructors have finished at
-/// which point no new thread locals should be created.
+/// 此模块提供了一个不使用线程本地变量（thread local variables）的同步原语。
+/// 这是为了用于发出“某个线程已结束执行”的信号。该信号在所有 TLS 析构函数
+/// 都完成之后发送，此时不应再创建任何新的线程本地变量。
 pub mod wait_notify {
     use crate::pin::Pin;
     use crate::sync::Arc;
@@ -67,9 +66,8 @@ pub mod wait_notify {
     pub struct Notifier(Arc<Parker>);
 
     impl Notifier {
-        /// Notify the waiter. The waiter is either notified right away (if
-        /// currently blocked in `Waiter::wait()`) or later when it calls the
-        /// `Waiter::wait()` method.
+        /// 通知等待者（waiter）。等待者要么被立即通知（如果它当前正阻塞在
+        /// `Waiter::wait()` 中），要么在它稍后调用 `Waiter::wait()` 方法时被通知。
         pub fn notify(self) {
             Pin::new(&*self.0).unpark()
         }
@@ -78,12 +76,11 @@ pub mod wait_notify {
     pub struct Waiter(Arc<Parker>);
 
     impl Waiter {
-        /// Wait for a notification. If `Notifier::notify()` has already been
-        /// called, this will return immediately, otherwise the current thread
-        /// is blocked until notified.
+        /// 等待一个通知。如果 `Notifier::notify()` 已经被调用过，则此调用会
+        /// 立即返回；否则当前线程会被阻塞，直到收到通知。
         pub fn wait(self) {
-            // SAFETY:
-            // This is only ever called on one thread.
+            // SAFETY：
+            // 此函数只会在一个线程上被调用。
             unsafe { Pin::new(&*self.0).park() }
         }
     }
@@ -95,7 +92,7 @@ pub mod wait_notify {
 }
 
 impl Thread {
-    // unsafe: see thread::Builder::spawn_unchecked for safety requirements
+    // unsafe：安全性要求参见 thread::Builder::spawn_unchecked
     pub unsafe fn new(_stack: usize, init: Box<ThreadInit>) -> io::Result<Thread> {
         let mut queue_lock = task_queue::lock();
         unsafe { usercalls::launch_thread()? };
@@ -107,7 +104,7 @@ impl Thread {
     pub(crate) fn entry() -> JoinNotifier {
         let mut pending_tasks = task_queue::lock();
         let task = rtunwrap!(Some, pending_tasks.pop());
-        drop(pending_tasks); // make sure to not hold the task queue lock longer than necessary
+        drop(pending_tasks); // 确保持有任务队列锁的时间不超过必要
         task.run()
     }
 

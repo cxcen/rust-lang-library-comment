@@ -1,4 +1,4 @@
-//! Apple-specific raw type definitions
+//! Apple 平台特有的原始类型定义
 use crate::os::raw::c_long;
 
 #[stable(feature = "raw_ext", since = "1.1.0")]

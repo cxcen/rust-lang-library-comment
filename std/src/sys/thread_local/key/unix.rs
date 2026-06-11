@@ -1,6 +1,6 @@
 use crate::mem;
 
-// For WASI add a few symbols not in upstream `libc` just yet.
+// 对 WASI，补充一些目前尚未进入上游 `libc` 的符号。
 #[cfg(all(target_os = "wasi", target_env = "p1", target_feature = "atomics"))]
 mod libc {
     use crate::ffi;

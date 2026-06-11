@@ -1,56 +1,42 @@
-// Thread parker implementation for Windows.
+// 针对 Windows 的线程 parker 实现。
 //
-// This uses WaitOnAddress and WakeByAddressSingle if available (Windows 8+).
-// This modern API is exactly the same as the futex syscalls the Linux thread
-// parker uses. When These APIs are available, the implementation of this
-// thread parker matches the Linux thread parker exactly.
+// 如果可用（Windows 8+），它会使用 WaitOnAddress 和 WakeByAddressSingle。
+// 这套现代 API 与 Linux 线程 parker 所用的 futex 系统调用完全相同。当这些 API
+// 可用时，本线程 parker 的实现与 Linux 线程 parker 完全一致。
 //
-// However, when the modern API is not available, this implementation falls
-// back to NT Keyed Events, which are similar, but have some important
-// differences. These are available since Windows XP.
+// 然而，当这套现代 API 不可用时，本实现会回退到 NT Keyed Events（NT 键控事件），
+// 它们与之类似，但有一些重要的差异。这套机制自 Windows XP 起即可用。
 //
-// WaitOnAddress first checks the state of the thread parker to make sure it no
-// WakeByAddressSingle calls can be missed between updating the parker state
-// and calling the function.
+// WaitOnAddress 会先检查线程 parker 的状态，以确保在更新 parker 状态与调用该函数
+// 之间不会漏掉任何 WakeByAddressSingle 调用。
 //
-// NtWaitForKeyedEvent does not have this option, and unconditionally blocks
-// without checking the parker state first. Instead, NtReleaseKeyedEvent
-// (unlike WakeByAddressSingle) *blocks* until it woke up a thread waiting for
-// it by NtWaitForKeyedEvent. This way, we can be sure no events are missed,
-// but we need to be careful not to block unpark() if park_timeout() was woken
-// up by a timeout instead of unpark().
+// NtWaitForKeyedEvent 没有这个选项，它会无条件阻塞，而不先检查 parker 状态。
+// 作为代替，NtReleaseKeyedEvent（不同于 WakeByAddressSingle）会*阻塞*，
+// 直到它唤醒了一个正通过 NtWaitForKeyedEvent 等待它的线程。这样，我们就能确保
+// 没有事件被漏掉，但我们需要小心：如果 park_timeout() 是因超时而非 unpark() 被唤醒，
+// 就不要阻塞 unpark()。
 //
-// Unlike WaitOnAddress, NtWaitForKeyedEvent/NtReleaseKeyedEvent operate on a
-// HANDLE (created with NtCreateKeyedEvent). This means that we can be sure
-// a successfully awoken park() was awoken by unpark() and not a
-// NtReleaseKeyedEvent call from some other code, as these events are not only
-// matched by the key (address of the parker (state)), but also by this HANDLE.
-// We lazily allocate this handle the first time it is needed.
+// 与 WaitOnAddress 不同，NtWaitForKeyedEvent/NtReleaseKeyedEvent 是在一个 HANDLE
+//（由 NtCreateKeyedEvent 创建）上操作的。这意味着我们可以确信：一次成功被唤醒的
+// park() 是被 unpark() 唤醒的，而不是被某段其他代码的 NtReleaseKeyedEvent 调用唤醒的，
+// 因为这些事件不仅要按 key（parker（状态）的地址）匹配，还要按这个 HANDLE 匹配。
+// 我们会在首次需要时惰性（lazily）分配这个 handle。
 //
-// The fast path (calling park() after unpark() was already called) and the
-// possible states are the same for both implementations. This is used here to
-// make sure the fast path does not even check which API to use, but can return
-// right away, independent of the used API. Only the slow paths (which will
-// actually block/wake a thread) check which API is available and have
-// different implementations.
+// 快速路径（在 unpark() 已经被调用之后再调用 park()）以及可能的各个状态，对两种实现
+// 而言是相同的。这里利用了这一点，确保快速路径甚至无需检查使用哪套 API，
+// 而可以立即返回，与所用的 API 无关。只有慢速路径（会真正阻塞/唤醒线程的路径）
+// 才会检查哪套 API 可用，并采用不同的实现。
 //
-// Unfortunately, NT Keyed Events are an undocumented Windows API. However:
-// - This API is relatively simple with obvious behavior, and there are
-//   several (unofficial) articles documenting the details. [1]
-// - `parking_lot` has been using this API for years (on Windows versions
-//   before Windows 8). [2] Many big projects extensively use parking_lot,
-//   such as servo and the Rust compiler itself.
-// - It is the underlying API used by Windows SRW locks and Windows critical
-//   sections. [3] [4]
-// - The source code of the implementations of Wine, ReactOs, and Windows XP
-//   are available and match the expected behavior.
-// - The main risk with an undocumented API is that it might change in the
-//   future. But since we only use it for older versions of Windows, that's not
-//   a problem.
-// - Even if these functions do not block or wake as we expect (which is
-//   unlikely, see all previous points), this implementation would still be
-//   memory safe. The NT Keyed Events API is only used to sleep/block in the
-//   right place.
+// 遗憾的是，NT Keyed Events 是一套未公开文档的 Windows API。然而：
+// - 这套 API 相对简单、行为显而易见，并且有若干（非官方的）文章记录了其细节。[1]
+// - `parking_lot` 已经使用这套 API 多年（用于 Windows 8 之前的 Windows 版本）。[2]
+//   许多大型项目都大量使用 parking_lot，例如 servo 和 Rust 编译器本身。
+// - 它是 Windows SRW 锁和 Windows 临界区（critical sections）底层所用的 API。[3] [4]
+// - Wine、ReactOS 和 Windows XP 各自实现的源代码都可获取，并与预期行为相符。
+// - 使用一套未公开文档的 API，主要风险在于它将来可能会改变。但由于我们只在较旧的
+//   Windows 版本上使用它，所以这并不是问题。
+// - 即便这些函数没有按我们预期的那样阻塞或唤醒（这不太可能，参见前面所有要点），
+//   本实现仍然是内存安全的。NT Keyed Events API 只用于在正确的位置进行睡眠/阻塞。
 //
 // [1]: http://www.locklessinc.com/articles/keyed_events/
 // [2]: https://github.com/Amanieu/parking_lot/commit/43abbc964e
@@ -73,39 +59,33 @@ const PARKED: i8 = -1;
 const EMPTY: i8 = 0;
 const NOTIFIED: i8 = 1;
 
-// Notes about memory ordering:
+// 关于内存序的说明：
 //
-// Memory ordering is only relevant for the relative ordering of operations
-// between different variables. Even Ordering::Relaxed guarantees a
-// monotonic/consistent order when looking at just a single atomic variable.
+// 内存序只与不同变量之间各操作的相对顺序相关。即便是 Ordering::Relaxed，
+// 在只看单个原子变量时也能保证一个单调/一致的顺序。
 //
-// So, since this parker is just a single atomic variable, we only need to look
-// at the ordering guarantees we need to provide to the 'outside world'.
+// 因此，由于这个 parker 只是单个原子变量，我们只需要关注我们必须向“外部世界”
+// 提供哪些顺序保证即可。
 //
-// The only memory ordering guarantee that parking and unparking provide, is
-// that things which happened before unpark() are visible on the thread
-// returning from park() afterwards. Otherwise, it was effectively unparked
-// before unpark() was called while still consuming the 'token'.
+// parking 与 unparking 提供的唯一内存序保证是：在 unpark() 之前发生的事情，
+// 在随后从 park() 返回的线程上是可见的。否则，那相当于线程在 unpark() 被调用之前
+// 就已被 unpark 了，同时还消费了那个“令牌（token）”。
 //
-// In other words, unpark() needs to synchronize with the part of park() that
-// consumes the token and returns.
+// 换句话说，unpark() 需要与 park() 中消费令牌并返回的那一部分相互同步。
 //
-// This is done with a release-acquire synchronization, by using
-// Ordering::Release when writing NOTIFIED (the 'token') in unpark(), and using
-// Ordering::Acquire when reading this state in park() after waking up.
+// 这是通过一次 release-acquire 同步来实现的：在 unpark() 中写入 NOTIFIED
+//（即“令牌”）时使用 Ordering::Release，而在被唤醒后于 park() 中读取该状态时
+// 使用 Ordering::Acquire。
 impl Parker {
-    /// Constructs the Windows parker. The UNIX parker implementation
-    /// requires this to happen in-place.
+    /// 构造 Windows parker。UNIX parker 实现要求它就地（in-place）发生。
     pub unsafe fn new_in_place(parker: *mut Parker) {
         parker.write(Self { state: AtomicI8::new(EMPTY) });
     }
 
-    // Assumes this is only called by the thread that owns the Parker,
-    // which means that `self.state != PARKED`. This implementation doesn't require `Pin`,
-    // but other implementations do.
+    // 假定它只会被拥有该 Parker 的线程调用，这意味着 `self.state != PARKED`。
+    // 本实现并不要求 `Pin`，但其他实现需要。
     pub unsafe fn park(self: Pin<&Self>) {
-        // Change NOTIFIED=>EMPTY or EMPTY=>PARKED, and directly return in the
-        // first case.
+        // 把 NOTIFIED=>EMPTY 或 EMPTY=>PARKED，并在前一种情况下直接返回。
         if self.state.fetch_sub(1, Acquire) == NOTIFIED {
             return;
         }
@@ -116,24 +96,22 @@ impl Parker {
         }
 
         loop {
-            // Wait for something to happen, assuming it's still set to PARKED.
+            // 等待有事情发生，前提是它仍被设为 PARKED。
             c::WaitOnAddress(self.ptr(), &PARKED as *const _ as *const c_void, 1, c::INFINITE);
-            // Change NOTIFIED=>EMPTY but leave PARKED alone.
+            // 把 NOTIFIED=>EMPTY，但不动 PARKED。
             if self.state.compare_exchange(NOTIFIED, EMPTY, Acquire, Acquire).is_ok() {
-                // Actually woken up by unpark().
+                // 确实是被 unpark() 唤醒的。
                 return;
             } else {
-                // Spurious wake up. We loop to try again.
+                // 虚假唤醒（spurious wake up）。我们循环重试。
             }
         }
     }
 
-    // Assumes this is only called by the thread that owns the Parker,
-    // which means that `self.state != PARKED`. This implementation doesn't require `Pin`,
-    // but other implementations do.
+    // 假定它只会被拥有该 Parker 的线程调用，这意味着 `self.state != PARKED`。
+    // 本实现并不要求 `Pin`，但其他实现需要。
     pub unsafe fn park_timeout(self: Pin<&Self>, timeout: Duration) {
-        // Change NOTIFIED=>EMPTY or EMPTY=>PARKED, and directly return in the
-        // first case.
+        // 把 NOTIFIED=>EMPTY 或 EMPTY=>PARKED，并在前一种情况下直接返回。
         if self.state.fetch_sub(1, Acquire) == NOTIFIED {
             return;
         }
@@ -143,29 +121,26 @@ impl Parker {
             return keyed_events::park_timeout(self, timeout);
         }
 
-        // Wait for something to happen, assuming it's still set to PARKED.
+        // 等待有事情发生，前提是它仍被设为 PARKED。
         c::WaitOnAddress(self.ptr(), &PARKED as *const _ as *const c_void, 1, dur2timeout(timeout));
-        // Set the state back to EMPTY (from either PARKED or NOTIFIED).
-        // Note that we don't just write EMPTY, but use swap() to also
-        // include an acquire-ordered read to synchronize with unpark()'s
-        // release-ordered write.
+        // 把状态设回 EMPTY（来源可能是 PARKED 或 NOTIFIED）。
+        // 注意我们并不是简单地写入 EMPTY，而是使用 swap()，从而同时包含一次
+        // acquire 序的读取，以与 unpark() 的 release 序写入相互同步。
         if self.state.swap(EMPTY, Acquire) == NOTIFIED {
-            // Actually woken up by unpark().
+            // 确实是被 unpark() 唤醒的。
         } else {
-            // Timeout or spurious wake up.
-            // We return either way, because we can't easily tell if it was the
-            // timeout or not.
+            // 超时或虚假唤醒。
+            // 我们无论如何都返回，因为我们无法轻易判断它是超时还是 unpark()。
         }
     }
 
-    // This implementation doesn't require `Pin`, but other implementations do.
+    // 本实现并不要求 `Pin`，但其他实现需要。
     pub fn unpark(self: Pin<&Self>) {
-        // Change PARKED=>NOTIFIED, EMPTY=>NOTIFIED, or NOTIFIED=>NOTIFIED, and
-        // wake the thread in the first case.
+        // 把 PARKED=>NOTIFIED、EMPTY=>NOTIFIED 或 NOTIFIED=>NOTIFIED，
+        // 并在第一种情况下唤醒该线程。
         //
-        // Note that even NOTIFIED=>NOTIFIED results in a write. This is on
-        // purpose, to make sure every unpark() has a release-acquire ordering
-        // with park().
+        // 注意，即使 NOTIFIED=>NOTIFIED 也会产生一次写入。这是有意为之，
+        // 以确保每一次 unpark() 都与 park() 之间存在 release-acquire 顺序。
         if self.state.swap(NOTIFIED, Release) == PARKED {
             unsafe {
                 #[cfg(target_vendor = "win7")]
@@ -194,51 +169,48 @@ mod keyed_events {
     use crate::sys::c;
 
     pub unsafe fn park(parker: Pin<&Parker>) {
-        // Wait for unpark() to produce this event.
+        // 等待 unpark() 产生这个事件。
         c::NtWaitForKeyedEvent(keyed_event_handle(), parker.ptr(), false, ptr::null_mut());
-        // Set the state back to EMPTY (from either PARKED or NOTIFIED).
-        // Note that we don't just write EMPTY, but use swap() to also
-        // include an acquire-ordered read to synchronize with unpark()'s
-        // release-ordered write.
+        // 把状态设回 EMPTY（来源可能是 PARKED 或 NOTIFIED）。
+        // 注意我们并不是简单地写入 EMPTY，而是使用 swap()，从而同时包含一次
+        // acquire 序的读取，以与 unpark() 的 release 序写入相互同步。
         parker.state.swap(EMPTY, Acquire);
         return;
     }
     pub unsafe fn park_timeout(parker: Pin<&Parker>, timeout: Duration) {
-        // Need to wait for unpark() using NtWaitForKeyedEvent.
+        // 需要使用 NtWaitForKeyedEvent 等待 unpark()。
         let handle = keyed_event_handle();
 
-        // NtWaitForKeyedEvent uses a unit of 100ns, and uses negative
-        // values to indicate a relative time on the monotonic clock.
-        // This is documented here for the underlying KeWaitForSingleObject function:
+        // NtWaitForKeyedEvent 以 100ns 为单位，并使用负值表示相对于单调时钟
+        //（monotonic clock）的相对时间。
+        // 这一点在底层的 KeWaitForSingleObject 函数文档中有记载：
         // https://docs.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-kewaitforsingleobject
         let mut timeout = match i64::try_from((timeout.as_nanos() + 99) / 100) {
             Ok(t) => -t,
             Err(_) => i64::MIN,
         };
 
-        // Wait for unpark() to produce this event.
+        // 等待 unpark() 产生这个事件。
         let unparked =
             c::NtWaitForKeyedEvent(handle, parker.ptr(), false, &mut timeout) == c::STATUS_SUCCESS;
 
-        // Set the state back to EMPTY (from either PARKED or NOTIFIED).
+        // 把状态设回 EMPTY（来源可能是 PARKED 或 NOTIFIED）。
         let prev_state = parker.state.swap(EMPTY, Acquire);
 
         if !unparked && prev_state == NOTIFIED {
-            // We were awoken by a timeout, not by unpark(), but the state
-            // was set to NOTIFIED, which means we *just* missed an
-            // unpark(), which is now blocked on us to wait for it.
-            // Wait for it to consume the event and unblock that thread.
+            // 我们是被超时唤醒的，而不是被 unpark() 唤醒；但状态已被设为 NOTIFIED，
+            // 这意味着我们*刚好*错过了一次 unpark()，而那次 unpark() 现在正阻塞着
+            // 等我们。等待它消费掉这个事件，从而解除那个线程的阻塞。
             c::NtWaitForKeyedEvent(handle, parker.ptr(), false, ptr::null_mut());
         }
     }
     pub unsafe fn unpark(parker: Pin<&Parker>) {
-        // If we run NtReleaseKeyedEvent before the waiting thread runs
-        // NtWaitForKeyedEvent, this (shortly) blocks until we can wake it up.
-        // If the waiting thread wakes up before we run NtReleaseKeyedEvent
-        // (e.g. due to a timeout), this blocks until we do wake up a thread.
-        // To prevent this thread from blocking indefinitely in that case,
-        // park_impl() will, after seeing the state set to NOTIFIED after
-        // waking up, call NtWaitForKeyedEvent again to unblock us.
+        // 如果我们在等待线程运行 NtWaitForKeyedEvent 之前就运行了 NtReleaseKeyedEvent，
+        // 那么它会（短暂地）阻塞，直到我们能够把它唤醒。
+        // 如果等待线程在我们运行 NtReleaseKeyedEvent 之前就醒来（例如因为超时），
+        // 那么它会阻塞，直到我们确实唤醒了某个线程。
+        // 为了防止本线程在那种情况下无限期阻塞，park_impl() 会在醒来后看到状态被设为
+        // NOTIFIED 之后，再次调用 NtWaitForKeyedEvent 来解除我们的阻塞。
         c::NtReleaseKeyedEvent(keyed_event_handle(), parker.ptr(), false, ptr::null_mut());
     }
 
@@ -262,8 +234,8 @@ mod keyed_events {
                 match HANDLE.compare_exchange(INVALID, handle, Relaxed, Relaxed) {
                     Ok(_) => handle,
                     Err(h) => {
-                        // Lost the race to another thread initializing HANDLE before we did.
-                        // Closing our handle and using theirs instead.
+                        // 在竞争中输给了另一个先于我们初始化 HANDLE 的线程。
+                        // 关闭我们的 handle，改用它们的。
                         unsafe {
                             c::CloseHandle(handle);
                         }

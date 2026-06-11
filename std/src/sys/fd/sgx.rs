@@ -19,7 +19,7 @@ impl FileDesc {
         self.fd
     }
 
-    /// Extracts the actual file descriptor without closing it.
+    /// 在不关闭文件描述符的前提下提取出实际的文件描述符。
     pub fn into_raw(self) -> Fd {
         ManuallyDrop::new(self).fd
     }

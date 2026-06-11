@@ -12,7 +12,7 @@ pub fn is_interrupted(code: i32) -> bool {
 }
 
 pub fn decode_error_kind(code: i32) -> io::ErrorKind {
-    // FIXME: not sure how to make sure all variants of Error are covered
+    // FIXME: 不确定如何确保 Error 的所有变体都被覆盖到
     if code == Error::NotFound as _ {
         io::ErrorKind::NotFound
     } else if code == Error::PermissionDenied as _ {

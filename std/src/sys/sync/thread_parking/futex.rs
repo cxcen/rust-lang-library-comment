@@ -15,84 +15,75 @@ pub struct Parker {
     state: Futex,
 }
 
-// Notes about memory ordering:
+// 关于内存序的说明：
 //
-// Memory ordering is only relevant for the relative ordering of operations
-// between different variables. Even Ordering::Relaxed guarantees a
-// monotonic/consistent order when looking at just a single atomic variable.
+// 内存序只对「不同变量之间各操作的相对顺序」有意义。即便是 Ordering::Relaxed，
+// 在只看单个原子变量时也能保证一个单调/一致的顺序。
 //
-// So, since this parker is just a single atomic variable, we only need to look
-// at the ordering guarantees we need to provide to the 'outside world'.
+// 因此，既然这个 parker 只是一个单独的原子变量，我们只需要关注我们需要向「外部
+// 世界」提供哪些顺序保证即可。
 //
-// The only memory ordering guarantee that parking and unparking provide, is
-// that things which happened before unpark() are visible on the thread
-// returning from park() afterwards. Otherwise, it was effectively unparked
-// before unpark() was called while still consuming the 'token'.
+// park 和 unpark 提供的唯一内存序保证是：在 unpark() 之前发生的事情，对于随后从
+// park() 返回的那个线程是可见的。否则，就相当于在 unpark() 被调用之前就已经被
+// unpark 了，但同时仍然消费了那个「令牌（token）」。
 //
-// In other words, unpark() needs to synchronize with the part of park() that
-// consumes the token and returns.
+// 换句话说，unpark() 需要与 park() 中「消费令牌并返回」的那一部分建立同步关系。
 //
-// This is done with a release-acquire synchronization, by using
-// Ordering::Release when writing NOTIFIED (the 'token') in unpark(), and using
-// Ordering::Acquire when checking for this state in park().
+// 这是通过一次 release-acquire 同步实现的：在 unpark() 中写入 NOTIFIED（即那个
+//「令牌」）时使用 Ordering::Release，而在 park() 中检查这个状态时使用
+// Ordering::Acquire。
 impl Parker {
-    /// Constructs the futex parker. The UNIX parker implementation
-    /// requires this to happen in-place.
+    /// 构造 futex parker。UNIX 的 parker 实现要求这必须就地（in-place）进行。
     pub unsafe fn new_in_place(parker: *mut Parker) {
         unsafe { parker.write(Self { state: Futex::new(EMPTY) }) };
     }
 
-    // Assumes this is only called by the thread that owns the Parker,
-    // which means that `self.state != PARKED`.
+    // 假定本函数只由拥有该 Parker 的线程调用，
+    // 这意味着 `self.state != PARKED`。
     pub unsafe fn park(self: Pin<&Self>) {
-        // Change NOTIFIED=>EMPTY or EMPTY=>PARKED, and directly return in the
-        // first case.
+        // 把 NOTIFIED=>EMPTY 或 EMPTY=>PARKED，并在前一种情况下直接返回。
         if self.state.fetch_sub(1, Acquire) == NOTIFIED {
             return;
         }
         loop {
-            // Wait for something to happen, assuming it's still set to PARKED.
+            // 在假定它仍被设为 PARKED 的前提下，等待有事情发生。
             futex_wait(&self.state, PARKED, None);
-            // Change NOTIFIED=>EMPTY and return in that case.
+            // 把 NOTIFIED=>EMPTY，并在那种情况下返回。
             if self.state.compare_exchange(NOTIFIED, EMPTY, Acquire, Acquire).is_ok() {
                 return;
             } else {
-                // Spurious wake up. We loop to try again.
+                // 虚假唤醒（spurious wake up）。我们循环回去重试。
             }
         }
     }
 
-    // Assumes this is only called by the thread that owns the Parker,
-    // which means that `self.state != PARKED`. This implementation doesn't
-    // require `Pin`, but other implementations do.
+    // 假定本函数只由拥有该 Parker 的线程调用，
+    // 这意味着 `self.state != PARKED`。本实现不需要 `Pin`，但其他实现需要。
     pub unsafe fn park_timeout(self: Pin<&Self>, timeout: Duration) {
-        // Change NOTIFIED=>EMPTY or EMPTY=>PARKED, and directly return in the
-        // first case.
+        // 把 NOTIFIED=>EMPTY 或 EMPTY=>PARKED，并在前一种情况下直接返回。
         if self.state.fetch_sub(1, Acquire) == NOTIFIED {
             return;
         }
-        // Wait for something to happen, assuming it's still set to PARKED.
+        // 在假定它仍被设为 PARKED 的前提下，等待有事情发生。
         futex_wait(&self.state, PARKED, Some(timeout));
-        // This is not just a store, because we need to establish a
-        // release-acquire ordering with unpark().
+        // 这不仅仅是一次 store，因为我们需要与 unpark() 建立一个
+        // release-acquire 顺序。
         if self.state.swap(EMPTY, Acquire) == NOTIFIED {
-            // Woke up because of unpark().
+            // 因为 unpark() 而醒来。
         } else {
-            // Timeout or spurious wake up.
-            // We return either way, because we can't easily tell if it was the
-            // timeout or not.
+            // 超时或虚假唤醒。
+            // 无论哪种情况我们都返回，因为我们无法轻易分辨到底是不是超时。
         }
     }
 
-    // This implementation doesn't require `Pin`, but other implementations do.
+    // 本实现不需要 `Pin`，但其他实现需要。
     #[inline]
     pub fn unpark(self: Pin<&Self>) {
-        // Change PARKED=>NOTIFIED, EMPTY=>NOTIFIED, or NOTIFIED=>NOTIFIED, and
-        // wake the thread in the first case.
+        // 把 PARKED=>NOTIFIED、EMPTY=>NOTIFIED 或 NOTIFIED=>NOTIFIED，
+        // 并在第一种情况下唤醒该线程。
         //
-        // Note that even NOTIFIED=>NOTIFIED results in a write. This is on
-        // purpose, to make sure every unpark() has a release-acquire ordering
-        // with park().
+        // 注意即便是 NOTIFIED=>NOTIFIED 也会产生一次写操作。这是有意为之，
+        // 以确保每一次 unpark() 都与 park() 之间存在一个 release-acquire 顺序。
         if self.state.swap(NOTIFIED, Release) == PARKED {
             futex_wake(&self.state);
         }

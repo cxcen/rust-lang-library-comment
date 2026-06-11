@@ -21,11 +21,10 @@ pub fn getenv(varname: &OsStr) -> Option<OsString> {
     let nbytes2 = unsafe { abi::sys_getenv(words, nwords, varname.as_ptr(), varname.len()) };
     debug_assert_eq!(nbytes, nbytes2);
 
-    // Convert to OsString.
+    // 转换为 OsString。
     //
-    // FIXME: We can probably get rid of the extra copy here if we
-    // reimplement "os_str" instead of just using the generic unix
-    // "os_str".
+    // FIXME: 如果我们重新实现 "os_str" 而不是直接复用通用的 unix
+    // "os_str"，这里多余的拷贝大概可以省掉。
     let u8s: &[u8] = unsafe { crate::slice::from_raw_parts(words.cast() as *const u8, nbytes) };
     Some(OsString::from_inner(os_str::Buf { inner: u8s.to_vec() }))
 }

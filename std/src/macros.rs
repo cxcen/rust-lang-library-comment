@@ -1,8 +1,11 @@
-//! Standard library macros
+//! 标准库宏（Standard library macros）
 //!
-//! This module contains a set of macros which are exported from the standard
-//! library. Each macro is available for use when linking against the standard
-//! library.
+//! 本模块包含一组从标准库导出的宏。每个宏在链接标准库时都可供使用。
+//!
+//! 这些宏与 `core` 中的同名宏的关键区别在于：它们依赖 `std` 的运行时 I/O 设施。
+//! `print!`/`println!` 写入 [`io::stdout`]，`eprint!`/`eprintln!`/`dbg!` 写入
+//! [`io::stderr`]——这些设施只有在有 OS 的 `std` 中才存在。它们在每次调用时都会
+//! 获取相应输出流的锁，因此在热循环中频繁调用可能成为瓶颈；写入失败会以 panic 暴露。
 // ignore-tidy-dbg
 
 #[doc = include_str!("../../core/src/macros/panic.md")]
@@ -12,25 +15,23 @@
 #[allow_internal_unstable(edition_panic)]
 #[cfg_attr(not(test), rustc_diagnostic_item = "std_panic_macro")]
 macro_rules! panic {
-    // Expands to either `$crate::panic::panic_2015` or `$crate::panic::panic_2021`
-    // depending on the edition of the caller.
+    // 根据调用方所处的 edition，展开为 `$crate::panic::panic_2015` 或
+    // `$crate::panic::panic_2021`。
     ($($arg:tt)*) => {
         /* compiler built-in */
     };
 }
 
-/// Prints to the standard output.
+/// 打印到标准输出（standard output）。
 ///
-/// Equivalent to the [`println!`] macro except that a newline is not printed at
-/// the end of the message.
+/// 等同于 [`println!`] 宏，区别在于不会在消息末尾打印换行符。
 ///
-/// Note that stdout is frequently line-buffered by default so it may be
-/// necessary to use [`io::stdout().flush()`][flush] to ensure the output is emitted
-/// immediately.
+/// 注意：stdout 默认通常是行缓冲（line-buffered）的，因此可能需要使用
+/// [`io::stdout().flush()`][flush] 来确保输出被立即送出。
 ///
-/// The `print!` macro will lock the standard output on each call. If you call
-/// `print!` within a hot loop, this behavior may be the bottleneck of the loop.
-/// To avoid this, lock stdout with [`io::stdout().lock()`][lock]:
+/// `print!` 宏会在每次调用时锁定标准输出。如果你在热循环（hot loop）中调用
+/// `print!`，这一行为可能成为该循环的瓶颈。要避免这一点，请用
+/// [`io::stdout().lock()`][lock] 锁定 stdout：
 /// ```
 /// use std::io::{stdout, Write};
 ///
@@ -38,11 +39,9 @@ macro_rules! panic {
 /// write!(lock, "hello world").unwrap();
 /// ```
 ///
-/// Use `print!` only for the primary output of your program. Use
-/// [`eprint!`] instead to print error and progress messages.
+/// 仅将 `print!` 用于程序的主要输出。打印错误和进度消息请改用 [`eprint!`]。
 ///
-/// See the formatting documentation in [`std::fmt`](crate::fmt)
-/// for details of the macro argument syntax.
+/// 宏参数语法的详情参见 [`std::fmt`](crate::fmt) 中的格式化文档。
 ///
 /// [flush]: crate::io::Write::flush
 /// [`println!`]: crate::println
@@ -51,12 +50,11 @@ macro_rules! panic {
 ///
 /// # Panics
 ///
-/// Panics if writing to `io::stdout()` fails.
+/// 如果写入 `io::stdout()` 失败，则会 panic。
 ///
-/// Writing to non-blocking stdout can cause an error, which will lead
-/// this macro to panic.
+/// 写入非阻塞（non-blocking）的 stdout 可能产生错误，从而导致本宏 panic。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use std::io::{self, Write};
@@ -85,17 +83,17 @@ macro_rules! print {
     }};
 }
 
-/// Prints to the standard output, with a newline.
+/// 打印到标准输出，并附带一个换行符。
 ///
-/// On all platforms, the newline is the LINE FEED character (`\n`/`U+000A`) alone
-/// (no additional CARRIAGE RETURN (`\r`/`U+000D`)).
+/// 在所有平台上，换行符都是单独的 LINE FEED 字符（`\n`/`U+000A`）
+///（不附带额外的 CARRIAGE RETURN（`\r`/`U+000D`））。
 ///
-/// This macro uses the same syntax as [`format!`], but writes to the standard output instead.
-/// See [`std::fmt`] for more information.
+/// 本宏使用与 [`format!`] 相同的语法，但写入标准输出而非返回字符串。
+/// 更多信息参见 [`std::fmt`]。
 ///
-/// The `println!` macro will lock the standard output on each call. If you call
-/// `println!` within a hot loop, this behavior may be the bottleneck of the loop.
-/// To avoid this, lock stdout with [`io::stdout().lock()`][lock]:
+/// `println!` 宏会在每次调用时锁定标准输出。如果你在热循环（hot loop）中调用
+/// `println!`，这一行为可能成为该循环的瓶颈。要避免这一点，请用
+/// [`io::stdout().lock()`][lock] 锁定 stdout：
 /// ```
 /// use std::io::{stdout, Write};
 ///
@@ -103,11 +101,9 @@ macro_rules! print {
 /// writeln!(lock, "hello world").unwrap();
 /// ```
 ///
-/// Use `println!` only for the primary output of your program. Use
-/// [`eprintln!`] instead to print error and progress messages.
+/// 仅将 `println!` 用于程序的主要输出。打印错误和进度消息请改用 [`eprintln!`]。
 ///
-/// See the formatting documentation in [`std::fmt`](crate::fmt)
-/// for details of the macro argument syntax.
+/// 宏参数语法的详情参见 [`std::fmt`](crate::fmt) 中的格式化文档。
 ///
 /// [`std::fmt`]: crate::fmt
 /// [`eprintln!`]: crate::eprintln
@@ -115,17 +111,16 @@ macro_rules! print {
 ///
 /// # Panics
 ///
-/// Panics if writing to [`io::stdout`] fails.
+/// 如果写入 [`io::stdout`] 失败，则会 panic。
 ///
-/// Writing to non-blocking stdout can cause an error, which will lead
-/// this macro to panic.
+/// 写入非阻塞（non-blocking）的 stdout 可能产生错误，从而导致本宏 panic。
 ///
 /// [`io::stdout`]: crate::io::stdout
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
-/// println!(); // prints just a newline
+/// println!(); // 仅打印一个换行符
 /// println!("hello there!");
 /// println!("format {} arguments", "some");
 /// let local_variable = "some";
@@ -144,29 +139,25 @@ macro_rules! println {
     }};
 }
 
-/// Prints to the standard error.
+/// 打印到标准错误（standard error）。
 ///
-/// Equivalent to the [`print!`] macro, except that output goes to
-/// [`io::stderr`] instead of [`io::stdout`]. See [`print!`] for
-/// example usage.
+/// 等同于 [`print!`] 宏，区别在于输出去往 [`io::stderr`] 而非 [`io::stdout`]。
+/// 用法示例参见 [`print!`]。
 ///
-/// Use `eprint!` only for error and progress messages. Use `print!`
-/// instead for the primary output of your program.
+/// 仅将 `eprint!` 用于错误和进度消息。程序的主要输出请改用 `print!`。
 ///
 /// [`io::stderr`]: crate::io::stderr
 /// [`io::stdout`]: crate::io::stdout
 ///
-/// See the formatting documentation in [`std::fmt`](crate::fmt)
-/// for details of the macro argument syntax.
+/// 宏参数语法的详情参见 [`std::fmt`](crate::fmt) 中的格式化文档。
 ///
 /// # Panics
 ///
-/// Panics if writing to `io::stderr` fails.
+/// 如果写入 `io::stderr` 失败，则会 panic。
 ///
-/// Writing to non-blocking stderr can cause an error, which will lead
-/// this macro to panic.
+/// 写入非阻塞（non-blocking）的 stderr 可能产生错误，从而导致本宏 panic。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// eprint!("Error: Could not complete task");
@@ -181,17 +172,14 @@ macro_rules! eprint {
     }};
 }
 
-/// Prints to the standard error, with a newline.
+/// 打印到标准错误，并附带一个换行符。
 ///
-/// Equivalent to the [`println!`] macro, except that output goes to
-/// [`io::stderr`] instead of [`io::stdout`]. See [`println!`] for
-/// example usage.
+/// 等同于 [`println!`] 宏，区别在于输出去往 [`io::stderr`] 而非 [`io::stdout`]。
+/// 用法示例参见 [`println!`]。
 ///
-/// Use `eprintln!` only for error and progress messages. Use `println!`
-/// instead for the primary output of your program.
+/// 仅将 `eprintln!` 用于错误和进度消息。程序的主要输出请改用 `println!`。
 ///
-/// See the formatting documentation in [`std::fmt`](crate::fmt)
-/// for details of the macro argument syntax.
+/// 宏参数语法的详情参见 [`std::fmt`](crate::fmt) 中的格式化文档。
 ///
 /// [`io::stderr`]: crate::io::stderr
 /// [`io::stdout`]: crate::io::stdout
@@ -199,12 +187,11 @@ macro_rules! eprint {
 ///
 /// # Panics
 ///
-/// Panics if writing to `io::stderr` fails.
+/// 如果写入 `io::stderr` 失败，则会 panic。
 ///
-/// Writing to non-blocking stderr can cause an error, which will lead
-/// this macro to panic.
+/// 写入非阻塞（non-blocking）的 stderr 可能产生错误，从而导致本宏 panic。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// eprintln!("Error: Could not complete task");
@@ -222,51 +209,42 @@ macro_rules! eprintln {
     }};
 }
 
-/// Prints and returns the value of a given expression for quick and dirty
-/// debugging.
+/// 打印并返回给定表达式的值，用于快速而粗略（quick and dirty）的调试。
 ///
-/// An example:
+/// 一个示例：
 ///
 /// ```rust
 /// let a = 2;
 /// let b = dbg!(a * 2) + 1;
-/// //      ^-- prints: [src/main.rs:2:9] a * 2 = 4
+/// //      ^-- 打印出: [src/main.rs:2:9] a * 2 = 4
 /// assert_eq!(b, 5);
 /// ```
 ///
-/// The macro works by using the `Debug` implementation of the type of
-/// the given expression to print the value to [stderr] along with the
-/// source location of the macro invocation as well as the source code
-/// of the expression.
+/// 本宏的工作方式是：使用给定表达式类型的 `Debug` 实现，把值连同该宏调用处的
+/// 源代码位置以及该表达式的源代码一起打印到 [stderr]。
 ///
-/// Invoking the macro on an expression moves and takes ownership of it
-/// before returning the evaluated expression unchanged. If the type
-/// of the expression does not implement `Copy` and you don't want
-/// to give up ownership, you can instead borrow with `dbg!(&expr)`
-/// for some expression `expr`.
+/// 在表达式上调用本宏会先移动并取得它的所有权，然后再原封不动地返回求值后的
+/// 表达式。如果该表达式的类型没有实现 `Copy`，而你又不想交出所有权，那么对于
+/// 某个表达式 `expr`，可以改用 `dbg!(&expr)` 借用它。
 ///
-/// The `dbg!` macro works exactly the same in release builds.
-/// This is useful when debugging issues that only occur in release
-/// builds or when debugging in release mode is significantly faster.
+/// `dbg!` 宏在 release 构建中的工作方式完全相同。这在调试那些只在 release 构建中
+/// 出现的问题，或在 release 模式下调试速度明显更快时很有用。
 ///
-/// Note that the macro is intended as a debugging tool and therefore you
-/// should avoid having uses of it in version control for long periods
-/// (other than in tests and similar).
-/// Debug output from production code is better done with other facilities
-/// such as the [`debug!`] macro from the [`log`] crate.
+/// 注意，本宏意在作为调试工具，因此你应当避免让对它的使用长期留在版本控制中
+///（测试等情形除外）。生产代码中的调试输出最好借助其它设施完成，例如 [`log`] crate
+/// 中的 [`debug!`] 宏。
 ///
 /// # Stability
 ///
-/// The exact output printed by this macro should not be relied upon
-/// and is subject to future changes.
+/// 本宏打印出的确切输出不应被依赖，并且将来可能发生变化。
 ///
 /// # Panics
 ///
-/// Panics if writing to `io::stderr` fails.
+/// 如果写入 `io::stderr` 失败，则会 panic。
 ///
-/// # Further examples
+/// # 更多示例
 ///
-/// With a method call:
+/// 配合方法调用：
 ///
 /// ```rust
 /// fn foo(n: usize) {
@@ -278,13 +256,13 @@ macro_rules! eprintln {
 /// foo(3)
 /// ```
 ///
-/// This prints to [stderr]:
+/// 这会打印到 [stderr]：
 ///
 /// ```text,ignore
 /// [src/main.rs:2:22] n.checked_sub(4) = None
 /// ```
 ///
-/// Naive factorial implementation:
+/// 朴素的阶乘实现：
 ///
 /// ```rust
 /// fn factorial(n: u32) -> u32 {
@@ -298,7 +276,7 @@ macro_rules! eprintln {
 /// dbg!(factorial(4));
 /// ```
 ///
-/// This prints to [stderr]:
+/// 这会打印到 [stderr]：
 ///
 /// ```text,ignore
 /// [src/main.rs:2:8] n <= 1 = false
@@ -312,35 +290,33 @@ macro_rules! eprintln {
 /// [src/main.rs:9:1] factorial(4) = 24
 /// ```
 ///
-/// The `dbg!(..)` macro moves the input:
+/// `dbg!(..)` 宏会移动其输入：
 ///
 /// ```compile_fail
-/// /// A wrapper around `usize` which importantly is not Copyable.
+/// /// 一个对 `usize` 的包装，关键在于它不可 Copy。
 /// #[derive(Debug)]
 /// struct NoCopy(usize);
 ///
 /// let a = NoCopy(42);
-/// let _ = dbg!(a); // <-- `a` is moved here.
-/// let _ = dbg!(a); // <-- `a` is moved again; error!
+/// let _ = dbg!(a); // <-- `a` 在此处被移动。
+/// let _ = dbg!(a); // <-- `a` 再次被移动；错误！
 /// ```
 ///
-/// You can also use `dbg!()` without a value to just print the
-/// file and line whenever it's reached.
+/// 你也可以不带值地使用 `dbg!()`，以便每次到达该处时仅打印文件名和行号。
 ///
-/// Finally, if you want to `dbg!(..)` multiple values, it will treat them as
-/// a tuple (and return it, too):
+/// 最后，如果你想 `dbg!(..)` 多个值，它会把它们当作一个元组（tuple）来处理
+///（并且也会返回该元组）：
 ///
 /// ```
 /// assert_eq!(dbg!(1usize, 2u32), (1, 2));
 /// ```
 ///
-/// However, a single argument with a trailing comma will still not be treated
-/// as a tuple, following the convention of ignoring trailing commas in macro
-/// invocations. You can use a 1-tuple directly if you need one:
+/// 不过，带有尾随逗号的单个参数仍然不会被当作元组处理，这遵循“宏调用中忽略尾随逗号”
+/// 的惯例。如果你确实需要一个 1 元组（1-tuple），可以直接使用它：
 ///
 /// ```
-/// assert_eq!(1, dbg!(1u32,)); // trailing comma ignored
-/// assert_eq!((1,), dbg!((1u32,))); // 1-tuple
+/// assert_eq!(1, dbg!(1u32,)); // 尾随逗号被忽略
+/// assert_eq!((1,), dbg!((1u32,))); // 1 元组
 /// ```
 ///
 /// [stderr]: https://en.wikipedia.org/wiki/Standard_streams#Standard_error_(stderr)
@@ -350,16 +326,15 @@ macro_rules! eprintln {
 #[cfg_attr(not(test), rustc_diagnostic_item = "dbg_macro")]
 #[stable(feature = "dbg_macro", since = "1.32.0")]
 macro_rules! dbg {
-    // NOTE: We cannot use `concat!` to make a static string as a format argument
-    // of `eprintln!` because `file!` could contain a `{` or
-    // `$val` expression could be a block (`{ .. }`), in which case the `eprintln!`
-    // will be malformed.
+    // NOTE: 我们不能用 `concat!` 把一个静态字符串拼成 `eprintln!` 的格式参数，
+    // 因为 `file!` 可能包含 `{`，或者 `$val` 表达式可能是一个块（`{ .. }`），
+    // 这两种情况都会导致 `eprintln!` 格式不正确（malformed）。
     () => {
         $crate::eprintln!("[{}:{}:{}]", $crate::file!(), $crate::line!(), $crate::column!())
     };
     ($val:expr $(,)?) => {
-        // Use of `match` here is intentional because it affects the lifetimes
-        // of temporaries - https://stackoverflow.com/a/48732525/1063961
+        // 这里有意使用 `match`，因为它会影响临时值（temporaries）的生命周期 —
+        // https://stackoverflow.com/a/48732525/1063961
         match $val {
             tmp => {
                 $crate::eprintln!("[{}:{}:{}] {} = {:#?}",
@@ -367,8 +342,8 @@ macro_rules! dbg {
                     $crate::line!(),
                     $crate::column!(),
                     $crate::stringify!($val),
-                    // The `&T: Debug` check happens here (not in the format literal desugaring)
-                    // to avoid format literal related messages and suggestions.
+                    // `&T: Debug` 检查在此处发生（而非在格式字面量的脱糖过程中），
+                    // 以避免出现与格式字面量相关的消息和建议。
                     &&tmp as &dyn $crate::fmt::Debug,
                 );
                 tmp

@@ -1,4 +1,4 @@
-//! Minimal utilities for interfacing with a dynamically loaded CoreFoundation.
+//! 用于与动态加载的 CoreFoundation 交互的最小化工具集。
 #![allow(non_snake_case, non_upper_case_globals)]
 use super::root_relative;
 use crate::ffi::{CStr, c_char, c_void};
@@ -29,14 +29,13 @@ pub(super) const kCFStringEncodingUTF8: CFStringEncoding = 0x08000100;
 // CoreFoundation/CFDictionary.h
 pub(super) type CFDictionaryRef = CFTypeRef;
 
-/// An open handle to the dynamically loaded CoreFoundation framework.
+/// 对动态加载的 CoreFoundation framework 的一个打开句柄。
 ///
-/// This is `dlopen`ed, and later `dlclose`d. This is done to try to avoid
-/// "leaking" the CoreFoundation symbols to the rest of the user's binary if
-/// they decided to not link CoreFoundation themselves.
+/// 它通过 `dlopen` 打开，之后再 `dlclose`。这样做是为了尽量避免在用户没有自行
+/// 链接 CoreFoundation 的情况下，把 CoreFoundation 的符号 "泄漏" 到用户二进制的
+/// 其余部分。
 ///
-/// It is also faster to look up symbols directly via this handle than with
-/// `RTLD_DEFAULT`.
+/// 通过这个句柄直接查找符号，也比用 `RTLD_DEFAULT` 更快。
 pub(super) struct CFHandle(*mut c_void);
 
 macro_rules! dlsym_fn {
@@ -55,8 +54,7 @@ macro_rules! dlsym_fn {
                 panic!("could not find function {}: {err:?}", stringify!($name));
             }
 
-            // SAFETY: Just checked that the symbol isn't NULL, and macro invoker verifies that
-            // the signature is correct.
+            // SAFETY: 上面刚刚检查过该符号不为 NULL，并且宏的调用方保证签名是正确的。
             let fnptr = unsafe {
                 crate::mem::transmute::<
                     *mut c_void,
@@ -64,16 +62,16 @@ macro_rules! dlsym_fn {
                 >(ptr)
             };
 
-            // SAFETY: Upheld by caller.
+            // SAFETY: 由调用方保证。
             unsafe { fnptr($($param),*) }
         }
     };
 }
 
 impl CFHandle {
-    /// Link to the CoreFoundation dylib, and look up symbols from that.
+    /// 链接到 CoreFoundation dylib，并从中查找符号。
     pub(super) fn new() -> Self {
-        // We explicitly use non-versioned path here, to allow this to work on older iOS devices.
+        // 我们这里特意使用不带版本号的路径，以便在较旧的 iOS 设备上也能工作。
         let cf_path =
             root_relative("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation");
 
@@ -91,7 +89,7 @@ impl CFHandle {
     }
 
     pub(super) fn kCFAllocatorNull(&self) -> CFAllocatorRef {
-        // Available: in all CF versions.
+        // 可用性：所有 CF 版本均可用。
         let static_ptr = unsafe { libc::dlsym(self.0, c"kCFAllocatorNull".as_ptr()) };
         if static_ptr.is_null() {
             let err = unsafe { CStr::from_ptr(libc::dlerror()) };
@@ -102,17 +100,17 @@ impl CFHandle {
 
     // CoreFoundation/CFBase.h
     dlsym_fn!(
-        // Available: in all CF versions.
+        // 可用性：所有 CF 版本均可用。
         unsafe fn CFRelease(cf: CFTypeRef);
     );
     dlsym_fn!(
-        // Available: in all CF versions.
+        // 可用性：所有 CF 版本均可用。
         unsafe fn CFGetTypeID(cf: CFTypeRef) -> CFTypeID;
     );
 
     // CoreFoundation/CFData.h
     dlsym_fn!(
-        // Available: in all CF versions.
+        // 可用性：所有 CF 版本均可用。
         unsafe fn CFDataCreateWithBytesNoCopy(
             allocator: CFAllocatorRef,
             bytes: *const u8,
@@ -123,7 +121,7 @@ impl CFHandle {
 
     // CoreFoundation/CFPropertyList.h
     dlsym_fn!(
-        // Available: since macOS 10.6.
+        // 可用性：自 macOS 10.6 起可用。
         unsafe fn CFPropertyListCreateWithData(
             allocator: CFAllocatorRef,
             data: CFDataRef,
@@ -135,11 +133,11 @@ impl CFHandle {
 
     // CoreFoundation/CFString.h
     dlsym_fn!(
-        // Available: in all CF versions.
+        // 可用性：所有 CF 版本均可用。
         unsafe fn CFStringGetTypeID() -> CFTypeID;
     );
     dlsym_fn!(
-        // Available: in all CF versions.
+        // 可用性：所有 CF 版本均可用。
         unsafe fn CFStringCreateWithCStringNoCopy(
             alloc: CFAllocatorRef,
             c_str: *const c_char,
@@ -148,7 +146,7 @@ impl CFHandle {
         ) -> CFStringRef;
     );
     dlsym_fn!(
-        // Available: in all CF versions.
+        // 可用性：所有 CF 版本均可用。
         unsafe fn CFStringGetCString(
             the_string: CFStringRef,
             buffer: *mut c_char,
@@ -159,11 +157,11 @@ impl CFHandle {
 
     // CoreFoundation/CFDictionary.h
     dlsym_fn!(
-        // Available: in all CF versions.
+        // 可用性：所有 CF 版本均可用。
         unsafe fn CFDictionaryGetTypeID() -> CFTypeID;
     );
     dlsym_fn!(
-        // Available: in all CF versions.
+        // 可用性：所有 CF 版本均可用。
         unsafe fn CFDictionaryGetValue(
             the_dict: CFDictionaryRef,
             key: *const c_void,
@@ -173,7 +171,7 @@ impl CFHandle {
 
 impl Drop for CFHandle {
     fn drop(&mut self) {
-        // Ignore errors when closing. This is also what `libloading` does:
+        // 关闭时忽略错误。`libloading` 也是这么做的：
         // https://docs.rs/libloading/0.8.6/src/libloading/os/unix/mod.rs.html#374
         let _ = unsafe { libc::dlclose(self.0) };
     }

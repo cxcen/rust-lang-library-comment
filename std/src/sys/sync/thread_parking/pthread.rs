@@ -1,4 +1,4 @@
-//! Thread parking without `futex` using the `pthread` synchronization primitives.
+//! 不使用 `futex`、改用 `pthread` 同步原语实现的线程驻留（thread parking）。
 
 use crate::pin::Pin;
 use crate::sync::atomic::Ordering::{Acquire, Relaxed, Release};
@@ -17,10 +17,10 @@ pub struct Parker {
 }
 
 impl Parker {
-    /// Constructs the UNIX parker in-place.
+    /// 就地（in-place）构造 UNIX parker。
     ///
-    /// # Safety
-    /// The constructed parker must never be moved.
+    /// # 安全性(Safety）
+    /// 构造出来的 parker 绝不能被移动。
     pub unsafe fn new_in_place(parker: *mut Parker) {
         parker.write(Parker {
             state: AtomicUsize::new(EMPTY),
@@ -39,35 +39,32 @@ impl Parker {
         unsafe { self.map_unchecked(|p| &p.cvar) }
     }
 
-    // This implementation doesn't require `unsafe`, but other implementations
-    // may assume this is only called by the thread that owns the Parker.
+    // 本实现并不要求 `unsafe`，但其他实现可能假定它只会被拥有该 Parker 的线程调用。
     //
-    // For memory ordering, see futex.rs
+    // 关于内存序，参见 futex.rs
     pub unsafe fn park(self: Pin<&Self>) {
-        // If we were previously notified then we consume this notification and
-        // return quickly.
+        // 如果我们此前已被通知，那么就消费掉这次通知并快速返回。
         if self.state.compare_exchange(NOTIFIED, EMPTY, Acquire, Relaxed).is_ok() {
             return;
         }
 
-        // Otherwise we need to coordinate going to sleep
+        // 否则我们需要协调进入睡眠
         self.lock().lock();
         match self.state.compare_exchange(EMPTY, PARKED, Relaxed, Relaxed) {
             Ok(_) => {}
             Err(NOTIFIED) => {
-                // We must read here, even though we know it will be `NOTIFIED`.
-                // This is because `unpark` may have been called again since we read
-                // `NOTIFIED` in the `compare_exchange` above. We must perform an
-                // acquire operation that synchronizes with that `unpark` to observe
-                // any writes it made before the call to unpark. To do that we must
-                // read from the write it made to `state`.
+                // 即便我们知道它将会是 `NOTIFIED`，这里也必须读取一次。
+                // 这是因为自从我们在上面的 `compare_exchange` 中读到 `NOTIFIED` 之后，
+                // `unpark` 可能又被调用了。我们必须执行一次与那个 `unpark` 同步的
+                // acquire 操作，以观测到它在调用 unpark 之前所做的任何写入。
+                // 为此，我们必须从它对 `state` 所做的写入中读取。
                 let old = self.state.swap(EMPTY, Acquire);
 
                 self.lock().unlock();
 
                 assert_eq!(old, NOTIFIED, "park state changed unexpectedly");
                 return;
-            } // should consume this notification, so prohibit spurious wakeups in next park.
+            } // 应当消费这次通知，从而禁止下一次 park 中的虚假唤醒（spurious wakeups）。
             Err(_) => {
                 self.lock().unlock();
 
@@ -79,21 +76,20 @@ impl Parker {
             self.cvar().wait(self.lock());
 
             match self.state.compare_exchange(NOTIFIED, EMPTY, Acquire, Relaxed) {
-                Ok(_) => break, // got a notification
-                Err(_) => {}    // spurious wakeup, go back to sleep
+                Ok(_) => break, // 收到了一次通知
+                Err(_) => {}    // 虚假唤醒（spurious wakeup），回去继续睡
             }
         }
 
         self.lock().unlock();
     }
 
-    // This implementation doesn't require `unsafe`, but other implementations
-    // may assume this is only called by the thread that owns the Parker. Use
-    // `Pin` to guarantee a stable address for the mutex and condition variable.
+    // 本实现并不要求 `unsafe`，但其他实现可能假定它只会被拥有该 Parker 的线程调用。
+    // 使用 `Pin` 以保证 mutex 和条件变量（condition variable）拥有稳定的地址。
     pub unsafe fn park_timeout(self: Pin<&Self>, dur: Duration) {
-        // Like `park` above we have a fast path for an already-notified thread, and
-        // afterwards we start coordinating for a sleep.
-        // return quickly.
+        // 与上面的 `park` 一样，对于已被通知的线程我们有一条快速路径，
+        // 之后我们开始协调进入睡眠。
+        // 快速返回。
         if self.state.compare_exchange(NOTIFIED, EMPTY, Acquire, Relaxed).is_ok() {
             return;
         }
@@ -102,28 +98,27 @@ impl Parker {
         match self.state.compare_exchange(EMPTY, PARKED, Relaxed, Relaxed) {
             Ok(_) => {}
             Err(NOTIFIED) => {
-                // We must read again here, see `park`.
+                // 这里我们必须再次读取，参见 `park`。
                 let old = self.state.swap(EMPTY, Acquire);
                 self.lock().unlock();
 
                 assert_eq!(old, NOTIFIED, "park state changed unexpectedly");
                 return;
-            } // should consume this notification, so prohibit spurious wakeups in next park.
+            } // 应当消费这次通知，从而禁止下一次 park 中的虚假唤醒（spurious wakeups）。
             Err(_) => {
                 self.lock().unlock();
                 panic!("inconsistent park_timeout state")
             }
         }
 
-        // Wait with a timeout, and if we spuriously wake up or otherwise wake up
-        // from a notification we just want to unconditionally set the state back to
-        // empty, either consuming a notification or un-flagging ourselves as
-        // parked.
+        // 带超时地等待；如果我们发生虚假唤醒、或以其他方式从一次通知中醒来，
+        // 我们都只想无条件地把 state 设回 empty，要么消费一次通知，
+        // 要么把我们自己“处于 parked”的标志清除。
         self.cvar().wait_timeout(self.lock(), dur);
 
         match self.state.swap(EMPTY, Acquire) {
-            NOTIFIED => self.lock().unlock(), // got a notification, hurray!
-            PARKED => self.lock().unlock(),   // no notification, alas
+            NOTIFIED => self.lock().unlock(), // 收到了一次通知，万岁！
+            PARKED => self.lock().unlock(),   // 没有通知，唉
             n => {
                 self.lock().unlock();
                 panic!("inconsistent park_timeout state: {n}")
@@ -132,30 +127,25 @@ impl Parker {
     }
 
     pub fn unpark(self: Pin<&Self>) {
-        // To ensure the unparked thread will observe any writes we made
-        // before this call, we must perform a release operation that `park`
-        // can synchronize with. To do that we must write `NOTIFIED` even if
-        // `state` is already `NOTIFIED`. That is why this must be a swap
-        // rather than a compare-and-swap that returns if it reads `NOTIFIED`
-        // on failure.
+        // 为了确保被唤醒的线程能观测到我们在本次调用之前所做的任何写入，
+        // 我们必须执行一次 `park` 可以与之同步的 release 操作。为此，即使 `state`
+        // 已经是 `NOTIFIED`，我们也必须写入 `NOTIFIED`。这就是为什么这里必须是一次
+        // swap，而不是一次「在读到 `NOTIFIED` 失败时直接返回」的 compare-and-swap。
         match self.state.swap(NOTIFIED, Release) {
-            EMPTY => return,    // no one was waiting
-            NOTIFIED => return, // already unparked
-            PARKED => {}        // gotta go wake someone up
+            EMPTY => return,    // 没有人在等待
+            NOTIFIED => return, // 已经被 unpark 过了
+            PARKED => {}        // 得去唤醒某人
             _ => panic!("inconsistent state in unpark"),
         }
 
-        // There is a period between when the parked thread sets `state` to
-        // `PARKED` (or last checked `state` in the case of a spurious wake
-        // up) and when it actually waits on `cvar`. If we were to notify
-        // during this period it would be ignored and then when the parked
-        // thread went to sleep it would never wake up. Fortunately, it has
-        // `lock` locked at this stage so we can acquire `lock` to wait until
-        // it is ready to receive the notification.
+        // 在被 park 的线程把 `state` 设为 `PARKED`（或在虚假唤醒的情况下最后一次
+        // 检查 `state`）的时刻，与它真正在 `cvar` 上等待的时刻之间，存在一个时间窗口。
+        // 如果我们在这个窗口期间发出通知，它会被忽略，于是当被 park 的线程进入睡眠后
+        // 就再也不会醒来。所幸，在此阶段它持有着 `lock` 的锁，所以我们可以去获取 `lock`，
+        // 一直等到它准备好接收通知为止。
         //
-        // Releasing `lock` before the call to `notify_one` means that when the
-        // parked thread wakes it doesn't get woken only to have to wait for us
-        // to release `lock`.
+        // 在调用 `notify_one` 之前释放 `lock`，意味着当被 park 的线程醒来时，
+        // 不会出现「刚被唤醒却又得等我们释放 `lock`」的情况。
         unsafe {
             self.lock().lock();
             self.lock().unlock();

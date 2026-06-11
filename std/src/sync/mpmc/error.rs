@@ -1,21 +1,21 @@
 pub use crate::sync::mpsc::{RecvError, RecvTimeoutError, SendError, TryRecvError, TrySendError};
 use crate::{error, fmt};
 
-/// An error returned from the [`send_timeout`] method.
+/// 从 [`send_timeout`] 方法返回的错误。
 ///
-/// The error contains the message being sent so it can be recovered.
+/// 该错误携带了正在发送的消息，以便调用方可以将其取回。
 ///
 /// [`send_timeout`]: super::Sender::send_timeout
 #[derive(PartialEq, Eq, Clone, Copy)]
 #[unstable(feature = "mpmc_channel", issue = "126840")]
 pub enum SendTimeoutError<T> {
-    /// The message could not be sent because the channel is full and the operation timed out.
+    /// 消息未能发送：通道已满，且操作超时。
     ///
-    /// If this is a zero-capacity channel, then the error indicates that there was no receiver
-    /// available to receive the message and the operation timed out.
+    /// 如果这是一个容量为 0 的通道（zero-capacity channel），则该错误表示在超时之前一直没有
+    /// 可用的接收者来接收这条消息。
     Timeout(T),
 
-    /// The message could not be sent because the channel is disconnected.
+    /// 消息未能发送：通道已断连（disconnected）。
     Disconnected(T),
 }
 

@@ -22,7 +22,7 @@ impl Condvar {
     fn get(&self) -> Pin<&pal::Condvar> {
         self.cvar.get_or_init(|| {
             let mut cvar = Box::pin(pal::Condvar::new());
-            // SAFETY: we only call `init` once per `pal::Condvar`, namely here.
+            // SAFETY: 我们对每个 `pal::Condvar` 只调用一次 `init`，也就是在这里。
             unsafe { cvar.as_mut().init() };
             cvar
         })
@@ -31,56 +31,51 @@ impl Condvar {
     #[inline]
     fn verify(&self, mutex: Pin<&pal::Mutex>) {
         let addr = ptr::from_ref::<pal::Mutex>(&mutex).addr();
-        // Relaxed is okay here because we never read through `self.mutex`, and only use it to
-        // compare addresses.
+        // 这里用 Relaxed 没问题，因为我们从不通过 `self.mutex` 进行读取，仅用它来
+        // 比较地址。
         match self.mutex.compare_exchange(0, addr, Relaxed, Relaxed) {
-            Ok(_) => {}               // Stored the address
-            Err(n) if n == addr => {} // Lost a race to store the same address
+            Ok(_) => {}               // 成功存入了该地址
+            Err(n) if n == addr => {} // 在存入相同地址的竞争中落败
             _ => panic!("attempted to use a condition variable with two mutexes"),
         }
     }
 
     #[inline]
     pub fn notify_one(&self) {
-        // SAFETY: we called `init` above.
+        // SAFETY: 我们在上面调用了 `init`。
         unsafe { self.get().notify_one() }
     }
 
     #[inline]
     pub fn notify_all(&self) {
-        // SAFETY: we called `init` above.
+        // SAFETY: 我们在上面调用了 `init`。
         unsafe { self.get().notify_all() }
     }
 
     #[inline]
     pub unsafe fn wait(&self, mutex: &Mutex) {
-        // SAFETY: the caller guarantees that the lock is owned, thus the mutex
-        // must have been initialized already.
+        // SAFETY: 调用者保证该锁已被持有，因此 mutex 必定已经初始化过了。
         let mutex = unsafe { mutex.pal.get_unchecked() };
         self.verify(mutex);
-        // SAFETY: we called `init` above, we verified that this condition
-        // variable is only used with `mutex` and the caller guarantees that
-        // `mutex` is locked by the current thread.
+        // SAFETY: 我们在上面调用了 `init`，并验证了这个条件变量只与 `mutex` 一起
+        // 使用，而调用者保证 `mutex` 已被当前线程加锁。
         unsafe { self.get().wait(mutex) }
     }
 
     pub unsafe fn wait_timeout(&self, mutex: &Mutex, dur: Duration) -> bool {
-        // SAFETY: the caller guarantees that the lock is owned, thus the mutex
-        // must have been initialized already.
+        // SAFETY: 调用者保证该锁已被持有，因此 mutex 必定已经初始化过了。
         let mutex = unsafe { mutex.pal.get_unchecked() };
         self.verify(mutex);
 
         if pal::Condvar::PRECISE_TIMEOUT {
-            // SAFETY: we called `init` above, we verified that this condition
-            // variable is only used with `mutex` and the caller guarantees that
-            // `mutex` is locked by the current thread.
+            // SAFETY: 我们在上面调用了 `init`，并验证了这个条件变量只与 `mutex` 一起
+            // 使用，而调用者保证 `mutex` 已被当前线程加锁。
             unsafe { self.get().wait_timeout(mutex, dur) }
         } else {
-            // Timeout reports are not reliable, so do the check ourselves.
+            // 超时报告并不可靠，所以我们自己来做检查。
             let now = Instant::now();
-            // SAFETY: we called `init` above, we verified that this condition
-            // variable is only used with `mutex` and the caller guarantees that
-            // `mutex` is locked by the current thread.
+            // SAFETY: 我们在上面调用了 `init`，并验证了这个条件变量只与 `mutex` 一起
+            // 使用，而调用者保证 `mutex` 已被当前线程加锁。
             let woken = unsafe { self.get().wait_timeout(mutex, dur) };
             woken || now.elapsed() < dur
         }

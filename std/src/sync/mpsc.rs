@@ -1,55 +1,45 @@
-//! Multi-producer, single-consumer FIFO queue communication primitives.
+//! 多生产者、单消费者（multi-producer, single-consumer）FIFO 队列通信原语。
 //!
-//! This module provides message-based communication over channels, concretely
-//! defined among three types:
+//! 本模块提供基于消息的通道（channel）通信，具体由三个类型定义：
 //!
 //! * [`Sender`]
 //! * [`SyncSender`]
 //! * [`Receiver`]
 //!
-//! A [`Sender`] or [`SyncSender`] is used to send data to a [`Receiver`]. Both
-//! senders are clone-able (multi-producer) such that many threads can send
-//! simultaneously to one receiver (single-consumer).
+//! [`Sender`] 或 [`SyncSender`] 用于向 [`Receiver`] 发送数据。两种发送者都可克隆
+//! （多生产者），因此多个线程可以同时向同一个接收者发送（单消费者）。
 //!
-//! These channels come in two flavors:
+//! 这些通道有两种 flavor（风味/变体）：
 //!
-//! 1. An asynchronous, infinitely buffered channel. The [`channel`] function
-//!    will return a `(Sender, Receiver)` tuple where all sends will be
-//!    **asynchronous** (they never block). The channel conceptually has an
-//!    infinite buffer.
+//! 1. 异步、缓冲区无限大的通道。[`channel`] 函数返回一个 `(Sender, Receiver)` 元组，其中所有
+//!    发送都是 **异步的**（永不阻塞）。该通道在概念上拥有一个无限大的缓冲区。
 //!
-//! 2. A synchronous, bounded channel. The [`sync_channel`] function will
-//!    return a `(SyncSender, Receiver)` tuple where the storage for pending
-//!    messages is a pre-allocated buffer of a fixed size. All sends will be
-//!    **synchronous** by blocking until there is buffer space available. Note
-//!    that a bound of 0 is allowed, causing the channel to become a "rendezvous"
-//!    channel where each sender atomically hands off a message to a receiver.
+//! 2. 同步、有界的通道。[`sync_channel`] 函数返回一个 `(SyncSender, Receiver)` 元组，其中待
+//!    处理消息的存储是一块预先分配、固定大小的缓冲区。所有发送都是 **同步的**：当缓冲区满时
+//!    会阻塞，直到有空位为止。注意：边界（bound）为 0 是允许的，此时通道变为“会合”
+//!    （rendezvous）通道，即每个发送者以原子方式把一条消息直接交到某个接收者手中。
 //!
 //! [`send`]: Sender::send
 //!
-//! ## Disconnection
+//! ## 断连（Disconnection）
 //!
-//! The send and receive operations on channels will all return a [`Result`]
-//! indicating whether the operation succeeded or not. An unsuccessful operation
-//! is normally indicative of the other half of a channel having "hung up" by
-//! being dropped in its corresponding thread.
+//! 通道上的发送与接收操作都会返回一个 [`Result`]，用于指示操作是否成功。一次不成功的操作
+//! 通常意味着通道的另一半已在其对应线程中被丢弃（drop），即“挂断”（hung up）了。
 //!
-//! Once half of a channel has been deallocated, most operations can no longer
-//! continue to make progress, so [`Err`] will be returned. Many applications
-//! will continue to [`unwrap`] the results returned from this module,
-//! instigating a propagation of failure among threads if one unexpectedly dies.
+//! 一旦通道的某一半被释放，大多数操作便无法再继续推进，于是会返回 [`Err`]。许多应用会对
+//! 本模块返回的结果直接 [`unwrap`]，从而在某个线程意外死亡时，将失败在线程间传播开来。
 //!
 //! [`unwrap`]: Result::unwrap
 //!
-//! # Examples
+//! # 示例
 //!
-//! Simple usage:
+//! 简单用法：
 //!
 //! ```
 //! use std::thread;
 //! use std::sync::mpsc::channel;
 //!
-//! // Create a simple streaming channel
+//! // 创建一个简单的流式通道
 //! let (tx, rx) = channel();
 //! thread::spawn(move || {
 //!     tx.send(10).unwrap();
@@ -57,15 +47,15 @@
 //! assert_eq!(rx.recv().unwrap(), 10);
 //! ```
 //!
-//! Shared usage:
+//! 共享用法：
 //!
 //! ```
 //! use std::thread;
 //! use std::sync::mpsc::channel;
 //!
-//! // Create a shared channel that can be sent along from many threads
-//! // where tx is the sending half (tx for transmission), and rx is the receiving
-//! // half (rx for receiving).
+//! // 创建一个可在多个线程间传递的共享通道，
+//! // 其中 tx 是发送半（tx 取自 transmission），rx 是接收半
+//! // （rx 取自 receiving）。
 //! let (tx, rx) = channel();
 //! for i in 0..10 {
 //!     let tx = tx.clone();
@@ -80,19 +70,19 @@
 //! }
 //! ```
 //!
-//! Propagating panics:
+//! 传播 panic：
 //!
 //! ```
 //! use std::sync::mpsc::channel;
 //!
-//! // The call to recv() will return an error because the channel has already
-//! // hung up (or been deallocated)
+//! // 这次 recv() 调用会返回一个错误，因为通道已经
+//! // 挂断（或已被释放）
 //! let (tx, rx) = channel::<i32>();
 //! drop(tx);
 //! assert!(rx.recv().is_err());
 //! ```
 //!
-//! Synchronous channels:
+//! 同步通道：
 //!
 //! ```
 //! use std::thread;
@@ -100,13 +90,13 @@
 //!
 //! let (tx, rx) = sync_channel::<i32>(0);
 //! thread::spawn(move || {
-//!     // This will wait for the parent thread to start receiving
+//!     // 这将等待父线程开始接收
 //!     tx.send(53).unwrap();
 //! });
 //! rx.recv().unwrap();
 //! ```
 //!
-//! Unbounded receive loop:
+//! 无界接收循环：
 //!
 //! ```
 //! use std::sync::mpsc::sync_channel;
@@ -115,19 +105,19 @@
 //! let (tx, rx) = sync_channel(3);
 //!
 //! for _ in 0..3 {
-//!     // It would be the same without thread and clone here
-//!     // since there will still be one `tx` left.
+//!     // 这里即便不用线程和 clone 结果也一样，
+//!     // 因为始终还会剩下一个 `tx`。
 //!     let tx = tx.clone();
-//!     // cloned tx dropped within thread
+//!     // 克隆出的 tx 在线程内被丢弃
 //!     thread::spawn(move || tx.send("ok").unwrap());
 //! }
 //!
-//! // Drop the last sender to stop `rx` waiting for message.
-//! // The program will not complete if we comment this out.
-//! // **All** `tx` needs to be dropped for `rx` to have `Err`.
+//! // 丢弃最后一个发送者，以停止 `rx` 对消息的等待。
+//! // 如果把这一行注释掉，程序将不会结束。
+//! // 必须丢弃 **所有** `tx`，`rx` 才会得到 `Err`。
 //! drop(tx);
 //!
-//! // Unbounded receiver waiting for all senders to complete.
+//! // 无界接收者等待所有发送者完成。
 //! while let Ok(msg) = rx.recv() {
 //!     println!("{msg}");
 //! }
@@ -137,23 +127,21 @@
 
 #![stable(feature = "rust1", since = "1.0.0")]
 
-// MPSC channels are built as a wrapper around MPMC channels, which
-// were ported from the `crossbeam-channel` crate. MPMC channels are
-// not exposed publicly, but if you are curious about the implementation,
-// that's where everything is.
+// MPSC 通道被构建为对 MPMC 通道的一层封装，而后者是从 `crossbeam-channel` crate 移植而来。
+// MPMC 通道并未对外公开，但如果你对其实现感到好奇，所有东西都在那里。
 
 use crate::sync::mpmc;
 use crate::time::{Duration, Instant};
 use crate::{error, fmt};
 
-/// The receiving half of Rust's [`channel`] (or [`sync_channel`]) type.
-/// This half can only be owned by one thread.
+/// Rust [`channel`]（或 [`sync_channel`]）类型的接收半（receiving half）。
+/// 这一半只能被一个线程拥有。
 ///
-/// Messages sent to the channel can be retrieved using [`recv`].
+/// 发往通道的消息可以用 [`recv`] 取出。
 ///
 /// [`recv`]: Receiver::recv
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```rust
 /// use std::sync::mpsc::channel;
@@ -164,13 +152,13 @@ use crate::{error, fmt};
 ///
 /// thread::spawn(move || {
 ///     send.send("Hello world!").unwrap();
-///     thread::sleep(Duration::from_secs(2)); // block for two seconds
+///     thread::sleep(Duration::from_secs(2)); // 阻塞两秒
 ///     send.send("Delayed for 2 seconds").unwrap();
 /// });
 ///
-/// println!("{}", recv.recv().unwrap()); // Received immediately
+/// println!("{}", recv.recv().unwrap()); // 立即收到
 /// println!("Waiting...");
-/// println!("{}", recv.recv().unwrap()); // Received after 2 seconds
+/// println!("{}", recv.recv().unwrap()); // 两秒后收到
 /// ```
 #[stable(feature = "rust1", since = "1.0.0")]
 #[cfg_attr(not(test), rustc_diagnostic_item = "Receiver")]
@@ -178,24 +166,22 @@ pub struct Receiver<T> {
     inner: mpmc::Receiver<T>,
 }
 
-// The receiver port can be sent from place to place, so long as it
-// is not used to receive non-sendable things.
+// 接收端口可以在不同位置之间传递，只要不被用来接收不可发送（non-sendable）的东西即可。
 #[stable(feature = "rust1", since = "1.0.0")]
 unsafe impl<T: Send> Send for Receiver<T> {}
 
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<T> !Sync for Receiver<T> {}
 
-/// An iterator over messages on a [`Receiver`], created by [`iter`].
+/// 遍历 [`Receiver`] 上消息的迭代器，由 [`iter`] 创建。
 ///
-/// This iterator will block whenever [`next`] is called,
-/// waiting for a new message, and [`None`] will be returned
-/// when the corresponding channel has hung up.
+/// 每次调用 [`next`] 时，该迭代器都会阻塞，等待一条新消息；当对应的通道挂断时，将返回
+/// [`None`]。
 ///
 /// [`iter`]: Receiver::iter
 /// [`next`]: Iterator::next
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```rust
 /// use std::sync::mpsc::channel;
@@ -219,18 +205,15 @@ pub struct Iter<'a, T: 'a> {
     rx: &'a Receiver<T>,
 }
 
-/// An iterator that attempts to yield all pending values for a [`Receiver`],
-/// created by [`try_iter`].
+/// 一个尝试取出 [`Receiver`] 上所有待处理（pending）值的迭代器，由 [`try_iter`] 创建。
 ///
-/// [`None`] will be returned when there are no pending values remaining or
-/// if the corresponding channel has hung up.
+/// 当没有剩余的待处理值、或对应的通道已挂断时，将返回 [`None`]。
 ///
-/// This iterator will never block the caller in order to wait for data to
-/// become available. Instead, it will return [`None`].
+/// 该迭代器为了等待数据可用而 **永不** 阻塞调用方；相反，它会返回 [`None`]。
 ///
 /// [`try_iter`]: Receiver::try_iter
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```rust
 /// use std::sync::mpsc::channel;
@@ -239,7 +222,7 @@ pub struct Iter<'a, T: 'a> {
 ///
 /// let (sender, receiver) = channel();
 ///
-/// // Nothing is in the buffer yet
+/// // 缓冲区里暂时还什么都没有
 /// assert!(receiver.try_iter().next().is_none());
 /// println!("Nothing in the buffer...");
 ///
@@ -250,7 +233,7 @@ pub struct Iter<'a, T: 'a> {
 /// });
 ///
 /// println!("Going to sleep...");
-/// thread::sleep(Duration::from_secs(2)); // block for two seconds
+/// thread::sleep(Duration::from_secs(2)); // 阻塞两秒
 ///
 /// for x in receiver.try_iter() {
 ///     println!("Got: {x}");
@@ -262,17 +245,15 @@ pub struct TryIter<'a, T: 'a> {
     rx: &'a Receiver<T>,
 }
 
-/// An owning iterator over messages on a [`Receiver`],
-/// created by [`into_iter`].
+/// 一个拥有所有权（owning）、遍历 [`Receiver`] 上消息的迭代器，由 [`into_iter`] 创建。
 ///
-/// This iterator will block whenever [`next`]
-/// is called, waiting for a new message, and [`None`] will be
-/// returned if the corresponding channel has hung up.
+/// 每次调用 [`next`] 时，该迭代器都会阻塞，等待一条新消息；当对应的通道挂断时，将返回
+/// [`None`]。
 ///
 /// [`into_iter`]: Receiver::into_iter
 /// [`next`]: Iterator::next
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```rust
 /// use std::sync::mpsc::channel;
@@ -296,16 +277,16 @@ pub struct IntoIter<T> {
     rx: Receiver<T>,
 }
 
-/// The sending-half of Rust's asynchronous [`channel`] type.
+/// Rust 异步 [`channel`] 类型的发送半（sending-half）。
 ///
-/// Messages can be sent through this channel with [`send`].
+/// 可以通过 [`send`] 经由该通道发送消息。
 ///
-/// Note: all senders (the original and its clones) need to be dropped for the receiver
-/// to stop blocking to receive messages with [`Receiver::recv`].
+/// 注意：所有发送者（包括最初的那个及其全部克隆）都必须被丢弃，接收者才会停止阻塞，
+/// 不再用 [`Receiver::recv`] 等待接收消息。
 ///
 /// [`send`]: Sender::send
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```rust
 /// use std::sync::mpsc::channel;
@@ -314,12 +295,12 @@ pub struct IntoIter<T> {
 /// let (sender, receiver) = channel();
 /// let sender2 = sender.clone();
 ///
-/// // First thread owns sender
+/// // 第一个线程拥有 sender
 /// thread::spawn(move || {
 ///     sender.send(1).unwrap();
 /// });
 ///
-/// // Second thread owns sender2
+/// // 第二个线程拥有 sender2
 /// thread::spawn(move || {
 ///     sender2.send(2).unwrap();
 /// });
@@ -334,43 +315,42 @@ pub struct Sender<T> {
     inner: mpmc::Sender<T>,
 }
 
-// The send port can be sent from place to place, so long as it
-// is not used to send non-sendable things.
+// 发送端口可以在不同位置之间传递，只要不被用来发送不可发送（non-sendable）的东西即可。
 #[stable(feature = "rust1", since = "1.0.0")]
 unsafe impl<T: Send> Send for Sender<T> {}
 
 #[stable(feature = "mpsc_sender_sync", since = "1.72.0")]
 unsafe impl<T: Send> Sync for Sender<T> {}
 
-/// The sending-half of Rust's synchronous [`sync_channel`] type.
+/// Rust 同步 [`sync_channel`] 类型的发送半（sending-half）。
 ///
-/// Messages can be sent through this channel with [`send`] or [`try_send`].
+/// 可以通过 [`send`] 或 [`try_send`] 经由该通道发送消息。
 ///
-/// [`send`] will block if there is no space in the internal buffer.
+/// 如果内部缓冲区没有空间，[`send`] 会阻塞。
 ///
 /// [`send`]: SyncSender::send
 /// [`try_send`]: SyncSender::try_send
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```rust
 /// use std::sync::mpsc::sync_channel;
 /// use std::thread;
 ///
-/// // Create a sync_channel with buffer size 2
+/// // 创建一个缓冲区大小为 2 的 sync_channel
 /// let (sync_sender, receiver) = sync_channel(2);
 /// let sync_sender2 = sync_sender.clone();
 ///
-/// // First thread owns sync_sender
+/// // 第一个线程拥有 sync_sender
 /// thread::spawn(move || {
 ///     sync_sender.send(1).unwrap();
 ///     sync_sender.send(2).unwrap();
 /// });
 ///
-/// // Second thread owns sync_sender2
+/// // 第二个线程拥有 sync_sender2
 /// thread::spawn(move || {
 ///     sync_sender2.send(3).unwrap();
-///     // thread will now block since the buffer is full
+///     // 由于缓冲区已满，线程此时会阻塞
 ///     println!("Thread unblocked!");
 /// });
 ///
@@ -379,7 +359,7 @@ unsafe impl<T: Send> Sync for Sender<T> {}
 /// msg = receiver.recv().unwrap();
 /// println!("message {msg} received");
 ///
-/// // "Thread unblocked!" will be printed now
+/// // 现在会打印出 "Thread unblocked!"
 ///
 /// msg = receiver.recv().unwrap();
 /// println!("message {msg} received");
@@ -396,106 +376,91 @@ pub struct SyncSender<T> {
 #[stable(feature = "rust1", since = "1.0.0")]
 unsafe impl<T: Send> Send for SyncSender<T> {}
 
-/// An error returned from the [`Sender::send`] or [`SyncSender::send`]
-/// function on **channel**s.
+/// 从 **channel** 上的 [`Sender::send`] 或 [`SyncSender::send`] 函数返回的错误。
 ///
-/// A **send** operation can only fail if the receiving end of a channel is
-/// disconnected, implying that the data could never be received. The error
-/// contains the data being sent as a payload so it can be recovered.
+/// 一次 **send** 操作只有在通道的接收端已断连时才会失败，这意味着这份数据永远不可能被接收
+/// 到。该错误以负载（payload）的形式携带着正在发送的数据，以便将其取回。
 #[stable(feature = "rust1", since = "1.0.0")]
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub struct SendError<T>(#[stable(feature = "rust1", since = "1.0.0")] pub T);
 
-/// An error returned from the [`recv`] function on a [`Receiver`].
+/// 从 [`Receiver`] 上的 [`recv`] 函数返回的错误。
 ///
-/// The [`recv`] operation can only fail if the sending half of a
-/// [`channel`] (or [`sync_channel`]) is disconnected, implying that no further
-/// messages will ever be received.
+/// [`recv`] 操作只有在 [`channel`]（或 [`sync_channel`]）的发送半已断连时才会失败，这意味着
+/// 此后将永远不会再接收到任何消息。
 ///
 /// [`recv`]: Receiver::recv
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 #[stable(feature = "rust1", since = "1.0.0")]
 pub struct RecvError;
 
-/// This enumeration is the list of the possible reasons that [`try_recv`] could
-/// not return data when called. This can occur with both a [`channel`] and
-/// a [`sync_channel`].
+/// 这个枚举列出了 [`try_recv`] 被调用时可能无法返回数据的各种原因。这在 [`channel`] 和
+/// [`sync_channel`] 上都可能发生。
 ///
 /// [`try_recv`]: Receiver::try_recv
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 #[stable(feature = "rust1", since = "1.0.0")]
 pub enum TryRecvError {
-    /// This **channel** is currently empty, but the **Sender**(s) have not yet
-    /// disconnected, so data may yet become available.
+    /// 该 **channel** 当前为空，但 **Sender** 们尚未断连，因此之后数据仍可能变为可用。
     #[stable(feature = "rust1", since = "1.0.0")]
     Empty,
 
-    /// The **channel**'s sending half has become disconnected, and there will
-    /// never be any more data received on it.
+    /// 该 **channel** 的发送半已变为断连状态，此后将永远不会再从它接收到任何数据。
     #[stable(feature = "rust1", since = "1.0.0")]
     Disconnected,
 }
 
-/// This enumeration is the list of possible errors that made [`recv_timeout`]
-/// unable to return data when called. This can occur with both a [`channel`] and
-/// a [`sync_channel`].
+/// 这个枚举列出了 [`recv_timeout`] 被调用时无法返回数据的各种可能错误。这在 [`channel`] 和
+/// [`sync_channel`] 上都可能发生。
 ///
 /// [`recv_timeout`]: Receiver::recv_timeout
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 #[stable(feature = "mpsc_recv_timeout", since = "1.12.0")]
 pub enum RecvTimeoutError {
-    /// This **channel** is currently empty, but the **Sender**(s) have not yet
-    /// disconnected, so data may yet become available.
+    /// 该 **channel** 当前为空，但 **Sender** 们尚未断连，因此之后数据仍可能变为可用。
     #[stable(feature = "mpsc_recv_timeout", since = "1.12.0")]
     Timeout,
-    /// The **channel**'s sending half has become disconnected, and there will
-    /// never be any more data received on it.
+    /// 该 **channel** 的发送半已变为断连状态，此后将永远不会再从它接收到任何数据。
     #[stable(feature = "mpsc_recv_timeout", since = "1.12.0")]
     Disconnected,
 }
 
-/// This enumeration is the list of the possible error outcomes for the
-/// [`try_send`] method.
+/// 这个枚举列出了 [`try_send`] 方法可能产生的各种错误结果。
 ///
 /// [`try_send`]: SyncSender::try_send
 #[stable(feature = "rust1", since = "1.0.0")]
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub enum TrySendError<T> {
-    /// The data could not be sent on the [`sync_channel`] because it would require that
-    /// the callee block to send the data.
+    /// 数据无法在该 [`sync_channel`] 上发送，因为发送它需要让调用方阻塞。
     ///
-    /// If this is a buffered channel, then the buffer is full at this time. If
-    /// this is not a buffered channel, then there is no [`Receiver`] available to
-    /// acquire the data.
+    /// 如果这是一个带缓冲的通道，那么此刻缓冲区已满。如果这不是带缓冲的通道，那么此刻没有
+    /// 可用的 [`Receiver`] 来取走这份数据。
     #[stable(feature = "rust1", since = "1.0.0")]
     Full(#[stable(feature = "rust1", since = "1.0.0")] T),
 
-    /// This [`sync_channel`]'s receiving half has disconnected, so the data could not be
-    /// sent. The data is returned back to the callee in this case.
+    /// 该 [`sync_channel`] 的接收半已断连，因此数据无法被发送。这种情况下，数据会被退还给
+    /// 调用方。
     #[stable(feature = "rust1", since = "1.0.0")]
     Disconnected(#[stable(feature = "rust1", since = "1.0.0")] T),
 }
 
-/// Creates a new asynchronous channel, returning the sender/receiver halves.
+/// 创建一个新的异步通道，返回发送端/接收端这一对句柄。
 ///
-/// All data sent on the [`Sender`] will become available on the [`Receiver`] in
-/// the same order as it was sent, and no [`send`] will block the calling thread
-/// (this channel has an "infinite buffer", unlike [`sync_channel`], which will
-/// block after its buffer limit is reached). [`recv`] will block until a message
-/// is available while there is at least one [`Sender`] alive (including clones).
+/// 在 [`Sender`] 上发送的所有数据都会以发送时的相同顺序在 [`Receiver`] 处变为可用，且任何
+/// [`send`] 都不会阻塞调用线程（该通道拥有“无限缓冲区”，这与 [`sync_channel`] 不同——后者
+/// 在缓冲区达到上限后会阻塞）。只要至少还存在一个 [`Sender`]（含其克隆），[`recv`] 就会
+/// 阻塞，直到有消息可用为止。
 ///
-/// The [`Sender`] can be cloned to [`send`] to the same channel multiple times, but
-/// only one [`Receiver`] is supported.
+/// [`Sender`] 可以被克隆，以便多次向同一通道 [`send`]，但只支持一个 [`Receiver`]。
 ///
-/// If the [`Receiver`] is disconnected while trying to [`send`] with the
-/// [`Sender`], the [`send`] method will return a [`SendError`]. Similarly, if the
-/// [`Sender`] is disconnected while trying to [`recv`], the [`recv`] method will
-/// return a [`RecvError`].
+/// 如果在用 [`Sender`] 尝试 [`send`] 时 [`Receiver`] 已断连，则 [`send`] 方法会返回一个
+/// [`SendError`]。同理，如果在尝试 [`recv`] 时 [`Sender`] 已断连，则 [`recv`] 方法会返回一个
+/// [`RecvError`]。
 ///
 /// [`send`]: Sender::send
 /// [`recv`]: Receiver::recv
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use std::sync::mpsc::channel;
@@ -503,15 +468,15 @@ pub enum TrySendError<T> {
 ///
 /// let (sender, receiver) = channel();
 ///
-/// // Spawn off an expensive computation
+/// // 启动一项开销很大的计算
 /// thread::spawn(move || {
 /// #   fn expensive_computation() {}
 ///     sender.send(expensive_computation()).unwrap();
 /// });
 ///
-/// // Do some useful work for a while
+/// // 在此期间做一些有用的工作
 ///
-/// // Let's see what that answer was
+/// // 来看看那个答案是什么
 /// println!("{:?}", receiver.recv().unwrap());
 /// ```
 #[must_use]
@@ -521,31 +486,26 @@ pub fn channel<T>() -> (Sender<T>, Receiver<T>) {
     (Sender { inner: tx }, Receiver { inner: rx })
 }
 
-/// Creates a new synchronous, bounded channel.
+/// 创建一个新的同步、有界的通道。
 ///
-/// All data sent on the [`SyncSender`] will become available on the [`Receiver`]
-/// in the same order as it was sent. Like asynchronous [`channel`]s, the
-/// [`Receiver`] will block until a message becomes available. `sync_channel`
-/// differs greatly in the semantics of the sender, however.
+/// 在 [`SyncSender`] 上发送的所有数据都会以发送时的相同顺序在 [`Receiver`] 处变为可用。与
+/// 异步的 [`channel`] 一样，[`Receiver`] 会阻塞直到有消息可用。然而 `sync_channel` 在发送端的
+/// 语义上差别很大。
 ///
-/// This channel has an internal buffer on which messages will be queued.
-/// `bound` specifies the buffer size. When the internal buffer becomes full,
-/// future sends will *block* waiting for the buffer to open up. Note that a
-/// buffer size of 0 is valid, in which case this becomes "rendezvous channel"
-/// where each [`send`] will not return until a [`recv`] is paired with it.
+/// 该通道拥有一块内部缓冲区，消息会在其中排队。`bound` 指定缓冲区大小。当内部缓冲区变满时，
+/// 后续的发送将 *阻塞*，等待缓冲区腾出空位。注意：缓冲区大小为 0 是合法的，此时通道变为
+/// “会合通道”（rendezvous channel），即每次 [`send`] 都不会返回，直到有一次 [`recv`] 与之配对。
 ///
-/// The [`SyncSender`] can be cloned to [`send`] to the same channel multiple
-/// times, but only one [`Receiver`] is supported.
+/// [`SyncSender`] 可以被克隆，以便多次向同一通道 [`send`]，但只支持一个 [`Receiver`]。
 ///
-/// Like asynchronous channels, if the [`Receiver`] is disconnected while trying
-/// to [`send`] with the [`SyncSender`], the [`send`] method will return a
-/// [`SendError`]. Similarly, If the [`SyncSender`] is disconnected while trying
-/// to [`recv`], the [`recv`] method will return a [`RecvError`].
+/// 与异步通道一样，如果在用 [`SyncSender`] 尝试 [`send`] 时 [`Receiver`] 已断连，则 [`send`]
+/// 方法会返回一个 [`SendError`]。同理，如果在尝试 [`recv`] 时 [`SyncSender`] 已断连，则
+/// [`recv`] 方法会返回一个 [`RecvError`]。
 ///
 /// [`send`]: SyncSender::send
 /// [`recv`]: Receiver::recv
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use std::sync::mpsc::sync_channel;
@@ -553,11 +513,11 @@ pub fn channel<T>() -> (Sender<T>, Receiver<T>) {
 ///
 /// let (sender, receiver) = sync_channel(1);
 ///
-/// // this returns immediately
+/// // 这次调用立即返回
 /// sender.send(1).unwrap();
 ///
 /// thread::spawn(move || {
-///     // this will block until the previous message has been received
+///     // 这将阻塞，直到前一条消息被接收
 ///     sender.send(2).unwrap();
 /// });
 ///
@@ -576,30 +536,25 @@ pub fn sync_channel<T>(bound: usize) -> (SyncSender<T>, Receiver<T>) {
 ////////////////////////////////////////////////////////////////////////////////
 
 impl<T> Sender<T> {
-    /// Attempts to send a value on this channel, returning it back if it could
-    /// not be sent.
+    /// 尝试在该通道上发送一个值；若无法发送，则将其原样返回。
     ///
-    /// A successful send occurs when it is determined that the other end of
-    /// the channel has not hung up already. An unsuccessful send would be one
-    /// where the corresponding receiver has already been deallocated. Note
-    /// that a return value of [`Err`] means that the data will never be
-    /// received, but a return value of [`Ok`] does *not* mean that the data
-    /// will be received. It is possible for the corresponding receiver to
-    /// hang up immediately after this function returns [`Ok`].
+    /// 当确定通道的另一端尚未挂断时，发送即为成功。发送不成功则意味着对应的接收者已被
+    /// 释放。注意：返回值为 [`Err`] 意味着数据永远不会被接收到；但返回值为 [`Ok`] 并 *不*
+    /// 意味着数据一定会被接收到——对应的接收者完全可能在本函数返回 [`Ok`] 之后立刻挂断。
     ///
-    /// This method will never block the current thread.
+    /// 此方法永远不会阻塞当前线程。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::sync::mpsc::channel;
     ///
     /// let (tx, rx) = channel();
     ///
-    /// // This send is always successful
+    /// // 这次发送总是成功的
     /// tx.send(1).unwrap();
     ///
-    /// // This send will fail because the receiver is gone
+    /// // 这次发送会失败，因为接收者已经不在了
     /// drop(rx);
     /// assert_eq!(tx.send(1).unwrap_err().0, 1);
     /// ```
@@ -611,11 +566,10 @@ impl<T> Sender<T> {
 
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<T> Clone for Sender<T> {
-    /// Clone a sender to send to other threads.
+    /// 克隆一个发送者，以便向其他线程发送。
     ///
-    /// Note, be aware of the lifetime of the sender because all senders
-    /// (including the original) need to be dropped in order for
-    /// [`Receiver::recv`] to stop blocking.
+    /// 注意，要留意发送者的生命周期：所有发送者（包括最初的那个）都必须被丢弃，
+    /// [`Receiver::recv`] 才会停止阻塞。
     fn clone(&self) -> Sender<T> {
         Sender { inner: self.inner.clone() }
     }
@@ -633,35 +587,29 @@ impl<T> fmt::Debug for Sender<T> {
 ////////////////////////////////////////////////////////////////////////////////
 
 impl<T> SyncSender<T> {
-    /// Sends a value on this synchronous channel.
+    /// 在该同步通道上发送一个值。
     ///
-    /// This function will *block* until space in the internal buffer becomes
-    /// available or a receiver is available to hand off the message to.
+    /// 本函数将 *阻塞*，直到内部缓冲区出现空位，或者出现一个可供交付该消息的接收者。
     ///
-    /// Note that a successful send does *not* guarantee that the receiver will
-    /// ever see the data if there is a buffer on this channel. Items may be
-    /// enqueued in the internal buffer for the receiver to receive at a later
-    /// time. If the buffer size is 0, however, the channel becomes a rendezvous
-    /// channel and it guarantees that the receiver has indeed received
-    /// the data if this function returns success.
+    /// 注意：如果该通道带有缓冲区，则一次成功的发送 *并不* 保证接收者最终一定能看到这份
+    /// 数据。条目可能被排入内部缓冲区，留待接收者稍后接收。然而，如果缓冲区大小为 0，则通道
+    /// 变为会合（rendezvous）通道，此时只要本函数返回成功，就保证接收者确实已经收到了数据。
     ///
-    /// This function will never panic, but it may return [`Err`] if the
-    /// [`Receiver`] has disconnected and is no longer able to receive
-    /// information.
+    /// 本函数永远不会 panic，但如果 [`Receiver`] 已断连、无法再接收信息，它可能返回 [`Err`]。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```rust
     /// use std::sync::mpsc::sync_channel;
     /// use std::thread;
     ///
-    /// // Create a rendezvous sync_channel with buffer size 0
+    /// // 创建一个缓冲区大小为 0 的会合（rendezvous）sync_channel
     /// let (sync_sender, receiver) = sync_channel(0);
     ///
     /// thread::spawn(move || {
     ///    println!("sending message...");
     ///    sync_sender.send(1).unwrap();
-    ///    // Thread is now blocked until the message is received
+    ///    // 线程此时会阻塞，直到消息被接收
     ///
     ///    println!("...message received!");
     /// });
@@ -674,39 +622,37 @@ impl<T> SyncSender<T> {
         self.inner.send(t)
     }
 
-    /// Attempts to send a value on this channel without blocking.
+    /// 尝试以非阻塞方式在该通道上发送一个值。
     ///
-    /// This method differs from [`send`] by returning immediately if the
-    /// channel's buffer is full or no receiver is waiting to acquire some
-    /// data. Compared with [`send`], this function has two failure cases
-    /// instead of one (one for disconnection, one for a full buffer).
+    /// 此方法与 [`send`] 的区别在于：如果通道的缓冲区已满、或没有接收者正在等待获取数据，
+    /// 它会立即返回。与 [`send`] 相比，本函数有两种失败情形而非一种（一种是断连，另一种是
+    /// 缓冲区已满）。
     ///
-    /// See [`send`] for notes about guarantees of whether the
-    /// receiver has received the data or not if this function is successful.
+    /// 关于本函数成功时“接收者是否已收到数据”的保证说明，请参阅 [`send`]。
     ///
     /// [`send`]: Self::send
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```rust
     /// use std::sync::mpsc::sync_channel;
     /// use std::thread;
     ///
-    /// // Create a sync_channel with buffer size 1
+    /// // 创建一个缓冲区大小为 1 的 sync_channel
     /// let (sync_sender, receiver) = sync_channel(1);
     /// let sync_sender2 = sync_sender.clone();
     ///
-    /// // First thread owns sync_sender
+    /// // 第一个线程拥有 sync_sender
     /// let handle1 = thread::spawn(move || {
     ///     sync_sender.send(1).unwrap();
     ///     sync_sender.send(2).unwrap();
-    ///     // Thread blocked
+    ///     // 线程阻塞
     /// });
     ///
-    /// // Second thread owns sync_sender2
+    /// // 第二个线程拥有 sync_sender2
     /// let handle2 = thread::spawn(move || {
-    ///     // This will return an error and send
-    ///     // no message if the buffer is full
+    ///     // 如果缓冲区已满，这将返回一个错误
+    ///     // 且不会发送任何消息
     ///     let _ = sync_sender2.try_send(3);
     /// });
     ///
@@ -717,13 +663,13 @@ impl<T> SyncSender<T> {
     /// msg = receiver.recv().unwrap();
     /// println!("message {msg} received");
     ///
-    /// // Third message may have never been sent
+    /// // 第三条消息可能从未被发送
     /// match receiver.try_recv() {
     ///     Ok(msg) => println!("message {msg} received"),
     ///     Err(_) => println!("the third message was never sent"),
     /// }
     ///
-    /// // Wait for threads to complete
+    /// // 等待线程完成
     /// handle1.join().unwrap();
     /// handle2.join().unwrap();
     /// ```
@@ -732,10 +678,10 @@ impl<T> SyncSender<T> {
         self.inner.try_send(t)
     }
 
-    // Attempts to send for a value on this receiver, returning an error if the
-    // corresponding channel has hung up, or if it waits more than `timeout`.
+    // 尝试在该接收者上等待一个值；如果对应的通道已挂断、或等待时间超过 `timeout`，则返回
+    // 一个错误。
     //
-    // This method is currently only used for tests.
+    // 此方法目前仅用于测试。
     #[unstable(issue = "none", feature = "std_internals")]
     #[doc(hidden)]
     pub fn send_timeout(&self, t: T, timeout: Duration) -> Result<(), mpmc::SendTimeoutError<T>> {
@@ -762,21 +708,18 @@ impl<T> fmt::Debug for SyncSender<T> {
 ////////////////////////////////////////////////////////////////////////////////
 
 impl<T> Receiver<T> {
-    /// Attempts to return a pending value on this receiver without blocking.
+    /// 尝试以非阻塞方式返回该接收者上一个待处理（pending）的值。
     ///
-    /// This method will never block the caller in order to wait for data to
-    /// become available. Instead, this will always return immediately with a
-    /// possible option of pending data on the channel.
+    /// 此方法为了等待数据可用而 **永不** 阻塞调用方；相反，它总是立即返回，结果是一个可能
+    /// 携带通道上待处理数据的 option。
     ///
-    /// This is useful for a flavor of "optimistic check" before deciding to
-    /// block on a receiver.
+    /// 这对于在决定阻塞于某个接收者之前进行一种“乐观检查”（optimistic check）很有用。
     ///
-    /// Compared with [`recv`], this function has two failure cases instead of one
-    /// (one for disconnection, one for an empty buffer).
+    /// 与 [`recv`] 相比，本函数有两种失败情形而非一种（一种是断连，另一种是缓冲区为空）。
     ///
     /// [`recv`]: Self::recv
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```rust
     /// use std::sync::mpsc::{Receiver, channel};
@@ -790,22 +733,17 @@ impl<T> Receiver<T> {
         self.inner.try_recv()
     }
 
-    /// Attempts to wait for a value on this receiver, returning an error if the
-    /// corresponding channel has hung up.
+    /// 尝试在该接收者上等待一个值；如果对应的通道已挂断，则返回一个错误。
     ///
-    /// This function will always block the current thread if there is no data
-    /// available and it's possible for more data to be sent (at least one sender
-    /// still exists). Once a message is sent to the corresponding [`Sender`]
-    /// (or [`SyncSender`]), this receiver will wake up and return that
-    /// message.
+    /// 只要没有数据可用、且仍有可能发来更多数据（即至少还存在一个发送者），本函数就总会
+    /// 阻塞当前线程。一旦有消息被发往对应的 [`Sender`]（或 [`SyncSender`]），该接收者便会被
+    /// 唤醒并返回那条消息。
     ///
-    /// If the corresponding [`Sender`] has disconnected, or it disconnects while
-    /// this call is blocking, this call will wake up and return [`Err`] to
-    /// indicate that no more messages can ever be received on this channel.
-    /// However, since channels are buffered, messages sent before the disconnect
-    /// will still be properly received.
+    /// 如果对应的 [`Sender`] 已断连，或在本次调用阻塞期间发生断连，本次调用会被唤醒并返回
+    /// [`Err`]，以表明此通道上永远不会再收到任何消息了。不过，由于通道是带缓冲的，在断连
+    /// 之前发送的消息仍会被正确接收。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::sync::mpsc;
@@ -821,7 +759,7 @@ impl<T> Receiver<T> {
     /// assert_eq!(Ok(1), recv.recv());
     /// ```
     ///
-    /// Buffering behavior:
+    /// 缓冲行为：
     ///
     /// ```
     /// use std::sync::mpsc;
@@ -836,7 +774,7 @@ impl<T> Receiver<T> {
     ///     drop(send);
     /// });
     ///
-    /// // wait for the thread to join so we ensure the sender is dropped
+    /// // 等待该线程 join，以确保 sender 已被丢弃
     /// handle.join().unwrap();
     ///
     /// assert_eq!(Ok(1), recv.recv());
@@ -849,24 +787,20 @@ impl<T> Receiver<T> {
         self.inner.recv()
     }
 
-    /// Attempts to wait for a value on this receiver, returning an error if the
-    /// corresponding channel has hung up, or if it waits more than `timeout`.
+    /// 尝试在该接收者上等待一个值；如果对应的通道已挂断、或等待时间超过 `timeout`，则返回
+    /// 一个错误。
     ///
-    /// This function will always block the current thread if there is no data
-    /// available and it's possible for more data to be sent (at least one sender
-    /// still exists). Once a message is sent to the corresponding [`Sender`]
-    /// (or [`SyncSender`]), this receiver will wake up and return that
-    /// message.
+    /// 只要没有数据可用、且仍有可能发来更多数据（即至少还存在一个发送者），本函数就总会
+    /// 阻塞当前线程。一旦有消息被发往对应的 [`Sender`]（或 [`SyncSender`]），该接收者便会被
+    /// 唤醒并返回那条消息。
     ///
-    /// If the corresponding [`Sender`] has disconnected, or it disconnects while
-    /// this call is blocking, this call will wake up and return [`Err`] to
-    /// indicate that no more messages can ever be received on this channel.
-    /// However, since channels are buffered, messages sent before the disconnect
-    /// will still be properly received.
+    /// 如果对应的 [`Sender`] 已断连，或在本次调用阻塞期间发生断连，本次调用会被唤醒并返回
+    /// [`Err`]，以表明此通道上永远不会再收到任何消息了。不过，由于通道是带缓冲的，在断连
+    /// 之前发送的消息仍会被正确接收。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Successfully receiving value before encountering timeout:
+    /// 在遇到超时之前成功收到值：
     ///
     /// ```no_run
     /// use std::thread;
@@ -885,7 +819,7 @@ impl<T> Receiver<T> {
     /// );
     /// ```
     ///
-    /// Receiving an error upon reaching timeout:
+    /// 到达超时时收到一个错误：
     ///
     /// ```no_run
     /// use std::thread;
@@ -909,23 +843,19 @@ impl<T> Receiver<T> {
         self.inner.recv_timeout(timeout)
     }
 
-    /// Attempts to wait for a value on this receiver, returning an error if the
-    /// corresponding channel has hung up, or if `deadline` is reached.
+    /// 尝试在该接收者上等待一个值；如果对应的通道已挂断、或到达了 `deadline`，则返回一个
+    /// 错误。
     ///
-    /// This function will always block the current thread if there is no data
-    /// available and it's possible for more data to be sent. Once a message is
-    /// sent to the corresponding [`Sender`] (or [`SyncSender`]), then this
-    /// receiver will wake up and return that message.
+    /// 只要没有数据可用、且仍有可能发来更多数据，本函数就总会阻塞当前线程。一旦有消息被
+    /// 发往对应的 [`Sender`]（或 [`SyncSender`]），该接收者便会被唤醒并返回那条消息。
     ///
-    /// If the corresponding [`Sender`] has disconnected, or it disconnects while
-    /// this call is blocking, this call will wake up and return [`Err`] to
-    /// indicate that no more messages can ever be received on this channel.
-    /// However, since channels are buffered, messages sent before the disconnect
-    /// will still be properly received.
+    /// 如果对应的 [`Sender`] 已断连，或在本次调用阻塞期间发生断连，本次调用会被唤醒并返回
+    /// [`Err`]，以表明此通道上永远不会再收到任何消息了。不过，由于通道是带缓冲的，在断连
+    /// 之前发送的消息仍会被正确接收。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Successfully receiving value before reaching deadline:
+    /// 在到达截止时刻之前成功收到值：
     ///
     /// ```no_run
     /// #![feature(deadline_api)]
@@ -945,7 +875,7 @@ impl<T> Receiver<T> {
     /// );
     /// ```
     ///
-    /// Receiving an error upon reaching deadline:
+    /// 到达截止时刻时收到一个错误：
     ///
     /// ```no_run
     /// #![feature(deadline_api)]
@@ -970,10 +900,10 @@ impl<T> Receiver<T> {
         self.inner.recv_deadline(deadline)
     }
 
-    /// Returns an iterator that will block waiting for messages, but never
-    /// [`panic!`]. It will return [`None`] when the channel has hung up.
+    /// 返回一个会阻塞等待消息、但绝不会 [`panic!`] 的迭代器。当通道挂断时，它会返回
+    /// [`None`]。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```rust
     /// use std::sync::mpsc::channel;
@@ -998,12 +928,10 @@ impl<T> Receiver<T> {
         Iter { rx: self }
     }
 
-    /// Returns an iterator that will attempt to yield all pending values.
-    /// It will return `None` if there are no more pending values or if the
-    /// channel has hung up. The iterator will never [`panic!`] or block the
-    /// user by waiting for values.
+    /// 返回一个会尝试取出所有待处理值的迭代器。当没有更多待处理值、或通道已挂断时，它会
+    /// 返回 `None`。该迭代器既不会 [`panic!`]，也不会因等待值而阻塞使用者。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::sync::mpsc::channel;
@@ -1012,7 +940,7 @@ impl<T> Receiver<T> {
     ///
     /// let (sender, receiver) = channel();
     ///
-    /// // nothing is in the buffer yet
+    /// // 缓冲区里暂时还什么都没有
     /// assert!(receiver.try_iter().next().is_none());
     ///
     /// thread::spawn(move || {
@@ -1022,10 +950,10 @@ impl<T> Receiver<T> {
     ///     sender.send(3).unwrap();
     /// });
     ///
-    /// // nothing is in the buffer yet
+    /// // 缓冲区里暂时还什么都没有
     /// assert!(receiver.try_iter().next().is_none());
     ///
-    /// // block for two seconds
+    /// // 阻塞两秒
     /// thread::sleep(Duration::from_secs(2));
     ///
     /// let mut iter = receiver.try_iter();
@@ -1137,11 +1065,11 @@ impl<T> error::Error for TrySendError<T> {}
 
 #[stable(feature = "mpsc_error_conversions", since = "1.24.0")]
 impl<T> From<SendError<T>> for TrySendError<T> {
-    /// Converts a `SendError<T>` into a `TrySendError<T>`.
+    /// 把一个 `SendError<T>` 转换为 `TrySendError<T>`。
     ///
-    /// This conversion always returns a `TrySendError::Disconnected` containing the data in the `SendError<T>`.
+    /// 此转换总是返回一个 `TrySendError::Disconnected`，其中携带着 `SendError<T>` 里的数据。
     ///
-    /// No data is allocated on the heap.
+    /// 不会在堆上分配任何数据。
     fn from(err: SendError<T>) -> TrySendError<T> {
         match err {
             SendError(t) => TrySendError::Disconnected(t),
@@ -1174,11 +1102,11 @@ impl error::Error for TryRecvError {}
 
 #[stable(feature = "mpsc_error_conversions", since = "1.24.0")]
 impl From<RecvError> for TryRecvError {
-    /// Converts a `RecvError` into a `TryRecvError`.
+    /// 把一个 `RecvError` 转换为 `TryRecvError`。
     ///
-    /// This conversion always returns `TryRecvError::Disconnected`.
+    /// 此转换总是返回 `TryRecvError::Disconnected`。
     ///
-    /// No data is allocated on the heap.
+    /// 不会在堆上分配任何数据。
     fn from(err: RecvError) -> TryRecvError {
         match err {
             RecvError => TryRecvError::Disconnected,
@@ -1201,11 +1129,11 @@ impl error::Error for RecvTimeoutError {}
 
 #[stable(feature = "mpsc_error_conversions", since = "1.24.0")]
 impl From<RecvError> for RecvTimeoutError {
-    /// Converts a `RecvError` into a `RecvTimeoutError`.
+    /// 把一个 `RecvError` 转换为 `RecvTimeoutError`。
     ///
-    /// This conversion always returns `RecvTimeoutError::Disconnected`.
+    /// 此转换总是返回 `RecvTimeoutError::Disconnected`。
     ///
-    /// No data is allocated on the heap.
+    /// 不会在堆上分配任何数据。
     fn from(err: RecvError) -> RecvTimeoutError {
         match err {
             RecvError => RecvTimeoutError::Disconnected,

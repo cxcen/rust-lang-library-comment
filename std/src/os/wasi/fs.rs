@@ -1,10 +1,10 @@
-//! WASIp1-specific extensions to primitives in the [`std::fs`] module.
+//! 针对 [`std::fs`] 模块中各类基础类型的 WASIp1 平台特定扩展。
 //!
 //! [`std::fs`]: crate::fs
 
 #![unstable(feature = "wasi_ext", issue = "71213")]
 
-// Used for `File::read` on intra-doc links
+// 用于文档内链接中对 `File::read` 的引用
 #[allow(unused_imports)]
 use io::{Read, Write};
 
@@ -19,68 +19,58 @@ use crate::path::Path;
 use crate::sys::err2io;
 use crate::sys::{AsInner, AsInnerMut};
 
-/// WASI-specific extensions to [`File`].
+/// 针对 [`File`] 的 WASI 平台特定扩展。
 pub trait FileExt {
-    /// Reads a number of bytes starting from a given offset.
+    /// 从给定偏移量开始读取若干字节。
     ///
-    /// Returns the number of bytes read.
+    /// 返回读取到的字节数。
     ///
-    /// The offset is relative to the start of the file and thus independent
-    /// from the current cursor.
+    /// 偏移量相对于文件起始位置，因此与当前游标位置无关。
     ///
-    /// The current file cursor is not affected by this function.
+    /// 本函数不会影响当前的文件游标位置。
     ///
-    /// Note that similar to [`File::read`], it is not an error to return with a
-    /// short read.
+    /// 注意，与 [`File::read`] 类似，返回一次短读（读取字节数少于请求）并不算错误。
     fn read_at(&self, buf: &mut [u8], offset: u64) -> io::Result<usize>;
 
-    /// Reads a number of bytes starting from a given offset.
+    /// 从给定偏移量开始读取若干字节。
     ///
-    /// Returns the number of bytes read.
+    /// 返回读取到的字节数。
     ///
-    /// The offset is relative to the start of the file and thus independent
-    /// from the current cursor.
+    /// 偏移量相对于文件起始位置，因此与当前游标位置无关。
     ///
-    /// The current file cursor is not affected by this function.
+    /// 本函数不会影响当前的文件游标位置。
     ///
-    /// Note that similar to [`File::read_vectored`], it is not an error to
-    /// return with a short read.
+    /// 注意，与 [`File::read_vectored`] 类似，返回一次短读并不算错误。
     fn read_vectored_at(&self, bufs: &mut [IoSliceMut<'_>], offset: u64) -> io::Result<usize>;
 
-    /// Reads some bytes starting from a given offset into the buffer.
+    /// 从给定偏移量开始读取若干字节到缓冲区中。
     ///
-    /// This equivalent to the [`read_at`](FileExt::read_at) method, except that it is passed a
-    /// [`BorrowedCursor`] rather than `&mut [u8]` to allow use with uninitialized buffers. The new
-    /// data will be appended to any existing contents of `buf`.
+    /// 这等价于 [`read_at`](FileExt::read_at) 方法，区别在于它接收一个
+    /// [`BorrowedCursor`] 而非 `&mut [u8]`，以便能用于未初始化的缓冲区。新读取的
+    /// 数据会追加到 `buf` 已有内容之后。
     fn read_buf_at(&self, buf: BorrowedCursor<'_>, offset: u64) -> io::Result<()>;
 
-    /// Reads the exact number of byte required to fill `buf` from the given offset.
+    /// 从给定偏移量开始读取恰好填满 `buf` 所需的字节数。
     ///
-    /// The offset is relative to the start of the file and thus independent
-    /// from the current cursor.
+    /// 偏移量相对于文件起始位置，因此与当前游标位置无关。
     ///
-    /// The current file cursor is not affected by this function.
+    /// 本函数不会影响当前的文件游标位置。
     ///
-    /// Similar to [`Read::read_exact`] but uses [`read_at`] instead of `read`.
+    /// 与 [`Read::read_exact`] 类似，但使用 [`read_at`] 而非 `read`。
     ///
     /// [`read_at`]: FileExt::read_at
     ///
     /// # Errors
     ///
-    /// If this function encounters an error of the kind
-    /// [`io::ErrorKind::Interrupted`] then the error is ignored and the operation
-    /// will continue.
+    /// 如果本函数遇到 [`io::ErrorKind::Interrupted`] 类型的错误，则忽略该错误并继续操作。
     ///
-    /// If this function encounters an "end of file" before completely filling
-    /// the buffer, it returns an error of the kind [`io::ErrorKind::UnexpectedEof`].
-    /// The contents of `buf` are unspecified in this case.
+    /// 如果本函数在完全填满缓冲区之前遇到“文件结束”，则返回
+    /// [`io::ErrorKind::UnexpectedEof`] 类型的错误。此时 `buf` 的内容是未指定的。
     ///
-    /// If any other read error is encountered then this function immediately
-    /// returns. The contents of `buf` are unspecified in this case.
+    /// 如果遇到任何其他读取错误，本函数会立即返回。此时 `buf` 的内容是未指定的。
     ///
-    /// If this function returns an error, it is unspecified how many bytes it
-    /// has read, but it will never read more than would be necessary to
-    /// completely fill the buffer.
+    /// 如果本函数返回错误，则它已读取的字节数是未指定的，但它读取的字节数绝不会超过
+    /// 完全填满缓冲区所需的数量。
     fn read_exact_at(&self, mut buf: &mut [u8], mut offset: u64) -> io::Result<()> {
         while !buf.is_empty() {
             match self.read_at(buf, offset) {
@@ -97,56 +87,46 @@ pub trait FileExt {
         if !buf.is_empty() { Err(io::Error::READ_EXACT_EOF) } else { Ok(()) }
     }
 
-    /// Writes a number of bytes starting from a given offset.
+    /// 从给定偏移量开始写入若干字节。
     ///
-    /// Returns the number of bytes written.
+    /// 返回写入的字节数。
     ///
-    /// The offset is relative to the start of the file and thus independent
-    /// from the current cursor.
+    /// 偏移量相对于文件起始位置，因此与当前游标位置无关。
     ///
-    /// The current file cursor is not affected by this function.
+    /// 本函数不会影响当前的文件游标位置。
     ///
-    /// When writing beyond the end of the file, the file is appropriately
-    /// extended and the intermediate bytes are initialized with the value 0.
+    /// 当写入超出文件末尾时，文件会被相应地扩展，中间的字节以数值 0 初始化。
     ///
-    /// Note that similar to [`File::write`], it is not an error to return a
-    /// short write.
+    /// 注意，与 [`File::write`] 类似，返回一次短写并不算错误。
     fn write_at(&self, buf: &[u8], offset: u64) -> io::Result<usize>;
 
-    /// Writes a number of bytes starting from a given offset.
+    /// 从给定偏移量开始写入若干字节。
     ///
-    /// Returns the number of bytes written.
+    /// 返回写入的字节数。
     ///
-    /// The offset is relative to the start of the file and thus independent
-    /// from the current cursor.
+    /// 偏移量相对于文件起始位置，因此与当前游标位置无关。
     ///
-    /// The current file cursor is not affected by this function.
+    /// 本函数不会影响当前的文件游标位置。
     ///
-    /// When writing beyond the end of the file, the file is appropriately
-    /// extended and the intermediate bytes are initialized with the value 0.
+    /// 当写入超出文件末尾时，文件会被相应地扩展，中间的字节以数值 0 初始化。
     ///
-    /// Note that similar to [`File::write_vectored`], it is not an error to return a
-    /// short write.
+    /// 注意，与 [`File::write_vectored`] 类似，返回一次短写并不算错误。
     fn write_vectored_at(&self, bufs: &[IoSlice<'_>], offset: u64) -> io::Result<usize>;
 
-    /// Attempts to write an entire buffer starting from a given offset.
+    /// 尝试从给定偏移量开始写入整个缓冲区。
     ///
-    /// The offset is relative to the start of the file and thus independent
-    /// from the current cursor.
+    /// 偏移量相对于文件起始位置，因此与当前游标位置无关。
     ///
-    /// The current file cursor is not affected by this function.
+    /// 本函数不会影响当前的文件游标位置。
     ///
-    /// This method will continuously call [`write_at`] until there is no more data
-    /// to be written or an error of non-[`io::ErrorKind::Interrupted`] kind is
-    /// returned. This method will not return until the entire buffer has been
-    /// successfully written or such an error occurs. The first error that is
-    /// not of [`io::ErrorKind::Interrupted`] kind generated from this method will be
-    /// returned.
+    /// 本方法会持续调用 [`write_at`]，直到没有更多数据需要写入，或返回了一个
+    /// 非 [`io::ErrorKind::Interrupted`] 类型的错误。本方法在整个缓冲区成功写入
+    /// 或发生此类错误之前不会返回。本方法产生的第一个非 [`io::ErrorKind::Interrupted`]
+    /// 类型的错误将被返回。
     ///
     /// # Errors
     ///
-    /// This function will return the first error of
-    /// non-[`io::ErrorKind::Interrupted`] kind that [`write_at`] returns.
+    /// 本函数将返回 [`write_at`] 产生的第一个非 [`io::ErrorKind::Interrupted`] 类型的错误。
     ///
     /// [`write_at`]: FileExt::write_at
     fn write_all_at(&self, mut buf: &[u8], mut offset: u64) -> io::Result<()> {
@@ -166,62 +146,62 @@ pub trait FileExt {
         Ok(())
     }
 
-    /// Adjusts the flags associated with this file.
+    /// 调整与此文件关联的标志位。
     ///
-    /// This corresponds to the `fd_fdstat_set_flags` syscall.
+    /// 对应 `fd_fdstat_set_flags` 系统调用。
     #[doc(alias = "fd_fdstat_set_flags")]
     #[cfg(target_env = "p1")]
     fn fdstat_set_flags(&self, flags: u16) -> io::Result<()>;
 
-    /// Adjusts the rights associated with this file.
+    /// 调整与此文件关联的权限（rights）。
     ///
-    /// This corresponds to the `fd_fdstat_set_rights` syscall.
+    /// 对应 `fd_fdstat_set_rights` 系统调用。
     #[doc(alias = "fd_fdstat_set_rights")]
     #[cfg(target_env = "p1")]
     fn fdstat_set_rights(&self, rights: u64, inheriting: u64) -> io::Result<()>;
 
-    /// Provides file advisory information on a file descriptor.
+    /// 为文件描述符提供文件的访问建议信息（advisory information）。
     ///
-    /// This corresponds to the `fd_advise` syscall.
+    /// 对应 `fd_advise` 系统调用。
     #[doc(alias = "fd_advise")]
     #[cfg(target_env = "p1")]
     fn advise(&self, offset: u64, len: u64, advice: u8) -> io::Result<()>;
 
-    /// Forces the allocation of space in a file.
+    /// 强制为文件分配空间。
     ///
-    /// This corresponds to the `fd_allocate` syscall.
+    /// 对应 `fd_allocate` 系统调用。
     #[doc(alias = "fd_allocate")]
     #[cfg(target_env = "p1")]
     fn allocate(&self, offset: u64, len: u64) -> io::Result<()>;
 
-    /// Creates a directory.
+    /// 创建一个目录。
     ///
-    /// This corresponds to the `path_create_directory` syscall.
+    /// 对应 `path_create_directory` 系统调用。
     #[doc(alias = "path_create_directory")]
     #[cfg(target_env = "p1")]
     fn create_directory<P: AsRef<Path>>(&self, dir: P) -> io::Result<()>;
 
-    /// Unlinks a file.
+    /// 取消链接（删除）一个文件。
     ///
-    /// This corresponds to the `path_unlink_file` syscall.
+    /// 对应 `path_unlink_file` 系统调用。
     #[doc(alias = "path_unlink_file")]
     #[cfg(target_env = "p1")]
     fn remove_file<P: AsRef<Path>>(&self, path: P) -> io::Result<()>;
 
-    /// Removes a directory.
+    /// 删除一个目录。
     ///
-    /// This corresponds to the `path_remove_directory` syscall.
+    /// 对应 `path_remove_directory` 系统调用。
     #[doc(alias = "path_remove_directory")]
     #[cfg(target_env = "p1")]
     fn remove_directory<P: AsRef<Path>>(&self, path: P) -> io::Result<()>;
 }
 
-// FIXME: bind fd_fdstat_get - need to define a custom return type
-// FIXME: bind fd_readdir - can't return `ReadDir` since we only have entry name
-// FIXME: bind fd_filestat_set_times maybe? - on crates.io for unix
-// FIXME: bind path_filestat_set_times maybe? - on crates.io for unix
-// FIXME: bind poll_oneoff maybe? - probably should wait for I/O to settle
-// FIXME: bind random_get maybe? - on crates.io for unix
+// FIXME: 绑定 fd_fdstat_get —— 需要定义一个自定义的返回类型
+// FIXME: 绑定 fd_readdir —— 无法返回 `ReadDir`，因为我们只有条目名称
+// FIXME: 也许绑定 fd_filestat_set_times？—— crates.io 上已有针对 unix 的实现
+// FIXME: 也许绑定 path_filestat_set_times？—— crates.io 上已有针对 unix 的实现
+// FIXME: 也许绑定 poll_oneoff？—— 大概应该等待 I/O 稳定下来
+// FIXME: 也许绑定 random_get？—— crates.io 上已有针对 unix 的实现
 
 impl FileExt for File {
     fn read_at(&self, buf: &mut [u8], offset: u64) -> io::Result<usize> {
@@ -303,9 +283,9 @@ impl FileExt for File {
     }
 }
 
-/// WASI-specific extensions to [`OpenOptions`].
+/// 针对 [`OpenOptions`] 的 WASI 平台特定扩展。
 pub trait OpenOptionsExt {
-    /// Pass custom flags to the `flags` argument of `open`.
+    /// 向 `open` 的 `flags` 参数传入自定义标志位。
     fn custom_flags(&mut self, flags: i32) -> &mut Self;
 }
 
@@ -316,13 +296,13 @@ impl OpenOptionsExt for OpenOptions {
     }
 }
 
-/// WASI-specific extensions to [`fs::Metadata`].
+/// 针对 [`fs::Metadata`] 的 WASI 平台特定扩展。
 pub trait MetadataExt {
-    /// Returns the `st_dev` field of the internal `filestat_t`
+    /// 返回内部 `filestat_t` 的 `st_dev` 字段
     fn dev(&self) -> u64;
-    /// Returns the `st_ino` field of the internal `filestat_t`
+    /// 返回内部 `filestat_t` 的 `st_ino` 字段
     fn ino(&self) -> u64;
-    /// Returns the `st_nlink` field of the internal `filestat_t`
+    /// 返回内部 `filestat_t` 的 `st_nlink` 字段
     fn nlink(&self) -> u64;
 }
 
@@ -338,16 +318,15 @@ impl MetadataExt for fs::Metadata {
     }
 }
 
-/// WASI-specific extensions for [`fs::FileType`].
+/// 针对 [`fs::FileType`] 的 WASI 平台特定扩展。
 ///
-/// Adds support for special WASI file types such as block/character devices,
-/// pipes, and sockets.
+/// 增加了对 WASI 特殊文件类型的支持，例如块设备/字符设备、管道和套接字。
 pub trait FileTypeExt {
-    /// Returns `true` if this file type is a block device.
+    /// 如果此文件类型是块设备，则返回 `true`。
     fn is_block_device(&self) -> bool;
-    /// Returns `true` if this file type is a character device.
+    /// 如果此文件类型是字符设备，则返回 `true`。
     fn is_char_device(&self) -> bool;
-    /// Returns `true` if this file type is any type of socket.
+    /// 如果此文件类型是任意类型的套接字，则返回 `true`。
     fn is_socket(&self) -> bool;
 }
 
@@ -363,9 +342,9 @@ impl FileTypeExt for fs::FileType {
     }
 }
 
-/// WASI-specific extension methods for [`fs::DirEntry`].
+/// 针对 [`fs::DirEntry`] 的 WASI 平台特定扩展方法。
 pub trait DirEntryExt {
-    /// Returns the underlying `d_ino` field of the `dirent_t`
+    /// 返回底层 `dirent_t` 的 `d_ino` 字段
     fn ino(&self) -> u64;
 }
 
@@ -375,9 +354,9 @@ impl DirEntryExt for fs::DirEntry {
     }
 }
 
-/// Creates a hard link.
+/// 创建一个硬链接。
 ///
-/// This corresponds to the `path_link` syscall.
+/// 对应 `path_link` 系统调用。
 #[doc(alias = "path_link")]
 #[cfg(target_env = "p1")]
 pub fn link<P: AsRef<Path>, U: AsRef<Path>>(
@@ -399,9 +378,9 @@ pub fn link<P: AsRef<Path>, U: AsRef<Path>>(
     }
 }
 
-/// Renames a file or directory.
+/// 重命名一个文件或目录。
 ///
-/// This corresponds to the `path_rename` syscall.
+/// 对应 `path_rename` 系统调用。
 #[doc(alias = "path_rename")]
 #[cfg(target_env = "p1")]
 pub fn rename<P: AsRef<Path>, U: AsRef<Path>>(
@@ -421,9 +400,9 @@ pub fn rename<P: AsRef<Path>, U: AsRef<Path>>(
     }
 }
 
-/// Creates a symbolic link.
+/// 创建一个符号链接。
 ///
-/// This corresponds to the `path_symlink` syscall.
+/// 对应 `path_symlink` 系统调用。
 #[doc(alias = "path_symlink")]
 #[cfg(target_env = "p1")]
 pub fn symlink<P: AsRef<Path>, U: AsRef<Path>>(
@@ -441,10 +420,10 @@ pub fn symlink<P: AsRef<Path>, U: AsRef<Path>>(
     }
 }
 
-/// Creates a symbolic link.
+/// 创建一个符号链接。
 ///
-/// This is a convenience API similar to `std::os::unix::fs::symlink` and
-/// `std::os::windows::fs::symlink_file` and `std::os::windows::fs::symlink_dir`.
+/// 这是一个便捷 API，类似于 `std::os::unix::fs::symlink`、
+/// `std::os::windows::fs::symlink_file` 以及 `std::os::windows::fs::symlink_dir`。
 pub fn symlink_path<P: AsRef<Path>, U: AsRef<Path>>(old_path: P, new_path: U) -> io::Result<()> {
     crate::sys::fs::symlink(old_path.as_ref(), new_path.as_ref())
 }

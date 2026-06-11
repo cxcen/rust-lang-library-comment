@@ -6,21 +6,21 @@ use core::arch::wasm64 as wasm;
 use crate::sync::atomic::Atomic;
 use crate::time::Duration;
 
-/// An atomic for use as a futex that is at least 32-bits but may be larger
+/// 用作 futex 的原子类型，至少 32 位，但也可能更大
 pub type Futex = Atomic<Primitive>;
-/// Must be the underlying type of Futex
+/// 必须是 Futex 的底层类型
 pub type Primitive = u32;
 
-/// An atomic for use as a futex that is at least 8-bits but may be larger.
+/// 用作 futex 的原子类型，至少 8 位，但也可能更大。
 pub type SmallFutex = Atomic<SmallPrimitive>;
-/// Must be the underlying type of SmallFutex
+/// 必须是 SmallFutex 的底层类型
 pub type SmallPrimitive = u32;
 
-/// Wait for a futex_wake operation to wake us.
+/// 等待某个 futex_wake 操作来唤醒我们。
 ///
-/// Returns directly if the futex doesn't hold the expected value.
+/// 如果该 futex 并未持有预期的值，则直接返回。
 ///
-/// Returns false on timeout, and true in all other cases.
+/// 超时返回 false，其他所有情况返回 true。
 pub fn futex_wait(futex: &Atomic<u32>, expected: u32, timeout: Option<Duration>) -> bool {
     let timeout = timeout.and_then(|t| t.as_nanos().try_into().ok()).unwrap_or(-1);
     unsafe {
@@ -32,15 +32,15 @@ pub fn futex_wait(futex: &Atomic<u32>, expected: u32, timeout: Option<Duration>)
     }
 }
 
-/// Wakes up one thread that's blocked on `futex_wait` on this futex.
+/// 唤醒一个阻塞在此 futex 的 `futex_wait` 上的线程。
 ///
-/// Returns true if this actually woke up such a thread,
-/// or false if no thread was waiting on this futex.
+/// 如果确实唤醒了这样一个线程，则返回 true；
+/// 如果没有线程在此 futex 上等待，则返回 false。
 pub fn futex_wake(futex: &Atomic<u32>) -> bool {
     unsafe { wasm::memory_atomic_notify(futex as *const Atomic<u32> as *mut i32, 1) > 0 }
 }
 
-/// Wakes up all threads that are waiting on `futex_wait` on this futex.
+/// 唤醒所有正在此 futex 的 `futex_wait` 上等待的线程。
 pub fn futex_wake_all(futex: &Atomic<u32>) {
     unsafe {
         wasm::memory_atomic_notify(futex as *const Atomic<u32> as *mut i32, i32::MAX as u32);

@@ -1,6 +1,6 @@
-//! Unix-specific extensions to primitives in the [`std::ffi`] module.
+//! 针对 [`std::ffi`] 模块中各基础类型的 Unix 特有扩展。
 //!
-//! # Examples
+//! # 示例
 //!
 //! ```
 //! use std::ffi::OsString;

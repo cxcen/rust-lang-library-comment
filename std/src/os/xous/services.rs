@@ -20,11 +20,10 @@ pub(crate) use ticktimer::*;
 mod ns {
     const NAME_MAX_LENGTH: usize = 64;
     use crate::os::xous::ffi::{Connection, lend_mut};
-    // By making this repr(C), the layout of this struct becomes well-defined
-    // and no longer shifts around.
-    // By marking it as `align(4096)` we define that it will be page-aligned,
-    // meaning it can be sent between processes. We make sure to pad out the
-    // entire struct so that memory isn't leaked to the name server.
+    // 通过把它标为 repr(C)，本 struct 的内存布局变得有明确定义，不会再随意变动。
+    // 通过把它标为 `align(4096)`，我们规定它将按页对齐（page-aligned），
+    // 这意味着它可以在进程之间发送。我们确保把整个 struct 填充满，
+    // 以免有内存被泄漏给名字服务器（name server）。
     #[repr(C, align(4096))]
     struct ConnectRequest {
         data: [u8; 4096],
@@ -35,13 +34,12 @@ mod ns {
             let mut cr = ConnectRequest { data: [0u8; 4096] };
             let name_bytes = name.as_bytes();
 
-            // Copy the string into our backing store.
+            // 把该字符串复制到我们的后备存储（backing store）中。
             for (&src_byte, dest_byte) in name_bytes.iter().zip(&mut cr.data[0..NAME_MAX_LENGTH]) {
                 *dest_byte = src_byte;
             }
 
-            // Set the string length to the length of the passed-in String,
-            // or the maximum possible length. Which ever is smaller.
+            // 把字符串长度设置为所传入 String 的长度与最大可能长度二者中较小的那个。
             for (&src_byte, dest_byte) in (name.len().min(NAME_MAX_LENGTH) as u32)
                 .to_le_bytes()
                 .iter()
@@ -65,10 +63,10 @@ mod ns {
         lend_mut(cid, opcode, &mut request.data, 0, name.len().min(NAME_MAX_LENGTH))
             .expect("unable to perform lookup");
 
-        // Read the result code back from the nameserver
+        // 从名字服务器读回结果码（result code）
         let result = u32::from_le_bytes(request.data[0..4].try_into().unwrap());
         if result == 0 {
-            // If the result was successful, then the CID is stored in the next 4 bytes
+            // 如果结果成功，那么 CID 存放在接下来的 4 个字节中
             Some(u32::from_le_bytes(request.data[4..8].try_into().unwrap()).into())
         } else {
             None
@@ -84,23 +82,20 @@ mod ns {
     }
 }
 
-/// Attempts to connect to a server by name. If the server does not exist, this will
-/// block until the server is created.
+/// 尝试按名字（name）连接到一个服务器。如果该服务器不存在，本调用将一直阻塞，直到该服务器
+/// 被创建出来为止。
 ///
-/// Note that this is different from connecting to a server by address. Server
-/// addresses are always 16 bytes long, whereas server names are arbitrary-length
-/// strings up to 64 bytes in length.
+/// 注意这与按地址（address）连接到服务器不同。服务器地址总是 16 字节长，而服务器名字则是
+/// 长度任意、最长 64 字节的字符串。
 #[stable(feature = "rust1", since = "1.0.0")]
 pub fn connect(name: &str) -> Option<Connection> {
     ns::connect_with_name(name)
 }
 
-/// Attempts to connect to a server by name. If the server does not exist, this will
-/// immediately return `None`.
+/// 尝试按名字（name）连接到一个服务器。如果该服务器不存在，本调用将立即返回 `None`。
 ///
-/// Note that this is different from connecting to a server by address. Server
-/// addresses are always 16 bytes long, whereas server names are arbitrary-length
-/// strings.
+/// 注意这与按地址（address）连接到服务器不同。服务器地址总是 16 字节长，而服务器名字则是
+/// 长度任意的字符串。
 #[stable(feature = "rust1", since = "1.0.0")]
 pub fn try_connect(name: &str) -> Option<Connection> {
     ns::try_connect_with_name(name)
@@ -108,10 +103,9 @@ pub fn try_connect(name: &str) -> Option<Connection> {
 
 static NAME_SERVER_CONNECTION: Atomic<u32> = AtomicU32::new(0);
 
-/// Returns a `Connection` to the name server. If the name server has not been started,
-/// then this call will block until the name server has been started. The `Connection`
-/// will be shared among all connections in a process, so it is safe to call this
-/// multiple times.
+/// 返回一个到名字服务器（name server）的 `Connection`。如果名字服务器尚未启动，则本调用将
+/// 一直阻塞，直到名字服务器启动为止。该 `Connection` 会在一个进程内的所有连接之间共享，
+/// 因此多次调用本函数是安全的。
 pub(crate) fn name_server() -> Connection {
     let cid = NAME_SERVER_CONNECTION.load(Ordering::Relaxed);
     if cid != 0 {

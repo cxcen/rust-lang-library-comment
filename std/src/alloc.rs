@@ -1,17 +1,19 @@
-//! Memory allocation APIs.
+//! 内存分配相关的 API。
 //!
-//! In a given program, the standard library has one “global” memory allocator
-//! that is used for example by `Box<T>` and `Vec<T>`.
+//! 本模块维护进程级的“全局内存分配”机制：在一个给定程序中，标准库拥有唯一一个
+//! “全局（global）”内存分配器，例如 `Box<T>` 和 `Vec<T>` 都通过它来分配内存。
+//! `alloc` crate（通过 `pub use alloc_crate::alloc::*` 重导出）提供 `GlobalAlloc`
+//! trait 以及 `__rust_alloc` 等底层分配符号的声明，std 在此之上额外提供面向操作
+//! 系统的 [`System`] 分配器实现，以及分配失败钩子（alloc error hook）等只能依赖
+//! 运行时才能完成的功能。
 //!
-//! Currently the default global allocator is unspecified. Libraries, however,
-//! like `cdylib`s and `staticlib`s are guaranteed to use the [`System`] by
-//! default.
+//! 目前默认的全局分配器是未指定（unspecified）的。不过对于 `cdylib`、`staticlib`
+//! 这类库，可以保证默认使用 [`System`]。
 //!
-//! # The `#[global_allocator]` attribute
+//! # `#[global_allocator]` 属性
 //!
-//! This attribute allows configuring the choice of global allocator.
-//! You can use this to implement a completely custom global allocator
-//! to route all[^system-alloc] default allocation requests to a custom object.
+//! 该属性用于配置全局分配器的选择。你可以借助它实现一个完全自定义的全局分配器，
+//! 把所有[^system-alloc]默认分配请求都路由到一个自定义对象上。
 //!
 //! ```rust
 //! use std::alloc::{GlobalAlloc, System, Layout};
@@ -32,14 +34,14 @@
 //! static GLOBAL: MyAllocator = MyAllocator;
 //!
 //! fn main() {
-//!     // This `Vec` will allocate memory through `GLOBAL` above
+//!     // 这个 `Vec` 会通过上面的 `GLOBAL` 来分配内存
 //!     let mut v = Vec::new();
 //!     v.push(1);
 //! }
 //! ```
 //!
-//! The attribute is used on a `static` item whose type implements the
-//! [`GlobalAlloc`] trait. This type can be provided by an external library:
+//! 该属性作用于一个 `static` 项，其类型需实现 [`GlobalAlloc`] trait。这个类型可以
+//! 由外部库提供：
 //!
 //! ```rust,ignore (demonstrates crates.io usage)
 //! use jemallocator::Jemalloc;
@@ -50,13 +52,11 @@
 //! fn main() {}
 //! ```
 //!
-//! The `#[global_allocator]` can only be used once in a crate
-//! or its recursive dependencies.
+//! `#[global_allocator]` 在一个 crate 及其递归依赖中只能使用一次。
 //!
-//! [^system-alloc]: Note that the Rust standard library internals may still
-//! directly call [`System`] when necessary (for example for the runtime
-//! support typically required to implement a global allocator, see [re-entrance] on [`GlobalAlloc`]
-//! for more details).
+//! [^system-alloc]: 注意，Rust 标准库内部在必要时仍可能直接调用 [`System`]（例如
+//! 用于实现全局分配器通常所需的那部分运行时支持，详见 [`GlobalAlloc`] 上的
+//! [re-entrance]，即重入相关说明）。
 //!
 //! [re-entrance]: trait.GlobalAlloc.html#re-entrance
 
@@ -71,18 +71,16 @@ use core::{hint, mem, ptr};
 #[doc(inline)]
 pub use alloc_crate::alloc::*;
 
-/// The default memory allocator provided by the operating system.
+/// 由操作系统提供的默认内存分配器。
 ///
-/// This is based on `malloc` on Unix platforms and `HeapAlloc` on Windows,
-/// plus related functions. However, it is not valid to mix use of the backing
-/// system allocator with `System`, as this implementation may include extra
-/// work, such as to serve alignment requests greater than the alignment
-/// provided directly by the backing system allocator.
+/// 在 Unix 平台上它基于 `malloc`，在 Windows 上基于 `HeapAlloc` 及相关函数。但
+/// 是，把对底层系统分配器的直接使用与 `System` 混用是不合法的：因为本实现可能
+/// 包含一些额外工作，比如为满足超过底层系统分配器直接提供的对齐能力的对齐请求而
+/// 做的处理。
 ///
-/// This type implements the [`GlobalAlloc`] trait. Currently the default
-/// global allocator is unspecified. Libraries, however, like `cdylib`s and
-/// `staticlib`s are guaranteed to use the [`System`] by default and as such
-/// work as if they had this definition:
+/// 该类型实现了 [`GlobalAlloc`] trait。目前默认的全局分配器是未指定的。不过对于
+/// `cdylib`、`staticlib` 这类库，可以保证默认使用 [`System`]，其行为如同它们有
+/// 如下定义一般：
 ///
 /// ```rust
 /// use std::alloc::System;
@@ -91,13 +89,13 @@ pub use alloc_crate::alloc::*;
 /// static A: System = System;
 ///
 /// fn main() {
-///     let a = Box::new(4); // Allocates from the system allocator.
+///     let a = Box::new(4); // 从系统分配器分配内存。
 ///     println!("{a}");
 /// }
 /// ```
 ///
-/// You can also define your own wrapper around `System` if you'd like, such as
-/// keeping track of the number of all bytes allocated:
+/// 如果你愿意，也可以围绕 `System` 定义你自己的包装器，例如用来记录已分配的总
+/// 字节数：
 ///
 /// ```rust
 /// use std::alloc::{System, GlobalAlloc, Layout};
@@ -130,10 +128,9 @@ pub use alloc_crate::alloc::*;
 /// }
 /// ```
 ///
-/// It can also be used directly to allocate memory independently of whatever
-/// global allocator has been selected for a Rust program. For example if a Rust
-/// program opts in to using jemalloc as the global allocator, `System` will
-/// still allocate memory using `malloc` and `HeapAlloc`.
+/// 它也可以被直接使用，从而独立于某个 Rust 程序所选定的全局分配器来分配内存。
+/// 举例来说，如果一个 Rust 程序选择使用 jemalloc 作为全局分配器，`System` 仍会
+/// 通过 `malloc` 和 `HeapAlloc` 来分配内存。
 #[stable(feature = "alloc_system_type", since = "1.28.0")]
 #[derive(Debug, Default, Copy, Clone)]
 pub struct System;
@@ -143,7 +140,7 @@ impl System {
     fn alloc_impl(&self, layout: Layout, zeroed: bool) -> Result<NonNull<[u8]>, AllocError> {
         match layout.size() {
             0 => Ok(NonNull::slice_from_raw_parts(layout.dangling(), 0)),
-            // SAFETY: `layout` is non-zero in size,
+            // SAFETY: 此分支中 `layout` 的 size 非零，
             size => unsafe {
                 let raw_ptr = if zeroed {
                     GlobalAlloc::alloc_zeroed(self, layout)
@@ -156,7 +153,7 @@ impl System {
         }
     }
 
-    // SAFETY: Same as `Allocator::grow`
+    // SAFETY: 与 `Allocator::grow` 相同
     #[inline]
     unsafe fn grow_impl(
         &self,
@@ -173,13 +170,13 @@ impl System {
         match old_layout.size() {
             0 => self.alloc_impl(new_layout, zeroed),
 
-            // SAFETY: `new_size` is non-zero as `new_size` is greater than or equal to `old_size`
-            // as required by safety conditions and the `old_size == 0` case was handled in the
-            // previous match arm. Other conditions must be upheld by the caller
+            // SAFETY: `new_size` 非零，因为按安全条件要求 `new_size` 大于等于
+            // `old_size`，而 `old_size == 0` 的情况已在上一个 match 分支处理。其余
+            // 条件须由调用方维护
             old_size if old_layout.align() == new_layout.align() => unsafe {
                 let new_size = new_layout.size();
 
-                // `realloc` probably checks for `new_size >= old_layout.size()` or something similar.
+                // `realloc` 大概会检查 `new_size >= old_layout.size()` 或类似条件。
                 hint::assert_unchecked(new_size >= old_layout.size());
 
                 let raw_ptr = GlobalAlloc::realloc(self, ptr.as_ptr(), old_layout, new_size);
@@ -190,11 +187,10 @@ impl System {
                 Ok(NonNull::slice_from_raw_parts(ptr, new_size))
             },
 
-            // SAFETY: because `new_layout.size()` must be greater than or equal to `old_size`,
-            // both the old and new memory allocation are valid for reads and writes for `old_size`
-            // bytes. Also, because the old allocation wasn't yet deallocated, it cannot overlap
-            // `new_ptr`. Thus, the call to `copy_nonoverlapping` is safe. The safety contract
-            // for `dealloc` must be upheld by the caller.
+            // SAFETY: 因为 `new_layout.size()` 必须大于等于 `old_size`，所以新旧
+            // 两块内存对于 `old_size` 个字节的读写都是有效的。又因为旧内存尚未被
+            // 释放，它不会与 `new_ptr` 重叠。因此对 `copy_nonoverlapping` 的调用是
+            // 安全的。`dealloc` 的安全契约须由调用方维护。
             old_size => unsafe {
                 let new_ptr = self.alloc_impl(new_layout, zeroed)?;
                 ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_mut_ptr(), old_size);
@@ -205,8 +201,8 @@ impl System {
     }
 }
 
-// The Allocator impl checks the layout size to be non-zero and forwards to the GlobalAlloc impl,
-// which is in `std::sys::*::alloc`.
+// 这个 Allocator 实现会先检查 layout 的 size 非零，然后转发给 GlobalAlloc 实现，
+// 后者位于 `std::sys::*::alloc` 中。
 #[unstable(feature = "allocator_api", issue = "32838")]
 unsafe impl Allocator for System {
     #[inline]
@@ -222,8 +218,8 @@ unsafe impl Allocator for System {
     #[inline]
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
         if layout.size() != 0 {
-            // SAFETY: `layout` is non-zero in size,
-            // other conditions must be upheld by the caller
+            // SAFETY: 此分支中 `layout` 的 size 非零，
+            // 其余条件须由调用方维护
             unsafe { GlobalAlloc::dealloc(self, ptr.as_ptr(), layout) }
         }
     }
@@ -235,7 +231,7 @@ unsafe impl Allocator for System {
         old_layout: Layout,
         new_layout: Layout,
     ) -> Result<NonNull<[u8]>, AllocError> {
-        // SAFETY: all conditions must be upheld by the caller
+        // SAFETY: 所有条件须由调用方维护
         unsafe { self.grow_impl(ptr, old_layout, new_layout, false) }
     }
 
@@ -246,7 +242,7 @@ unsafe impl Allocator for System {
         old_layout: Layout,
         new_layout: Layout,
     ) -> Result<NonNull<[u8]>, AllocError> {
-        // SAFETY: all conditions must be upheld by the caller
+        // SAFETY: 所有条件须由调用方维护
         unsafe { self.grow_impl(ptr, old_layout, new_layout, true) }
     }
 
@@ -263,15 +259,15 @@ unsafe impl Allocator for System {
         );
 
         match new_layout.size() {
-            // SAFETY: conditions must be upheld by the caller
+            // SAFETY: 条件须由调用方维护
             0 => unsafe {
                 Allocator::deallocate(self, ptr, old_layout);
                 Ok(NonNull::slice_from_raw_parts(new_layout.dangling(), 0))
             },
 
-            // SAFETY: `new_size` is non-zero. Other conditions must be upheld by the caller
+            // SAFETY: `new_size` 非零。其余条件须由调用方维护
             new_size if old_layout.align() == new_layout.align() => unsafe {
-                // `realloc` probably checks for `new_size <= old_layout.size()` or something similar.
+                // `realloc` 大概会检查 `new_size <= old_layout.size()` 或类似条件。
                 hint::assert_unchecked(new_size <= old_layout.size());
 
                 let raw_ptr = GlobalAlloc::realloc(self, ptr.as_ptr(), old_layout, new_size);
@@ -279,11 +275,10 @@ unsafe impl Allocator for System {
                 Ok(NonNull::slice_from_raw_parts(ptr, new_size))
             },
 
-            // SAFETY: because `new_size` must be smaller than or equal to `old_layout.size()`,
-            // both the old and new memory allocation are valid for reads and writes for `new_size`
-            // bytes. Also, because the old allocation wasn't yet deallocated, it cannot overlap
-            // `new_ptr`. Thus, the call to `copy_nonoverlapping` is safe. The safety contract
-            // for `dealloc` must be upheld by the caller.
+            // SAFETY: 因为 `new_size` 必须小于等于 `old_layout.size()`，所以新旧
+            // 两块内存对于 `new_size` 个字节的读写都是有效的。又因为旧内存尚未被
+            // 释放，它不会与 `new_ptr` 重叠。因此对 `copy_nonoverlapping` 的调用是
+            // 安全的。`dealloc` 的安全契约须由调用方维护。
             new_size => unsafe {
                 let new_ptr = Allocator::allocate(self, new_layout)?;
                 ptr::copy_nonoverlapping(ptr.as_ptr(), new_ptr.as_mut_ptr(), new_size);
@@ -296,33 +291,31 @@ unsafe impl Allocator for System {
 
 static HOOK: AtomicPtr<()> = AtomicPtr::new(ptr::null_mut());
 
-/// Registers a custom allocation error hook, replacing any that was previously registered.
+/// 注册一个自定义的“分配失败钩子”（allocation error hook），并替换掉先前注册的
+/// 任何钩子。
 ///
-/// The allocation error hook is invoked when an infallible memory allocation fails — that is,
-/// as a consequence of calling [`handle_alloc_error`] — before the runtime aborts.
+/// 当一次不可失败（infallible）的内存分配失败时——也就是作为调用
+/// [`handle_alloc_error`] 的后果——会在运行时中止（abort）之前调用该分配失败钩子。
 ///
-/// The allocation error hook is a global resource. [`take_alloc_error_hook`] may be used to
-/// retrieve a previously registered hook and wrap or discard it.
+/// 分配失败钩子是一个全局资源。可以使用 [`take_alloc_error_hook`] 取回先前注册的
+/// 钩子，从而对其进行包装或丢弃。
 ///
-/// # What the provided `hook` function should expect
+/// # 所提供的 `hook` 函数应当预期什么
 ///
-/// The hook function is provided with a [`Layout`] struct which contains information
-/// about the allocation that failed.
+/// 钩子函数会收到一个 [`Layout`] 结构体，其中包含了关于这次失败分配的信息。
 ///
-/// The hook function may choose to panic or abort; in the event that it returns normally, this
-/// will cause an immediate abort.
+/// 钩子函数可以选择 panic 或 abort；如果它正常返回，则会立即触发一次 abort。
 ///
-/// Since [`take_alloc_error_hook`] is a safe function that allows retrieving the hook, the hook
-/// function must be _sound_ to call even if no memory allocations were attempted.
+/// 由于 [`take_alloc_error_hook`] 是一个允许取回钩子的安全函数，因此即便此前从未
+/// 尝试过任何内存分配，调用该钩子函数也必须是 _健全的（sound）_。
 ///
-/// # The default hook
+/// # 默认钩子
 ///
-/// The default hook, used if [`set_alloc_error_hook`] is never called, prints a message to
-/// standard error (and then returns, causing the runtime to abort the process).
-/// Compiler options may cause it to panic instead, and the default behavior may be changed
-/// to panicking in future versions of Rust.
+/// 如果从未调用过 [`set_alloc_error_hook`]，则使用默认钩子，它会向标准错误输出
+/// (standard error) 打印一条消息（然后返回，从而导致运行时中止进程）。编译器选项
+/// 可能会使它改为 panic，并且在 Rust 未来的版本中默认行为也可能改为 panic。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// #![feature(alloc_error_hook)]
@@ -340,11 +333,11 @@ pub fn set_alloc_error_hook(hook: fn(Layout)) {
     HOOK.store(hook as *mut (), Ordering::Release);
 }
 
-/// Unregisters the current allocation error hook, returning it.
+/// 注销当前的分配失败钩子，并将其返回。
 ///
-/// *See also the function [`set_alloc_error_hook`].*
+/// *另见函数 [`set_alloc_error_hook`]。*
 ///
-/// If no custom hook is registered, the default hook will be returned.
+/// 如果没有注册任何自定义钩子，则返回默认钩子。
 #[unstable(feature = "alloc_error_hook", issue = "51245")]
 pub fn take_alloc_error_hook() -> fn(Layout) {
     let hook = HOOK.swap(ptr::null_mut(), Ordering::Acquire);
@@ -357,19 +350,17 @@ fn default_alloc_error_hook(layout: Layout) {
         return;
     }
 
-    // This is the default path taken on OOM, and the only path taken on stable with std.
-    // Crucially, it does *not* call any user-defined code, and therefore users do not have to
-    // worry about allocation failure causing reentrancy issues. That makes it different from
-    // the default `__rdl_alloc_error_handler` defined in alloc (i.e., the default alloc error
-    // handler that is  called when there is no `#[alloc_error_handler]`), which triggers a
-    // regular panic and thus can invoke a user-defined panic hook, executing arbitrary
-    // user-defined code.
+    // 这是发生 OOM（内存耗尽）时所走的默认路径，也是在 stable 上使用 std 时唯一
+    // 会走的路径。关键在于，它*不会*调用任何用户自定义代码，因此用户无需担心分配
+    // 失败会引发重入（reentrancy）问题。这一点使它有别于 alloc 中定义的默认
+    // `__rdl_alloc_error_handler`（即在没有 `#[alloc_error_handler]` 时被调用的那个
+    // 默认分配错误处理器）：后者会触发一次常规 panic，从而可能调用用户自定义的
+    // panic 钩子，执行任意用户自定义代码。
 
     static PREV_ALLOC_FAILURE: AtomicBool = AtomicBool::new(false);
     if PREV_ALLOC_FAILURE.swap(true, Ordering::Relaxed) {
-        // Don't try to print a backtrace if a previous alloc error happened. This likely means
-        // there is not enough memory to print a backtrace, although it could also mean that two
-        // threads concurrently run out of memory.
+        // 如果先前已经发生过一次分配失败，就不要再尝试打印回溯。这很可能意味着已经
+        // 没有足够内存来打印回溯，不过也可能意味着两个线程并发地耗尽了内存。
         rtprintpanic!(
             "memory allocation of {} bytes failed\nskipping backtrace printing to avoid potential recursion\n",
             layout.size()
@@ -383,10 +374,10 @@ fn default_alloc_error_hook(layout: Layout) {
         return;
     };
 
-    // Use a lock to prevent mixed output in multithreading context.
-    // Some platforms also require it when printing a backtrace, like `SymFromAddr` on Windows.
-    // Make sure to not take this lock until after checking PREV_ALLOC_FAILURE to avoid deadlocks
-    // when there is too little memory to print a backtrace.
+    // 使用锁来防止多线程环境下输出相互混杂。
+    // 某些平台在打印回溯时也需要这个锁，比如 Windows 上的 `SymFromAddr`。
+    // 务必在检查完 PREV_ALLOC_FAILURE 之后再获取此锁，以避免在内存太少、无法打印
+    // 回溯时发生死锁。
     let mut lock = crate::sys::backtrace::lock();
 
     match crate::panic::get_backtrace_style() {
@@ -411,7 +402,7 @@ fn default_alloc_error_hook(layout: Layout) {
                 );
             }
         }
-        // If backtraces aren't supported or are forced-off, do nothing.
+        // 如果不支持回溯或回溯被强制关闭，则什么也不做。
         None => {}
     }
 }
@@ -436,20 +427,17 @@ pub fn rust_oom(layout: Layout) -> ! {
 #[unstable(feature = "alloc_internals", issue = "none")]
 pub mod __default_lib_allocator {
     use super::{GlobalAlloc, Layout, System};
-    // These magic symbol names are used as a fallback for implementing the
-    // `__rust_alloc` etc symbols (see `src/liballoc/alloc.rs`) when there is
-    // no `#[global_allocator]` attribute.
+    // 这些“魔法”符号名在没有 `#[global_allocator]` 属性时，被用作实现
+    // `__rust_alloc` 等符号（参见 `src/liballoc/alloc.rs`）的后备（fallback）方案。
 
-    // for symbol names src/librustc_ast/expand/allocator.rs
-    // for signatures src/librustc_allocator/lib.rs
+    // 符号名见 src/librustc_ast/expand/allocator.rs
+    // 函数签名见 src/librustc_allocator/lib.rs
 
-    // linkage directives are provided as part of the current compiler allocator
-    // ABI
+    // 链接指示（linkage directives）作为当前编译器分配器 ABI 的一部分提供
 
     #[rustc_std_internal_symbol]
     pub unsafe extern "C" fn __rdl_alloc(size: usize, align: usize) -> *mut u8 {
-        // SAFETY: see the guarantees expected by `Layout::from_size_align` and
-        // `GlobalAlloc::alloc`.
+        // SAFETY: 见 `Layout::from_size_align` 和 `GlobalAlloc::alloc` 所要求的保证。
         unsafe {
             let layout = Layout::from_size_align_unchecked(size, align);
             System.alloc(layout)
@@ -458,8 +446,7 @@ pub mod __default_lib_allocator {
 
     #[rustc_std_internal_symbol]
     pub unsafe extern "C" fn __rdl_dealloc(ptr: *mut u8, size: usize, align: usize) {
-        // SAFETY: see the guarantees expected by `Layout::from_size_align` and
-        // `GlobalAlloc::dealloc`.
+        // SAFETY: 见 `Layout::from_size_align` 和 `GlobalAlloc::dealloc` 所要求的保证。
         unsafe { System.dealloc(ptr, Layout::from_size_align_unchecked(size, align)) }
     }
 
@@ -470,8 +457,7 @@ pub mod __default_lib_allocator {
         align: usize,
         new_size: usize,
     ) -> *mut u8 {
-        // SAFETY: see the guarantees expected by `Layout::from_size_align` and
-        // `GlobalAlloc::realloc`.
+        // SAFETY: 见 `Layout::from_size_align` 和 `GlobalAlloc::realloc` 所要求的保证。
         unsafe {
             let old_layout = Layout::from_size_align_unchecked(old_size, align);
             System.realloc(ptr, old_layout, new_size)
@@ -480,8 +466,7 @@ pub mod __default_lib_allocator {
 
     #[rustc_std_internal_symbol]
     pub unsafe extern "C" fn __rdl_alloc_zeroed(size: usize, align: usize) -> *mut u8 {
-        // SAFETY: see the guarantees expected by `Layout::from_size_align` and
-        // `GlobalAlloc::alloc_zeroed`.
+        // SAFETY: 见 `Layout::from_size_align` 和 `GlobalAlloc::alloc_zeroed` 所要求的保证。
         unsafe {
             let layout = Layout::from_size_align_unchecked(size, align);
             System.alloc_zeroed(layout)

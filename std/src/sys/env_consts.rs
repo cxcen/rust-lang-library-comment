@@ -1,8 +1,7 @@
-//! Constants associated with each target.
+//! 与每个目标平台相关联的常量。
 
-// Replaces the #[else] gate with #[cfg(not(any(…)))] of all the other gates.
-// This ensures that they must be mutually exclusive and do not have precedence
-// like cfg_select!.
+// 用全部其他门控的 #[cfg(not(any(…)))] 来替换 #[else] 门控。
+// 这样可以保证各分支互斥，并且不会像 cfg_select! 那样存在优先级先后顺序。
 macro cfg_unordered(
     $(#[cfg($cfg:meta)] $os:item)*
     #[else] $fallback:item
@@ -11,7 +10,7 @@ macro cfg_unordered(
     #[cfg(not(any($($cfg),*)))] $fallback
 }
 
-// Keep entries sorted alphabetically and mutually exclusive.
+// 各条目按字母顺序排列，并保持互斥。
 
 cfg_unordered! {
 
@@ -411,7 +410,7 @@ pub mod os {
     pub const EXE_EXTENSION: &str = "elf";
 }
 
-// The fallback when none of the other gates match.
+// 当其他所有门控都不匹配时使用的回退分支。
 #[else]
 pub mod os {
     pub const FAMILY: &str = "";

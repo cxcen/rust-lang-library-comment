@@ -1,6 +1,6 @@
-//! Platform-specific extensions to `std` for Preview 2 of the WebAssembly System Interface (WASI).
+//! 针对 WebAssembly System Interface (WASI) Preview 2 的 `std` 平台特定扩展。
 //!
-//! This module is currently empty, but will be filled over time as wasi-libc support for WASI Preview 2 is stabilized.
+//! 本模块目前为空，但随着 wasi-libc 对 WASI Preview 2 支持的稳定化，它将逐步被填充。
 
 #![forbid(unsafe_op_in_unsafe_fn)]
 #![stable(feature = "raw_ext", since = "1.1.0")]

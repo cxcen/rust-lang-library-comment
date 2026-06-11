@@ -1,4 +1,4 @@
-#![allow(dead_code)] // not used on all platforms
+#![allow(dead_code)] // 并非所有平台都会用到
 
 use crate::io::{self, Error, ErrorKind};
 use crate::path::{Path, PathBuf};
@@ -42,7 +42,7 @@ fn remove_dir_all_recursive(path: &Path) -> io::Result<()> {
                 fs::remove_file(&child.path())?;
             }
         };
-        // ignore internal NotFound errors to prevent race conditions
+        // 忽略内部的 NotFound 错误，以避免竞态条件（race condition）
         if let Err(err) = &result
             && err.kind() != io::ErrorKind::NotFound
         {

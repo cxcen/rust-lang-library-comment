@@ -1,4 +1,4 @@
-//! VxWorks-specific raw type definitions
+//! VxWorks 平台特有的原始类型定义
 #![stable(feature = "metadata_ext", since = "1.1.0")]
 
 use crate::os::raw::c_ulong;

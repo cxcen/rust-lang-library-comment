@@ -12,8 +12,8 @@ use crate::{cmp, io, ptr, str};
 #[cfg(test)]
 mod tests;
 
-// Don't cache handles but get them fresh for every read/write. This allows us to track changes to
-// the value over time (such as if a process calls `SetStdHandle` while it's running). See #40490.
+// 不要缓存句柄，而是在每次读/写时都重新获取它们。这使得我们能够跟踪该值随时间发生的变化
+//（例如某个进程在运行期间调用了 `SetStdHandle`）。参见 #40490。
 pub struct Stdin {
     surrogate: u16,
     incomplete_utf8: IncompleteUtf8,
@@ -33,13 +33,13 @@ struct IncompleteUtf8 {
 }
 
 impl IncompleteUtf8 {
-    // Implemented for use in Stdin::read.
+    // 实现它是为了在 Stdin::read 中使用。
     fn read(&mut self, buf: &mut [u8]) -> usize {
-        // Write to buffer until the buffer is full or we run out of bytes.
+        // 持续写入缓冲区，直到缓冲区写满，或者我们的字节用完。
         let to_write = cmp::min(buf.len(), self.len as usize);
         buf[..to_write].copy_from_slice(&self.bytes[..to_write]);
 
-        // Rotate the remaining bytes if not enough remaining space in buffer.
+        // 如果缓冲区中剩余空间不足，则旋转（rotate）剩余的字节。
         if usize::from(self.len) > buf.len() {
             self.bytes.copy_within(to_write.., 0);
             self.len -= to_write as u8;
@@ -51,18 +51,17 @@ impl IncompleteUtf8 {
     }
 }
 
-// Apparently Windows doesn't handle large reads on stdin or writes to stdout/stderr well (see
-// #13304 for details).
+// 显然 Windows 在 stdin 上的大读取、或对 stdout/stderr 的大写入处理得不好
+//（细节参见 #13304）。
 //
-// From MSDN (2011): "The storage for this buffer is allocated from a shared heap for the
-// process that is 64 KB in size. The maximum size of the buffer will depend on heap usage."
+// 摘自 MSDN（2011）："该缓冲区的存储是从进程的一个共享堆（shared heap）中分配的，
+// 其大小为 64 KB。缓冲区的最大尺寸将取决于堆的使用情况。"
 //
-// We choose the cap at 8 KiB because libuv does the same, and it seems to be acceptable so far.
+// 我们把上限选为 8 KiB，因为 libuv 也是这么做的，而且到目前为止它似乎是可以接受的。
 const MAX_BUFFER_SIZE: usize = 8192;
 
-// The standard buffer size of BufReader for Stdin should be able to hold 3x more bytes than there
-// are `u16`'s in MAX_BUFFER_SIZE. This ensures the read data can always be completely decoded from
-// UTF-16 to UTF-8.
+// Stdin 的 BufReader 的标准缓冲区大小应当能够容纳的字节数，是 MAX_BUFFER_SIZE 中
+// `u16` 个数的 3 倍以上。这确保读到的数据总是能够从 UTF-16 完整地解码为 UTF-8。
 pub const STDIN_BUF_SIZE: usize = MAX_BUFFER_SIZE / 2 * 3;
 
 pub fn get_handle(handle_id: u32) -> io::Result<c::HANDLE> {
@@ -77,14 +76,14 @@ pub fn get_handle(handle_id: u32) -> io::Result<c::HANDLE> {
 }
 
 fn is_console(handle: c::HANDLE) -> bool {
-    // `GetConsoleMode` will return false (0) if this is a pipe (we don't care about the reported
-    // mode). This will only detect Windows Console, not other terminals connected to a pipe like
-    // MSYS. Which is exactly what we need, as only Windows Console needs a conversion to UTF-16.
+    // 如果这是一个管道（pipe），`GetConsoleMode` 会返回 false (0)（我们并不关心其报告的
+    // mode）。它只会检测 Windows Console，而不会检测其他通过管道连接的终端，比如 MSYS。
+    // 这正是我们所需要的，因为只有 Windows Console 才需要转换为 UTF-16。
     let mut mode = 0;
     unsafe { c::GetConsoleMode(handle, &mut mode) != 0 }
 }
 
-/// Returns true if the attached console's code page is currently UTF-8.
+/// 如果所连接控制台的代码页（code page）当前为 UTF-8，则返回 true。
 #[cfg(not(target_vendor = "win7"))]
 fn is_utf8_console() -> bool {
     unsafe { c::GetConsoleOutputCP() == c::CP_UTF8 }
@@ -92,9 +91,9 @@ fn is_utf8_console() -> bool {
 
 #[cfg(target_vendor = "win7")]
 fn is_utf8_console() -> bool {
-    // Windows 7 has a fun "feature" where WriteFile on a console handle will return
-    // the number of UTF-16 code units written and not the number of bytes from the input string.
-    // So we always claim the console isn't UTF-8 to trigger the WriteConsole fallback code.
+    // Windows 7 有一个有趣的“特性”：对一个控制台句柄调用 WriteFile 时，
+    // 它返回的是写入的 UTF-16 码元（code units）数量，而不是输入字符串中的字节数。
+    // 因此我们总是声称该控制台不是 UTF-8，从而触发 WriteConsole 回退代码。
     false
 }
 
@@ -108,7 +107,7 @@ fn write(handle_id: u32, data: &[u8], incomplete_utf8: &mut IncompleteUtf8) -> i
         unsafe {
             let handle = Handle::from_raw_handle(handle);
             let ret = handle.write(data);
-            let _ = handle.into_raw_handle(); // Don't close the handle
+            let _ = handle.into_raw_handle(); // 不要关闭该句柄
             return ret;
         }
     } else {
@@ -127,7 +126,7 @@ fn write_console_utf16(
             "Unexpected number of bytes for incomplete UTF-8 codepoint."
         );
         if data[0] >> 6 != 0b10 {
-            // not a continuation byte - reject
+            // 不是延续字节（continuation byte）——拒绝
             incomplete_utf8.len = 0;
             return Err(io::const_error!(
                 io::ErrorKind::InvalidData,
@@ -138,7 +137,7 @@ fn write_console_utf16(
         incomplete_utf8.len += 1;
         let char_width = utf8_char_width(incomplete_utf8.bytes[0]);
         if (incomplete_utf8.len as usize) < char_width {
-            // more bytes needed
+            // 还需要更多字节
             return Ok(1);
         }
         let s = str::from_utf8(&incomplete_utf8.bytes[0..incomplete_utf8.len as usize]);
@@ -147,7 +146,7 @@ fn write_console_utf16(
             Ok(s) => {
                 assert_eq!(char_width, s.len());
                 let written = write_valid_utf8_to_console(handle, s)?;
-                assert_eq!(written, s.len()); // guaranteed by write_valid_utf8_to_console() for single codepoint writes
+                assert_eq!(written, s.len()); // 对于单个码点（codepoint）的写入，这由 write_valid_utf8_to_console() 保证
                 return Ok(1);
             }
             Err(_) => {
@@ -159,12 +158,12 @@ fn write_console_utf16(
         }
     }
 
-    // As the console is meant for presenting text, we assume bytes of `data` are encoded as UTF-8,
-    // which needs to be encoded as UTF-16.
+    // 由于控制台用于呈现文本，我们假定 `data` 中的字节是以 UTF-8 编码的，
+    // 而这需要被编码为 UTF-16。
     //
-    // If the data is not valid UTF-8 we write out as many bytes as are valid.
-    // If the first byte is invalid it is either first byte of a multi-byte sequence but the
-    // provided byte slice is too short or it is the first byte of an invalid multi-byte sequence.
+    // 如果数据不是有效的 UTF-8，我们就只写出其中有效的那部分字节。
+    // 如果第一个字节就无效，那么它要么是某个多字节序列的首字节但所提供的字节切片太短，
+    // 要么是某个无效多字节序列的首字节。
     let len = cmp::min(data.len(), MAX_BUFFER_SIZE / 2);
     let utf8 = match str::from_utf8(&data[..len]) {
         Ok(s) => s,
@@ -194,8 +193,8 @@ fn write_valid_utf8_to_console(handle: c::HANDLE, utf8: &str) -> io::Result<usiz
     let utf8 = &utf8[..utf8.floor_char_boundary(utf16.len())];
 
     let utf16: &[u16] = unsafe {
-        // Note that this theoretically checks validity twice in the (most common) case
-        // where the underlying byte sequence is valid utf-8 (given the check in `write()`).
+        // 注意：在底层字节序列是有效 utf-8 的（最常见）情况下（鉴于 `write()` 中已有检查），
+        // 这在理论上会重复进行两次有效性检查。
         let result = c::MultiByteToWideChar(
             c::CP_UTF8,                          // CodePage
             c::MB_ERR_INVALID_CHARS,             // dwFlags
@@ -206,35 +205,34 @@ fn write_valid_utf8_to_console(handle: c::HANDLE, utf8: &str) -> io::Result<usiz
         );
         assert!(result != 0, "Unexpected error in MultiByteToWideChar");
 
-        // Safety: MultiByteToWideChar initializes `result` values.
+        // Safety: MultiByteToWideChar 会初始化 `result` 个值。
         utf16[..result as usize].assume_init_ref()
     };
 
     let mut written = write_u16s(handle, utf16)?;
 
-    // Figure out how many bytes of as UTF-8 were written away as UTF-16.
+    // 计算以 UTF-16 形式写出去的内容对应了多少字节的 UTF-8。
     if written == utf16.len() {
         Ok(utf8.len())
     } else {
-        // Make sure we didn't end up writing only half of a surrogate pair (even though the chance
-        // is tiny). Because it is not possible for user code to re-slice `data` in such a way that
-        // a missing surrogate can be produced (and also because of the UTF-8 validation above),
-        // write the missing surrogate out now.
-        // Buffering it would mean we have to lie about the number of bytes written.
+        // 确保我们没有最终只写出了代理对（surrogate pair）的一半（尽管这种几率非常小）。
+        // 由于用户代码不可能以某种方式重新切片（re-slice）`data` 而产生出缺失的代理项
+        //（同时也由于上面的 UTF-8 验证），现在就把缺失的代理项写出去。
+        // 对它进行缓冲将意味着我们不得不在已写入字节数上撒谎。
         let first_code_unit_remaining = utf16[written];
         if matches!(first_code_unit_remaining, 0xDCEE..=0xDFFF) {
-            // low surrogate
-            // We just hope this works, and give up otherwise
+            // 低位代理项（low surrogate）
+            // 我们只能寄希望于它能成功，否则就放弃
             let _ = write_u16s(handle, &utf16[written..written + 1]);
             written += 1;
         }
-        // Calculate the number of bytes of `utf8` that were actually written.
+        // 计算 `utf8` 中实际被写入的字节数。
         let mut count = 0;
         for ch in utf16[..written].iter() {
             count += match ch {
                 0x0000..=0x007F => 1,
                 0x0080..=0x07FF => 2,
-                0xDCEE..=0xDFFF => 1, // Low surrogate. We already counted 3 bytes for the other.
+                0xDCEE..=0xDFFF => 1, // 低位代理项（Low surrogate）。我们已经为另一半计入了 3 个字节。
                 _ => 3,
             };
         }
@@ -265,44 +263,42 @@ impl io::Read for Stdin {
             unsafe {
                 let handle = Handle::from_raw_handle(handle);
                 let ret = handle.read(buf);
-                let _ = handle.into_raw_handle(); // Don't close the handle
+                let _ = handle.into_raw_handle(); // 不要关闭该句柄
                 return ret;
             }
         }
 
-        // If there are bytes in the incomplete utf-8, start with those.
-        // (No-op if there is nothing in the buffer.)
+        // 如果不完整的 utf-8 缓冲区中还有字节，就先从那些字节开始。
+        //（如果缓冲区中什么都没有，则为空操作。）
         let mut bytes_copied = self.incomplete_utf8.read(buf);
 
         if bytes_copied == buf.len() {
             Ok(bytes_copied)
         } else if buf.len() - bytes_copied < 4 {
-            // Not enough space to get a UTF-8 byte. We will use the incomplete UTF8.
+            // 空间不足以取得一个 UTF-8 字节。我们将使用 incomplete UTF8。
             let mut utf16_buf = [MaybeUninit::new(0); 1];
-            // Read one u16 character.
+            // 读取一个 u16 字符。
             let read = read_u16s_fixup_surrogates(handle, &mut utf16_buf, 1, &mut self.surrogate)?;
-            // Read bytes, using the (now-empty) self.incomplete_utf8 as extra space.
+            // 读取字节，把（现在已为空的）self.incomplete_utf8 用作额外空间。
             let read_bytes = utf16_to_utf8(
                 unsafe { utf16_buf[..read].assume_init_ref() },
                 &mut self.incomplete_utf8.bytes,
             )?;
 
-            // Read in the bytes from incomplete_utf8 until the buffer is full.
+            // 从 incomplete_utf8 中读入字节，直到缓冲区被填满。
             self.incomplete_utf8.len = read_bytes as u8;
-            // No-op if no bytes.
+            // 如果没有字节，则为空操作。
             bytes_copied += self.incomplete_utf8.read(&mut buf[bytes_copied..]);
             Ok(bytes_copied)
         } else {
             let mut utf16_buf = [MaybeUninit::<u16>::uninit(); MAX_BUFFER_SIZE / 2];
 
-            // In the worst case, a UTF-8 string can take 3 bytes for every `u16` of a UTF-16. So
-            // we can read at most a third of `buf.len()` chars and uphold the guarantee no data gets
-            // lost.
+            // 在最坏情况下，一个 UTF-8 字符串中每个 UTF-16 的 `u16` 可能会占用 3 个字节。
+            // 因此我们最多只能读取 `buf.len()` 的三分之一个字符，并且坚守不丢失任何数据的保证。
             let amount = cmp::min(buf.len() / 3, utf16_buf.len());
             let read =
                 read_u16s_fixup_surrogates(handle, &mut utf16_buf, amount, &mut self.surrogate)?;
-            // Safety `read_u16s_fixup_surrogates` returns the number of items
-            // initialized.
+            // Safety: `read_u16s_fixup_surrogates` 返回已初始化的项数。
             let utf16s = unsafe { utf16_buf[..read].assume_init_ref() };
             match utf16_to_utf8(utf16s, buf) {
                 Ok(value) => return Ok(bytes_copied + value),
@@ -312,37 +308,36 @@ impl io::Read for Stdin {
     }
 }
 
-// We assume that if the last `u16` is an unpaired surrogate they got sliced apart by our
-// buffer size, and keep it around for the next read hoping to put them together.
-// This is a best effort, and might not work if we are not the only reader on Stdin.
+// 我们假定：如果最后一个 `u16` 是一个未配对的代理项（unpaired surrogate），
+// 那是因为它们被我们的缓冲区大小切开了；于是把它保留下来，留到下一次读取时，
+// 寄希望于能把它们重新拼到一起。
+// 这是一种尽力而为（best effort）的做法，如果我们不是 Stdin 上唯一的 reader，它可能不起作用。
 fn read_u16s_fixup_surrogates(
     handle: c::HANDLE,
     buf: &mut [MaybeUninit<u16>],
     mut amount: usize,
     surrogate: &mut u16,
 ) -> io::Result<usize> {
-    // Insert possibly remaining unpaired surrogate from last read.
+    // 插入上一次读取中可能残留的未配对代理项。
     let mut start = 0;
     if *surrogate != 0 {
         buf[0] = MaybeUninit::new(*surrogate);
         *surrogate = 0;
         start = 1;
         if amount == 1 {
-            // Special case: `Stdin::read` guarantees we can always read at least one new `u16`
-            // and combine it with an unpaired surrogate, because the UTF-8 buffer is at least
-            // 4 bytes.
+            // 特殊情况：`Stdin::read` 保证我们总能读到至少一个新的 `u16`，
+            // 并把它与一个未配对的代理项组合起来，因为 UTF-8 缓冲区至少有 4 个字节。
             amount = 2;
         }
     }
     let mut amount = read_u16s(handle, &mut buf[start..amount])? + start;
 
     if amount > 0 {
-        // Safety: The returned `amount` is the number of values initialized,
-        // and it is not 0, so we know that `buf[amount - 1]` have been
-        // initialized.
+        // Safety: 返回的 `amount` 是已初始化的值的数量，并且它不为 0，
+        // 因此我们知道 `buf[amount - 1]` 已经被初始化。
         let last_char = unsafe { buf[amount - 1].assume_init() };
         if matches!(last_char, 0xD800..=0xDBFF) {
-            // high surrogate
+            // 高位代理项（high surrogate）
             *surrogate = last_char;
             amount -= 1;
         }
@@ -350,11 +345,11 @@ fn read_u16s_fixup_surrogates(
     Ok(amount)
 }
 
-// Returns `Ok(n)` if it initialized `n` values in `buf`.
+// 如果它在 `buf` 中初始化了 `n` 个值，则返回 `Ok(n)`。
 fn read_u16s(handle: c::HANDLE, buf: &mut [MaybeUninit<u16>]) -> io::Result<usize> {
-    // Configure the `pInputControl` parameter to not only return on `\r\n` but also Ctrl-Z, the
-    // traditional DOS method to indicate end of character stream / user input (SUB).
-    // See #38274 and https://stackoverflow.com/questions/43836040/win-api-readconsole.
+    // 配置 `pInputControl` 参数，使其不仅在遇到 `\r\n` 时返回，还在遇到 Ctrl-Z 时返回；
+    // Ctrl-Z 是 DOS 中用来表示字符流结束 / 用户输入结束的传统方式（SUB）。
+    // 参见 #38274 和 https://stackoverflow.com/questions/43836040/win-api-readconsole。
     const CTRL_Z: u16 = 0x1A;
     const CTRL_Z_MASK: u32 = 1 << CTRL_Z;
     let input_control = c::CONSOLE_READCONSOLE_CONTROL {
@@ -377,15 +372,15 @@ fn read_u16s(handle: c::HANDLE, buf: &mut [MaybeUninit<u16>]) -> io::Result<usiz
             )
         })?;
 
-        // ReadConsoleW returns success with ERROR_OPERATION_ABORTED for Ctrl-C or Ctrl-Break.
-        // Explicitly check for that case here and try again.
+        // 对于 Ctrl-C 或 Ctrl-Break，ReadConsoleW 会返回成功，但伴随 ERROR_OPERATION_ABORTED。
+        // 这里显式检查这种情况并重试。
         if amount == 0 && api::get_last_error() == WinError::OPERATION_ABORTED {
             continue;
         }
         break;
     }
-    // Safety: if `amount > 0`, then that many bytes were written, so
-    // `buf[amount as usize - 1]` has been initialized.
+    // Safety: 如果 `amount > 0`，则说明写入了那么多字节，
+    // 因此 `buf[amount as usize - 1]` 已经被初始化。
     if amount > 0 && unsafe { buf[amount as usize - 1].assume_init() } == CTRL_Z {
         amount -= 1;
     }
@@ -413,7 +408,7 @@ fn utf16_to_utf8(utf16: &[u16], utf8: &mut [u8]) -> io::Result<usize> {
         )
     };
     if result == 0 {
-        // We can't really do any better than forget all data and return an error.
+        // 除了丢弃所有数据并返回一个错误之外，我们实在没有更好的办法了。
         Err(io::const_error!(
             io::ErrorKind::InvalidData,
             "Windows stdin in console mode does not support non-UTF-16 input; \

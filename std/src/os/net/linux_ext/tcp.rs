@@ -1,4 +1,4 @@
-//! Linux and Android-specific tcp extensions to primitives in the [`std::net`] module.
+//! 针对 [`std::net`] 模块中各基础类型的 Linux 与 Android 特有 tcp 扩展。
 //!
 //! [`std::net`]: crate::net
 
@@ -8,21 +8,20 @@ use crate::sys::AsInner;
 use crate::time::Duration;
 use crate::{io, net};
 
-/// Os-specific extensions for [`TcpStream`]
+/// 针对 [`TcpStream`] 的操作系统特有扩展
 ///
 /// [`TcpStream`]: net::TcpStream
 #[stable(feature = "tcp_quickack", since = "1.89.0")]
 pub trait TcpStreamExt: Sealed {
-    /// Enable or disable `TCP_QUICKACK`.
+    /// 启用或禁用 `TCP_QUICKACK`。
     ///
-    /// This flag causes Linux to eagerly send ACKs rather than delaying them.
-    /// Linux may reset this flag after further operations on the socket.
+    /// 该标志使 Linux 积极地发送 ACK，而不是延迟发送。
+    /// 在对该套接字进行后续操作之后，Linux 可能会重置此标志。
     ///
-    /// See [`man 7 tcp`](https://man7.org/linux/man-pages/man7/tcp.7.html) and
-    /// [TCP delayed acknowledgement](https://en.wikipedia.org/wiki/TCP_delayed_acknowledgment)
-    /// for more information.
+    /// 更多信息参见 [`man 7 tcp`](https://man7.org/linux/man-pages/man7/tcp.7.html) 与
+    /// [TCP delayed acknowledgement](https://en.wikipedia.org/wiki/TCP_delayed_acknowledgment)。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::net::TcpStream;
@@ -38,11 +37,11 @@ pub trait TcpStreamExt: Sealed {
     #[stable(feature = "tcp_quickack", since = "1.89.0")]
     fn set_quickack(&self, quickack: bool) -> io::Result<()>;
 
-    /// Gets the value of the `TCP_QUICKACK` option on this socket.
+    /// 获取此套接字上 `TCP_QUICKACK` 选项的值。
     ///
-    /// For more information about this option, see [`TcpStreamExt::set_quickack`].
+    /// 关于该选项的更多信息，参见 [`TcpStreamExt::set_quickack`]。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::net::TcpStream;
@@ -59,19 +58,17 @@ pub trait TcpStreamExt: Sealed {
     #[stable(feature = "tcp_quickack", since = "1.89.0")]
     fn quickack(&self) -> io::Result<bool>;
 
-    /// A socket listener will be awakened solely when data arrives.
+    /// 套接字监听器将仅在数据到达时被唤醒。
     ///
-    /// The `accept` argument set the maximum delay until the
-    /// data is available to read, reducing the number of short lived
-    /// connections without data to process.
-    /// Contrary to other platforms `SO_ACCEPTFILTER` feature equivalent, there is
-    /// no necessity to set it after the `listen` call.
-    /// Note that the delay is expressed as Duration from user's perspective
-    /// the call rounds it down to the nearest second expressible as a `c_int`.
+    /// `accept` 参数设置在数据可读之前的最大延迟，从而减少那些没有数据需要处理的
+    /// 短生命周期连接的数量。
+    /// 与其他平台上等价的 `SO_ACCEPTFILTER` 特性不同，这里无需在 `listen` 调用之后再设置它。
+    /// 注意，从用户视角看该延迟以 Duration 表示，调用会将其向下取整到能用 `c_int`
+    /// 表示的最近的整秒数。
     ///
-    /// See [`man 7 tcp`](https://man7.org/linux/man-pages/man7/tcp.7.html)
+    /// 参见 [`man 7 tcp`](https://man7.org/linux/man-pages/man7/tcp.7.html)
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no run
     /// #![feature(tcp_deferaccept)]
@@ -87,11 +84,11 @@ pub trait TcpStreamExt: Sealed {
     #[cfg(target_os = "linux")]
     fn set_deferaccept(&self, accept: Duration) -> io::Result<()>;
 
-    /// Gets the accept delay value of the `TCP_DEFER_ACCEPT` option.
+    /// 获取 `TCP_DEFER_ACCEPT` 选项的 accept 延迟值。
     ///
-    /// For more information about this option, see [`TcpStreamExt::set_deferaccept`].
+    /// 关于该选项的更多信息，参见 [`TcpStreamExt::set_deferaccept`]。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// #![feature(tcp_deferaccept)]

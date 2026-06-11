@@ -1,4 +1,4 @@
-//! Unix-specific networking functionality.
+//! Unix 特有的网络功能。
 
 #![allow(irrefutable_let_patterns)]
 #![stable(feature = "unix_socket", since = "1.10.0")]

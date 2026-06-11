@@ -1,4 +1,4 @@
-//! Windows-specific extensions to primitives in the [`std::fs`] module.
+//! Windows 平台对 [`std::fs`] 模块中各原语的特定扩展。
 //!
 //! [`std::fs`]: crate::fs
 
@@ -12,25 +12,22 @@ use crate::sys::{AsInner, AsInnerMut, IntoInner};
 use crate::time::SystemTime;
 use crate::{io, sys};
 
-/// Windows-specific extensions to [`fs::File`].
+/// Windows 平台对 [`fs::File`] 的特定扩展。
 #[stable(feature = "file_offset", since = "1.15.0")]
 pub trait FileExt {
-    /// Seeks to a given position and reads a number of bytes.
+    /// 定位到给定位置并读取若干字节。
     ///
-    /// Returns the number of bytes read.
+    /// 返回读取到的字节数。
     ///
-    /// The offset is relative to the start of the file and thus independent
-    /// from the current cursor. The current cursor **is** affected by this
-    /// function, it is set to the end of the read.
+    /// 该偏移量相对于文件起始处，因此与当前游标无关。但当前游标 **会** 受本函数影响，
+    /// 它会被设置到本次读取的末尾处。
     ///
-    /// Reading beyond the end of the file will always return with a length of
-    /// 0\.
+    /// 在文件末尾之外进行读取将始终返回长度 0。
     ///
-    /// Note that similar to `File::read`, it is not an error to return with a
-    /// short read. When returning from such a short read, the file pointer is
-    /// still updated.
+    /// 注意：与 `File::read` 类似，发生“短读”（返回的字节数少于请求量）并不算错误。
+    /// 从这样的短读返回时，文件指针仍会被更新。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::io;
@@ -41,8 +38,7 @@ pub trait FileExt {
     ///     let mut file = File::open("foo.txt")?;
     ///     let mut buffer = [0; 10];
     ///
-    ///     // Read 10 bytes, starting 72 bytes from the
-    ///     // start of the file.
+    ///     // 从文件起始处偏移 72 字节开始，读取 10 字节。
     ///     file.seek_read(&mut buffer[..], 72)?;
     ///     Ok(())
     /// }
@@ -50,15 +46,15 @@ pub trait FileExt {
     #[stable(feature = "file_offset", since = "1.15.0")]
     fn seek_read(&self, buf: &mut [u8], offset: u64) -> io::Result<usize>;
 
-    /// Seeks to a given position and reads some bytes into the buffer.
+    /// 定位到给定位置并把若干字节读入缓冲区。
     ///
-    /// This is equivalent to the [`seek_read`](FileExt::seek_read) method, except that it is passed
-    /// a [`BorrowedCursor`] rather than `&mut [u8]` to allow use with uninitialized buffers. The
-    /// new data will be appended to any existing contents of `buf`.
+    /// 这等价于 [`seek_read`](FileExt::seek_read) 方法，区别在于它接收一个
+    /// [`BorrowedCursor`] 而非 `&mut [u8]`，以便能用于未初始化的缓冲区。新读到的数据
+    /// 将被追加到 `buf` 已有的内容之后。
     ///
-    /// Reading beyond the end of the file will always succeed without reading any bytes.
+    /// 在文件末尾之外进行读取将始终成功，且不会读到任何字节。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// #![feature(core_io_borrowed_buf)]
@@ -73,7 +69,7 @@ pub trait FileExt {
     /// fn main() -> io::Result<()> {
     ///     let mut file = File::open("pi.txt")?;
     ///
-    ///     // Read some bytes starting from offset 2
+    ///     // 从偏移 2 开始读取若干字节
     ///     let mut buf: [MaybeUninit<u8>; 10] = [MaybeUninit::uninit(); 10];
     ///     let mut buf = BorrowedBuf::from(buf.as_mut_slice());
     ///     file.seek_read_buf(buf.unfilled(), 2)?;
@@ -88,22 +84,19 @@ pub trait FileExt {
         io::default_read_buf(|b| self.seek_read(b, offset), buf)
     }
 
-    /// Seeks to a given position and writes a number of bytes.
+    /// 定位到给定位置并写入若干字节。
     ///
-    /// Returns the number of bytes written.
+    /// 返回写入的字节数。
     ///
-    /// The offset is relative to the start of the file and thus independent
-    /// from the current cursor. The current cursor **is** affected by this
-    /// function, it is set to the end of the write.
+    /// 该偏移量相对于文件起始处，因此与当前游标无关。但当前游标 **会** 受本函数影响，
+    /// 它会被设置到本次写入的末尾处。
     ///
-    /// When writing beyond the end of the file, the file is appropriately
-    /// extended and the intermediate bytes are set to zero.
+    /// 当写入到文件末尾之外时，文件会被相应地扩展，中间的字节会被置为零。
     ///
-    /// Note that similar to `File::write`, it is not an error to return a
-    /// short write. When returning from such a short write, the file pointer
-    /// is still updated.
+    /// 注意：与 `File::write` 类似，发生“短写”（写入的字节数少于请求量）并不算错误。
+    /// 从这样的短写返回时，文件指针仍会被更新。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs::File;
@@ -112,8 +105,7 @@ pub trait FileExt {
     /// fn main() -> std::io::Result<()> {
     ///     let mut buffer = File::create("foo.txt")?;
     ///
-    ///     // Write a byte string starting 72 bytes from
-    ///     // the start of the file.
+    ///     // 从文件起始处偏移 72 字节开始，写入一个字节串。
     ///     buffer.seek_write(b"some bytes", 72)?;
     ///     Ok(())
     /// }
@@ -137,25 +129,21 @@ impl FileExt for fs::File {
     }
 }
 
-/// Windows-specific extensions to [`fs::OpenOptions`].
+/// Windows 平台对 [`fs::OpenOptions`] 的特定扩展。
 #[stable(feature = "open_options_ext", since = "1.10.0")]
 pub trait OpenOptionsExt {
-    /// Overrides the `dwDesiredAccess` argument to the call to [`CreateFile`]
-    /// with the specified value.
+    /// 用指定的值覆盖调用 [`CreateFile`] 时所传入的 `dwDesiredAccess` 参数。
     ///
-    /// This will override the `read`, `write`, and `append` flags on the
-    /// `OpenOptions` structure. This method provides fine-grained control over
-    /// the permissions to read, write and append data, attributes (like hidden
-    /// and system), and extended attributes.
+    /// 这会覆盖 `OpenOptions` 结构上的 `read`、`write` 和 `append` 标志。本方法对读取、
+    /// 写入、追加数据以及属性（如 hidden、system）和扩展属性的权限提供细粒度控制。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs::OpenOptions;
     /// use std::os::windows::prelude::*;
     ///
-    /// // Open without read and write permission, for example if you only need
-    /// // to call `stat` on the file
+    /// // 不带读写权限地打开，例如当你只需要对该文件调用 `stat` 时
     /// let file = OpenOptions::new().access_mode(0).open("foo.txt");
     /// ```
     ///
@@ -163,24 +151,20 @@ pub trait OpenOptionsExt {
     #[stable(feature = "open_options_ext", since = "1.10.0")]
     fn access_mode(&mut self, access: u32) -> &mut Self;
 
-    /// Overrides the `dwShareMode` argument to the call to [`CreateFile`] with
-    /// the specified value.
+    /// 用指定的值覆盖调用 [`CreateFile`] 时所传入的 `dwShareMode` 参数。
     ///
-    /// By default `share_mode` is set to
-    /// `FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE`. This allows
-    /// other processes to read, write, and delete/rename the same file
-    /// while it is open. Removing any of the flags will prevent other
-    /// processes from performing the corresponding operation until the file
-    /// handle is closed.
+    /// 默认情况下 `share_mode` 被设置为
+    /// `FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE`。这允许其他进程在该文件
+    /// 打开期间对同一文件进行读取、写入和删除/重命名。去掉其中任何一个标志，都会阻止其他
+    /// 进程执行对应操作，直到该文件 handle 被关闭为止。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs::OpenOptions;
     /// use std::os::windows::prelude::*;
     ///
-    /// // Do not allow others to read or modify this file while we have it open
-    /// // for writing.
+    /// // 在我们以写入方式打开该文件期间，不允许其他进程读取或修改它。
     /// let file = OpenOptions::new()
     ///     .write(true)
     ///     .share_mode(0)
@@ -191,15 +175,14 @@ pub trait OpenOptionsExt {
     #[stable(feature = "open_options_ext", since = "1.10.0")]
     fn share_mode(&mut self, val: u32) -> &mut Self;
 
-    /// Sets extra flags for the `dwFileFlags` argument to the call to
-    /// [`CreateFile2`] to the specified value (or combines it with
-    /// `attributes` and `security_qos_flags` to set the `dwFlagsAndAttributes`
-    /// for [`CreateFile`]).
+    /// 把调用 [`CreateFile2`] 时所传入的 `dwFileFlags` 参数的额外标志设置为指定的值
+    /// （或者把它与 `attributes` 和 `security_qos_flags` 组合起来，用以设置
+    /// [`CreateFile`] 的 `dwFlagsAndAttributes`）。
     ///
-    /// Custom flags can only set flags, not remove flags set by Rust's options.
-    /// This option overwrites any previously set custom flags.
+    /// 自定义标志只能设置标志位，而不能移除由 Rust 的选项所设置的标志位。本选项会覆盖
+    /// 之前设置的任何自定义标志。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// # #![allow(unexpected_cfgs)]
@@ -222,22 +205,19 @@ pub trait OpenOptionsExt {
     #[stable(feature = "open_options_ext", since = "1.10.0")]
     fn custom_flags(&mut self, flags: u32) -> &mut Self;
 
-    /// Sets the `dwFileAttributes` argument to the call to [`CreateFile2`] to
-    /// the specified value (or combines it with `custom_flags` and
-    /// `security_qos_flags` to set the `dwFlagsAndAttributes` for
-    /// [`CreateFile`]).
+    /// 把调用 [`CreateFile2`] 时所传入的 `dwFileAttributes` 参数设置为指定的值
+    /// （或者把它与 `custom_flags` 和 `security_qos_flags` 组合起来，用以设置
+    /// [`CreateFile`] 的 `dwFlagsAndAttributes`）。
     ///
-    /// If a _new_ file is created because it does not yet exist and
-    /// `.create(true)` or `.create_new(true)` are specified, the new file is
-    /// given the attributes declared with `.attributes()`.
+    /// 如果因文件尚不存在、且指定了 `.create(true)` 或 `.create_new(true)` 而创建了一个
+    /// _新_ 文件，则该新文件会被赋予用 `.attributes()` 声明的属性。
     ///
-    /// If an _existing_ file is opened with `.create(true).truncate(true)`, its
-    /// existing attributes are preserved and combined with the ones declared
-    /// with `.attributes()`.
+    /// 如果用 `.create(true).truncate(true)` 打开一个 _已存在_ 的文件，则其已有属性会被
+    /// 保留，并与用 `.attributes()` 声明的属性组合起来。
     ///
-    /// In all other cases the attributes get ignored.
+    /// 在所有其他情况下，这些属性都会被忽略。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// # #![allow(unexpected_cfgs)]
@@ -260,26 +240,23 @@ pub trait OpenOptionsExt {
     #[stable(feature = "open_options_ext", since = "1.10.0")]
     fn attributes(&mut self, val: u32) -> &mut Self;
 
-    /// Sets the `dwSecurityQosFlags` argument to the call to [`CreateFile2`] to
-    /// the specified value (or combines it with `custom_flags` and `attributes`
-    /// to set the `dwFlagsAndAttributes` for [`CreateFile`]).
+    /// 把调用 [`CreateFile2`] 时所传入的 `dwSecurityQosFlags` 参数设置为指定的值
+    /// （或者把它与 `custom_flags` 和 `attributes` 组合起来，用以设置 [`CreateFile`] 的
+    /// `dwFlagsAndAttributes`）。
     ///
-    /// By default `security_qos_flags` is not set. It should be specified when
-    /// opening a named pipe, to control to which degree a server process can
-    /// act on behalf of a client process (security impersonation level).
+    /// 默认情况下 `security_qos_flags` 不被设置。在打开命名管道（named pipe）时应当指定它，
+    /// 用以控制服务端进程能在多大程度上代表客户端进程行事（即安全模拟级别，security
+    /// impersonation level）。
     ///
-    /// When `security_qos_flags` is not set, a malicious program can gain the
-    /// elevated privileges of a privileged Rust process when it allows opening
-    /// user-specified paths, by tricking it into opening a named pipe. So
-    /// arguably `security_qos_flags` should also be set when opening arbitrary
-    /// paths. However the bits can then conflict with other flags, specifically
-    /// `FILE_FLAG_OPEN_NO_RECALL`.
+    /// 当 `security_qos_flags` 未被设置时，一个特权 Rust 进程若允许打开用户指定的路径，
+    /// 恶意程序就有可能诱骗它去打开一个命名管道，从而窃取该进程的提升特权。因此可以说，
+    /// 在打开任意路径时也应当设置 `security_qos_flags`。不过，这些位随后可能会与其他标志
+    /// 冲突，具体来说是 `FILE_FLAG_OPEN_NO_RECALL`。
     ///
-    /// For information about possible values, see [Impersonation Levels] on the
-    /// Windows Dev Center site. The `SECURITY_SQOS_PRESENT` flag is set
-    /// automatically when using this method.
+    /// 关于可能取值的信息，参见 Windows 开发者中心网站上的 [Impersonation Levels]。
+    /// 使用本方法时会自动设置 `SECURITY_SQOS_PRESENT` 标志。
 
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// # #![allow(unexpected_cfgs)]
@@ -293,7 +270,7 @@ pub trait OpenOptionsExt {
     ///     .write(true)
     ///     .create(true)
     ///
-    ///     // Sets the flag value to `SecurityIdentification`.
+    ///     // 把标志值设置为 `SecurityIdentification`。
     ///     .security_qos_flags(winapi::SECURITY_IDENTIFICATION)
     ///
     ///     .open(r"\\.\pipe\MyPipe");
@@ -306,15 +283,15 @@ pub trait OpenOptionsExt {
     #[stable(feature = "open_options_ext", since = "1.10.0")]
     fn security_qos_flags(&mut self, flags: u32) -> &mut Self;
 
-    /// If set to `true`, prevent the "last access time" of the file from being changed.
+    /// 若设置为 `true`，则阻止该文件的“最后访问时间”（last access time）被改变。
     ///
-    /// Default to `false`.
+    /// 默认为 `false`。
     #[unstable(feature = "windows_freeze_file_times", issue = "149715")]
     fn freeze_last_access_time(&mut self, freeze: bool) -> &mut Self;
 
-    /// If set to `true`, prevent the "last write time" of the file from being changed.
+    /// 若设置为 `true`，则阻止该文件的“最后写入时间”（last write time）被改变。
     ///
-    /// Default to `false`.
+    /// 默认为 `false`。
     #[unstable(feature = "windows_freeze_file_times", issue = "149715")]
     fn freeze_last_write_time(&mut self, freeze: bool) -> &mut Self;
 }
@@ -357,22 +334,20 @@ impl OpenOptionsExt for OpenOptions {
     }
 }
 
-/// Windows-specific extensions to [`fs::Metadata`].
+/// Windows 平台对 [`fs::Metadata`] 的特定扩展。
 ///
-/// The data members that this trait exposes correspond to the members
-/// of the [`BY_HANDLE_FILE_INFORMATION`] structure.
+/// 本 trait 所暴露的数据成员，对应于 [`BY_HANDLE_FILE_INFORMATION`] 结构体的成员。
 ///
 /// [`BY_HANDLE_FILE_INFORMATION`]:
 ///     https://docs.microsoft.com/windows/win32/api/fileapi/ns-fileapi-by_handle_file_information
 #[stable(feature = "metadata_ext", since = "1.1.0")]
 pub trait MetadataExt {
-    /// Returns the value of the `dwFileAttributes` field of this metadata.
+    /// 返回本元数据中 `dwFileAttributes` 字段的值。
     ///
-    /// This field contains the file system attribute information for a file
-    /// or directory. For possible values and their descriptions, see
-    /// [File Attribute Constants] in the Windows Dev Center.
+    /// 该字段包含文件或目录的文件系统属性信息。关于可能取值及其描述，参见 Windows
+    /// 开发者中心的 [File Attribute Constants]。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::io;
@@ -391,18 +366,15 @@ pub trait MetadataExt {
     #[stable(feature = "metadata_ext", since = "1.1.0")]
     fn file_attributes(&self) -> u32;
 
-    /// Returns the value of the `ftCreationTime` field of this metadata.
+    /// 返回本元数据中 `ftCreationTime` 字段的值。
     ///
-    /// The returned 64-bit value is equivalent to a [`FILETIME`] struct,
-    /// which represents the number of 100-nanosecond intervals since
-    /// January 1, 1601 (UTC). The struct is automatically
-    /// converted to a `u64` value, as that is the recommended way
-    /// to use it.
+    /// 返回的 64 位值等价于一个 [`FILETIME`] 结构体，它表示自 1601 年 1 月 1 日（UTC）
+    /// 以来经过的 100 纳秒间隔的数目。该结构体会被自动转换为一个 `u64` 值，因为这是推荐的
+    /// 使用方式。
     ///
-    /// If the underlying filesystem does not support creation time, the
-    /// returned value is 0.
+    /// 如果底层文件系统不支持创建时间，则返回值为 0。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::io;
@@ -420,24 +392,18 @@ pub trait MetadataExt {
     #[stable(feature = "metadata_ext", since = "1.1.0")]
     fn creation_time(&self) -> u64;
 
-    /// Returns the value of the `ftLastAccessTime` field of this metadata.
+    /// 返回本元数据中 `ftLastAccessTime` 字段的值。
     ///
-    /// The returned 64-bit value is equivalent to a [`FILETIME`] struct,
-    /// which represents the number of 100-nanosecond intervals since
-    /// January 1, 1601 (UTC). The struct is automatically
-    /// converted to a `u64` value, as that is the recommended way
-    /// to use it.
+    /// 返回的 64 位值等价于一个 [`FILETIME`] 结构体，它表示自 1601 年 1 月 1 日（UTC）
+    /// 以来经过的 100 纳秒间隔的数目。该结构体会被自动转换为一个 `u64` 值，因为这是推荐的
+    /// 使用方式。
     ///
-    /// For a file, the value specifies the last time that a file was read
-    /// from or written to. For a directory, the value specifies when
-    /// the directory was created. For both files and directories, the
-    /// specified date is correct, but the time of day is always set to
-    /// midnight.
+    /// 对于文件，该值给出了文件最后一次被读取或写入的时间。对于目录，该值给出了目录被创建
+    /// 的时间。对于文件和目录，所给出的日期都是正确的，但一天中的具体时刻总是被设为午夜。
     ///
-    /// If the underlying filesystem does not support last access time, the
-    /// returned value is 0.
+    /// 如果底层文件系统不支持最后访问时间，则返回值为 0。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::io;
@@ -455,22 +421,18 @@ pub trait MetadataExt {
     #[stable(feature = "metadata_ext", since = "1.1.0")]
     fn last_access_time(&self) -> u64;
 
-    /// Returns the value of the `ftLastWriteTime` field of this metadata.
+    /// 返回本元数据中 `ftLastWriteTime` 字段的值。
     ///
-    /// The returned 64-bit value is equivalent to a [`FILETIME`] struct,
-    /// which represents the number of 100-nanosecond intervals since
-    /// January 1, 1601 (UTC). The struct is automatically
-    /// converted to a `u64` value, as that is the recommended way
-    /// to use it.
+    /// 返回的 64 位值等价于一个 [`FILETIME`] 结构体，它表示自 1601 年 1 月 1 日（UTC）
+    /// 以来经过的 100 纳秒间隔的数目。该结构体会被自动转换为一个 `u64` 值，因为这是推荐的
+    /// 使用方式。
     ///
-    /// For a file, the value specifies the last time that a file was written
-    /// to. For a directory, the structure specifies when the directory was
-    /// created.
+    /// 对于文件，该值给出了文件最后一次被写入的时间。对于目录，该结构体给出了目录被创建
+    /// 的时间。
     ///
-    /// If the underlying filesystem does not support the last write time,
-    /// the returned value is 0.
+    /// 如果底层文件系统不支持最后写入时间，则返回值为 0。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::io;
@@ -488,12 +450,11 @@ pub trait MetadataExt {
     #[stable(feature = "metadata_ext", since = "1.1.0")]
     fn last_write_time(&self) -> u64;
 
-    /// Returns the value of the `nFileSize` fields of this
-    /// metadata.
+    /// 返回本元数据中 `nFileSize` 字段的值。
     ///
-    /// The returned value does not have meaning for directories.
+    /// 对于目录，返回值没有意义。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::io;
@@ -509,41 +470,36 @@ pub trait MetadataExt {
     #[stable(feature = "metadata_ext", since = "1.1.0")]
     fn file_size(&self) -> u64;
 
-    /// Returns the value of the `dwVolumeSerialNumber` field of this
-    /// metadata.
+    /// 返回本元数据中 `dwVolumeSerialNumber` 字段的值。
     ///
-    /// This will return `None` if the `Metadata` instance was created from a
-    /// call to `DirEntry::metadata`. If this `Metadata` was created by using
-    /// `fs::metadata` or `File::metadata`, then this will return `Some`.
+    /// 如果该 `Metadata` 实例是由对 `DirEntry::metadata` 的调用创建的，则本方法返回
+    /// `None`。如果该 `Metadata` 是通过 `fs::metadata` 或 `File::metadata` 创建的，则本
+    /// 方法返回 `Some`。
     #[unstable(feature = "windows_by_handle", issue = "63010")]
     fn volume_serial_number(&self) -> Option<u32>;
 
-    /// Returns the value of the `nNumberOfLinks` field of this
-    /// metadata.
+    /// 返回本元数据中 `nNumberOfLinks` 字段的值。
     ///
-    /// This will return `None` if the `Metadata` instance was created from a
-    /// call to `DirEntry::metadata`. If this `Metadata` was created by using
-    /// `fs::metadata` or `File::metadata`, then this will return `Some`.
+    /// 如果该 `Metadata` 实例是由对 `DirEntry::metadata` 的调用创建的，则本方法返回
+    /// `None`。如果该 `Metadata` 是通过 `fs::metadata` 或 `File::metadata` 创建的，则本
+    /// 方法返回 `Some`。
     #[unstable(feature = "windows_by_handle", issue = "63010")]
     fn number_of_links(&self) -> Option<u32>;
 
-    /// Returns the value of the `nFileIndex` fields of this
-    /// metadata.
+    /// 返回本元数据中 `nFileIndex` 字段的值。
     ///
-    /// This will return `None` if the `Metadata` instance was created from a
-    /// call to `DirEntry::metadata`. If this `Metadata` was created by using
-    /// `fs::metadata` or `File::metadata`, then this will return `Some`.
+    /// 如果该 `Metadata` 实例是由对 `DirEntry::metadata` 的调用创建的，则本方法返回
+    /// `None`。如果该 `Metadata` 是通过 `fs::metadata` 或 `File::metadata` 创建的，则本
+    /// 方法返回 `Some`。
     #[unstable(feature = "windows_by_handle", issue = "63010")]
     fn file_index(&self) -> Option<u64>;
 
-    /// Returns the value of the `ChangeTime` fields of this metadata.
+    /// 返回本元数据中 `ChangeTime` 字段的值。
     ///
-    /// `ChangeTime` is the last time file metadata was changed, such as
-    /// renames, attributes, etc.
+    /// `ChangeTime` 是文件元数据最后一次被改变的时间，例如重命名、属性变更等。
     ///
-    /// This will return `None` if `Metadata` instance was created from a call to
-    /// `DirEntry::metadata` or if the `target_vendor` is outside the current platform
-    /// support for this api.
+    /// 如果该 `Metadata` 实例是由对 `DirEntry::metadata` 的调用创建的，或者当前
+    /// `target_vendor` 超出了本 api 当前支持的平台范围，则本方法返回 `None`。
     #[unstable(feature = "windows_change_time", issue = "121478")]
     fn change_time(&self) -> Option<u64>;
 }
@@ -579,15 +535,15 @@ impl MetadataExt for Metadata {
     }
 }
 
-/// Windows-specific extensions to [`fs::FileType`].
+/// Windows 平台对 [`fs::FileType`] 的特定扩展。
 ///
-/// On Windows, a symbolic link knows whether it is a file or directory.
+/// 在 Windows 上，符号链接（symbolic link）知道自己指向的是文件还是目录。
 #[stable(feature = "windows_file_type_ext", since = "1.64.0")]
 pub trait FileTypeExt: Sealed {
-    /// Returns `true` if this file type is a symbolic link that is also a directory.
+    /// 如果该文件类型是一个同时也是目录的符号链接，则返回 `true`。
     #[stable(feature = "windows_file_type_ext", since = "1.64.0")]
     fn is_symlink_dir(&self) -> bool;
-    /// Returns `true` if this file type is a symbolic link that is also a file.
+    /// 如果该文件类型是一个同时也是文件的符号链接，则返回 `true`。
     #[stable(feature = "windows_file_type_ext", since = "1.64.0")]
     fn is_symlink_file(&self) -> bool;
 }
@@ -605,10 +561,10 @@ impl FileTypeExt for fs::FileType {
     }
 }
 
-/// Windows-specific extensions to [`fs::FileTimes`].
+/// Windows 平台对 [`fs::FileTimes`] 的特定扩展。
 #[stable(feature = "file_set_times", since = "1.75.0")]
 pub trait FileTimesExt: Sealed {
-    /// Set the creation time of a file.
+    /// 设置文件的创建时间。
     #[stable(feature = "file_set_times", since = "1.75.0")]
     fn set_created(self, t: SystemTime) -> Self;
 }
@@ -621,21 +577,19 @@ impl FileTimesExt for fs::FileTimes {
     }
 }
 
-/// Creates a new symlink to a non-directory file on the filesystem.
+/// 在文件系统上创建一个指向非目录文件的新符号链接。
 ///
-/// The `link` path will be a file symbolic link pointing to the `original`
-/// path.
+/// `link` 路径将成为一个指向 `original` 路径的文件符号链接。
 ///
-/// The `original` path should not be a directory or a symlink to a directory,
-/// otherwise the symlink will be broken. Use [`symlink_dir`] for directories.
+/// `original` 路径不应是目录或指向目录的符号链接，否则该符号链接将是损坏的。对于目录，
+/// 请使用 [`symlink_dir`]。
 ///
-/// This function currently corresponds to [`CreateSymbolicLinkW`][CreateSymbolicLinkW].
-/// Note that this [may change in the future][changes].
+/// 本函数目前对应于 [`CreateSymbolicLinkW`][CreateSymbolicLinkW]。注意这[在将来可能改变][changes]。
 ///
 /// [CreateSymbolicLinkW]: https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createsymboliclinkw
 /// [changes]: io#platform-specific-behavior
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```no_run
 /// use std::os::windows::fs;
@@ -648,11 +602,9 @@ impl FileTimesExt for fs::FileTimes {
 ///
 /// # Limitations
 ///
-/// Windows treats symlink creation as a [privileged action][symlink-security],
-/// therefore this function is likely to fail unless the user makes changes to
-/// their system to permit symlink creation. Users can try enabling Developer
-/// Mode, granting the `SeCreateSymbolicLinkPrivilege` privilege, or running
-/// the process as an administrator.
+/// Windows 把符号链接的创建视为一种 [特权操作][symlink-security]，因此本函数很可能会失败，
+/// 除非用户对其系统做出更改以允许创建符号链接。用户可以尝试启用开发者模式（Developer
+/// Mode）、授予 `SeCreateSymbolicLinkPrivilege` 特权，或以管理员身份运行该进程。
 ///
 /// [symlink-security]: https://docs.microsoft.com/en-us/windows/security/threat-protection/security-policy-settings/create-symbolic-links
 #[stable(feature = "symlink", since = "1.1.0")]
@@ -660,21 +612,19 @@ pub fn symlink_file<P: AsRef<Path>, Q: AsRef<Path>>(original: P, link: Q) -> io:
     sys::fs::symlink_inner(original.as_ref(), link.as_ref(), false)
 }
 
-/// Creates a new symlink to a directory on the filesystem.
+/// 在文件系统上创建一个指向目录的新符号链接。
 ///
-/// The `link` path will be a directory symbolic link pointing to the `original`
-/// path.
+/// `link` 路径将成为一个指向 `original` 路径的目录符号链接。
 ///
-/// The `original` path must be a directory or a symlink to a directory,
-/// otherwise the symlink will be broken. Use [`symlink_file`] for other files.
+/// `original` 路径必须是目录或指向目录的符号链接，否则该符号链接将是损坏的。对于其他文件，
+/// 请使用 [`symlink_file`]。
 ///
-/// This function currently corresponds to [`CreateSymbolicLinkW`][CreateSymbolicLinkW].
-/// Note that this [may change in the future][changes].
+/// 本函数目前对应于 [`CreateSymbolicLinkW`][CreateSymbolicLinkW]。注意这[在将来可能改变][changes]。
 ///
 /// [CreateSymbolicLinkW]: https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createsymboliclinkw
 /// [changes]: io#platform-specific-behavior
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```no_run
 /// use std::os::windows::fs;
@@ -687,11 +637,9 @@ pub fn symlink_file<P: AsRef<Path>, Q: AsRef<Path>>(original: P, link: Q) -> io:
 ///
 /// # Limitations
 ///
-/// Windows treats symlink creation as a [privileged action][symlink-security],
-/// therefore this function is likely to fail unless the user makes changes to
-/// their system to permit symlink creation. Users can try enabling Developer
-/// Mode, granting the `SeCreateSymbolicLinkPrivilege` privilege, or running
-/// the process as an administrator.
+/// Windows 把符号链接的创建视为一种 [特权操作][symlink-security]，因此本函数很可能会失败，
+/// 除非用户对其系统做出更改以允许创建符号链接。用户可以尝试启用开发者模式（Developer
+/// Mode）、授予 `SeCreateSymbolicLinkPrivilege` 特权，或以管理员身份运行该进程。
 ///
 /// [symlink-security]: https://docs.microsoft.com/en-us/windows/security/threat-protection/security-policy-settings/create-symbolic-links
 #[stable(feature = "symlink", since = "1.1.0")]
@@ -699,13 +647,13 @@ pub fn symlink_dir<P: AsRef<Path>, Q: AsRef<Path>>(original: P, link: Q) -> io::
     sys::fs::symlink_inner(original.as_ref(), link.as_ref(), true)
 }
 
-/// Creates a junction point.
+/// 创建一个联结点（junction point）。
 ///
-/// The `link` path will be a directory junction pointing to the original path.
-/// If `link` is a relative path then it will be made absolute prior to creating the junction point.
-/// The `original` path must be a directory or a link to a directory, otherwise the junction point will be broken.
+/// `link` 路径将成为一个指向 original 路径的目录联结（directory junction）。
+/// 如果 `link` 是相对路径，则在创建联结点之前它会被转换为绝对路径。
+/// `original` 路径必须是目录或指向目录的链接，否则该联结点将是损坏的。
 ///
-/// If either path is not a local file path then this will fail.
+/// 如果两个路径中有任何一个不是本地文件路径，则本函数会失败。
 #[unstable(feature = "junction_point", issue = "121709")]
 pub fn junction_point<P: AsRef<Path>, Q: AsRef<Path>>(original: P, link: Q) -> io::Result<()> {
     sys::fs::junction_point(original.as_ref(), link.as_ref())

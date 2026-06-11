@@ -1,4 +1,9 @@
-//! Thread-local channel context.
+//! 线程本地（thread-local）的通道上下文。
+//!
+//! 当一个线程要在通道操作上阻塞，或参与 select（在多个操作中择一就绪者）时，需要一个
+//! 用来协调“谁先抢到这次操作”的载体，这就是 `Context`。它通过原子的 `select` 字段实现：
+//! 多个线程可能都想把同一个阻塞线程唤醒去完成某操作，但只有第一个对 `select` 做成功
+//! CAS 的线程胜出，其余线程会看到该操作已被选走。每个线程缓存一份自己的上下文以复用。
 
 use super::select::Selected;
 use super::waker::current_thread_id;
@@ -9,37 +14,42 @@ use crate::sync::atomic::{Atomic, AtomicPtr, AtomicUsize, Ordering};
 use crate::thread::{self, Thread};
 use crate::time::Instant;
 
-/// Thread-local context.
+/// 线程本地上下文。
 #[derive(Debug, Clone)]
 pub struct Context {
     inner: Arc<Inner>,
 }
 
-/// Inner representation of `Context`.
+/// `Context` 的内部表示。
 #[derive(Debug)]
 struct Inner {
-    /// Selected operation.
+    /// 被选中的操作。
+    ///
+    /// 取值来自 `Selected`（`Waiting`/`Aborted`/`Disconnected`/`Operation(_)`）。初始为
+    /// `Waiting`，由竞争各方通过 CAS 抢占式地改写为某个具体结果。
     select: Atomic<usize>,
 
-    /// A slot into which another thread may store a pointer to its `Packet`.
+    /// 一个槽位，供另一线程把指向其 `Packet` 的指针存入其中。
     packet: Atomic<*mut ()>,
 
-    /// Thread handle.
+    /// 线程句柄。
     thread: Thread,
 
-    /// Thread id.
+    /// 线程 id。
     thread_id: usize,
 }
 
 impl Context {
-    /// Creates a new context for the duration of the closure.
+    /// 在闭包执行期间创建并提供一个上下文。
+    ///
+    /// 优先复用线程本地缓存的上下文（先 `reset` 再使用），从而避免每次都重新分配 `Arc`。
     #[inline]
     pub fn with<F, R>(f: F) -> R
     where
         F: FnOnce(&Context) -> R,
     {
         thread_local! {
-            /// Cached thread-local context.
+            /// 缓存的线程本地上下文。
             static CONTEXT: Cell<Option<Context>> = Cell::new(Some(Context::new()));
         }
 
@@ -62,7 +72,7 @@ impl Context {
             .unwrap_or_else(|_| f(&Context::new()))
     }
 
-    /// Creates a new `Context`.
+    /// 创建一个新的 `Context`。
     #[cold]
     fn new() -> Context {
         Context {
@@ -75,16 +85,19 @@ impl Context {
         }
     }
 
-    /// Resets `select` and `packet`.
+    /// 重置 `select` 与 `packet`。
     #[inline]
     fn reset(&self) {
         self.inner.select.store(Selected::Waiting.into(), Ordering::Release);
         self.inner.packet.store(ptr::null_mut(), Ordering::Release);
     }
 
-    /// Attempts to select an operation.
+    /// 尝试选中（select）一个操作。
     ///
-    /// On failure, the previously selected operation is returned.
+    /// 失败时，返回此前已被选中的那个操作。
+    ///
+    /// 该操作以 CAS 实现：仅当当前状态仍为 `Waiting` 时才会写入 `select`。因此当多个线程
+    /// 竞相唤醒同一上下文时，只有一个能成功。
     #[inline]
     pub fn try_select(&self, select: Selected) -> Result<(), Selected> {
         self.inner
@@ -99,9 +112,9 @@ impl Context {
             .map_err(|e| e.into())
     }
 
-    /// Stores a packet.
+    /// 存入一个 packet。
     ///
-    /// This method must be called after `try_select` succeeds and there is a packet to provide.
+    /// 此方法必须在 `try_select` 成功之后、且确实有 packet 需要提供时调用。
     #[inline]
     pub fn store_packet(&self, packet: *mut ()) {
         if !packet.is_null() {
@@ -109,49 +122,49 @@ impl Context {
         }
     }
 
-    /// Waits until an operation is selected and returns it.
+    /// 等待直到某个操作被选中，并返回它。
     ///
-    /// If the deadline is reached, `Selected::Aborted` will be selected.
+    /// 如果到达截止时刻（deadline），则会选中 `Selected::Aborted`。
     ///
     /// # Safety
-    /// This may only be called from the thread this `Context` belongs to.
+    /// 只能从该 `Context` 所属的那个线程调用。
     #[inline]
     pub unsafe fn wait_until(&self, deadline: Option<Instant>) -> Selected {
         loop {
-            // Check whether an operation has been selected.
+            // 检查是否已有操作被选中。
             let sel = Selected::from(self.inner.select.load(Ordering::Acquire));
             if sel != Selected::Waiting {
                 return sel;
             }
 
-            // If there's a deadline, park the current thread until the deadline is reached.
+            // 如果设置了截止时刻，就把当前线程挂起（park）直到到达该时刻。
             if let Some(end) = deadline {
                 let now = Instant::now();
 
                 if now < end {
-                    // SAFETY: guaranteed by caller.
+                    // SAFETY: 由调用方保证。
                     unsafe { self.inner.thread.park_timeout(end - now) };
                 } else {
-                    // The deadline has been reached. Try aborting select.
+                    // 已到达截止时刻。尝试中止（abort）本次 select。
                     return match self.try_select(Selected::Aborted) {
                         Ok(()) => Selected::Aborted,
                         Err(s) => s,
                     };
                 }
             } else {
-                // SAFETY: guaranteed by caller.
+                // SAFETY: 由调用方保证。
                 unsafe { self.inner.thread.park() };
             }
         }
     }
 
-    /// Unparks the thread this context belongs to.
+    /// 唤醒（unpark）该上下文所属的线程。
     #[inline]
     pub fn unpark(&self) {
         self.inner.thread.unpark();
     }
 
-    /// Returns the id of the thread this context belongs to.
+    /// 返回该上下文所属线程的 id。
     #[inline]
     pub fn thread_id(&self) -> usize {
         self.inner.thread_id

@@ -14,7 +14,7 @@ use crate::sys::unsupported;
 use crate::{fmt, io};
 
 ////////////////////////////////////////////////////////////////////////////////
-// Command
+// 命令（Command）
 ////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Debug)]
@@ -140,13 +140,13 @@ impl Command {
 pub fn output(command: &mut Command) -> io::Result<(ExitStatus, Vec<u8>, Vec<u8>)> {
     let mut cmd = uefi_command_internal::Image::load_image(&command.prog)?;
 
-    // UEFI adds the bin name by default
+    // UEFI 默认会添加 bin 名称
     if !command.args.is_empty() {
         let args = uefi_command_internal::create_args(&command.prog, &command.args);
         cmd.set_args(args);
     }
 
-    // Setup Stdout
+    // 设置 Stdout
     let stdout = command.stdout.unwrap_or(Stdio::MakePipe);
     let stdout = Command::create_pipe(stdout)?;
     if let Some(con) = stdout {
@@ -155,7 +155,7 @@ pub fn output(command: &mut Command) -> io::Result<(ExitStatus, Vec<u8>, Vec<u8>
         cmd.stdout_inherit()
     };
 
-    // Setup Stderr
+    // 设置 Stderr
     let stderr = command.stderr.unwrap_or(Stdio::MakePipe);
     let stderr = Command::create_pipe(stderr)?;
     if let Some(con) = stderr {
@@ -164,7 +164,7 @@ pub fn output(command: &mut Command) -> io::Result<(ExitStatus, Vec<u8>, Vec<u8>
         cmd.stderr_inherit()
     };
 
-    // Setup Stdin
+    // 设置 Stdin
     let stdin = command.stdin.unwrap_or(Stdio::Null);
     let stdin = Command::create_stdin(stdin)?;
     if let Some(con) = stdin {
@@ -175,7 +175,7 @@ pub fn output(command: &mut Command) -> io::Result<(ExitStatus, Vec<u8>, Vec<u8>
 
     let env = env_changes(&command.env);
 
-    // Set any new vars
+    // 设置任何新的变量
     if let Some(e) = &env {
         for (k, (_, v)) in e {
             match v {
@@ -187,7 +187,7 @@ pub fn output(command: &mut Command) -> io::Result<(ExitStatus, Vec<u8>, Vec<u8>
 
     let stat = cmd.start_image()?;
 
-    // Rollback any env changes
+    // 回滚（rollback）任何对环境变量的改动
     if let Some(e) = env {
         for (k, (v, _)) in e {
             match v {
@@ -211,24 +211,24 @@ impl From<ChildPipe> for Stdio {
 
 impl From<io::Stdout> for Stdio {
     fn from(_: io::Stdout) -> Stdio {
-        // FIXME: This is wrong.
-        // Instead, the Stdio we have here should be a unit struct.
+        // FIXME: 这是错误的。
+        // 相反，我们这里持有的 Stdio 应当是一个单元结构体（unit struct）。
         panic!("unsupported")
     }
 }
 
 impl From<io::Stderr> for Stdio {
     fn from(_: io::Stderr) -> Stdio {
-        // FIXME: This is wrong.
-        // Instead, the Stdio we have here should be a unit struct.
+        // FIXME: 这是错误的。
+        // 相反，我们这里持有的 Stdio 应当是一个单元结构体（unit struct）。
         panic!("unsupported")
     }
 }
 
 impl From<File> for Stdio {
     fn from(_file: File) -> Stdio {
-        // FIXME: This is wrong.
-        // Instead, the Stdio we have here should be a unit struct.
+        // FIXME: 这是错误的。
+        // 相反，我们这里持有的 Stdio 应当是一个单元结构体（unit struct）。
         panic!("unsupported")
     }
 }
@@ -433,7 +433,7 @@ mod uefi_command_internal {
         pub(crate) fn start_image(&mut self) -> io::Result<r_efi::efi::Status> {
             self.update_st_crc32()?;
 
-            // Use our system table instead of the default one
+            // 使用我们自己的 system table，而不是默认的那个
             let loaded_image: NonNull<loaded_image::Protocol> =
                 helpers::open_protocol(self.handle, loaded_image::PROTOCOL_GUID).unwrap();
             unsafe {
@@ -454,7 +454,7 @@ mod uefi_command_internal {
                 )
             };
 
-            // Drop exitdata
+            // 丢弃 exitdata
             if exit_data_size != 0 {
                 unsafe {
                     let exit_data = exit_data.assume_init();
@@ -572,7 +572,7 @@ mod uefi_command_internal {
             let st_size = unsafe { (*self.st.as_ptr()).hdr.header_size as usize };
             let mut crc32: u32 = 0;
 
-            // Set crc to 0 before calculation
+            // 在计算之前先把 crc 设为 0
             unsafe {
                 (*self.st.as_mut_ptr()).hdr.crc32 = 0;
             }
@@ -831,7 +831,7 @@ mod uefi_command_internal {
 
     impl Drop for InputProtocol {
         fn drop(&mut self) {
-            // Close wait_for_key
+            // 关闭 wait_for_key
             unsafe {
                 let _ = helpers::OwnedEvent::from_raw(self.wait_for_key);
             }
@@ -844,11 +844,10 @@ mod uefi_command_internal {
         const CARET: u16 = 0x005e;
         const NULL: u16 = 0;
 
-        // This is the lower bound on the final length under the assumption that
-        // the arguments only contain ASCII characters.
+        // 在假定参数只包含 ASCII 字符的前提下，这是最终长度的下界（lower bound）。
         let mut res = Vec::with_capacity(args.iter().map(|arg| arg.len() + 3).sum());
 
-        // Wrap program name in quotes to avoid any problems
+        // 把程序名用引号包裹起来，以避免任何问题
         res.push(QUOTE);
         res.extend(prog.encode_wide());
         res.push(QUOTE);
@@ -856,10 +855,10 @@ mod uefi_command_internal {
         for arg in args {
             res.push(SPACE);
 
-            // Wrap the argument in quotes to be treat as single arg
+            // 把参数用引号包裹起来，以便被当作单个参数对待
             res.push(QUOTE);
             for c in arg.encode_wide() {
-                // CARET in quotes is used to escape CARET or QUOTE
+                // 引号内的 CARET 用于转义（escape）CARET 或 QUOTE
                 if c == QUOTE || c == CARET {
                     res.push(CARET);
                 }
@@ -872,10 +871,9 @@ mod uefi_command_internal {
     }
 }
 
-/// Create a map of environment variable changes. Allows efficient setting and rolling back of
-/// environment variable changes.
+/// 创建一个记录环境变量改动的映射（map）。它支持高效地设置环境变量改动以及回滚这些改动。
 ///
-/// Entry: (Old Value, New Value)
+/// 条目（Entry）：(旧值, 新值)
 fn env_changes(env: &CommandEnv) -> Option<BTreeMap<EnvKey, (Option<OsString>, Option<OsString>)>> {
     if env.is_unchanged() {
         return None;
@@ -883,7 +881,7 @@ fn env_changes(env: &CommandEnv) -> Option<BTreeMap<EnvKey, (Option<OsString>, O
 
     let mut result = BTreeMap::<EnvKey, (Option<OsString>, Option<OsString>)>::new();
 
-    // Check if we want to clear all prior variables
+    // 检查我们是否想清空所有先前的变量
     if env.does_clear() {
         for (k, v) in crate::env::vars_os() {
             result.insert(k.into(), (Some(v), None));

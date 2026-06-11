@@ -14,8 +14,7 @@ pub fn env_read_lock() -> impl Drop {
     ENV_LOCK.read().unwrap_or_else(PoisonError::into_inner)
 }
 
-/// Returns a vector of (variable, value) byte-vector pairs for all the
-/// environment variables of the current process.
+/// 返回当前进程所有环境变量的 (变量名, 值) 字节向量对组成的向量。
 pub fn env() -> Env {
     unsafe extern "C" {
         static mut environ: *const *const c_char;
@@ -36,10 +35,9 @@ pub fn env() -> Env {
     }
 
     fn parse(input: &[u8]) -> Option<(OsString, OsString)> {
-        // Strategy (copied from glibc): Variable name and value are separated
-        // by an ASCII equals sign '='. Since a variable name must not be
-        // empty, allow variable names starting with an equals sign. Skip all
-        // malformed lines.
+        // 策略（抄自 glibc）：变量名与值之间以 ASCII 等号 '=' 分隔。
+        // 由于变量名不能为空，所以允许变量名以等号开头。
+        // 跳过所有格式错误的行。
         if input.is_empty() {
             return None;
         }
@@ -54,8 +52,8 @@ pub fn env() -> Env {
 }
 
 pub fn getenv(k: &OsStr) -> Option<OsString> {
-    // environment variables with a nul byte can't be set, so their value is
-    // always None as well
+    // 含有 nul 字节的环境变量无法被设置，因此它们的值
+    // 也始终为 None
     run_with_cstr(k.as_bytes(), &|k| {
         let _guard = env_read_lock();
         let v = unsafe { libc::getenv(k.as_ptr()) } as *const libc::c_char;
@@ -63,7 +61,7 @@ pub fn getenv(k: &OsStr) -> Option<OsString> {
         if v.is_null() {
             Ok(None)
         } else {
-            // SAFETY: `v` cannot be mutated while executing this line since we've a read lock
+            // SAFETY: 由于我们持有读锁，执行这一行期间 `v` 不会被改动
             let bytes = unsafe { CStr::from_ptr(v) }.to_bytes().to_vec();
 
             Ok(Some(OsStringExt::from_vec(bytes)))
@@ -89,8 +87,8 @@ pub unsafe fn unsetenv(n: &OsStr) -> io::Result<()> {
     })
 }
 
-/// In kmclib, `setenv` and `unsetenv` don't always set `errno`, so this
-/// function just returns a generic error.
+/// 在 kmclib 中，`setenv` 和 `unsetenv` 并不总是设置 `errno`，因此该
+/// 函数只返回一个通用错误。
 fn cvt_env(t: c_int) -> io::Result<c_int> {
     if t == -1 { Err(io::const_error!(io::ErrorKind::Uncategorized, "failure")) } else { Ok(t) }
 }

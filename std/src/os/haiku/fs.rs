@@ -5,17 +5,17 @@ use crate::fs::Metadata;
 use crate::os::haiku::raw;
 use crate::sys::AsInner;
 
-/// OS-specific extensions to [`fs::Metadata`].
+/// 针对 [`fs::Metadata`] 的操作系统特定扩展。
 ///
 /// [`fs::Metadata`]: crate::fs::Metadata
 #[stable(feature = "metadata_ext", since = "1.1.0")]
 pub trait MetadataExt {
-    /// Gain a reference to the underlying `stat` structure which contains
-    /// the raw information returned by the OS.
+    /// 获取一个对底层 `stat` 结构体的引用，其中包含
+    /// 由操作系统返回的原始信息。
     ///
-    /// The contents of the returned `stat` are **not** consistent across
-    /// Unix platforms. The `os::unix::fs::MetadataExt` trait contains the
-    /// cross-Unix abstractions contained within the raw stat.
+    /// 返回的 `stat` 的内容在各 Unix 平台之间**并不**一致。
+    /// `os::unix::fs::MetadataExt` trait 包含了原始 stat 中所蕴含的
+    /// 跨 Unix 的抽象。
     #[stable(feature = "metadata_ext", since = "1.1.0")]
     #[deprecated(
         since = "1.8.0",

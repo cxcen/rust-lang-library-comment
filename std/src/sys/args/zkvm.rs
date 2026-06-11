@@ -13,7 +13,7 @@ fn get_args() -> Vec<&'static OsStr> {
     let mut args = Vec::with_capacity(argc);
 
     for i in 0..argc {
-        // Get the size of the argument then the data.
+        // 先获取该参数的大小，再获取其数据。
         let arg_len = unsafe { abi::sys_argv(ptr::null_mut(), 0, i) };
 
         let arg_len_words = (arg_len + WORD_SIZE - 1) / WORD_SIZE;

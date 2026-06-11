@@ -4,9 +4,9 @@
 pub mod ffi;
 pub mod io;
 
-/// A prelude for conveniently writing platform-specific code.
+/// 一个用于便捷编写平台特定代码的 prelude。
 ///
-/// Includes all extension traits, and some important type definitions.
+/// 包含所有扩展 trait，以及一些重要的类型定义。
 #[stable(feature = "rust1", since = "1.0.0")]
 pub mod prelude {
     #[doc(no_inline)]

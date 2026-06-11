@@ -1,11 +1,11 @@
-// FIXME(static_mut_refs): Do not allow `static_mut_refs` lint
+// FIXME(static_mut_refs): 不要放行 `static_mut_refs` lint
 #![allow(static_mut_refs)]
 
 use crate::alloc::{GlobalAlloc, Layout, System};
 use crate::ptr;
 use crate::sync::atomic::{AtomicBool, Ordering};
 
-// Symbols for heap section boundaries defined in the target's linkerscript
+// 堆段（heap section）边界的符号，在目标平台的链接器脚本（linkerscript）中定义
 unsafe extern "C" {
     static mut __heap_start: u8;
     static mut __heap_end: u8;
@@ -16,13 +16,13 @@ static mut DLMALLOC: dlmalloc::Dlmalloc<Vexos> = dlmalloc::Dlmalloc::new_with_al
 struct Vexos;
 
 unsafe impl dlmalloc::Allocator for Vexos {
-    /// Allocs system resources
+    /// 分配系统资源
     fn alloc(&self, _size: usize) -> (*mut u8, usize, u32) {
         static INIT: AtomicBool = AtomicBool::new(false);
 
         if !INIT.swap(true, Ordering::Relaxed) {
-            // This target has no growable heap, as user memory has a fixed
-            // size/location and VEXos does not manage allocation for us.
+            // 本目标平台没有可增长的堆，因为用户内存具有固定的
+            // 大小/位置，而且 VEXos 不为我们管理分配。
             unsafe {
                 (
                     (&raw mut __heap_start).cast::<u8>(),
@@ -64,33 +64,33 @@ unsafe impl dlmalloc::Allocator for Vexos {
 unsafe impl GlobalAlloc for System {
     #[inline]
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        // SAFETY: DLMALLOC access is guaranteed to be safe because we are a single-threaded target, which
-        // guarantees unique and non-reentrant access to the allocator. As such, no allocator lock is used.
-        // Calling malloc() is safe because preconditions on this function match the trait method preconditions.
+        // SAFETY: 对 DLMALLOC 的访问保证是安全的，因为我们是单线程目标平台，
+        // 这保证了对分配器的独占且非重入的访问。因此不使用任何分配器锁。
+        // 调用 malloc() 是安全的，因为本函数的前置条件与该 trait 方法的前置条件相匹配。
         unsafe { DLMALLOC.malloc(layout.size(), layout.align()) }
     }
 
     #[inline]
     unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
-        // SAFETY: DLMALLOC access is guaranteed to be safe because we are a single-threaded target, which
-        // guarantees unique and non-reentrant access to the allocator. As such, no allocator lock is used.
-        // Calling calloc() is safe because preconditions on this function match the trait method preconditions.
+        // SAFETY: 对 DLMALLOC 的访问保证是安全的，因为我们是单线程目标平台，
+        // 这保证了对分配器的独占且非重入的访问。因此不使用任何分配器锁。
+        // 调用 calloc() 是安全的，因为本函数的前置条件与该 trait 方法的前置条件相匹配。
         unsafe { DLMALLOC.calloc(layout.size(), layout.align()) }
     }
 
     #[inline]
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        // SAFETY: DLMALLOC access is guaranteed to be safe because we are a single-threaded target, which
-        // guarantees unique and non-reentrant access to the allocator. As such, no allocator lock is used.
-        // Calling free() is safe because preconditions on this function match the trait method preconditions.
+        // SAFETY: 对 DLMALLOC 的访问保证是安全的，因为我们是单线程目标平台，
+        // 这保证了对分配器的独占且非重入的访问。因此不使用任何分配器锁。
+        // 调用 free() 是安全的，因为本函数的前置条件与该 trait 方法的前置条件相匹配。
         unsafe { DLMALLOC.free(ptr, layout.size(), layout.align()) }
     }
 
     #[inline]
     unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
-        // SAFETY: DLMALLOC access is guaranteed to be safe because we are a single-threaded target, which
-        // guarantees unique and non-reentrant access to the allocator. As such, no allocator lock is used.
-        // Calling realloc() is safe because preconditions on this function match the trait method preconditions.
+        // SAFETY: 对 DLMALLOC 的访问保证是安全的，因为我们是单线程目标平台，
+        // 这保证了对分配器的独占且非重入的访问。因此不使用任何分配器锁。
+        // 调用 realloc() 是安全的，因为本函数的前置条件与该 trait 方法的前置条件相匹配。
         unsafe { DLMALLOC.realloc(ptr, layout.size(), layout.align(), new_size) }
     }
 }

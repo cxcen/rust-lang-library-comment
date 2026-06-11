@@ -45,11 +45,10 @@ impl Iterator for EnvIterator {
                 let s = slice::from_raw_parts(p, len);
                 *cur = cur.add(len + 1);
 
-                // Windows allows environment variables to start with an equals
-                // symbol (in any other position, this is the separator between
-                // variable name and value). Since`s` has at least length 1 at
-                // this point (because the empty string terminates the array of
-                // environment variables), we can safely slice.
+                // Windows 允许环境变量以等号开头（在其他任何位置，
+                // 等号是变量名与变量值之间的分隔符）。由于此刻 `s` 的长度
+                // 至少为 1（因为环境变量数组以空字符串作为终止符），
+                // 我们可以安全地进行切片。
                 let pos = match s[1..].iter().position(|&u| u == b'=' as u16).map(|p| p + 1) {
                     Some(p) => p,
                     None => continue,
@@ -91,7 +90,7 @@ pub fn getenv(k: &OsStr) -> Option<OsString> {
 }
 
 pub unsafe fn setenv(k: &OsStr, v: &OsStr) -> io::Result<()> {
-    // SAFETY: We ensure that k and v are null-terminated wide strings.
+    // SAFETY: 我们确保 k 和 v 都是以 null 结尾的宽字符串。
     unsafe {
         let k = to_u16s(k)?;
         let v = to_u16s(v)?;
@@ -101,7 +100,7 @@ pub unsafe fn setenv(k: &OsStr, v: &OsStr) -> io::Result<()> {
 }
 
 pub unsafe fn unsetenv(n: &OsStr) -> io::Result<()> {
-    // SAFETY: We ensure that v is a null-terminated wide strings.
+    // SAFETY: 我们确保 v 是以 null 结尾的宽字符串。
     unsafe {
         let v = to_u16s(n)?;
         cvt(c::SetEnvironmentVariableW(v.as_ptr(), ptr::null())).map(drop)

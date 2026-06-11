@@ -1,12 +1,10 @@
-//! Platform-specific extensions to `std` for Windows.
+//! Windows 平台对 `std` 的特定扩展。
 //!
-//! Provides access to platform-level information for Windows, and exposes
-//! Windows-specific idioms that would otherwise be inappropriate as part
-//! the core `std` library. These extensions allow developers to use
-//! `std` types and idioms with Windows in a way that the normal
-//! platform-agnostic idioms would not normally support.
+//! 提供对 Windows 平台级信息的访问，并暴露一些 Windows 特有的惯用法——
+//! 这些惯用法若直接放进核心 `std` 库中会显得不合适。这些扩展让开发者得以在
+//! Windows 上以平台无关惯用法本来无法支持的方式使用 `std` 类型与惯用法。
 //!
-//! # Examples
+//! # 示例
 //!
 //! ```no_run
 //! use std::fs::File;
@@ -16,7 +14,7 @@
 //!     let f = File::create("foo.txt")?;
 //!     let handle = f.as_raw_handle();
 //!
-//!     // use handle with native windows bindings
+//!     // 将 handle 与原生 windows 绑定一起使用
 //!
 //!     Ok(())
 //! }
@@ -33,9 +31,9 @@ pub mod process;
 pub mod raw;
 pub mod thread;
 
-/// A prelude for conveniently writing platform-specific code.
+/// 一个 prelude，便于编写平台特定的代码。
 ///
-/// Includes all extension traits, and some important type definitions.
+/// 包含所有扩展 trait，以及一些重要的类型定义。
 #[stable(feature = "rust1", since = "1.0.0")]
 pub mod prelude {
     #[doc(no_inline)]

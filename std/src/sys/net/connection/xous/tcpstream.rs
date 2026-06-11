@@ -31,16 +31,16 @@ pub struct TcpStream {
     local_port: u16,
     remote_port: u16,
     peer_addr: SocketAddr,
-    // milliseconds
+    // 毫秒
     read_timeout: Arc<Atomic<u32>>,
-    // milliseconds
+    // 毫秒
     write_timeout: Arc<Atomic<u32>>,
     handle_count: Arc<Atomic<usize>>,
     nonblocking: Arc<Atomic<bool>>,
 }
 
 fn sockaddr_to_buf(duration: Duration, addr: &SocketAddr, buf: &mut [u8]) {
-    // Construct the request.
+    // 构造请求。
     let port_bytes = addr.port().to_le_bytes();
     buf[0] = port_bytes[0];
     buf[1] = port_bytes[1];
@@ -89,7 +89,7 @@ impl TcpStream {
     pub fn connect_timeout(addr: &SocketAddr, duration: Duration) -> io::Result<TcpStream> {
         let mut connect_request = ConnectRequest { raw: [0u8; 4096] };
 
-        // Construct the request.
+        // 构造请求。
         sockaddr_to_buf(duration, &addr, &mut connect_request.raw);
 
         let Ok((_, valid)) = crate::os::xous::ffi::lend_mut(
@@ -102,11 +102,11 @@ impl TcpStream {
             return Err(io::const_error!(io::ErrorKind::InvalidInput, "invalid response"));
         };
 
-        // The first four bytes should be zero upon success, and will be nonzero
-        // for an error.
+        // 成功时前四个字节应当为零，出错时则会是非零值。
         let response = connect_request.raw;
         if response[0] != 0 || valid == 0 {
-            // errcode is a u8 but stuck in a u16 where the upper byte is invalid. Mask & decode accordingly.
+            // errcode 是一个 u8，但被塞进了一个 u16 中，其高字节是无效的。
+            // 据此进行掩码处理并解码。
             let errcode = response[0];
             if errcode == NetError::SocketInUse as u8 {
                 return Err(io::const_error!(io::ErrorKind::ResourceBusy, "socket in use"));
@@ -195,7 +195,7 @@ impl TcpStream {
             services::net_server(),
             opcode.into(),
             &mut receive_request.raw,
-            // Reuse the `offset` as the read timeout
+            // 复用 `offset` 作为读取超时
             self.read_timeout.load(Ordering::Relaxed) as usize,
             data_to_read,
         ) else {
@@ -214,11 +214,11 @@ impl TcpStream {
             let result = receive_request.raw;
             if result[0] != 0 {
                 if result[1] == 8 {
-                    // timed out
+                    // 超时
                     return Err(io::const_error!(io::ErrorKind::TimedOut, "timeout"));
                 }
                 if result[1] == 9 {
-                    // would block
+                    // 将会阻塞
                     return Err(io::const_error!(io::ErrorKind::WouldBlock, "would block"));
                 }
             }
@@ -257,7 +257,7 @@ impl TcpStream {
             services::net_server(),
             services::NetLendMut::StdTcpTx(self.fd).into(),
             &mut send_request.raw,
-            // Reuse the offset as the timeout
+            // 复用 offset 作为超时
             self.write_timeout.load(Ordering::Relaxed) as usize,
             buf_len,
         )
@@ -265,13 +265,13 @@ impl TcpStream {
 
         if send_request.raw[0] != 0 {
             if send_request.raw[4] == 8 {
-                // timed out
+                // 超时
                 return Err(io::const_error!(
                     io::ErrorKind::BrokenPipe,
                     "timeout or connection closed",
                 ));
             } else if send_request.raw[4] == 9 {
-                // would block
+                // 将会阻塞
                 return Err(io::const_error!(io::ErrorKind::WouldBlock, "would block"));
             } else {
                 return Err(io::const_error!(io::ErrorKind::InvalidInput, "error when sending"));
@@ -393,7 +393,7 @@ impl TcpStream {
     }
 
     pub fn take_error(&self) -> io::Result<Option<io::Error>> {
-        // this call doesn't have a meaning on our platform, but we can at least not panic if it's used.
+        // 这个调用在我们的平台上没有意义，但至少在它被使用时我们可以不 panic。
         Ok(None)
     }
 
@@ -416,7 +416,7 @@ impl fmt::Debug for TcpStream {
 impl Drop for TcpStream {
     fn drop(&mut self) {
         if self.handle_count.fetch_sub(1, Ordering::Relaxed) == 1 {
-            // only drop if we're the last clone
+            // 只有当我们是最后一个克隆体时才进行 drop
             crate::os::xous::ffi::blocking_scalar(
                 services::net_server(),
                 services::NetBlockingScalar::StdTcpClose(self.fd).into(),

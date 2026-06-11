@@ -1,17 +1,17 @@
-//! Non-poisoning synchronous locks.
+//! 不中毒（non-poisoning）的同步锁。
 //!
-//! The difference from the locks in the [`poison`] module is that the locks in this module will not
-//! become poisoned when a thread panics while holding a guard.
+//! 与 [`poison`] 模块中的锁的区别在于：本模块中的锁在某个线程持有守卫
+//! （guard）期间发生 panic 时 **不会** 变成中毒状态。
 //!
 //! [`poison`]: super::poison
 
 use crate::fmt;
 
-/// A type alias for the result of a nonblocking locking method.
+/// 一个非阻塞加锁方法所返回结果的类型别名。
 #[unstable(feature = "sync_nonpoison", issue = "134645")]
 pub type TryLockResult<Guard> = Result<Guard, WouldBlock>;
 
-/// A lock could not be acquired at this time because the operation would otherwise block.
+/// 此刻无法获取该锁，因为该操作否则就会发生阻塞。
 #[unstable(feature = "sync_nonpoison", issue = "134645")]
 pub struct WouldBlock;
 

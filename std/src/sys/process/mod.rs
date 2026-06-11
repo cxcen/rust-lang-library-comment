@@ -21,8 +21,8 @@ cfg_select! {
     }
 }
 
-// This module is shared by all platforms, but nearly all platforms except for
-// the "normal" UNIX ones leave some of this code unused.
+// 本模块由所有平台共享，但除了“常规”的 UNIX 平台之外，几乎所有平台
+// 都会让其中一部分代码处于未使用状态。
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 mod env;
 

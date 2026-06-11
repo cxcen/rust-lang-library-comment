@@ -91,12 +91,12 @@ cfg_select! {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// address conversions
+// 地址转换
 ////////////////////////////////////////////////////////////////////////////////
 
 fn ip_v4_addr_to_c(addr: &Ipv4Addr) -> c::in_addr {
-    // `s_addr` is stored as BE on all machines and the array is in BE order.
-    // So the native endian conversion method is used so that it's never swapped.
+    // `s_addr` 在所有机器上都以大端（BE）存储，而该数组也是大端字节序。
+    // 因此这里使用本机字节序的转换方法，使其永远不会被交换。
     c::in_addr { s_addr: u32::from_ne_bytes(addr.octets()) }
 }
 
@@ -145,10 +145,10 @@ fn socket_addr_v6_from_c(addr: c::sockaddr_in6) -> SocketAddrV6 {
     )
 }
 
-/// A type with the same memory layout as `c::sockaddr`. Used in converting Rust level
-/// SocketAddr* types into their system representation. The benefit of this specific
-/// type over using `c::sockaddr_storage` is that this type is exactly as large as it
-/// needs to be and not a lot larger. And it can be initialized more cleanly from Rust.
+/// 一个与 `c::sockaddr` 具有相同内存布局的类型。用于将 Rust 层面的
+/// SocketAddr* 类型转换为它们的系统表示。相比使用 `c::sockaddr_storage`，
+/// 这个特定类型的好处在于：它恰好只有所需的大小，而不会大出很多；并且
+/// 它可以在 Rust 中以更干净的方式初始化。
 #[repr(C)]
 union SocketAddrCRepr {
     v4: c::sockaddr_in,
@@ -181,11 +181,10 @@ fn addr_family(addr: &SocketAddr) -> c_int {
     }
 }
 
-/// Converts the C socket address stored in `storage` to a Rust `SocketAddr`.
+/// 将存储在 `storage` 中的 C socket 地址转换为 Rust 的 `SocketAddr`。
 ///
-/// # Safety
-/// * `storage` must contain a valid C socket address whose length is no larger
-///   than `len`.
+/// # 安全性(Safety）
+/// * `storage` 必须包含一个有效的 C socket 地址，其长度不得大于 `len`。
 unsafe fn socket_addr_from_c(
     storage: *const c::sockaddr_storage,
     len: usize,
@@ -208,13 +207,13 @@ unsafe fn socket_addr_from_c(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// sockaddr and misc bindings
+// sockaddr 及其他杂项绑定
 ////////////////////////////////////////////////////////////////////////////////
 
-/// Sets the value of a socket option.
+/// 设置某个 socket 选项的值。
 ///
-/// # Safety
-/// `T` must be the type associated with the given socket option.
+/// # 安全性(Safety）
+/// `T` 必须是与给定 socket 选项相关联的类型。
 pub unsafe fn setsockopt<T>(
     sock: &Socket,
     level: c_int,
@@ -223,11 +222,10 @@ pub unsafe fn setsockopt<T>(
 ) -> io::Result<()> {
     let option_len = size_of::<T>() as c::socklen_t;
     // SAFETY:
-    // * `sock` is opened for the duration of this call, as `sock` owns the socket.
-    // * the pointer to `option_value` is readable at a size of `size_of::<T>`
-    //   bytes
-    // * the value of `option_value` has a valid type for the given socket option
-    //   (guaranteed by caller).
+    // * 在本次调用期间 `sock` 处于打开状态，因为 `sock` 拥有该 socket。
+    // * 指向 `option_value` 的指针在 `size_of::<T>` 字节的大小范围内可读。
+    // * `option_value` 的值对于给定的 socket 选项而言具有有效的类型
+    //   （由调用方保证）。
     cvt(unsafe {
         c::setsockopt(
             sock.as_raw(),
@@ -240,10 +238,10 @@ pub unsafe fn setsockopt<T>(
     Ok(())
 }
 
-/// Gets the value of a socket option.
+/// 获取某个 socket 选项的值。
 ///
-/// # Safety
-/// `T` must be the type associated with the given socket option.
+/// # 安全性(Safety）
+/// `T` 必须是与给定 socket 选项相关联的类型。
 pub unsafe fn getsockopt<T: Copy>(
     sock: &Socket,
     level: c_int,
@@ -253,9 +251,9 @@ pub unsafe fn getsockopt<T: Copy>(
     let mut option_len = size_of::<T>() as c::socklen_t;
 
     // SAFETY:
-    // * `sock` is opened for the duration of this call, as `sock` owns the socket.
-    // * the pointer to `option_value` is writable and the stack allocation has
-    //   space for `size_of::<T>` bytes.
+    // * 在本次调用期间 `sock` 处于打开状态，因为 `sock` 拥有该 socket。
+    // * 指向 `option_value` 的指针可写，且栈上的分配有 `size_of::<T>`
+    //   字节的空间。
     cvt(unsafe {
         c::getsockopt(
             sock.as_raw(),
@@ -266,19 +264,17 @@ pub unsafe fn getsockopt<T: Copy>(
         )
     })?;
 
-    // SAFETY: the `getsockopt` call succeeded and the caller guarantees that
-    //         `T` is the type of this option, thus `option_value` must have
-    //         been initialized by the system.
+    // SAFETY: `getsockopt` 调用成功，且调用方保证 `T` 是该选项的类型，
+    //         因此 `option_value` 必定已被系统初始化。
     Ok(unsafe { option_value.assume_init() })
 }
 
-/// Wraps a call to a platform function that returns a socket address.
+/// 包装对某个返回 socket 地址的平台函数的调用。
 ///
-/// # Safety
-/// * if `f` returns a success (i.e. `cvt` returns `Ok` when called on the
-///   return value), the buffer provided to `f` must have been initialized
-///   with a valid C socket address, the length of which must be written
-///   to the second argument.
+/// # 安全性(Safety）
+/// * 如果 `f` 返回成功（即对其返回值调用 `cvt` 时返回 `Ok`），则提供给
+///   `f` 的缓冲区必定已被初始化为一个有效的 C socket 地址，且其长度必定
+///   已写入第二个参数。
 unsafe fn sockname<F>(f: F) -> io::Result<SocketAddr>
 where
     F: FnOnce(*mut c::sockaddr, *mut c::socklen_t) -> c_int,
@@ -287,8 +283,8 @@ where
     let mut len = size_of::<c::sockaddr_storage>() as c::socklen_t;
     cvt(f(storage.as_mut_ptr().cast(), &mut len))?;
     // SAFETY:
-    // The caller guarantees that the storage has been successfully initialized
-    // and its size written to `len` if `f` returns a success.
+    // 调用方保证：如果 `f` 返回成功，则 storage 已被成功初始化，
+    // 且其大小已写入 `len`。
     unsafe { socket_addr_from_c(storage.as_ptr(), len as usize) }
 }
 
@@ -354,7 +350,7 @@ pub fn lookup_host(host: &str, port: u16) -> io::Result<LookupHost> {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// TCP streams
+// TCP 流（TcpStream）
 ////////////////////////////////////////////////////////////////////////////////
 
 pub struct TcpStream {
@@ -525,7 +521,7 @@ impl fmt::Debug for TcpStream {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// TCP listeners
+// TCP 监听器（TcpListener）
 ////////////////////////////////////////////////////////////////////////////////
 
 pub struct TcpListener {
@@ -540,37 +536,35 @@ impl TcpListener {
         fn inner(addr: &SocketAddr) -> io::Result<TcpListener> {
             let sock = Socket::new(addr_family(addr), c::SOCK_STREAM)?;
 
-            // On platforms with Berkeley-derived sockets, this allows to quickly
-            // rebind a socket, without needing to wait for the OS to clean up the
-            // previous one.
+            // 在使用 Berkeley 派生 socket 的平台上，这允许快速重新绑定一个
+            // socket，而无需等待操作系统清理掉前一个 socket。
             //
-            // On Windows, this allows rebinding sockets which are actively in use,
-            // which allows “socket hijacking”, so we explicitly don't set it here.
+            // 在 Windows 上，这会允许重新绑定正在被使用的 socket，从而可能导致
+            //“socket 劫持（socket hijacking）”，所以我们在这里明确不设置它。
             // https://docs.microsoft.com/en-us/windows/win32/winsock/using-so-reuseaddr-and-so-exclusiveaddruse
             #[cfg(not(windows))]
             unsafe {
                 setsockopt(&sock, c::SOL_SOCKET, c::SO_REUSEADDR, 1 as c_int)?
             };
 
-            // Bind our new socket
+            // 绑定我们新建的 socket
             let (addr, len) = socket_addr_to_c(addr);
             cvt(unsafe { c::bind(sock.as_raw(), addr.as_ptr(), len as _) })?;
 
             let backlog = if cfg!(target_os = "horizon") {
-                // The 3DS doesn't support a big connection backlog. Sometimes
-                // it allows up to about 37, but other times it doesn't even
-                // accept 32. There may be a global limitation causing this.
+                // 3DS 不支持很大的连接 backlog。有时它允许多达约 37，
+                // 但有时甚至连 32 都不接受。这可能是某种全局限制导致的。
                 20
             } else if cfg!(target_os = "haiku") {
-                // Haiku does not support a queue length > 32
+                // Haiku 不支持队列长度 > 32
                 // https://github.com/haiku/haiku/blob/979a0bc487864675517fb2fab28f87dc8bf43041/headers/posix/sys/socket.h#L81
                 32
             } else {
-                // The default for all other platforms
+                // 所有其他平台的默认值
                 128
             };
 
-            // Start listening
+            // 开始监听
             cvt(unsafe { c::listen(sock.as_raw(), backlog) })?;
             Ok(TcpListener { inner: sock })
         }
@@ -590,9 +584,9 @@ impl TcpListener {
     }
 
     pub fn accept(&self) -> io::Result<(TcpStream, SocketAddr)> {
-        // The `accept` function will fill in the storage with the address,
-        // so we don't need to zero it here.
-        // reference: https://linux.die.net/man/2/accept4
+        // `accept` 函数会用地址填充 storage，
+        // 因此我们在这里不需要将其清零。
+        // 参考：https://linux.die.net/man/2/accept4
         let mut storage = MaybeUninit::<c::sockaddr_storage>::uninit();
         let mut len = size_of::<c::sockaddr_storage>() as c::socklen_t;
         let sock = self.inner.accept(storage.as_mut_ptr() as *mut _, &mut len)?;

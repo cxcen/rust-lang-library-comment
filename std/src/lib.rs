@@ -1,182 +1,152 @@
-//! # The Rust Standard Library
+//! # Rust 标准库（The Rust Standard Library）
 //!
-//! The Rust Standard Library is the foundation of portable Rust software, a
-//! set of minimal and battle-tested shared abstractions for the [broader Rust
-//! ecosystem][crates.io]. It offers core types, like [`Vec<T>`] and
-//! [`Option<T>`], library-defined [operations on language
-//! primitives](#primitives), [standard macros](#macros), [I/O] and
-//! [multithreading], among [many other things][other].
+//! Rust 标准库是可移植 Rust 软件的基石，它为[更广阔的 Rust 生态系统][crates.io]
+//! 提供了一组最小化且经过实战检验的共享抽象。它提供了诸如 [`Vec<T>`] 和
+//! [`Option<T>`] 这样的核心类型、[针对语言基本类型的库级操作](#primitives)、
+//! [标准宏](#macros)、[I/O] 与[多线程][multithreading]，以及[许多其它东西][other]。
 //!
-//! `std` is available to all Rust crates by default. Therefore, the
-//! standard library can be accessed in [`use`] statements through the path
-//! `std`, as in [`use std::env`].
+//! `std` 默认对所有 Rust crate 可用。因此，标准库可以通过路径 `std` 在 [`use`]
+//! 语句中访问，例如 [`use std::env`]。
 //!
-//! # How to read this documentation
+//! 设计背景：在 Rust 的库分层中，`core` 是无内存分配、无 OS 依赖的最底层，`alloc`
+//! 在其上引入堆分配（`Box`、`Vec`、`String` 等），而 `std` 处于最高层——它假定有堆、
+//! 有操作系统、有运行时，把对各平台（最显著的是 Windows 与 Unix 衍生系统）差异的
+//! 抽象统一封装起来，并提供文件系统、网络、线程、进程、时间等需要 OS 支持的能力。
 //!
-//! If you already know the name of what you are looking for, the fastest way to
-//! find it is to use the <a href="#" onclick="window.searchState.focus();">search
-//! button</a> at the top of the page.
+//! # 如何阅读本文档
 //!
-//! Otherwise, you may want to jump to one of these useful sections:
+//! 如果你已经知道要找的东西的名字，最快的方式是使用页面顶部的<a href="#" onclick="window.searchState.focus();">搜索
+//! 按钮</a>。
 //!
-//! * [`std::*` modules](#modules)
-//! * [Primitive types](#primitives)
-//! * [Standard macros](#macros)
-//! * [The Rust Prelude]
+//! 否则，你可能想跳到下面这些有用的章节之一：
 //!
-//! If this is your first time, the documentation for the standard library is
-//! written to be casually perused. Clicking on interesting things should
-//! generally lead you to interesting places. Still, there are important bits
-//! you don't want to miss, so read on for a tour of the standard library and
-//! its documentation!
+//! * [`std::*` 模块](#modules)
+//! * [基本类型（Primitive types）](#primitives)
+//! * [标准宏（Standard macros）](#macros)
+//! * [Rust 预导入（The Rust Prelude）][The Rust Prelude]
 //!
-//! Once you are familiar with the contents of the standard library you may
-//! begin to find the verbosity of the prose distracting. At this stage in your
-//! development you may want to press the
+//! 如果这是你第一次阅读，标准库文档的撰写风格适合随意浏览。点击感兴趣的内容通常
+//! 会带你到同样有趣的地方。不过，仍有一些你不想错过的重要部分，所以请继续往下读，
+//! 来一次标准库及其文档的巡览！
+//!
+//! 一旦你熟悉了标准库的内容，可能会觉得这些散文式的叙述过于啰嗦。到了开发的这个
+//! 阶段，你或许想点击页面顶部附近的
 //! "<svg style="width:0.75rem;height:0.75rem" viewBox="0 0 12 12" stroke="currentColor" fill="none"><path d="M2,2l4,4l4,-4M2,6l4,4l4,-4"/></svg>&nbsp;Summary"
-//! button near the top of the page to collapse it into a more skimmable view.
+//! 按钮，把文档折叠成更便于略读的视图。
 //!
-//! While you are looking at the top of the page, also notice the
-//! "Source" link. Rust's API documentation comes with the source
-//! code and you are encouraged to read it. The standard library source is
-//! generally high quality and a peek behind the curtains is
-//! often enlightening.
+//! 当你看着页面顶部时，也请注意那个 "Source"（源代码）链接。Rust 的 API 文档随附
+//! 源代码，我们鼓励你去读它。标准库源代码质量通常很高，窥探幕后往往令人豁然开朗。
 //!
-//! # What is in the standard library documentation?
+//! # 标准库文档里都有什么？
 //!
-//! First of all, The Rust Standard Library is divided into a number of focused
-//! modules, [all listed further down this page](#modules). These modules are
-//! the bedrock upon which all of Rust is forged, and they have mighty names
-//! like [`std::slice`] and [`std::cmp`]. Modules' documentation typically
-//! includes an overview of the module along with examples, and are a smart
-//! place to start familiarizing yourself with the library.
+//! 首先，Rust 标准库被划分为若干个聚焦的模块，[全部列在本页面下方](#modules)。这些
+//! 模块是整个 Rust 赖以构筑的基岩，它们有着像 [`std::slice`] 和 [`std::cmp`] 这样
+//! 响亮的名字。模块文档通常包括对该模块的概览以及示例，是开始熟悉本库的明智起点。
 //!
-//! Second, implicit methods on [primitive types] are documented here. This can
-//! be a source of confusion for two reasons:
+//! 其次，[基本类型（primitive types）][primitive types]上的隐式方法也记录在这里。
+//! 这可能因两个原因造成困惑：
 //!
-//! 1. While primitives are implemented by the compiler, the standard library
-//!    implements methods directly on the primitive types (and it is the only
-//!    library that does so), which are [documented in the section on
-//!    primitives](#primitives).
-//! 2. The standard library exports many modules *with the same name as
-//!    primitive types*. These define additional items related to the primitive
-//!    type, but not the all-important methods.
+//! 1. 虽然基本类型由编译器实现，但标准库直接在这些基本类型上实现方法（而且它是唯一
+//!    这样做的库），这些方法[记录在“基本类型”一节](#primitives)中。
+//! 2. 标准库导出了许多*与基本类型同名的*模块。这些模块定义了与该基本类型相关的额外
+//!    项，但不包括那些至关重要的方法本身。
 //!
-//! So for example there is a [page for the primitive type
-//! `char`](primitive::char) that lists all the methods that can be called on
-//! characters (very useful), and there is a [page for the module
-//! `std::char`](crate::char) that documents iterator and error types created by these methods
-//! (rarely useful).
+//! 举例来说，既有一个[基本类型 `char` 的页面](primitive::char)，列出可以在字符上
+//! 调用的所有方法（非常有用）；又有一个[模块 `std::char` 的页面](crate::char)，记录
+//! 由这些方法创建的迭代器和错误类型（很少用到）。
 //!
-//! Note the documentation for the primitives [`str`] and [`[T]`][prim@slice] (also
-//! called 'slice'). Many method calls on [`String`] and [`Vec<T>`] are actually
-//! calls to methods on [`str`] and [`[T]`][prim@slice] respectively, via [deref
-//! coercions][deref-coercions].
+//! 注意基本类型 [`str`] 和 [`[T]`][prim@slice]（也称为“切片（slice）”）的文档。
+//! [`String`] 和 [`Vec<T>`] 上的许多方法调用，实际上是分别通过 [deref
+//! 强制转换][deref-coercions]去调用 [`str`] 和 [`[T]`][prim@slice] 上的方法。
 //!
-//! Third, the standard library defines [The Rust Prelude], a small collection
-//! of items - mostly traits - that are imported into every module of every
-//! crate. The traits in the prelude are pervasive, making the prelude
-//! documentation a good entry point to learning about the library.
+//! 第三，标准库定义了 [Rust 预导入（The Rust Prelude）][The Rust Prelude]，这是一小组
+//! 项——大多是 trait——它们被导入到每个 crate 的每个模块中。预导入中的 trait 无处不在，
+//! 这使得预导入文档成为了解本库的一个良好入口。
 //!
-//! And finally, the standard library exports a number of standard macros, and
-//! [lists them on this page](#macros) (technically, not all of the standard
-//! macros are defined by the standard library - some are defined by the
-//! compiler - but they are documented here the same). Like the prelude, the
-//! standard macros are imported by default into all crates.
+//! 最后，标准库导出了若干标准宏，并[在本页面列出它们](#macros)（严格来说，并非所有
+//! 标准宏都由标准库定义——有些由编译器定义——但它们同样记录在这里）。与预导入一样，
+//! 这些标准宏默认被导入到所有 crate 中。
 //!
-//! # Contributing changes to the documentation
+//! # 向文档贡献修改
 //!
-//! Check out the Rust contribution guidelines [here](
-//! https://rustc-dev-guide.rust-lang.org/contributing.html#writing-documentation).
-//! The source for this documentation can be found on
-//! [GitHub](https://github.com/rust-lang/rust) in the 'library/std/' directory.
-//! To contribute changes, make sure you read the guidelines first, then submit
-//! pull-requests for your suggested changes.
+//! 请查阅 Rust 贡献指南[此处](
+//! https://rustc-dev-guide.rust-lang.org/contributing.html#writing-documentation)。
+//! 本文档的源代码可在
+//! [GitHub](https://github.com/rust-lang/rust) 上的 'library/std/' 目录中找到。
+//! 若要贡献修改，请先阅读指南，然后为你建议的改动提交 pull request。
 //!
-//! Contributions are appreciated! If you see a part of the docs that can be
-//! improved, submit a PR, or chat with us first on [Zulip][rust-zulip]
-//! #docs.
+//! 我们感谢你的贡献！如果你发现文档中有可改进之处，请提交 PR，或先在 [Zulip][rust-zulip]
+//! 的 #docs 频道上与我们交流。
 //!
-//! # A Tour of The Rust Standard Library
+//! # Rust 标准库巡览（A Tour of The Rust Standard Library）
 //!
-//! The rest of this crate documentation is dedicated to pointing out notable
-//! features of The Rust Standard Library.
+//! 本 crate 文档接下来的部分，致力于指出 Rust 标准库中那些值得注意的特性。
 //!
-//! ## Containers and collections
+//! ## 容器与集合（Containers and collections）
 //!
-//! The [`option`] and [`result`] modules define optional and error-handling
-//! types, [`Option<T>`] and [`Result<T, E>`]. The [`iter`] module defines
-//! Rust's iterator trait, [`Iterator`], which works with the [`for`] loop to
-//! access collections.
+//! [`option`] 和 [`result`] 模块定义了用于“可选值”和“错误处理”的类型 [`Option<T>`]
+//! 和 [`Result<T, E>`]。[`iter`] 模块定义了 Rust 的迭代器 trait [`Iterator`]，它与
+//! [`for`] 循环协作来访问集合。
 //!
-//! The standard library exposes three common ways to deal with contiguous
-//! regions of memory:
+//! 标准库提供了三种处理连续内存区域的常见方式：
 //!
-//! * [`Vec<T>`] - A heap-allocated *vector* that is resizable at runtime.
-//! * [`[T; N]`][prim@array] - An inline *array* with a fixed size at compile time.
-//! * [`[T]`][prim@slice] - A dynamically sized *slice* into any other kind of contiguous
-//!   storage, whether heap-allocated or not.
+//! * [`Vec<T>`] —— 一个堆分配的*向量（vector）*，可在运行时改变大小。
+//! * [`[T; N]`][prim@array] —— 一个内联*数组（array）*，大小在编译期固定。
+//! * [`[T]`][prim@slice] —— 一个动态大小的*切片（slice）*，指向任何其它种类的连续
+//!   存储，无论它是否堆分配。
 //!
-//! Slices can only be handled through some kind of *pointer*, and as such come
-//! in many flavors such as:
+//! 切片只能通过某种*指针（pointer）*来处理，因此有多种形态，例如：
 //!
-//! * `&[T]` - *shared slice*
-//! * `&mut [T]` - *mutable slice*
-//! * [`Box<[T]>`][owned slice] - *owned slice*
+//! * `&[T]` —— *共享切片（shared slice）*
+//! * `&mut [T]` —— *可变切片（mutable slice）*
+//! * [`Box<[T]>`][owned slice] —— *拥有所有权的切片（owned slice）*
 //!
-//! [`str`], a UTF-8 string slice, is a primitive type, and the standard library
-//! defines many methods for it. Rust [`str`]s are typically accessed as
-//! immutable references: `&str`. Use the owned [`String`] for building and
-//! mutating strings.
+//! [`str`] 是一个 UTF-8 字符串切片，属于基本类型，标准库为它定义了许多方法。Rust 的
+//! [`str`] 通常以不可变引用 `&str` 的形式被访问。要构建和修改字符串，请使用拥有所有权
+//! 的 [`String`]。
 //!
-//! For converting to strings use the [`format!`] macro, and for converting from
-//! strings use the [`FromStr`] trait.
+//! 要转换*为*字符串，使用 [`format!`] 宏；要*从*字符串转换，使用 [`FromStr`] trait。
 //!
-//! Data may be shared by placing it in a reference-counted box or the [`Rc`]
-//! type, and if further contained in a [`Cell`] or [`RefCell`], may be mutated
-//! as well as shared. Likewise, in a concurrent setting it is common to pair an
-//! atomically-reference-counted box, [`Arc`], with a [`Mutex`] to get the same
-//! effect.
+//! 数据可以通过放入引用计数的 box（即 [`Rc`] 类型）来共享；若进一步将其包入 [`Cell`]
+//! 或 [`RefCell`]，则在共享的同时还可被修改。同样地，在并发场景下，常见做法是将一个
+//! 原子引用计数的 box [`Arc`] 与一个 [`Mutex`] 配对，以获得相同的效果。
 //!
-//! The [`collections`] module defines maps, sets, linked lists and other
-//! typical collection types, including the common [`HashMap<K, V>`].
+//! [`collections`] 模块定义了映射、集合、链表等典型的集合类型，包括常用的
+//! [`HashMap<K, V>`]。
 //!
-//! ## Platform abstractions and I/O
+//! ## 平台抽象与 I/O（Platform abstractions and I/O）
 //!
-//! Besides basic data types, the standard library is largely concerned with
-//! abstracting over differences in common platforms, most notably Windows and
-//! Unix derivatives.
+//! 除了基本的数据类型之外，标准库主要还致力于抽象掉常见平台（最显著的是 Windows 与
+//! Unix 衍生系统）之间的差异。
 //!
-//! Common types of I/O, including [files], [TCP], and [UDP], are defined in
-//! the [`io`], [`fs`], and [`net`] modules.
+//! 常见的 I/O 类型，包括[文件][files]、[TCP] 和 [UDP]，分别定义在 [`io`]、[`fs`]
+//! 和 [`net`] 模块中。
 //!
-//! The [`thread`] module contains Rust's threading abstractions. [`sync`]
-//! contains further primitive shared memory types, including [`atomic`], [`mpmc`] and
-//! [`mpsc`], which contains the channel types for message passing.
+//! [`thread`] 模块包含 Rust 的线程抽象。[`sync`] 包含更多底层的共享内存类型，包括
+//! [`atomic`]、[`mpmc`] 和 [`mpsc`]，后者包含用于消息传递的 channel 类型。
 //!
-//! # Use before and after `main()`
+//! # 在 `main()` 之前与之后的使用（Use before and after `main()`）
 //!
-//! Many parts of the standard library are expected to work before and after `main()`;
-//! but this is not guaranteed or ensured by tests. It is recommended that you write your own tests
-//! and run them on each platform you wish to support.
-//! This means that use of `std` before/after main, especially of features that interact with the
-//! OS or global state, is exempted from stability and portability guarantees and instead only
-//! provided on a best-effort basis. Nevertheless bug reports are appreciated.
+//! 标准库的许多部分被期望在 `main()` 之前和之后都能工作；但这一点并没有被测试所保证
+//! 或确保。建议你为自己希望支持的每个平台编写并运行你自己的测试。
+//! 这意味着，在 main 之前/之后使用 `std`——尤其是那些与 OS 或全局状态交互的特性——不受
+//! 稳定性和可移植性保证的约束，仅以尽力而为（best-effort）的方式提供。尽管如此，我们
+//! 仍欢迎 bug 报告。
 //!
-//! On the other hand `core` and `alloc` are most likely to work in such environments with
-//! the caveat that any hookable behavior such as panics, oom handling or allocators will also
-//! depend on the compatibility of the hooks.
+//! 另一方面，`core` 和 `alloc` 最有可能在此类环境中工作，但需注意：任何可被钩子（hook）
+//! 接管的行为，例如 panic、内存不足（oom）处理或分配器（allocator），同样取决于这些
+//! 钩子的兼容性。
 //!
-//! Some features may also behave differently outside main, e.g. stdio could become unbuffered,
-//! some panics might turn into aborts, backtraces might not get symbolicated or similar.
+//! 某些特性在 main 之外也可能表现不同，例如 stdio 可能变为无缓冲（unbuffered）、某些
+//! panic 可能转为 abort、backtrace 可能无法被符号化（symbolicate）等等。
 //!
-//! Non-exhaustive list of known limitations:
+//! 已知限制的非穷尽列表：
 //!
-//! - after-main use of thread-locals, which also affects additional features:
+//! - 在 main 之后使用线程局部变量（thread-local），这也会影响以下额外特性：
 //!   - [`thread::current()`]
-//! - under UNIX, before main, file descriptors 0, 1, and 2 may be unchanged
-//!   (they are guaranteed to be open during main,
-//!    and are opened to /dev/null O_RDWR if they weren't open on program start)
+//! - 在 UNIX 上，于 main 之前，文件描述符 0、1、2 可能保持原样
+//!   （它们保证在 main 期间是打开的；如果它们在程序启动时未打开，则会以
+//!    O_RDWR 模式打开到 /dev/null）
 //!
 //!
 //! [I/O]: io
@@ -233,12 +203,12 @@
 )]
 #![doc(rust_logo)]
 #![doc(auto_cfg(hide(no_global_oom_handling)))]
-// Don't link to std. We are std.
+// 不要链接到 std，因为我们自己就是 std。
 #![no_std]
-// Tell the compiler to link to either panic_abort or panic_unwind
+// 告诉编译器链接到 panic_abort 或 panic_unwind 之一。
 #![needs_panic_runtime]
 //
-// Lints:
+// Lints（各类 lint 设置）:
 #![warn(deprecated_in_future)]
 #![warn(missing_docs)]
 #![warn(missing_debug_implementations)]
@@ -249,12 +219,12 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 #![allow(rustdoc::redundant_explicit_links)]
 #![warn(rustdoc::unescaped_backticks)]
-// Ensure that std can be linked against panic_abort despite compiled with `-C panic=unwind`
+// 确保 std 即便在以 `-C panic=unwind` 编译时，仍能与 panic_abort 链接。
 #![deny(ffi_unwind_calls)]
-// std may use features in a platform-specific way
+// std 可能会以平台特定的方式使用某些 feature。
 #![allow(unused_features)]
 //
-// Features:
+// Features（特性门控）:
 #![cfg_attr(test, feature(internal_output_capture, print_internals, update_panic_count, rt))]
 #![cfg_attr(
     all(target_vendor = "fortanix", target_env = "sgx"),
@@ -263,7 +233,7 @@
 #![cfg_attr(target_family = "wasm", feature(stdarch_wasm_atomic_wait))]
 #![cfg_attr(target_arch = "wasm64", feature(simd_wasm64))]
 //
-// Language features:
+// Language features（语言特性）:
 // tidy-alphabetical-start
 #![feature(alloc_error_handler)]
 #![feature(allocator_internals)]
@@ -315,7 +285,7 @@
 #![feature(type_alias_impl_trait)]
 // tidy-alphabetical-end
 //
-// Library features (core):
+// Library features (core)（来自 core 的库特性）:
 // tidy-alphabetical-start
 #![feature(bstr)]
 #![feature(bstr_internals)]
@@ -365,7 +335,7 @@
 #![feature(used_with_arg)]
 // tidy-alphabetical-end
 //
-// Library features (alloc):
+// Library features (alloc)（来自 alloc 的库特性）:
 // tidy-alphabetical-start
 #![feature(alloc_layout_extra)]
 #![feature(allocator_api)]
@@ -380,17 +350,17 @@
 #![feature(wtf8_internals)]
 // tidy-alphabetical-end
 //
-// Library features (unwind):
+// Library features (unwind)（来自 unwind 的库特性）:
 // tidy-alphabetical-start
 #![feature(panic_unwind)]
 // tidy-alphabetical-end
 //
-// Library features (std_detect):
+// Library features (std_detect)（来自 std_detect 的库特性）:
 // tidy-alphabetical-start
 #![feature(stdarch_internal)]
 // tidy-alphabetical-end
 //
-// Only for re-exporting:
+// Only for re-exporting（仅用于重导出）:
 // tidy-alphabetical-start
 #![feature(assert_matches)]
 #![feature(async_iterator)]
@@ -407,48 +377,48 @@
 #![feature(trace_macros)]
 // tidy-alphabetical-end
 //
-// Only used in tests/benchmarks:
+// Only used in tests/benchmarks（仅在测试/基准测试中使用）:
 //
-// Only for const-ness:
+// Only for const-ness（仅为满足 const 性质）:
 // tidy-alphabetical-start
 #![feature(io_const_error)]
 // tidy-alphabetical-end
 //
 #![default_lib_allocator]
 
-// The Rust prelude
-// The compiler expects the prelude definition to be defined before its use statement.
+// Rust 预导入（The Rust prelude）
+// 编译器要求预导入的定义出现在其 use 语句之前。
 pub mod prelude;
 
-// Explicitly import the prelude. The compiler uses this same unstable attribute
-// to import the prelude implicitly when building crates that depend on std.
+// 显式导入预导入。当构建依赖 std 的 crate 时，编译器也使用这个相同的不稳定属性
+// 来隐式导入预导入。
 #[prelude_import]
 #[allow(unused)]
 use prelude::rust_2024::*;
 
-// Access to Bencher, etc.
+// 访问 Bencher 等内容。
 #[cfg(test)]
 extern crate test;
 
-#[allow(unused_imports)] // macros from `alloc` are not used on all platforms
+#[allow(unused_imports)] // 来自 `alloc` 的宏并非在所有平台上都会被用到
 #[macro_use]
 extern crate alloc as alloc_crate;
 
-// Many compiler tests depend on libc being pulled in by std
-// so include it here even if it's unused.
+// 许多编译器测试依赖于 libc 被 std 拉入，
+// 所以即便它未被使用，也在这里包含进来。
 #[doc(masked)]
 #[allow(unused_extern_crates)]
 #[cfg(not(all(windows, target_env = "msvc")))]
 extern crate libc;
 
-// We always need an unwinder currently for backtraces
+// 目前我们总是需要一个 unwinder 来支持 backtrace。
 #[doc(masked)]
 #[allow(unused_extern_crates)]
 extern crate unwind;
 
-// FIXME: #94122 this extern crate definition only exist here to stop
-// miniz_oxide docs leaking into std docs. Find better way to do it.
-// Remove exclusion from tidy platform check when this removed.
+// FIXME: #94122 这个 extern crate 定义之所以存在于此，仅仅是为了阻止
+// miniz_oxide 的文档泄漏到 std 的文档中。需要找到更好的办法来处理它。
+// 当它被移除时，请一并把它从 tidy 的平台检查排除项中删去。
 #[doc(masked)]
 #[allow(unused_extern_crates)]
 #[cfg(all(
@@ -457,21 +427,19 @@ extern crate unwind;
 ))]
 extern crate miniz_oxide;
 
-// During testing, this crate is not actually the "real" std library, but rather
-// it links to the real std library, which was compiled from this same source
-// code. So any lang items std defines are conditionally excluded (or else they
-// would generate duplicate lang item errors), and any globals it defines are
-// _not_ the globals used by "real" std. So this import, defined only during
-// testing gives test-std access to real-std lang items and globals. See #2912
+// 在测试期间，本 crate 并不是“真正的” std 库，而是链接到那个真正的 std 库——后者
+// 正是从这同一份源代码编译而来。因此，std 定义的任何 lang item 都会被有条件地排除
+// （否则会产生重复 lang item 的错误），并且它定义的任何全局变量都*不是*“真正的”
+// std 所使用的全局变量。所以这个仅在测试期间定义的 import，给了 test-std 访问
+// real-std 的 lang item 和全局变量的途径。参见 #2912
 #[cfg(test)]
 extern crate std as realstd;
 
-// The standard macros that are not built-in to the compiler.
+// 那些并非编译器内建的标准宏。
 #[macro_use]
 mod macros;
 
-// The runtime entry point and a few unstable public functions used by the
-// compiler
+// 运行时入口点，以及一些供编译器使用的不稳定公开函数。
 #[macro_use]
 pub mod rt;
 
@@ -610,8 +578,8 @@ pub mod random;
 pub mod sync;
 pub mod time;
 
-// Pull in `std_float` crate  into std. The contents of
-// `std_float` are in a different repository: rust-lang/portable-simd.
+// 将 `std_float` crate 拉入 std。`std_float` 的内容位于另一个仓库
+// rust-lang/portable-simd 中。
 #[path = "../../portable-simd/crates/std_float/src/lib.rs"]
 #[allow(missing_debug_implementations, dead_code, unsafe_op_in_unsafe_fn)]
 #[allow(rustdoc::bare_urls)]
@@ -630,15 +598,15 @@ pub mod simd {
 }
 
 #[unstable(feature = "autodiff", issue = "124509")]
-/// This module provides support for automatic differentiation.
+/// 本模块提供对自动微分（automatic differentiation）的支持。
 pub mod autodiff {
-    /// This macro handles automatic differentiation.
+    /// 本宏处理自动微分。
     pub use core::autodiff::{autodiff_forward, autodiff_reverse};
 }
 
 #[stable(feature = "futures_api", since = "1.36.0")]
 pub mod task {
-    //! Types and Traits for working with asynchronous tasks.
+    //! 用于处理异步任务（asynchronous tasks）的类型与 trait。
 
     #[doc(inline)]
     #[stable(feature = "wake_trait", since = "1.51.0")]
@@ -652,11 +620,9 @@ pub mod task {
 #[stable(feature = "simd_arch", since = "1.27.0")]
 pub mod arch {
     #[stable(feature = "simd_arch", since = "1.27.0")]
-    // The `no_inline`-attribute is required to make the documentation of all
-    // targets available.
-    // See https://github.com/rust-lang/rust/pull/57808#issuecomment-457390549 for
-    // more information.
-    #[doc(no_inline)] // Note (#82861): required for correct documentation
+    // 需要 `no_inline` 属性，以便所有目标平台的文档都能可用。
+    // 更多信息参见 https://github.com/rust-lang/rust/pull/57808#issuecomment-457390549。
+    #[doc(no_inline)] // 注意 (#82861)：为正确生成文档所必需
     pub use core::arch::*;
 
     #[stable(feature = "simd_aarch64", since = "1.60.0")]
@@ -677,7 +643,7 @@ pub mod arch {
     pub use std_detect::{is_powerpc_feature_detected, is_powerpc64_feature_detected};
 }
 
-// This was stabilized in the crate root so we have to keep it there.
+// 该项在 crate 根处被稳定化，所以我们必须把它保留在根处。
 #[stable(feature = "simd_x86", since = "1.27.0")]
 pub use std_detect::is_x86_feature_detected;
 
@@ -685,7 +651,7 @@ mod sys;
 
 pub mod alloc;
 
-// Private support modules
+// 私有支持模块（Private support modules）
 mod panicking;
 
 #[path = "../../backtrace/src/lib.rs"]
@@ -708,14 +674,14 @@ pub use core::primitive;
 #[stable(feature = "todo_macro", since = "1.40.0")]
 #[allow(deprecated, deprecated_in_future)]
 pub use core::todo;
-// Re-export built-in macros defined through core.
+// 重导出通过 core 定义的内建宏。
 #[stable(feature = "builtin_macro_prelude", since = "1.38.0")]
 pub use core::{
     assert, assert_matches, cfg, column, compile_error, concat, const_format_args, env, file,
     format_args, format_args_nl, include, include_bytes, include_str, line, log_syntax,
     module_path, option_env, stringify, trace_macros,
 };
-// Re-export macros defined in core.
+// 重导出在 core 中定义的宏。
 #[stable(feature = "rust1", since = "1.0.0")]
 #[allow(deprecated, deprecated_in_future)]
 pub use core::{
@@ -723,38 +689,36 @@ pub use core::{
     unreachable, write, writeln,
 };
 
-// Re-export unstable derive macro defined through core.
+// 重导出通过 core 定义的不稳定 derive 宏。
 #[unstable(feature = "derive_from", issue = "144889")]
-/// Unstable module containing the unstable `From` derive macro.
+/// 包含不稳定的 `From` derive 宏的不稳定模块。
 pub mod from {
     #[unstable(feature = "derive_from", issue = "144889")]
     pub use core::from::From;
 }
 
-// Include a number of private modules that exist solely to provide
-// the rustdoc documentation for primitive types. Using `include!`
-// because rustdoc only looks for these modules at the crate level.
+// 包含若干私有模块，它们的唯一存在意义是为基本类型提供 rustdoc 文档。这里使用
+// `include!`，因为 rustdoc 只会在 crate 顶层查找这些模块。
 include!("../../core/src/primitive_docs.rs");
 
-// Include a number of private modules that exist solely to provide
-// the rustdoc documentation for the existing keywords. Using `include!`
-// because rustdoc only looks for these modules at the crate level.
+// 包含若干私有模块，它们的唯一存在意义是为现有的关键字提供 rustdoc 文档。这里使用
+// `include!`，因为 rustdoc 只会在 crate 顶层查找这些模块。
 include!("keyword_docs.rs");
 
-// This is required to avoid an unstable error when `restricted-std` is not
-// enabled. The use of #![feature(restricted_std)] in rustc-std-workspace-std
-// is unconditional, so the unstable feature needs to be defined somewhere.
+// 当未启用 `restricted-std` 时，需要这一项来避免出现 unstable 错误。由于
+// rustc-std-workspace-std 中对 #![feature(restricted_std)] 的使用是无条件的，
+// 因此这个不稳定 feature 需要在某处被定义。
 #[unstable(feature = "restricted_std", issue = "none")]
 mod __restricted_std_workaround {}
 
 mod sealed {
-    /// This trait being unreachable from outside the crate
-    /// prevents outside implementations of our extension traits.
-    /// This allows adding more trait methods in the future.
+    /// 该 trait 无法从 crate 外部触及，
+    /// 从而阻止外部对我们的扩展 trait 进行实现。
+    /// 这让我们将来能够添加更多 trait 方法。
     #[unstable(feature = "sealed", issue = "none")]
     pub trait Sealed {}
 }
 
 #[cfg(test)]
-#[allow(dead_code)] // Not used in all configurations.
+#[allow(dead_code)] // 并非在所有配置下都会被用到。
 pub(crate) mod test_helpers;

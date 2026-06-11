@@ -148,7 +148,7 @@ pub struct iovec {
     pub iov_len: usize,
 }
 
-/// This value can be chosen by an application
+/// 这个值可由应用程序自行选择
 pub const SOLID_NET_FD_SETSIZE: usize = 1;
 
 #[repr(C)]

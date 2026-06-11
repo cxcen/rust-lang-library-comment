@@ -10,6 +10,6 @@ unsafe impl GlobalAlloc for System {
 
     #[inline]
     unsafe fn dealloc(&self, _ptr: *mut u8, _layout: Layout) {
-        // this allocator never deallocates memory
+        // 这个分配器从不释放内存
     }
 }

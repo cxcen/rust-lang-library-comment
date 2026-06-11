@@ -1,6 +1,6 @@
-//! SOLID, just like macOS, has an API to register TLS destructors. But since
-//! it does not allow specifying an argument to that function, and will not run
-//! destructors for terminated tasks, we still keep our own list.
+//! SOLID 和 macOS 一样，提供了注册 TLS 析构函数（destructors）的 API。
+//! 但由于它不允许为该函数指定参数，并且不会为已终止的任务运行析构函数，
+//! 因此我们仍然维护自己的一份列表。
 
 use crate::cell::Cell;
 use crate::sys::pal::abi;
@@ -13,8 +13,8 @@ pub fn enable() {
 
     if !REGISTERED.replace(true) {
         let tid = task::current_task_id_aborting();
-        // Register `tls_dtor` to make sure the TLS destructors are called
-        // for tasks created by other means than `std::thread`
+        // 注册 `tls_dtor`，以确保对于那些并非由 `std::thread` 而是以其他方式
+        // 创建的任务，TLS 析构函数也会被调用
         unsafe { abi::SOLID_TLS_AddDestructor(tid as i32, tls_dtor) };
     }
 

@@ -23,8 +23,8 @@ impl FileDesc {
     }
 
     pub fn read_buf(&self, mut buf: BorrowedCursor<'_>) -> io::Result<()> {
-        // SAFETY: The `read` syscall does not read from the buffer, so it is
-        // safe to use `&mut [MaybeUninit<u8>]`.
+        // SAFETY: `read` 系统调用不会从缓冲区读取数据，所以
+        // 使用 `&mut [MaybeUninit<u8>]` 是安全的。
         let result = cvt(unsafe {
             hermit_abi::read(
                 self.fd.as_raw_fd(),
@@ -32,7 +32,7 @@ impl FileDesc {
                 buf.capacity(),
             )
         })?;
-        // SAFETY: Exactly `result` bytes have been filled.
+        // SAFETY: 恰好填充了 `result` 个字节。
         unsafe { buf.advance_unchecked(result as usize) };
         Ok(())
     }
@@ -82,8 +82,8 @@ impl FileDesc {
 
     pub fn seek(&self, pos: SeekFrom) -> io::Result<u64> {
         let (whence, pos) = match pos {
-            // Casting to `i64` is fine, too large values will end up as
-            // negative which will cause an error in `lseek`.
+            // 转换为 `i64` 也是没问题的，过大的值最终会变成负数，
+            // 这会在 `lseek` 中导致一个错误。
             SeekFrom::Start(off) => (hermit_abi::SEEK_SET, off as i64),
             SeekFrom::End(off) => (hermit_abi::SEEK_END, off),
             SeekFrom::Current(off) => (hermit_abi::SEEK_CUR, off),

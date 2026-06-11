@@ -1,63 +1,54 @@
-//! Synchronization objects that employ poisoning.
+//! 采用中毒（poisoning）机制的同步对象。
 //!
-//! # Poisoning
+//! # 中毒（Poisoning）
 //!
-//! All synchronization objects in this module implement a strategy called
-//! "poisoning" where a primitive becomes poisoned if it recognizes that some
-//! thread has panicked while holding the exclusive access granted by the
-//! primitive. This information is then propagated to all other threads
-//! to signify that the data protected by this primitive is likely tainted
-//! (some invariant is not being upheld).
+//! 本模块中的所有同步对象都实现了一种名为「中毒」的策略：当一个原语察觉到
+//! 某个线程在持有该原语所授予的独占访问权（exclusive access）期间发生了
+//! panic 时，该原语就会变成「中毒」状态。随后这一信息会传播给所有其他线程，
+//! 用以表明该原语所保护的数据很可能已被污染（某些不变式 invariant 未被维持）。
 //!
-//! The specifics of how this "poisoned" state affects other threads and whether
-//! the panics are recognized reliably or on a best-effort basis depend on the
-//! primitive. See [Overview](#overview) below.
+//! 「中毒」状态究竟如何影响其他线程，以及对 panic 的察觉是可靠的还是
+//! 尽力而为（best-effort）的，取决于具体的原语。参见下方 [Overview](#overview)。
 //!
-//! The synchronization objects in this module have alternative implementations that do not employ
-//! poisoning in the [`std::sync::nonpoison`] module.
+//! 本模块中的同步对象在 [`std::sync::nonpoison`] 模块中有不采用中毒机制的
+//! 替代实现。
 //!
 //! [`std::sync::nonpoison`]: crate::sync::nonpoison
 //!
-//! # Overview
+//! # 概览（Overview）
 //!
-//! Below is a list of synchronization objects provided by this module
-//! with a high-level overview for each object and a description
-//! of how it employs "poisoning".
+//! 下面列出本模块提供的同步对象，并对每个对象给出高层概览，以及它如何
+//! 运用「中毒」机制的说明。
 //!
-//! - [`Condvar`]: Condition Variable, providing the ability to block
-//!   a thread while waiting for an event to occur.
+//! - [`Condvar`]：Condition Variable（条件变量），提供在等待某事件发生时
+//!   阻塞线程的能力。
 //!
-//!   Condition variables are typically associated with
-//!   a boolean predicate (a condition) and a mutex.
-//!   This implementation is associated with [`poison::Mutex`](Mutex),
-//!   which employs poisoning.
-//!   For this reason, [`Condvar::wait()`] will return a [`LockResult`],
-//!   just like [`poison::Mutex::lock()`](Mutex::lock) does.
+//!   条件变量通常与一个布尔谓词（一个条件）和一个互斥锁关联在一起。
+//!   本实现与采用中毒机制的 [`poison::Mutex`](Mutex) 关联。
+//!   正因如此，[`Condvar::wait()`] 会返回 [`LockResult`]，
+//!   就像 [`poison::Mutex::lock()`](Mutex::lock) 那样。
 //!
-//! - [`Mutex`]: Mutual Exclusion mechanism, which ensures that at
-//!   most one thread at a time is able to access some data.
+//! - [`Mutex`]：Mutual Exclusion（互斥）机制，确保任一时刻至多一个线程
+//!   能访问某些数据。
 //!
-//!   Panicking while holding the lock typically poisons the mutex, but it is
-//!   not guaranteed to detect this condition in all circumstances.
-//!   [`Mutex::lock()`] returns a [`LockResult`], providing a way to deal with
-//!   the poisoned state. See [`Mutex`'s documentation](Mutex#poisoning) for more.
+//!   在持有锁期间发生 panic 通常会使该互斥锁中毒，但并不保证在所有情形下
+//!   都能检测到这一状况。[`Mutex::lock()`] 返回 [`LockResult`]，提供了处理
+//!   中毒状态的途径。详见 [`Mutex` 的文档](Mutex#poisoning)。
 //!
-//! - [`RwLock`]: Provides a mutual exclusion mechanism which allows
-//!   multiple readers at the same time, while allowing only one
-//!   writer at a time. In some cases, this can be more efficient than
-//!   a mutex.
+//! - [`RwLock`]：提供一种互斥机制，允许多个读者同时读，而同一时刻只允许
+//!   一个写者。在某些情况下，这比互斥锁更高效。
 //!
-//!   This implementation, like [`Mutex`], usually becomes poisoned on a panic.
-//!   Note, however, that an `RwLock` may only be poisoned if a panic occurs
-//!   while it is locked exclusively (write mode). If a panic occurs in any reader,
-//!   then the lock will not be poisoned.
+//!   本实现与 [`Mutex`] 一样，通常会在 panic 时中毒。但请注意，`RwLock`
+//!   只有在被以独占方式（写模式 write mode）锁定期间发生 panic 时才可能中毒。
+//!   如果 panic 发生在任一读者中，则该锁不会中毒。
 //!
-//! Note that the [`Once`] type also employs poisoning, but since it has non-poisoning `force`
-//! methods available on it, there is no separate `nonpoison` and `poison` version.
+//! 注意，[`Once`] 类型也采用了中毒机制，但由于它自身带有不中毒的 `force`
+//! 系列方法，因此没有单独的 `nonpoison` 与 `poison` 版本之分。
 //!
 //! [`Once`]: crate::sync::Once
 
-// If we are not unwinding, `PoisonError` is uninhabited.
+// 如果我们不进行栈展开（unwinding），那么 `PoisonError` 是不可居留的
+// （uninhabited，即不可能存在该类型的值）。
 #![cfg_attr(not(panic = "unwind"), expect(unreachable_code))]
 
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -87,16 +78,14 @@ pub(crate) struct Flag {
     failed: Atomic<bool>,
 }
 
-// Note that the Ordering uses to access the `failed` field of `Flag` below is
-// always `Relaxed`, and that's because this isn't actually protecting any data,
-// it's just a flag whether we've panicked or not.
+// 注意：下面访问 `Flag` 的 `failed` 字段时，所用的内存序（Ordering）始终是
+// `Relaxed`。这是因为它实际上并不保护任何数据，它只是一个标记，用来表示
+// 我们是否已经发生过 panic。
 //
-// The actual location that this matters is when a mutex is **locked** which is
-// where we have external synchronization ensuring that we see memory
-// reads/writes to this flag.
+// 真正要紧的位置是在互斥锁被 **加锁（locked）** 的时候——在那里我们有外部
+// 同步（external synchronization）来确保我们能看到对此标志的内存读/写。
 //
-// As a result, if it matters, we should see the correct value for `failed` in
-// all cases.
+// 因此，在真正要紧的所有情形下，我们都应当看到 `failed` 的正确取值。
 
 impl Flag {
     #[inline]
@@ -107,13 +96,15 @@ impl Flag {
         }
     }
 
-    /// Checks the flag for an unguarded borrow, where we only care about existing poison.
+    /// 为一次「无守卫借用」（unguarded borrow）检查该标志，此时我们只关心
+    /// 已有的中毒状态。
     #[inline]
     pub fn borrow(&self) -> LockResult<()> {
         if self.get() { Err(PoisonError::new(())) } else { Ok(()) }
     }
 
-    /// Checks the flag for a guarded borrow, where we may also set poison when `done`.
+    /// 为一次「有守卫借用」（guarded borrow）检查该标志，此时我们也可能在
+    /// `done` 时设置中毒。
     #[inline]
     pub fn guard(&self) -> LockResult<Guard> {
         let ret = Guard {
@@ -126,6 +117,8 @@ impl Flag {
     #[inline]
     #[cfg(panic = "unwind")]
     pub fn done(&self, guard: &Guard) {
+        // 仅当：当初获取守卫时该线程并未在 panic，而现在却正在 panic，
+        // 才把标志置为已失败——也就是说，panic 是在持有锁期间新发生的。
         if !guard.panicking && thread::panicking() {
             self.failed.store(true, Ordering::Relaxed);
         }
@@ -156,18 +149,19 @@ impl Flag {
 
 #[derive(Clone)]
 pub(crate) struct Guard {
+    // 记录构造该守卫时所在线程是否正在 panic，用于在 `done` 中区分
+    // 「panic 是否是在持锁期间新发生的」。
     #[cfg(panic = "unwind")]
     panicking: bool,
 }
 
-/// A type of error which can be returned whenever a lock is acquired.
+/// 一种在获取锁时可能返回的错误类型。
 ///
-/// Both [`Mutex`]es and [`RwLock`]s are poisoned whenever a thread fails while the lock
-/// is held. The precise semantics for when a lock is poisoned is documented on
-/// each lock. For a lock in the poisoned state, unless the state is cleared manually,
-/// all future acquisitions will return this error.
+/// 每当某个线程在持有锁期间失败（fail）时，[`Mutex`] 和 [`RwLock`] 都会中毒。
+/// 锁在何种确切语义下会中毒，记录在各个锁各自的文档中。对于处于中毒状态的锁，
+/// 除非手动清除该状态，否则今后所有的获取操作都会返回这个错误。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use std::sync::{Arc, Mutex};
@@ -175,7 +169,7 @@ pub(crate) struct Guard {
 ///
 /// let mutex = Arc::new(Mutex::new(1));
 ///
-/// // poison the mutex
+/// // 使该互斥锁中毒
 /// let c_mutex = Arc::clone(&mutex);
 /// let _ = thread::spawn(move || {
 ///     let mut data = c_mutex.lock().unwrap();
@@ -196,13 +190,15 @@ pub(crate) struct Guard {
 #[stable(feature = "rust1", since = "1.0.0")]
 pub struct PoisonError<T> {
     data: T,
+    // 在 `panic="abort"` 构建下，该类型不可能被构造出来：用 `!`（never 类型）
+    // 字段把它标记为不可居留（uninhabited）。
     #[cfg(not(panic = "unwind"))]
     _never: !,
 }
 
-/// An enumeration of possible errors associated with a [`TryLockResult`] which
-/// can occur while trying to acquire a lock, from the [`try_lock`] method on a
-/// [`Mutex`] or the [`try_read`] and [`try_write`] methods on an [`RwLock`].
+/// 与 [`TryLockResult`] 关联的、在尝试获取锁时可能发生的各种错误的枚举；
+/// 这些错误来自 [`Mutex`] 上的 [`try_lock`] 方法，或 [`RwLock`] 上的
+/// [`try_read`] 与 [`try_write`] 方法。
 ///
 /// [`try_lock`]: crate::sync::Mutex::try_lock
 /// [`try_read`]: crate::sync::RwLock::try_read
@@ -211,34 +207,28 @@ pub struct PoisonError<T> {
 /// [`RwLock`]: crate::sync::RwLock
 #[stable(feature = "rust1", since = "1.0.0")]
 pub enum TryLockError<T> {
-    /// The lock could not be acquired because another thread failed while holding
-    /// the lock.
+    /// 无法获取该锁，因为另一个线程在持有该锁期间失败了（即锁已中毒）。
     #[stable(feature = "rust1", since = "1.0.0")]
     Poisoned(#[stable(feature = "rust1", since = "1.0.0")] PoisonError<T>),
-    /// The lock could not be acquired at this time because the operation would
-    /// otherwise block.
+    /// 此刻无法获取该锁，因为该操作否则就会发生阻塞。
     #[stable(feature = "rust1", since = "1.0.0")]
     WouldBlock,
 }
 
-/// A type alias for the result of a lock method which can be poisoned.
+/// 一个可能中毒的加锁方法所返回结果的类型别名。
 ///
-/// The [`Ok`] variant of this result indicates that the primitive was not
-/// poisoned, and the operation result is contained within. The [`Err`] variant indicates
-/// that the primitive was poisoned. Note that the [`Err`] variant *also* carries
-/// an associated value assigned by the lock method, and it can be acquired through the
-/// [`into_inner`] method. The semantics of the associated value depends on the corresponding
-/// lock method.
+/// 该结果的 [`Ok`] 变体表示原语未中毒，操作结果包含于其中。[`Err`] 变体表示
+/// 原语已中毒。注意 [`Err`] 变体 *同样* 携带一个由加锁方法赋予的关联值，
+/// 可通过 [`into_inner`] 方法取得。该关联值的语义取决于对应的加锁方法。
 ///
 /// [`into_inner`]: PoisonError::into_inner
 #[stable(feature = "rust1", since = "1.0.0")]
 pub type LockResult<T> = Result<T, PoisonError<T>>;
 
-/// A type alias for the result of a nonblocking locking method.
+/// 一个非阻塞加锁方法所返回结果的类型别名。
 ///
-/// For more information, see [`LockResult`]. A `TryLockResult` doesn't
-/// necessarily hold the associated guard in the [`Err`] type as the lock might not
-/// have been acquired for other reasons.
+/// 更多信息参见 [`LockResult`]。`TryLockResult` 的 [`Err`] 类型中不一定会
+/// 持有关联的守卫，因为锁也可能是由于其他原因而未获取到。
 #[stable(feature = "rust1", since = "1.0.0")]
 pub type TryLockResult<Guard> = Result<Guard, TryLockError<Guard>>;
 
@@ -260,35 +250,36 @@ impl<T> fmt::Display for PoisonError<T> {
 impl<T> Error for PoisonError<T> {}
 
 impl<T> PoisonError<T> {
-    /// Creates a `PoisonError`.
+    /// 创建一个 `PoisonError`。
     ///
-    /// This is generally created by methods like [`Mutex::lock`](crate::sync::Mutex::lock)
-    /// or [`RwLock::read`](crate::sync::RwLock::read).
+    /// 它通常由 [`Mutex::lock`](crate::sync::Mutex::lock) 或
+    /// [`RwLock::read`](crate::sync::RwLock::read) 这类方法创建。
     ///
-    /// This method may panic if std was built with `panic="abort"`.
+    /// 如果 std 是以 `panic="abort"` 构建的，本方法可能 panic。
     #[cfg(panic = "unwind")]
     #[stable(feature = "sync_poison", since = "1.2.0")]
     pub fn new(data: T) -> PoisonError<T> {
         PoisonError { data }
     }
 
-    /// Creates a `PoisonError`.
+    /// 创建一个 `PoisonError`。
     ///
-    /// This is generally created by methods like [`Mutex::lock`](crate::sync::Mutex::lock)
-    /// or [`RwLock::read`](crate::sync::RwLock::read).
+    /// 它通常由 [`Mutex::lock`](crate::sync::Mutex::lock) 或
+    /// [`RwLock::read`](crate::sync::RwLock::read) 这类方法创建。
     ///
-    /// This method may panic if std was built with `panic="abort"`.
+    /// 如果 std 是以 `panic="abort"` 构建的，本方法可能 panic。
     #[cfg(not(panic = "unwind"))]
     #[stable(feature = "sync_poison", since = "1.2.0")]
     #[track_caller]
     pub fn new(_data: T) -> PoisonError<T> {
+        // 在 `panic="abort"` 下不会有中毒发生，因此 `PoisonError` 本不该被构造；
+        // 一旦走到这里说明逻辑有误，直接 panic。
         panic!("PoisonError created in a libstd built with panic=\"abort\"")
     }
 
-    /// Consumes this error indicating that a lock is poisoned, returning the
-    /// associated data.
+    /// 消耗这个表示锁已中毒的错误，返回其关联的数据。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashSet;
@@ -297,7 +288,7 @@ impl<T> PoisonError<T> {
     ///
     /// let mutex = Arc::new(Mutex::new(HashSet::new()));
     ///
-    /// // poison the mutex
+    /// // 使该互斥锁中毒
     /// let c_mutex = Arc::clone(&mutex);
     /// let _ = thread::spawn(move || {
     ///     let mut data = c_mutex.lock().unwrap();
@@ -314,15 +305,13 @@ impl<T> PoisonError<T> {
         self.data
     }
 
-    /// Reaches into this error indicating that a lock is poisoned, returning a
-    /// reference to the associated data.
+    /// 探入这个表示锁已中毒的错误，返回其关联数据的一个引用。
     #[stable(feature = "sync_poison", since = "1.2.0")]
     pub fn get_ref(&self) -> &T {
         &self.data
     }
 
-    /// Reaches into this error indicating that a lock is poisoned, returning a
-    /// mutable reference to the associated data.
+    /// 探入这个表示锁已中毒的错误，返回其关联数据的一个可变引用。
     #[stable(feature = "sync_poison", since = "1.2.0")]
     pub fn get_mut(&mut self) -> &mut T {
         &mut self.data
@@ -381,6 +370,8 @@ pub(crate) fn map_result<T, U, F>(result: LockResult<T>, f: F) -> LockResult<U>
 where
     F: FnOnce(T) -> U,
 {
+    // 把 `f` 应用到结果内部的值上，同时保留其中毒状态：Ok 仍是 Ok，
+    // 中毒的 Err 仍是携带映射后数据的中毒 Err。
     match result {
         Ok(t) => Ok(f(t)),
         #[cfg(panic = "unwind")]

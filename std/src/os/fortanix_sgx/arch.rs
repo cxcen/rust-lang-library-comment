@@ -1,24 +1,23 @@
-//! SGX-specific access to architectural features.
+//! SGX 平台特有的、对体系结构特性的访问。
 //!
-//! The functionality in this module is further documented in the Intel
-//! Software Developer's Manual, Volume 3, Chapter 40.
+//! 本模块中的功能在 Intel Software Developer's Manual, Volume 3, Chapter 40 中有进一步的说明。
 #![unstable(feature = "sgx_platform", issue = "56975")]
 
 use core::arch::asm;
 
 use crate::mem::MaybeUninit;
 
-/// Wrapper struct to force 16-byte alignment.
+/// 用于强制 16 字节对齐的包装结构体。
 #[repr(align(16))]
 #[unstable(feature = "sgx_platform", issue = "56975")]
 pub struct Align16<T>(pub T);
 
-/// Wrapper struct to force 128-byte alignment.
+/// 用于强制 128 字节对齐的包装结构体。
 #[repr(align(128))]
 #[unstable(feature = "sgx_platform", issue = "56975")]
 pub struct Align128<T>(pub T);
 
-/// Wrapper struct to force 512-byte alignment.
+/// 用于强制 512 字节对齐的包装结构体。
 #[repr(align(512))]
 #[unstable(feature = "sgx_platform", issue = "56975")]
 pub struct Align512<T>(pub T);
@@ -26,7 +25,7 @@ pub struct Align512<T>(pub T);
 const ENCLU_EREPORT: u32 = 0;
 const ENCLU_EGETKEY: u32 = 1;
 
-/// Call the `EGETKEY` instruction to obtain a 128-bit secret key.
+/// 调用 `EGETKEY` 指令以获取一个 128 位的密钥。
 #[unstable(feature = "sgx_platform", issue = "56975")]
 pub fn egetkey(request: &Align512<[u8; 512]>) -> Result<Align16<[u8; 16]>, u32> {
     unsafe {
@@ -34,7 +33,7 @@ pub fn egetkey(request: &Align512<[u8; 512]>) -> Result<Align16<[u8; 16]>, u32> 
         let error;
 
         asm!(
-            // rbx is reserved by LLVM
+            // rbx 被 LLVM 保留
             "xchg %rbx, {0}",
             "enclu",
             "mov {0}, %rbx",
@@ -51,11 +50,10 @@ pub fn egetkey(request: &Align512<[u8; 512]>) -> Result<Align16<[u8; 16]>, u32> 
     }
 }
 
-/// Call the `EREPORT` instruction.
+/// 调用 `EREPORT` 指令。
 ///
-/// This creates a cryptographic report describing the contents of the current
-/// enclave. The report may be verified by the enclave described in
-/// `targetinfo`.
+/// 这会创建一份描述当前 enclave 内容的加密报告（cryptographic report）。该报告可由
+/// `targetinfo` 所描述的 enclave 进行验证。
 #[unstable(feature = "sgx_platform", issue = "56975")]
 pub fn ereport(
     targetinfo: &Align512<[u8; 512]>,
@@ -65,7 +63,7 @@ pub fn ereport(
         let mut report = MaybeUninit::uninit();
 
         asm!(
-            // rbx is reserved by LLVM
+            // rbx 被 LLVM 保留
             "xchg %rbx, {0}",
             "enclu",
             "mov {0}, %rbx",

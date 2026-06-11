@@ -4,29 +4,24 @@ use crate::io::{
 use crate::mem::{self, ManuallyDrop};
 use crate::{error, fmt, ptr};
 
-/// Wraps a writer and buffers its output.
+/// 包装一个 writer 并对其输出进行缓冲。
 ///
-/// It can be excessively inefficient to work directly with something that
-/// implements [`Write`]. For example, every call to
-/// [`write`][`TcpStream::write`] on [`TcpStream`] results in a system call. A
-/// `BufWriter<W>` keeps an in-memory buffer of data and writes it to an underlying
-/// writer in large, infrequent batches.
+/// 直接操作一个实现了 [`Write`] 的类型可能非常低效。举例来说，对 [`TcpStream`] 的每一次
+/// [`write`][`TcpStream::write`] 调用都会引发一次系统调用。而 `BufWriter<W>` 会把数据
+/// 保存在一块内存缓冲里，再以少量的大批次写出到底层 writer。
 ///
-/// `BufWriter<W>` can improve the speed of programs that make *small* and
-/// *repeated* write calls to the same file or network socket. It does not
-/// help when writing very large amounts at once, or writing just one or a few
-/// times. It also provides no advantage when writing to a destination that is
-/// in memory, like a <code>[Vec]\<u8></code>.
+/// 对于那些对同一个文件或网络 socket 反复进行 *小量* 写入的程序，`BufWriter<W>` 能提升
+/// 速度。但如果你一次写入的数据量非常大，或只写入一两次，它就帮不上忙。此外，当写入目标本身
+/// 就在内存中时（例如 <code>[Vec]\<u8></code>），它也没有任何优势。
 ///
-/// It is critical to call [`flush`] before `BufWriter<W>` is dropped. Though
-/// dropping will attempt to flush the contents of the buffer, any errors
-/// that happen in the process of dropping will be ignored. Calling [`flush`]
-/// ensures that the buffer is empty and thus dropping will not even attempt
-/// file operations.
+/// 在 `BufWriter<W>` 被 drop 之前调用 [`flush`] 至关重要。尽管 drop 时会尝试刷新缓冲
+/// 内容，但 drop 过程中发生的任何错误都会被忽略（即“flush-on-drop 时错误被吞”）。显式调用
+/// [`flush`] 能确保缓冲为空，这样 drop 时甚至都不会去尝试任何文件操作——也就不存在错误被
+/// 静默吞掉的隐患。因此，正确的做法是始终显式 flush，而不要依赖 drop 来刷新。
 ///
-/// # Examples
+/// # 示例
 ///
-/// Let's write the numbers one through ten to a [`TcpStream`]:
+/// 我们把数字 1 到 10 写入一个 [`TcpStream`]：
 ///
 /// ```no_run
 /// use std::io::prelude::*;
@@ -39,9 +34,8 @@ use crate::{error, fmt, ptr};
 /// }
 /// ```
 ///
-/// Because we're not buffering, we write each one in turn, incurring the
-/// overhead of a system call per byte written. We can fix this with a
-/// `BufWriter<W>`:
+/// 由于没有缓冲，我们是逐个写入的，每写一个字节都要承担一次系统调用的开销。我们可以用
+/// `BufWriter<W>` 来解决这个问题：
 ///
 /// ```no_run
 /// use std::io::prelude::*;
@@ -56,32 +50,28 @@ use crate::{error, fmt, ptr};
 /// stream.flush().unwrap();
 /// ```
 ///
-/// By wrapping the stream with a `BufWriter<W>`, these ten writes are all grouped
-/// together by the buffer and will all be written out in one system call when
-/// the `stream` is flushed.
+/// 通过用 `BufWriter<W>` 包装这个流，这十次写入会被缓冲合并到一起，并在 `stream` 被刷新时
+/// 用一次系统调用全部写出。
 ///
 /// [`TcpStream::write`]: crate::net::TcpStream::write
 /// [`TcpStream`]: crate::net::TcpStream
 /// [`flush`]: BufWriter::flush
 #[stable(feature = "rust1", since = "1.0.0")]
 pub struct BufWriter<W: ?Sized + Write> {
-    // The buffer. Avoid using this like a normal `Vec` in common code paths.
-    // That is, don't use `buf.push`, `buf.extend_from_slice`, or any other
-    // methods that require bounds checking or the like. This makes an enormous
-    // difference to performance (we may want to stop using a `Vec` entirely).
+    // 缓冲本身。在常见代码路径中，不要把它当作普通的 `Vec` 来用。也就是说，不要用
+    // `buf.push`、`buf.extend_from_slice` 或任何需要边界检查之类的方法。这对性能影响
+    // 巨大（我们甚至可能想完全弃用 `Vec`）。
     buf: Vec<u8>,
-    // #30888: If the inner writer panics in a call to write, we don't want to
-    // write the buffered data a second time in BufWriter's destructor. This
-    // flag tells the Drop impl if it should skip the flush.
+    // #30888：如果内部 writer 在某次 write 调用中 panic，我们不希望在 BufWriter 的析构
+    // 函数里把已缓冲的数据再写一遍。这个标志告诉 Drop 实现是否应跳过那次 flush。
     panicked: bool,
     inner: W,
 }
 
 impl<W: Write> BufWriter<W> {
-    /// Creates a new `BufWriter<W>` with a default buffer capacity. The default is currently 8 KiB,
-    /// but may change in the future.
+    /// 用默认缓冲容量创建一个新的 `BufWriter<W>`。当前默认值是 8 KiB，但将来可能会变。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::io::BufWriter;
@@ -104,11 +94,11 @@ impl<W: Write> BufWriter<W> {
         Self { inner, buf, panicked: false }
     }
 
-    /// Creates a new `BufWriter<W>` with at least the specified buffer capacity.
+    /// 创建一个新的 `BufWriter<W>`，其缓冲容量至少为指定的大小。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Creating a buffer with a buffer of at least a hundred bytes.
+    /// 创建一个缓冲容量至少为一百字节的缓冲。
     ///
     /// ```no_run
     /// use std::io::BufWriter;
@@ -122,15 +112,15 @@ impl<W: Write> BufWriter<W> {
         BufWriter { inner, buf: Vec::with_capacity(capacity), panicked: false }
     }
 
-    /// Unwraps this `BufWriter<W>`, returning the underlying writer.
+    /// 拆开（unwrap）这个 `BufWriter<W>`，返回其底层 writer。
     ///
-    /// The buffer is written out before returning the writer.
+    /// 在返回 writer 之前，缓冲会先被写出。
     ///
     /// # Errors
     ///
-    /// An [`Err`] will be returned if an error occurs while flushing the buffer.
+    /// 如果在刷新缓冲时发生错误，将返回一个 [`Err`]。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::io::BufWriter;
@@ -138,7 +128,7 @@ impl<W: Write> BufWriter<W> {
     ///
     /// let mut buffer = BufWriter::new(TcpStream::connect("127.0.0.1:34254").unwrap());
     ///
-    /// // unwrap the TcpStream and flush the buffer
+    /// // 拆出 TcpStream 并刷新缓冲
     /// let stream = buffer.into_inner().unwrap();
     /// ```
     #[stable(feature = "rust1", since = "1.0.0")]
@@ -149,16 +139,14 @@ impl<W: Write> BufWriter<W> {
         }
     }
 
-    /// Disassembles this `BufWriter<W>`, returning the underlying writer, and any buffered but
-    /// unwritten data.
+    /// 拆解这个 `BufWriter<W>`，返回底层 writer 以及任何已缓冲但尚未写出的数据。
     ///
-    /// If the underlying writer panicked, it is not known what portion of the data was written.
-    /// In this case, we return `WriterPanicked` for the buffered data (from which the buffer
-    /// contents can still be recovered).
+    /// 如果底层 writer 发生了 panic，则无从得知数据中有多少已被写出。在这种情况下，对于
+    /// 已缓冲的数据我们返回 `WriterPanicked`（仍可从中取回缓冲内容）。
     ///
-    /// `into_parts` makes no attempt to flush data and cannot fail.
+    /// `into_parts` 不会尝试刷新数据，也不会失败。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::io::{BufWriter, Write};
@@ -177,7 +165,7 @@ impl<W: Write> BufWriter<W> {
         let buf = mem::take(&mut this.buf);
         let buf = if !this.panicked { Ok(buf) } else { Err(WriterPanicked { buf }) };
 
-        // SAFETY: double-drops are prevented by putting `this` in a ManuallyDrop that is never dropped
+        // SAFETY: 把 `this` 放进一个永远不会被 drop 的 ManuallyDrop，从而防止重复 drop（double-drop）
         let inner = unsafe { ptr::read(&this.inner) };
 
         (inner, buf)
@@ -185,17 +173,13 @@ impl<W: Write> BufWriter<W> {
 }
 
 impl<W: ?Sized + Write> BufWriter<W> {
-    /// Send data in our local buffer into the inner writer, looping as
-    /// necessary until either it's all been sent or an error occurs.
+    /// 把本地缓冲中的数据发送到内部 writer，必要时循环写入，直到全部发送完毕或发生错误。
     ///
-    /// Because all the data in the buffer has been reported to our owner as
-    /// "successfully written" (by returning nonzero success values from
-    /// `write`), any 0-length writes from `inner` must be reported as i/o
-    /// errors from this method.
+    /// 因为缓冲中的所有数据都已经（通过 `write` 返回非零的成功值）向上层报告为“成功写入”，
+    /// 所以来自 `inner` 的任何 0 长度写入都必须由本方法报告为 i/o 错误。
     pub(in crate::io) fn flush_buf(&mut self) -> io::Result<()> {
-        /// Helper struct to ensure the buffer is updated after all the writes
-        /// are complete. It tracks the number of written bytes and drains them
-        /// all from the front of the buffer when dropped.
+        /// 辅助结构体，用于确保在所有写入完成后更新缓冲。它跟踪已写出的字节数，并在被 drop
+        /// 时把这些字节全部从缓冲前端排空（drain）。
         struct BufGuard<'a> {
             buffer: &'a mut Vec<u8>,
             written: usize,
@@ -206,17 +190,17 @@ impl<W: ?Sized + Write> BufWriter<W> {
                 Self { buffer, written: 0 }
             }
 
-            /// The unwritten part of the buffer
+            /// 缓冲中尚未写出的部分
             fn remaining(&self) -> &[u8] {
                 &self.buffer[self.written..]
             }
 
-            /// Flag some bytes as removed from the front of the buffer
+            /// 标记一些字节已从缓冲前端移除
             fn consume(&mut self, amt: usize) {
                 self.written += amt;
             }
 
-            /// true if all of the bytes have been written
+            /// 若所有字节都已写出，则返回 true
             fn done(&self) -> bool {
                 self.written >= self.buffer.len()
             }
@@ -251,14 +235,13 @@ impl<W: ?Sized + Write> BufWriter<W> {
         Ok(())
     }
 
-    /// Buffer some data without flushing it, regardless of the size of the
-    /// data. Writes as much as possible without exceeding capacity. Returns
-    /// the number of bytes written.
+    /// 缓冲一些数据但不刷新它，不论数据大小如何。在不超出容量的前提下尽可能多地写入。
+    /// 返回写入的字节数。
     pub(super) fn write_to_buf(&mut self, buf: &[u8]) -> usize {
         let available = self.spare_capacity();
         let amt_to_buffer = available.min(buf.len());
 
-        // SAFETY: `amt_to_buffer` is <= buffer's spare capacity by construction.
+        // SAFETY: 由构造方式可知，`amt_to_buffer` <= 缓冲的空闲容量。
         unsafe {
             self.write_to_buffer_unchecked(&buf[..amt_to_buffer]);
         }
@@ -266,9 +249,9 @@ impl<W: ?Sized + Write> BufWriter<W> {
         amt_to_buffer
     }
 
-    /// Gets a reference to the underlying writer.
+    /// 获取对底层 writer 的不可变引用。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::io::BufWriter;
@@ -276,7 +259,7 @@ impl<W: ?Sized + Write> BufWriter<W> {
     ///
     /// let mut buffer = BufWriter::new(TcpStream::connect("127.0.0.1:34254").unwrap());
     ///
-    /// // we can use reference just like buffer
+    /// // 我们可以像使用 buffer 一样使用这个引用
     /// let reference = buffer.get_ref();
     /// ```
     #[stable(feature = "rust1", since = "1.0.0")]
@@ -284,11 +267,11 @@ impl<W: ?Sized + Write> BufWriter<W> {
         &self.inner
     }
 
-    /// Gets a mutable reference to the underlying writer.
+    /// 获取对底层 writer 的可变引用。
     ///
-    /// It is inadvisable to directly write to the underlying writer.
+    /// 不建议直接向底层 writer 写入。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::io::BufWriter;
@@ -296,7 +279,7 @@ impl<W: ?Sized + Write> BufWriter<W> {
     ///
     /// let mut buffer = BufWriter::new(TcpStream::connect("127.0.0.1:34254").unwrap());
     ///
-    /// // we can use reference just like buffer
+    /// // 我们可以像使用 buffer 一样使用这个引用
     /// let reference = buffer.get_mut();
     /// ```
     #[stable(feature = "rust1", since = "1.0.0")]
@@ -304,9 +287,9 @@ impl<W: ?Sized + Write> BufWriter<W> {
         &mut self.inner
     }
 
-    /// Returns a reference to the internally buffered data.
+    /// 返回对内部已缓冲数据的引用。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::io::BufWriter;
@@ -314,7 +297,7 @@ impl<W: ?Sized + Write> BufWriter<W> {
     ///
     /// let buf_writer = BufWriter::new(TcpStream::connect("127.0.0.1:34254").unwrap());
     ///
-    /// // See how many bytes are currently buffered
+    /// // 查看当前缓冲了多少字节
     /// let bytes_buffered = buf_writer.buffer().len();
     /// ```
     #[stable(feature = "bufreader_buffer", since = "1.37.0")]
@@ -322,21 +305,19 @@ impl<W: ?Sized + Write> BufWriter<W> {
         &self.buf
     }
 
-    /// Returns a mutable reference to the internal buffer.
+    /// 返回对内部缓冲的可变引用。
     ///
-    /// This can be used to write data directly into the buffer without triggering writers
-    /// to the underlying writer.
+    /// 它可用于把数据直接写入缓冲，而不会触发向底层 writer 的写出。
     ///
-    /// That the buffer is a `Vec` is an implementation detail.
-    /// Callers should not modify the capacity as there currently is no public API to do so
-    /// and thus any capacity changes would be unexpected by the user.
+    /// “缓冲是一个 `Vec`”这一点属于实现细节。调用方不应修改其容量，因为目前没有公开 API
+    /// 可做此事，因此任何容量变化都会让用户始料未及。
     pub(in crate::io) fn buffer_mut(&mut self) -> &mut Vec<u8> {
         &mut self.buf
     }
 
-    /// Returns the number of bytes the internal buffer can hold without flushing.
+    /// 返回内部缓冲在无需刷新的情况下还能容纳的字节数。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::io::BufWriter;
@@ -344,9 +325,9 @@ impl<W: ?Sized + Write> BufWriter<W> {
     ///
     /// let buf_writer = BufWriter::new(TcpStream::connect("127.0.0.1:34254").unwrap());
     ///
-    /// // Check the capacity of the inner buffer
+    /// // 查看内部缓冲的容量
     /// let capacity = buf_writer.capacity();
-    /// // Calculate how many bytes can be written without flushing
+    /// // 计算在无需刷新的情况下还能写入多少字节
     /// let without_flush = capacity - buf_writer.buffer().len();
     /// ```
     #[stable(feature = "buffered_io_capacity", since = "1.46.0")]
@@ -354,11 +335,9 @@ impl<W: ?Sized + Write> BufWriter<W> {
         self.buf.capacity()
     }
 
-    // Ensure this function does not get inlined into `write`, so that it
-    // remains inlineable and its common path remains as short as possible.
-    // If this function ends up being called frequently relative to `write`,
-    // it's likely a sign that the client is using an improperly sized buffer
-    // or their write patterns are somewhat pathological.
+    // 确保本函数不会被内联进 `write`，从而让 `write` 保持可内联、其常见路径保持尽可能短。
+    // 如果本函数相对于 `write` 被调用得很频繁，那很可能是个信号，说明客户端用了大小不当的
+    // 缓冲，或其写入模式有些病态。
     #[cold]
     #[inline(never)]
     fn write_cold(&mut self, buf: &[u8]) -> io::Result<usize> {
@@ -366,23 +345,21 @@ impl<W: ?Sized + Write> BufWriter<W> {
             self.flush_buf()?;
         }
 
-        // Why not len > capacity? To avoid a needless trip through the buffer when the input
-        // exactly fills it. We'd just need to flush it to the underlying writer anyway.
+        // 为什么不是 len > capacity？为的是当输入恰好把缓冲填满时，避免一次毫无必要的“走一遍
+        // 缓冲”。因为那样反正也只能再把它刷新到底层 writer 罢了。
         if buf.len() >= self.buf.capacity() {
             self.panicked = true;
             let r = self.get_mut().write(buf);
             self.panicked = false;
             r
         } else {
-            // Write to the buffer. In this case, we write to the buffer even if it fills it
-            // exactly. Doing otherwise would mean flushing the buffer, then writing this
-            // input to the inner writer, which in many cases would be a worse strategy.
+            // 写入缓冲。在这种情况下，即便输入恰好把缓冲填满，我们也仍然写入缓冲。否则就意味着
+            // 要先刷新缓冲、再把这份输入写到内部 writer，而在很多情况下那是更差的策略。
 
-            // SAFETY: There was either enough spare capacity already, or there wasn't and we
-            // flushed the buffer to ensure that there is. In the latter case, we know that there
-            // is because flushing ensured that our entire buffer is spare capacity, and we entered
-            // this block because the input buffer length is less than that capacity. In either
-            // case, it's safe to write the input buffer to our buffer.
+            // SAFETY: 要么原本就有足够的空闲容量，要么没有、但我们已经刷新了缓冲以确保腾出空间。
+            // 在后一种情况下，我们知道空间是够的，因为刷新已使整个缓冲都变为空闲容量，而我们进入
+            // 这个分支正是由于输入缓冲的长度小于该容量。无论哪种情况，把输入缓冲写入我们的缓冲
+            // 都是安全的。
             unsafe {
                 self.write_to_buffer_unchecked(buf);
             }
@@ -391,40 +368,35 @@ impl<W: ?Sized + Write> BufWriter<W> {
         }
     }
 
-    // Ensure this function does not get inlined into `write_all`, so that it
-    // remains inlineable and its common path remains as short as possible.
-    // If this function ends up being called frequently relative to `write_all`,
-    // it's likely a sign that the client is using an improperly sized buffer
-    // or their write patterns are somewhat pathological.
+    // 确保本函数不会被内联进 `write_all`，从而让 `write_all` 保持可内联、其常见路径保持
+    // 尽可能短。如果本函数相对于 `write_all` 被调用得很频繁，那很可能是个信号，说明客户端
+    // 用了大小不当的缓冲，或其写入模式有些病态。
     #[cold]
     #[inline(never)]
     fn write_all_cold(&mut self, buf: &[u8]) -> io::Result<()> {
-        // Normally, `write_all` just calls `write` in a loop. We can do better
-        // by calling `self.get_mut().write_all()` directly, which avoids
-        // round trips through the buffer in the event of a series of partial
-        // writes in some circumstances.
+        // 通常 `write_all` 只是在循环里调用 `write`。我们可以做得更好：直接调用
+        // `self.get_mut().write_all()`，在某些情形下当出现一连串部分写入时，这能避免反复
+        // “走一遍缓冲”的往返。
 
         if buf.len() > self.spare_capacity() {
             self.flush_buf()?;
         }
 
-        // Why not len > capacity? To avoid a needless trip through the buffer when the input
-        // exactly fills it. We'd just need to flush it to the underlying writer anyway.
+        // 为什么不是 len > capacity？为的是当输入恰好把缓冲填满时，避免一次毫无必要的“走一遍
+        // 缓冲”。因为那样反正也只能再把它刷新到底层 writer 罢了。
         if buf.len() >= self.buf.capacity() {
             self.panicked = true;
             let r = self.get_mut().write_all(buf);
             self.panicked = false;
             r
         } else {
-            // Write to the buffer. In this case, we write to the buffer even if it fills it
-            // exactly. Doing otherwise would mean flushing the buffer, then writing this
-            // input to the inner writer, which in many cases would be a worse strategy.
+            // 写入缓冲。在这种情况下，即便输入恰好把缓冲填满，我们也仍然写入缓冲。否则就意味着
+            // 要先刷新缓冲、再把这份输入写到内部 writer，而在很多情况下那是更差的策略。
 
-            // SAFETY: There was either enough spare capacity already, or there wasn't and we
-            // flushed the buffer to ensure that there is. In the latter case, we know that there
-            // is because flushing ensured that our entire buffer is spare capacity, and we entered
-            // this block because the input buffer length is less than that capacity. In either
-            // case, it's safe to write the input buffer to our buffer.
+            // SAFETY: 要么原本就有足够的空闲容量，要么没有、但我们已经刷新了缓冲以确保腾出空间。
+            // 在后一种情况下，我们知道空间是够的，因为刷新已使整个缓冲都变为空闲容量，而我们进入
+            // 这个分支正是由于输入缓冲的长度小于该容量。无论哪种情况，把输入缓冲写入我们的缓冲
+            // 都是安全的。
             unsafe {
                 self.write_to_buffer_unchecked(buf);
             }
@@ -433,8 +405,8 @@ impl<W: ?Sized + Write> BufWriter<W> {
         }
     }
 
-    // SAFETY: Requires `buf.len() <= self.buf.capacity() - self.buf.len()`,
-    // i.e., that input buffer length is less than or equal to spare capacity.
+    // SAFETY: 要求 `buf.len() <= self.buf.capacity() - self.buf.len()`，
+    // 即输入缓冲的长度小于或等于空闲容量。
     #[inline]
     unsafe fn write_to_buffer_unchecked(&mut self, buf: &[u8]) {
         debug_assert!(buf.len() <= self.spare_capacity());
@@ -455,10 +427,10 @@ impl<W: ?Sized + Write> BufWriter<W> {
 }
 
 #[stable(feature = "bufwriter_into_parts", since = "1.56.0")]
-/// Error returned for the buffered data from `BufWriter::into_parts`, when the underlying
-/// writer has previously panicked.  Contains the (possibly partly written) buffered data.
+/// 当底层 writer 此前已经 panic 时，`BufWriter::into_parts` 为已缓冲的数据返回的错误类型。
+/// 它包含那份（可能已被部分写出的）已缓冲数据。
 ///
-/// # Example
+/// # 示例
 ///
 /// ```
 /// use std::io::{self, BufWriter, Write};
@@ -485,8 +457,8 @@ pub struct WriterPanicked {
 }
 
 impl WriterPanicked {
-    /// Returns the perhaps-unwritten data.  Some of this data may have been written by the
-    /// panicking call(s) to the underlying writer, so simply writing it again is not a good idea.
+    /// 返回那份可能尚未写出的数据。其中一部分数据可能已经被那次（或那几次）发生 panic 的
+    /// 对底层 writer 的调用写出了，所以简单地把它再写一遍并不是个好主意。
     #[must_use = "`self` will be dropped if the result is not used"]
     #[stable(feature = "bufwriter_into_parts", since = "1.56.0")]
     pub fn into_inner(self) -> Vec<u8> {
@@ -517,10 +489,10 @@ impl fmt::Debug for WriterPanicked {
 impl<W: ?Sized + Write> Write for BufWriter<W> {
     #[inline]
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        // Use < instead of <= to avoid a needless trip through the buffer in some cases.
-        // See `write_cold` for details.
+        // 用 < 而非 <=，以便在某些情况下避免一次毫无必要的“走一遍缓冲”。
+        // 详见 `write_cold`。
         if buf.len() < self.spare_capacity() {
-            // SAFETY: safe by above conditional.
+            // SAFETY: 由上面的条件判断可知是安全的。
             unsafe {
                 self.write_to_buffer_unchecked(buf);
             }
@@ -533,10 +505,10 @@ impl<W: ?Sized + Write> Write for BufWriter<W> {
 
     #[inline]
     fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
-        // Use < instead of <= to avoid a needless trip through the buffer in some cases.
-        // See `write_all_cold` for details.
+        // 用 < 而非 <=，以便在某些情况下避免一次毫无必要的“走一遍缓冲”。
+        // 详见 `write_all_cold`。
         if buf.len() < self.spare_capacity() {
-            // SAFETY: safe by above conditional.
+            // SAFETY: 由上面的条件判断可知是安全的。
             unsafe {
                 self.write_to_buffer_unchecked(buf);
             }
@@ -548,29 +520,27 @@ impl<W: ?Sized + Write> Write for BufWriter<W> {
     }
 
     fn write_vectored(&mut self, bufs: &[IoSlice<'_>]) -> io::Result<usize> {
-        // FIXME: Consider applying `#[inline]` / `#[inline(never)]` optimizations already applied
-        // to `write` and `write_all`. The performance benefits can be significant. See #79930.
+        // FIXME: 考虑把已经应用于 `write` 和 `write_all` 的 `#[inline]` / `#[inline(never)]`
+        // 优化也应用到这里。性能收益可能相当可观。见 #79930。
         if self.get_ref().is_write_vectored() {
-            // We have to handle the possibility that the total length of the buffers overflows
-            // `usize` (even though this can only happen if multiple `IoSlice`s reference the
-            // same underlying buffer, as otherwise the buffers wouldn't fit in memory). If the
-            // computation overflows, then surely the input cannot fit in our buffer, so we forward
-            // to the inner writer's `write_vectored` method to let it handle it appropriately.
+            // 我们必须处理这些缓冲的总长度溢出 `usize` 的可能性（尽管这只有在多个 `IoSlice`
+            // 引用同一块底层缓冲时才会发生，否则这些缓冲根本放不进内存）。如果该计算发生溢出，
+            // 那么输入必定无法装进我们的缓冲，于是我们转发给内部 writer 的 `write_vectored`
+            // 方法，让它来妥善处理。
             let mut saturated_total_len: usize = 0;
 
             for buf in bufs {
                 saturated_total_len = saturated_total_len.saturating_add(buf.len());
 
                 if saturated_total_len > self.spare_capacity() && !self.buf.is_empty() {
-                    // Flush if the total length of the input exceeds our buffer's spare capacity.
-                    // If we would have overflowed, this condition also holds, and we need to flush.
+                    // 如果输入的总长度超过了缓冲的空闲容量，就刷新。如果发生了溢出，这个条件
+                    // 同样成立，而我们也确实需要刷新。
                     self.flush_buf()?;
                 }
 
                 if saturated_total_len >= self.buf.capacity() {
-                    // Forward to our inner writer if the total length of the input is greater than or
-                    // equal to our buffer capacity. If we would have overflowed, this condition also
-                    // holds, and we punt to the inner writer.
+                    // 如果输入的总长度大于或等于我们的缓冲容量，就转发给内部 writer。如果
+                    // 发生了溢出，这个条件同样成立，于是我们把活儿甩给内部 writer。
                     self.panicked = true;
                     let r = self.get_mut().write_vectored(bufs);
                     self.panicked = false;
@@ -578,11 +548,10 @@ impl<W: ?Sized + Write> Write for BufWriter<W> {
                 }
             }
 
-            // `saturated_total_len < self.buf.capacity()` implies that we did not saturate.
+            // `saturated_total_len < self.buf.capacity()` 意味着我们没有发生饱和（溢出）。
 
-            // SAFETY: We checked whether or not the spare capacity was large enough above. If
-            // it was, then we're safe already. If it wasn't, we flushed, making sufficient
-            // room for any input <= the buffer size, which includes this input.
+            // SAFETY: 我们在上面已经检查过空闲容量是否足够大。如果足够，那本来就安全。如果不够，
+            // 我们已经刷新，从而为任何 <= 缓冲大小的输入腾出了足够空间，而当前这份输入正属于此列。
             unsafe {
                 bufs.iter().for_each(|b| self.write_to_buffer_unchecked(b));
             };
@@ -591,22 +560,20 @@ impl<W: ?Sized + Write> Write for BufWriter<W> {
         } else {
             let mut iter = bufs.iter();
             let mut total_written = if let Some(buf) = iter.by_ref().find(|&buf| !buf.is_empty()) {
-                // This is the first non-empty slice to write, so if it does
-                // not fit in the buffer, we still get to flush and proceed.
+                // 这是要写出的第一个非空切片，所以如果它装不进缓冲，我们仍然可以先刷新再继续。
                 if buf.len() > self.spare_capacity() {
                     self.flush_buf()?;
                 }
                 if buf.len() >= self.buf.capacity() {
-                    // The slice is at least as large as the buffering capacity,
-                    // so it's better to write it directly, bypassing the buffer.
+                    // 这个切片的大小至少与缓冲容量相当，所以绕过缓冲、直接写出更划算。
                     self.panicked = true;
                     let r = self.get_mut().write(buf);
                     self.panicked = false;
                     return r;
                 } else {
-                    // SAFETY: We checked whether or not the spare capacity was large enough above.
-                    // If it was, then we're safe already. If it wasn't, we flushed, making
-                    // sufficient room for any input <= the buffer size, which includes this input.
+                    // SAFETY: 我们在上面已经检查过空闲容量是否足够大。如果足够，那本来就安全。
+                    // 如果不够，我们已经刷新，从而为任何 <= 缓冲大小的输入腾出了足够空间，而当前
+                    // 这份输入正属于此列。
                     unsafe {
                         self.write_to_buffer_unchecked(buf);
                     }
@@ -619,14 +586,14 @@ impl<W: ?Sized + Write> Write for BufWriter<W> {
             debug_assert!(total_written != 0);
             for buf in iter {
                 if buf.len() <= self.spare_capacity() {
-                    // SAFETY: safe by above conditional.
+                    // SAFETY: 由上面的条件判断可知是安全的。
                     unsafe {
                         self.write_to_buffer_unchecked(buf);
                     }
 
-                    // This cannot overflow `usize`. If we are here, we've written all of the bytes
-                    // so far to our buffer, and we've ensured that we never exceed the buffer's
-                    // capacity. Therefore, `total_written` <= `self.buf.capacity()` <= `usize::MAX`.
+                    // 这不会让 `usize` 溢出。如果执行到这里，说明我们已经把到目前为止的所有字节
+                    // 都写入了缓冲，并且我们已确保从不超过缓冲容量。因此
+                    // `total_written` <= `self.buf.capacity()` <= `usize::MAX`。
                     total_written += buf.len();
                 } else {
                     break;
@@ -660,9 +627,9 @@ where
 
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<W: ?Sized + Write + Seek> Seek for BufWriter<W> {
-    /// Seek to the offset, in bytes, in the underlying writer.
+    /// 在底层 writer 中按字节偏移进行 seek。
     ///
-    /// Seeking always writes out the internal buffer before seeking.
+    /// seek 操作总是会在 seek 之前先把内部缓冲写出。
     fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
         self.flush_buf()?;
         self.get_mut().seek(pos)
@@ -673,7 +640,7 @@ impl<W: ?Sized + Write + Seek> Seek for BufWriter<W> {
 impl<W: ?Sized + Write> Drop for BufWriter<W> {
     fn drop(&mut self) {
         if !self.panicked {
-            // dtors should not panic, so we ignore a failed flush
+            // 析构函数不应 panic，所以我们忽略一次失败的 flush
             let _r = self.flush_buf();
         }
     }

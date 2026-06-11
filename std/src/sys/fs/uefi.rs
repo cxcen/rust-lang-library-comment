@@ -45,11 +45,11 @@ pub struct FileTimes {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
-// Bool indicates if file is readonly
+// 布尔值表示文件是否为只读
 pub struct FilePermissions(bool);
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-// Bool indicates if directory
+// 布尔值表示是否为目录
 pub struct FileType(bool);
 
 #[derive(Debug)]
@@ -137,7 +137,7 @@ impl FileType {
         !self.is_dir()
     }
 
-    // Symlinks are not supported in UEFI
+    // UEFI 中不支持符号链接
     pub fn is_symlink(&self) -> bool {
         false
     }
@@ -163,7 +163,7 @@ impl Iterator for ReadDir {
             Ok(None) => None,
             Ok(Some(x)) => {
                 let temp = DirEntry::from_uefi(x, self.0.path());
-                // Ignore "." and "..". This is how ReadDir behaves in Unix.
+                // 忽略 "." 和 ".."。这正是 ReadDir 在 Unix 上的行为方式。
                 if temp.file_name == "." || temp.file_name == ".." {
                     self.next()
                 } else {
@@ -214,7 +214,7 @@ impl OpenOptions {
 
     pub fn write(&mut self, write: bool) {
         if write {
-            // Valid Combinations: Read, Read/Write, Read/Write/Create
+            // 有效组合：Read、Read/Write、Read/Write/Create
             self.read(true);
             self.mode |= file::MODE_WRITE;
         } else {
@@ -223,7 +223,7 @@ impl OpenOptions {
     }
 
     pub fn append(&mut self, append: bool) {
-        // Docs state that `.write(true).append(true)` has the same effect as `.append(true)`
+        // 文档指出，`.write(true).append(true)` 与 `.append(true)` 具有相同的效果
         if append {
             self.write(true);
         }
@@ -250,7 +250,7 @@ impl OpenOptions {
     }
 
     const fn is_mode_valid(&self) -> bool {
-        // Valid Combinations: Read, Read/Write, Read/Write/Create
+        // 有效组合：Read、Read/Write、Read/Write/Create
         self.mode == file::MODE_READ
             || self.mode == (file::MODE_READ | file::MODE_WRITE)
             || self.mode == (file::MODE_READ | file::MODE_WRITE | file::MODE_CREATE)
@@ -348,7 +348,7 @@ impl File {
         false
     }
 
-    // Write::flush is only meant for buffered writers. So should be noop for unbuffered files.
+    // Write::flush 仅适用于带缓冲的 writer。因此对于无缓冲的文件，它应当是空操作（noop）。
     pub fn flush(&self) -> io::Result<()> {
         Ok(())
     }
@@ -360,7 +360,7 @@ impl File {
         let off = match pos {
             SeekFrom::Start(p) => p,
             SeekFrom::End(p) => {
-                // Seeking to position 0xFFFFFFFFFFFFFFFF causes the current position to be set to the end of the file.
+                // seek 到位置 0xFFFFFFFFFFFFFFFF 会使当前位置被设置为文件末尾。
                 if p == 0 {
                     0xFFFFFFFFFFFFFFFF
                 } else {
@@ -440,14 +440,14 @@ pub fn unlink(p: &Path) -> io::Result<()> {
     }
 }
 
-/// The implementation mirrors `mv` implementation in UEFI shell:
+/// 该实现仿照 UEFI shell 中 `mv` 的实现：
 /// https://github.com/tianocore/edk2/blob/66346d5edeac2a00d3cf2f2f3b5f66d423c07b3e/ShellPkg/Library/UefiShellLevel2CommandsLib/Mv.c#L455
 ///
-/// In a nutshell we do the following:
-/// 1. Convert both old and new paths to absolute paths.
-/// 2. Check that both lie in the same disk.
-/// 3. Construct the target path relative to the current disk root.
-/// 4. Set this target path as the file_name in the file_info structure.
+/// 简而言之，我们执行如下步骤：
+/// 1. 将旧路径和新路径都转换为绝对路径。
+/// 2. 检查二者位于同一块磁盘上。
+/// 3. 构造相对于当前磁盘根目录的目标路径。
+/// 4. 将该目标路径设置为 file_info 结构体中的 file_name。
 pub fn rename(old: &Path, new: &Path) -> io::Result<()> {
     let old_absolute = crate::path::absolute(old)?;
     let new_absolute = crate::path::absolute(new)?;
@@ -462,12 +462,12 @@ pub fn rename(old: &Path, new: &Path) -> io::Result<()> {
         return Err(io::const_error!(io::ErrorKind::InvalidInput, "New path is not valid"));
     };
 
-    // Ensure that paths are on the same device.
+    // 确保两个路径位于同一设备上。
     if old_disk != new_disk {
         return Err(io::const_error!(io::ErrorKind::CrossesDevices, "Cannot rename across device"));
     }
 
-    // Construct an path relative the current disk root.
+    // 构造一个相对于当前磁盘根目录的路径。
     let new_relative =
         [crate::path::Component::RootDir].into_iter().chain(new_components).collect::<PathBuf>();
 
@@ -485,7 +485,7 @@ pub fn set_perm(p: &Path, perm: FilePermissions) -> io::Result<()> {
 }
 
 pub fn set_times(p: &Path, times: FileTimes) -> io::Result<()> {
-    // UEFI does not support symlinks
+    // UEFI 不支持符号链接
     set_times_nofollow(p, times)
 }
 
@@ -598,17 +598,17 @@ mod uefi_fs {
             Ok(Self { protocol, path: absolute })
         }
 
-        /// Open Filesystem volume given a devicepath to the volume, or a file/directory in the
-        /// volume. The path provided should be absolute UEFI device path, without any UEFI shell
-        /// mappings.
+        /// 给定一个指向卷（volume）的 devicepath，或卷中某个文件/目录的 devicepath，
+        /// 打开该文件系统卷。所提供的路径应当是绝对的 UEFI 设备路径（device path），
+        /// 不含任何 UEFI shell 映射。
         ///
-        /// Returns
-        /// 1. The volume as a UEFI File
-        /// 2. Path relative to the volume.
+        /// 返回
+        /// 1. 作为 UEFI File 的该卷
+        /// 2. 相对于该卷的路径。
         ///
-        /// For example, given "PciRoot(0x0)/Pci(0x1,0x1)/Ata(Secondary,Slave,0x0)/\abc\run.efi",
-        /// this will open the volume "PciRoot(0x0)/Pci(0x1,0x1)/Ata(Secondary,Slave,0x0)"
-        /// and return the remaining file path "\abc\run.efi".
+        /// 例如，给定 "PciRoot(0x0)/Pci(0x1,0x1)/Ata(Secondary,Slave,0x0)/\abc\run.efi"，
+        /// 这将打开卷 "PciRoot(0x0)/Pci(0x1,0x1)/Ata(Secondary,Slave,0x0)"
+        /// 并返回剩余的文件路径 "\abc\run.efi"。
         fn open_volume_from_device_path(
             path: helpers::BorrowedDevicePath<'_>,
         ) -> io::Result<(NonNull<file::Protocol>, Box<[u16]>)> {
@@ -632,7 +632,7 @@ mod uefi_fs {
             Err(io::const_error!(io::ErrorKind::NotFound, "Volume Not Found"))
         }
 
-        // Open volume on device_handle using SIMPLE_FILE_SYSTEM_PROTOCOL
+        // 使用 SIMPLE_FILE_SYSTEM_PROTOCOL 在 device_handle 上打开卷
         fn open_volume(
             device_handle: NonNull<crate::ffi::c_void>,
         ) -> io::Result<NonNull<file::Protocol>> {
@@ -652,7 +652,7 @@ mod uefi_fs {
                 return Err(io::Error::from_raw_os_error(r.as_usize()));
             }
 
-            // Since no error was returned, file protocol should be non-NULL.
+            // 既然没有返回错误，file protocol 应当为非 NULL。
             let p = NonNull::new(file_protocol).unwrap();
             Ok(p)
         }
@@ -674,7 +674,7 @@ mod uefi_fs {
                 return Err(io::Error::from_raw_os_error(r.as_usize()));
             }
 
-            // Since no error was returned, file protocol should be non-NULL.
+            // 既然没有返回错误，file protocol 应当为非 NULL。
             let p = NonNull::new(file_opened).unwrap();
             Ok(p)
         }
@@ -797,7 +797,7 @@ mod uefi_fs {
             let file_ptr = self.protocol.as_ptr();
             let r = unsafe { ((*file_ptr).delete)(file_ptr) };
 
-            // Spec states that even in case of failure, the file handle will be closed.
+            // 规范指出，即便在失败的情况下，文件句柄也会被关闭。
             crate::mem::forget(self);
 
             if r.is_error() { Err(io::Error::from_raw_os_error(r.as_usize())) } else { Ok(()) }
@@ -821,13 +821,13 @@ mod uefi_fs {
         }
     }
 
-    /// A helper to check that target path is a descendent of source. It is expected to be used with
-    /// absolute UEFI device paths without any UEFI shell mappings.
+    /// 一个辅助函数，用于检查目标路径是否为源路径的后代（descendent）。
+    /// 它预期与不含任何 UEFI shell 映射的绝对 UEFI 设备路径一起使用。
     ///
-    /// Returns the path relative to source
+    /// 返回相对于源路径的路径
     ///
-    /// For example, given "PciRoot(0x0)/Pci(0x1,0x1)/Ata(Secondary,Slave,0x0)/" and
-    /// "PciRoot(0x0)/Pci(0x1,0x1)/Ata(Secondary,Slave,0x0)/\abc\run.efi", this will return
+    /// 例如，给定 "PciRoot(0x0)/Pci(0x1,0x1)/Ata(Secondary,Slave,0x0)/" 和
+    /// "PciRoot(0x0)/Pci(0x1,0x1)/Ata(Secondary,Slave,0x0)/\abc\run.efi"，这将返回
     /// "\abc\run.efi"
     fn path_best_match(
         source: &helpers::BorrowedDevicePath<'_>,
@@ -848,15 +848,15 @@ mod uefi_fs {
         }
     }
 
-    /// An implementation of mkdir to allow creating new directory without having to open the
-    /// volume twice (once for checking and once for creating)
+    /// mkdir 的一个实现，使得创建新目录时无需把卷打开两次
+    /// （一次用于检查，一次用于创建）
     pub(crate) fn mkdir(path: &Path) -> io::Result<()> {
         let absolute = crate::path::absolute(path)?;
 
         let p = helpers::OwnedDevicePath::from_text(absolute.as_os_str())?;
         let (vol, mut path_remaining) = File::open_volume_from_device_path(p.borrow())?;
 
-        // Check if file exists
+        // 检查文件是否存在
         match File::open(vol, &mut path_remaining, file::MODE_READ, 0) {
             Ok(_) => {
                 return Err(io::Error::new(io::ErrorKind::AlreadyExists, "Path already exists"));
@@ -875,8 +875,8 @@ mod uefi_fs {
         Ok(())
     }
 
-    /// EDK2 FAT driver uses EFI_UNSPECIFIED_TIMEZONE to represent localtime. So for proper
-    /// conversion to SystemTime, we use the current time to get the timezone in such cases.
+    /// EDK2 的 FAT 驱动使用 EFI_UNSPECIFIED_TIMEZONE 来表示本地时间（localtime）。
+    /// 因此为了正确转换为 SystemTime，在这类情况下我们使用当前时间来获取时区。
     pub(crate) fn uefi_to_systemtime(mut time: r_efi::efi::Time) -> Option<SystemTime> {
         time.timezone = if time.timezone == r_efi::efi::UNSPECIFIED_TIMEZONE {
             time::system_time_internal::now().timezone
@@ -886,7 +886,7 @@ mod uefi_fs {
         SystemTime::from_uefi(time)
     }
 
-    /// Convert to UEFI Time with the current timezone.
+    /// 使用当前时区转换为 UEFI Time。
     pub(crate) fn systemtime_to_uefi(time: SystemTime) -> r_efi::efi::Time {
         let now = time::system_time_internal::now();
         time.to_uefi_loose(now.timezone, now.daylight)

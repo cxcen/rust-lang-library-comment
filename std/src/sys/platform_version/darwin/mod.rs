@@ -16,23 +16,23 @@ mod public_extern;
 #[cfg(test)]
 mod tests;
 
-/// The version of the operating system.
+/// 操作系统的版本。
 ///
-/// We use a packed u32 here to allow for fast comparisons and to match Mach-O's `LC_BUILD_VERSION`.
+/// 这里使用一个打包后的 u32，以便快速比较，并与 Mach-O 的 `LC_BUILD_VERSION` 保持一致。
 type OSVersion = u32;
 
-/// Combine parts of a version into an [`OSVersion`].
+/// 将版本各部分组合成一个 [`OSVersion`]。
 ///
-/// The size of the parts are inherently limited by Mach-O's `LC_BUILD_VERSION`.
+/// 各部分的大小本质上受限于 Mach-O 的 `LC_BUILD_VERSION`。
 #[inline]
 const fn pack_os_version(major: u16, minor: u8, patch: u8) -> OSVersion {
     let (major, minor, patch) = (major as u32, minor as u32, patch as u32);
     (major << 16) | (minor << 8) | patch
 }
 
-/// [`pack_os_version`], but takes `i32` and saturates.
+/// 同 [`pack_os_version`]，但接受 `i32` 并做饱和处理。
 ///
-/// Instead of using e.g. `major as u16`, which truncates.
+/// 而不是用诸如 `major as u16` 这样会发生截断的写法。
 #[inline]
 fn pack_i32_os_version(major: i32, minor: i32, patch: i32) -> OSVersion {
     let major: u16 = major.try_into().unwrap_or(u16::MAX);
@@ -41,38 +41,36 @@ fn pack_i32_os_version(major: i32, minor: i32, patch: i32) -> OSVersion {
     pack_os_version(major, minor, patch)
 }
 
-/// Get the current OS version, packed according to [`pack_os_version`].
+/// 获取当前 OS 版本，按 [`pack_os_version`] 的方式打包。
 ///
-/// # Semantics
+/// # 语义
 ///
-/// The reported version on macOS might be 10.16 if the SDK version of the binary is less than 11.0.
-/// This is a workaround that Apple implemented to handle applications that assumed that macOS
-/// versions would always start with "10", see:
+/// 如果二进制的 SDK 版本低于 11.0，macOS 上报告的版本可能是 10.16。
+/// 这是 Apple 为了处理那些假定 macOS 版本号永远以 "10" 开头的应用程序而实现的
+/// 一个变通方案，参见：
 /// <https://github.com/apple-oss-distributions/xnu/blob/xnu-11215.81.4/libsyscall/wrappers/system-version-compat.c>
 ///
-/// It _is_ possible to get the real version regardless of the SDK version of the binary, this is
-/// what Zig does:
+/// 无论二进制的 SDK 版本如何，其实_是_有可能拿到真实版本的，Zig 就是这么做的：
 /// <https://github.com/ziglang/zig/blob/0.13.0/lib/std/zig/system/darwin/macos.zig>
 ///
-/// We choose to not do that, and instead follow Apple's behaviour here, and return 10.16 when
-/// compiled with an older SDK; the user should instead upgrade their tooling.
+/// 我们选择不那样做，而是在这里遵循 Apple 的行为：用较旧的 SDK 编译时返回 10.16；
+/// 用户应当转而升级自己的工具链。
 ///
-/// NOTE: `rustc` currently doesn't set the right SDK version when linking with ld64, so this will
-/// have the wrong behaviour with `-Clinker=ld` on x86_64. But that's a `rustc` bug:
+/// NOTE: `rustc` 目前在用 ld64 链接时不会设置正确的 SDK 版本，因此在 x86_64 上配合
+/// `-Clinker=ld` 会产生错误的行为。但那是一个 `rustc` 的 bug：
 /// <https://github.com/rust-lang/rust/issues/129432>
 #[inline]
 fn current_version() -> OSVersion {
-    // Cache the lookup for performance.
+    // 出于性能考虑，缓存这次查询结果。
     //
-    // 0.0.0 is never going to be a valid version ("vtool" reports "n/a" on 0 versions), so we use
-    // that as our sentinel value.
+    // 0.0.0 永远不会是一个有效版本（"vtool" 在 0 版本上会报告 "n/a"），所以我们用它
+    // 作为哨兵值。
     static CURRENT_VERSION: AtomicU32 = AtomicU32::new(0);
 
-    // We use relaxed atomics instead of e.g. a `Once`, it doesn't matter if multiple threads end up
-    // racing to read or write the version, `lookup_version` should be idempotent and always return
-    // the same value.
+    // 我们使用 relaxed 原子操作而非例如 `Once`，即便多个线程竞争地读写版本也没关系，
+    // `lookup_version` 应当是幂等的，并且始终返回相同的值。
     //
-    // `compiler-rt` uses `dispatch_once`, but that's overkill for the reasons above.
+    // `compiler-rt` 使用 `dispatch_once`，但鉴于上述原因那是杀鸡用牛刀。
     let version = CURRENT_VERSION.load(Ordering::Relaxed);
     if version == 0 {
         let version = lookup_version().get();
@@ -83,36 +81,35 @@ fn current_version() -> OSVersion {
     }
 }
 
-/// Look up the os version.
+/// 查询 OS 版本。
 ///
-/// # Aborts
+/// # 中止(Aborts）
 ///
-/// Aborts if reading or parsing the version fails (or if the system was out of memory).
+/// 如果读取或解析版本失败（或系统内存不足），则 abort。
 ///
-/// We deliberately choose to abort, as having this silently return an invalid OS version would be
-/// impossible for a user to debug.
-// The lookup is costly and should be on the cold path because of the cache in `current_version`.
+/// 我们刻意选择 abort，因为如果让它静默地返回一个无效的 OS 版本，对用户来说将无从调试。
+// 由于 `current_version` 中有缓存，这次查询代价较高，应当走 cold path（冷路径）。
 #[cold]
-// Micro-optimization: We use `extern "C"` to abort on panic, allowing `current_version` (inlined)
-// to be free of unwind handling. Aborting is required for `__isPlatformVersionAtLeast` anyhow.
+// 微优化：我们使用 `extern "C"` 以在 panic 时 abort，从而让（被内联的）`current_version`
+// 无需带有 unwind 处理逻辑。无论如何，`__isPlatformVersionAtLeast` 本就要求 abort。
 extern "C" fn lookup_version() -> NonZero<OSVersion> {
-    // Try to read from `sysctl` first (faster), but if that fails, fall back to reading the
-    // property list (this is roughly what `_availability_version_check` does internally).
+    // 先尝试从 `sysctl` 读取（更快），如果失败，则回退到读取属性列表
+    // （这大致就是 `_availability_version_check` 内部所做的事）。
     let version = version_from_sysctl().unwrap_or_else(version_from_plist);
 
-    // Use `NonZero` to try to make it clearer to the optimizer that this will never return 0.
+    // 使用 `NonZero` 以尽量向优化器表明它永远不会返回 0。
     NonZero::new(version).expect("version cannot be 0.0.0")
 }
 
-/// Read the version from `kern.osproductversion` or `kern.iossupportversion`.
+/// 从 `kern.osproductversion` 或 `kern.iossupportversion` 读取版本。
 ///
-/// This is faster than `version_from_plist`, since it doesn't need to invoke `dlsym`.
+/// 这比 `version_from_plist` 更快，因为它不需要调用 `dlsym`。
 fn version_from_sysctl() -> Option<OSVersion> {
-    // This won't work in the simulator, as `kern.osproductversion` returns the host macOS version,
-    // and `kern.iossupportversion` returns the host macOS' iOSSupportVersion (while you can run
-    // simulators with many different iOS versions).
+    // 这在模拟器中不起作用，因为 `kern.osproductversion` 返回的是宿主 macOS 的版本，
+    // 而 `kern.iossupportversion` 返回的是宿主 macOS 的 iOSSupportVersion（而你可以
+    // 用许多不同的 iOS 版本运行模拟器）。
     if cfg!(target_abi = "sim") {
-        // Fall back to `version_from_plist` on these targets.
+        // 在这些目标上回退到 `version_from_plist`。
         return None;
     }
 
@@ -122,16 +119,16 @@ fn version_from_sysctl() -> Option<OSVersion> {
         let ptr = buf.as_mut_ptr().cast();
         let ret = unsafe { libc::sysctlbyname(name.as_ptr(), ptr, &mut size, null_mut(), 0) };
         if ret != 0 {
-            // This sysctl is not available.
+            // 这个 sysctl 不可用。
             return None;
         }
         let buf = &buf[..(size - 1)];
 
         if buf.is_empty() {
-            // The buffer may be empty when using `kern.iossupportversion` on an actual iOS device,
-            // or on visionOS when running under "Designed for iPad".
+            // 在真实的 iOS 设备上使用 `kern.iossupportversion` 时，或在 visionOS 上以
+            // "Designed for iPad" 运行时，缓冲区可能为空。
             //
-            // In that case, fall back to `kern.osproductversion`.
+            // 这种情况下，回退到 `kern.osproductversion`。
             return None;
         }
 
@@ -140,71 +137,71 @@ fn version_from_sysctl() -> Option<OSVersion> {
         }))
     };
 
-    // When `target_os = "ios"`, we may be in many different states:
-    // - Native iOS device.
-    // - iOS Simulator.
-    // - Mac Catalyst.
-    // - Mac + "Designed for iPad".
-    // - Native visionOS device + "Designed for iPad".
-    // - visionOS simulator + "Designed for iPad".
+    // 当 `target_os = "ios"` 时，我们可能处于许多不同的状态：
+    // - 原生 iOS 设备。
+    // - iOS 模拟器。
+    // - Mac Catalyst。
+    // - Mac + "Designed for iPad"。
+    // - 原生 visionOS 设备 + "Designed for iPad"。
+    // - visionOS 模拟器 + "Designed for iPad"。
     //
-    // Of these, only native, Mac Catalyst and simulators can be differentiated at compile-time
-    // (with `target_abi = ""`, `target_abi = "macabi"` and `target_abi = "sim"` respectively).
+    // 这些之中，只有原生、Mac Catalyst 和模拟器可以在编译期区分
+    //（分别对应 `target_abi = ""`、`target_abi = "macabi"` 和 `target_abi = "sim"`）。
     //
-    // That is, "Designed for iPad" will act as iOS at compile-time, but the `ProductVersion` will
-    // still be the host macOS or visionOS version.
+    // 也就是说，"Designed for iPad" 在编译期会表现为 iOS，但 `ProductVersion`
+    // 仍然会是宿主 macOS 或 visionOS 的版本。
     //
-    // Furthermore, we can't even reliably differentiate between these at runtime, since
-    // `dyld_get_active_platform` isn't publicly available.
+    // 更进一步，我们在运行期甚至也无法可靠地区分它们，因为
+    // `dyld_get_active_platform` 并未公开。
     //
-    // Fortunately, we won't need to know any of that; we can simply attempt to get the
-    // `iOSSupportVersion` (which may be set on native iOS too, but then it will be set to the host
-    // iOS version), and if that fails, fall back to the `ProductVersion`.
+    // 幸运的是，我们并不需要知道这些；我们可以直接尝试获取
+    // `iOSSupportVersion`（它在原生 iOS 上也可能被设置，但那时它会被设为宿主
+    // iOS 版本），如果失败，再回退到 `ProductVersion`。
     if cfg!(target_os = "ios") {
         // https://github.com/apple-oss-distributions/xnu/blob/xnu-11215.81.4/bsd/kern/kern_sysctl.c#L2077-L2100
         if let Some(ios_support_version) = sysctl_version(c"kern.iossupportversion") {
             return Some(ios_support_version);
         }
 
-        // On Mac Catalyst, if we failed looking up `iOSSupportVersion`, we don't want to
-        // accidentally fall back to `ProductVersion`.
+        // 在 Mac Catalyst 上，如果查询 `iOSSupportVersion` 失败，我们不希望
+        // 意外地回退到 `ProductVersion`。
         if cfg!(target_abi = "macabi") {
             return None;
         }
     }
 
-    // Introduced in macOS 10.13.4.
+    // 引入于 macOS 10.13.4。
     // https://github.com/apple-oss-distributions/xnu/blob/xnu-11215.81.4/bsd/kern/kern_sysctl.c#L2015-L2051
     sysctl_version(c"kern.osproductversion")
 }
 
-/// Look up the current OS version(s) from `/System/Library/CoreServices/SystemVersion.plist`.
+/// 从 `/System/Library/CoreServices/SystemVersion.plist` 查询当前的 OS 版本。
 ///
-/// More specifically, from the `ProductVersion` and `iOSSupportVersion` keys, and from
-/// `$IPHONE_SIMULATOR_ROOT/System/Library/CoreServices/SystemVersion.plist` on the simulator.
+/// 更具体地说，是从 `ProductVersion` 和 `iOSSupportVersion` 键，以及在模拟器上从
+/// `$IPHONE_SIMULATOR_ROOT/System/Library/CoreServices/SystemVersion.plist` 读取。
 ///
-/// This file was introduced in macOS 10.3, which is well below the minimum supported version by
-/// `rustc`, which is (at the time of writing) macOS 10.12.
+/// 该文件引入于 macOS 10.3，远低于 `rustc` 所支持的最低版本（截至撰写本文时为
+/// macOS 10.12）。
 ///
-/// # Implementation
+/// # 实现
 ///
-/// We do roughly the same thing in here as `compiler-rt`, and dynamically look up CoreFoundation
-/// utilities for parsing PLists (to avoid having to re-implement that in here, as pulling in a full
-/// PList parser into `std` seems costly).
+/// 我们这里所做的事情与 `compiler-rt` 大致相同，并动态查找 CoreFoundation 的工具
+/// 来解析 PList（以避免在这里重新实现一遍，因为把一个完整的 PList 解析器引入 `std`
+/// 似乎代价高昂）。
 ///
-/// If this is found to be undesirable, we _could_ possibly hack it by parsing the PList manually
-/// (it seems to use the plain-text "xml1" encoding/format in all versions), but that seems brittle.
+/// 如果发现这并不可取，我们_或许_可以通过手动解析 PList 来取巧（在所有版本里它似乎
+/// 都使用纯文本的 "xml1" 编码/格式），但那看起来很脆弱。
 fn version_from_plist() -> OSVersion {
-    // Read `SystemVersion.plist`. Always present on Apple platforms, reading it cannot fail.
+    // 读取 `SystemVersion.plist`。在 Apple 平台上始终存在，读取它不会失败。
     let path = root_relative("/System/Library/CoreServices/SystemVersion.plist");
     let plist_buffer = fs::read(&path).unwrap_or_else(|e| panic!("failed reading {path:?}: {e}"));
     let cf_handle = CFHandle::new();
     parse_version_from_plist(&cf_handle, &plist_buffer)
 }
 
-/// Parse OS version from the given PList.
+/// 从给定的 PList 解析 OS 版本。
 ///
-/// Split out from [`version_from_plist`] to allow for testing.
+/// 从 [`version_from_plist`] 中拆分出来，以便测试。
 fn parse_version_from_plist(cf_handle: &CFHandle, plist_buffer: &[u8]) -> OSVersion {
     let plist_data = unsafe {
         cf_handle.CFDataCreateWithBytesNoCopy(
@@ -222,8 +219,8 @@ fn parse_version_from_plist(cf_handle: &CFHandle, plist_buffer: &[u8]) -> OSVers
             kCFAllocatorDefault,
             plist_data,
             kCFPropertyListImmutable,
-            null_mut(), // Don't care about the format of the PList.
-            null_mut(), // Don't care about the error data.
+            null_mut(), // 不关心 PList 的格式。
+            null_mut(), // 不关心错误数据。
         )
     };
     assert!(!plist.is_null(), "failed reading PList in SystemVersion.plist");
@@ -236,7 +233,7 @@ fn parse_version_from_plist(cf_handle: &CFHandle, plist_buffer: &[u8]) -> OSVers
     );
     let plist: CFDictionaryRef = plist.cast();
 
-    // Same logic as in `version_from_sysctl`.
+    // 与 `version_from_sysctl` 中的逻辑相同。
     if cfg!(target_os = "ios") {
         if let Some(ios_support_version) =
             unsafe { string_version_key(cf_handle, plist, c"iOSSupportVersion") }
@@ -244,18 +241,18 @@ fn parse_version_from_plist(cf_handle: &CFHandle, plist_buffer: &[u8]) -> OSVers
             return ios_support_version;
         }
 
-        // Force Mac Catalyst to use iOSSupportVersion (do not fall back to ProductVersion).
+        // 强制 Mac Catalyst 使用 iOSSupportVersion（不要回退到 ProductVersion）。
         if cfg!(target_abi = "macabi") {
             panic!("expected iOSSupportVersion in SystemVersion.plist");
         }
     }
 
-    // On all other platforms, we can find the OS version by simply looking at `ProductVersion`.
+    // 在所有其他平台上，我们只需查看 `ProductVersion` 即可得到 OS 版本。
     unsafe { string_version_key(cf_handle, plist, c"ProductVersion") }
         .expect("expected ProductVersion in SystemVersion.plist")
 }
 
-/// Look up a string key in a CFDictionary, and convert it to an [`OSVersion`].
+/// 在一个 CFDictionary 中查找某个字符串键，并将其转换为 [`OSVersion`]。
 unsafe fn string_version_key(
     cf_handle: &CFHandle,
     plist: CFDictionaryRef,
@@ -274,8 +271,8 @@ unsafe fn string_version_key(
 
     let value: CFTypeRef =
         unsafe { cf_handle.CFDictionaryGetValue(plist, cf_lookup_key) }.cast_mut();
-    // `CFDictionaryGetValue` is a "getter", so we should not release,
-    // the value is held alive internally by the CFDictionary, see:
+    // `CFDictionaryGetValue` 是一个 "getter"，所以我们不应释放它，
+    // 该值由 CFDictionary 在内部保持存活，参见：
     // https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/MemoryMgmt/Articles/mmPractical.html#//apple_ref/doc/uid/TP40004447-SW12
     if value.is_null() {
         return None;
@@ -310,7 +307,7 @@ unsafe fn string_version_key(
     }))
 }
 
-/// Parse an OS version from a bytestring like b"10.1" or b"14.3.7".
+/// 从形如 b"10.1" 或 b"14.3.7" 的字节串解析出 OS 版本。
 fn parse_os_version(version: &[u8]) -> Result<OSVersion, ParseIntError> {
     if let Some((major, minor)) = version.split_once(|&b| b == b'.') {
         let major = u16::from_ascii(major)?;
@@ -328,13 +325,13 @@ fn parse_os_version(version: &[u8]) -> Result<OSVersion, ParseIntError> {
     }
 }
 
-/// Get a path relative to the root directory in which all files for the current env are located.
+/// 获取一个相对于根目录的路径，当前 env 的所有文件都位于该根目录下。
 fn root_relative(path: &str) -> Cow<'_, Path> {
     if cfg!(target_abi = "sim") {
         let mut root = PathBuf::from(env::var_os("IPHONE_SIMULATOR_ROOT").expect(
             "environment variable `IPHONE_SIMULATOR_ROOT` must be set when executing under simulator",
         ));
-        // Convert absolute path to relative path, to make the `.push` work as expected.
+        // 将绝对路径转换为相对路径，以使 `.push` 按预期工作。
         root.push(Path::new(path).strip_prefix("/").unwrap());
         root.into()
     } else {

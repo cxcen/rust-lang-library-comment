@@ -1,22 +1,24 @@
-//! Random value generation.
+//! 随机值生成。
+//!
+//! 本模块在 `core::random` 的基础上，额外提供了一个由操作系统熵源驱动的默认随机源
+//! [`DefaultRandomSource`]，以及便捷函数 [`random`]。它本身不维护任何随机状态，
+//! 所有随机字节都直接向底层平台索取；因此随机质量与各平台系统调用的保证一致
+//! （见下表），失败/阻塞行为也由底层系统调用决定。
 
 #[unstable(feature = "random", issue = "130703")]
 pub use core::random::*;
 
 use crate::sys::random as sys;
 
-/// The default random source.
+/// 默认随机源。
 ///
-/// This asks the system for random data suitable for cryptographic purposes
-/// such as key generation. If security is a concern, consult the platform
-/// documentation below for the specific guarantees your target provides.
+/// 它向操作系统索取适用于密码学用途（例如密钥生成）的随机数据。如果安全性是关注点，
+/// 请查阅下文针对各平台的文档，了解你的目标平台具体提供哪些保证。
 ///
-/// The high quality of randomness provided by this source means it can be quite
-/// slow on some targets. If you need a large quantity of random numbers and
-/// security is not a concern,  consider using an alternative random number
-/// generator (potentially seeded from this one).
+/// 该随机源提供的高质量随机性意味着在某些目标平台上它可能相当慢。如果你需要大量随机数
+/// 且安全性并非关注点，可考虑改用其他随机数生成器（必要时可用本随机源为其播种）。
 ///
-/// # Underlying sources
+/// # 底层随机源
 ///
 /// Platform               | Source
 /// -----------------------|---------------------------------------------------------------
@@ -46,11 +48,10 @@ use crate::sys::random as sys;
 /// WASI                   | [`random_get`](https://github.com/WebAssembly/WASI/blob/main/legacy/preview1/docs.md#-random_getbuf-pointeru8-buf_len-size---result-errno)
 /// ZKVM                   | `sys_rand`
 ///
-/// Note that the sources used might change over time.
+/// 注意：所使用的随机源可能随时间变化。
 ///
-/// Consult the documentation for the underlying operations on your supported
-/// targets to determine whether they provide any particular desired properties,
-/// such as support for reseeding on VM fork operations.
+/// 请查阅你所支持的目标平台上底层操作的文档，以确定它们是否提供某些你期望的特定属性，
+/// 例如在虚拟机 fork 操作时重新播种（reseeding on VM fork）的支持。
 ///
 /// [`getrandom`]: https://www.man7.org/linux/man-pages/man2/getrandom.2.html
 /// [`/dev/urandom`]: https://www.man7.org/linux/man-pages/man4/random.4.html
@@ -65,15 +66,15 @@ impl RandomSource for DefaultRandomSource {
     }
 }
 
-/// Generates a random value from a distribution, using the default random source.
+/// 使用默认随机源，从某个分布中生成一个随机值。
 ///
-/// This is a convenience function for `dist.sample(&mut DefaultRandomSource)` and will sample
-/// according to the same distribution as the underlying [`Distribution`] trait implementation. See
-/// [`DefaultRandomSource`] for more information about how randomness is sourced.
+/// 这是 `dist.sample(&mut DefaultRandomSource)` 的便捷封装，会按照底层 [`Distribution`]
+/// trait 实现所定义的同一分布进行采样。关于随机性如何获取的更多信息，参见
+/// [`DefaultRandomSource`]。
 ///
-/// # Examples
+/// # 示例
 ///
-/// Generating a [version 4/variant 1 UUID] represented as text:
+/// 生成一个以文本表示的 [version 4/variant 1 UUID]：
 /// ```
 /// #![feature(random)]
 ///

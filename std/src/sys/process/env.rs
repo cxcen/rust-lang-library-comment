@@ -3,7 +3,7 @@ use crate::ffi::{OsStr, OsString};
 use crate::sys::process::EnvKey;
 use crate::{env, fmt};
 
-/// Stores a set of changes to an environment
+/// 存储对某个环境所做的一组更改
 #[derive(Clone, Default)]
 pub struct CommandEnv {
     clear: bool,
@@ -20,7 +20,7 @@ impl fmt::Debug for CommandEnv {
 }
 
 impl CommandEnv {
-    // Capture the current environment with these changes applied
+    // 捕获当前环境，并应用这些更改
     pub fn capture(&self) -> BTreeMap<EnvKey, OsString> {
         let mut result = BTreeMap::<EnvKey, OsString>::new();
         if !self.clear {
@@ -46,7 +46,7 @@ impl CommandEnv {
         if self.is_unchanged() { None } else { Some(self.capture()) }
     }
 
-    // The following functions build up changes
+    // 以下函数用于逐步构建更改
     pub fn set(&mut self, key: &OsStr, value: &OsStr) {
         let key = EnvKey::from(key);
         self.maybe_saw_path(&key);

@@ -1,8 +1,13 @@
-//! Temporal quantification.
+//! 时间的量化（Temporal quantification）。
 //!
-//! # Examples
+//! 本模块在 `core::time::Duration` 的基础上，提供两种与操作系统时钟绑定的时间度量类型：
+//! [`Instant`]（单调不减的时钟，用于测量经过的时长）与 [`SystemTime`]（系统挂钟时间，
+//! 可被系统时钟调整而回拨）。两者都是不透明类型，只有借助 [`Duration`] 才有意义。
+//! 它们各自维护的不变量、平台差异以及失败如何暴露，分别见两个类型的文档。
 //!
-//! There are multiple ways to create a new [`Duration`]:
+//! # 示例
+//!
+//! 创建一个新的 [`Duration`] 有多种方式：
 //!
 //! ```
 //! # use std::time::Duration;
@@ -17,12 +22,12 @@
 //! assert_eq!(total, Duration::new(10, 7));
 //! ```
 //!
-//! Using [`Instant`] to calculate how long a function took to run:
+//! 使用 [`Instant`] 计算一个函数运行了多久：
 //!
 //! ```ignore (incomplete)
 //! let now = Instant::now();
 //!
-//! // Calling a slow function, it may take a while
+//! // 调用一个慢函数，它可能要执行一阵子
 //! slow_function();
 //!
 //! let elapsed_time = now.elapsed();
@@ -41,30 +46,24 @@ use crate::fmt;
 use crate::ops::{Add, AddAssign, Sub, SubAssign};
 use crate::sys::{FromInner, IntoInner, time};
 
-/// A measurement of a monotonically nondecreasing clock.
-/// Opaque and useful only with [`Duration`].
+/// 对一个单调不减（monotonically nondecreasing）时钟的度量。
+/// 它是不透明的，只有配合 [`Duration`] 使用才有意义。
 ///
-/// Instants are always guaranteed, barring [platform bugs], to be no less than any previously
-/// measured instant when created, and are often useful for tasks such as measuring
-/// benchmarks or timing how long an operation takes.
+/// 除非遇到[平台 bug][platform bugs]，`Instant` 总是保证：新创建的 instant 不小于此前测得的
+/// 任何 instant。它常用于测量基准（benchmark）或对某个操作计时。
 ///
-/// Note, however, that instants are **not** guaranteed to be **steady**. In other
-/// words, each tick of the underlying clock might not be the same length (e.g.
-/// some seconds may be longer than others). An instant may jump forwards or
-/// experience time dilation (slow down or speed up), but it will never go
-/// backwards.
-/// As part of this non-guarantee it is also not specified whether system suspends count as
-/// elapsed time or not. The behavior varies across platforms and Rust versions.
+/// 但请注意，instant **不**保证是**稳定（steady）**的。换言之，底层时钟的每一次 tick
+/// 长度未必相同（例如有些秒可能比其他秒更长）。instant 可能向前跳变，或经历时间膨胀
+/// （time dilation，即变慢或变快），但它绝不会倒退。
+/// 作为这一“非保证”的一部分，系统挂起（suspend）是否计入经过的时间也未作规定，
+/// 该行为在不同平台和不同 Rust 版本之间各不相同。
 ///
-/// Instants are opaque types that can only be compared to one another. There is
-/// no method to get "the number of seconds" from an instant. Instead, it only
-/// allows measuring the duration between two instants (or comparing two
-/// instants).
+/// instant 是不透明类型，只能彼此比较。没有任何方法能从 instant 取出“多少秒”这样的值。
+/// 它只允许测量两个 instant 之间的时长（或比较两个 instant）。
 ///
-/// The size of an `Instant` struct may vary depending on the target operating
-/// system.
+/// `Instant` 结构体的大小可能因目标操作系统而异。
 ///
-/// Example:
+/// 示例：
 ///
 /// ```no_run
 /// use std::time::{Duration, Instant};
@@ -73,20 +72,19 @@ use crate::sys::{FromInner, IntoInner, time};
 /// fn main() {
 ///    let now = Instant::now();
 ///
-///    // we sleep for 2 seconds
+///    // 我们睡眠 2 秒
 ///    sleep(Duration::new(2, 0));
-///    // it prints '2'
+///    // 打印 '2'
 ///    println!("{}", now.elapsed().as_secs());
 /// }
 /// ```
 ///
 /// [platform bugs]: Instant#monotonicity
 ///
-/// # OS-specific behaviors
+/// # 操作系统特定行为
 ///
-/// An `Instant` is a wrapper around system-specific types and it may behave
-/// differently depending on the underlying operating system. For example,
-/// the following snippet is fine on Linux but panics on macOS:
+/// `Instant` 是对各系统特定类型的封装，其行为可能因底层操作系统而异。例如，
+/// 以下代码片段在 Linux 上没问题，但在 macOS 上会 panic：
 ///
 /// ```no_run
 /// use std::time::{Instant, Duration};
@@ -101,12 +99,11 @@ use crate::sys::{FromInner, IntoInner, time};
 /// println!("{:?}", now + duration);
 /// ```
 ///
-/// For cross-platform code, you can comfortably use durations of up to around one hundred years.
+/// 对于跨平台代码，可以放心使用最长约一百年的时长（duration）。
 ///
-/// # Underlying System calls
+/// # 底层系统调用
 ///
-/// The following system calls are [currently] being used by `now()` to find out
-/// the current time:
+/// `now()` [目前][currently]使用以下系统调用来获取当前时间：
 ///
 /// |  Platform |               System call                                            |
 /// |-----------|----------------------------------------------------------------------|
@@ -125,25 +122,23 @@ use crate::sys::{FromInner, IntoInner, time};
 /// [__wasi_clock_time_get]: https://github.com/WebAssembly/WASI/blob/main/legacy/preview1/docs.md#clock_time_get
 /// [clock_gettime]: https://pubs.opengroup.org/onlinepubs/9799919799/functions/clock_getres.html
 ///
-/// **Disclaimer:** These system calls might change over time.
+/// **免责声明（Disclaimer）：** 这些系统调用可能随时间变化。
 ///
-/// > Note: mathematical operations like [`add`] may panic if the underlying
-/// > structure cannot represent the new point in time.
+/// > 注意：诸如 [`add`] 之类的数学运算可能会 panic，如果底层结构无法表示新的时间点的话。
 ///
 /// [`add`]: Instant::add
 ///
-/// ## Monotonicity
+/// ## 单调性（Monotonicity）
 ///
-/// On all platforms `Instant` will try to use an OS API that guarantees monotonic behavior
-/// if available, which is the case for all [tier 1] platforms.
-/// In practice such guarantees are – under rare circumstances – broken by hardware, virtualization
-/// or operating system bugs. To work around these bugs and platforms not offering monotonic clocks
-/// [`duration_since`], [`elapsed`] and [`sub`] saturate to zero. In older Rust versions this
-/// lead to a panic instead. [`checked_duration_since`] can be used to detect and handle situations
-/// where monotonicity is violated, or `Instant`s are subtracted in the wrong order.
+/// 在所有平台上，`Instant` 都会尽量使用保证单调行为的 OS API（如果存在的话），
+/// 对所有 [tier 1] 平台而言确实存在这样的 API。
+/// 实践中，这类保证在极少数情况下会被硬件、虚拟化或操作系统的 bug 打破。为了绕过这些 bug，
+/// 以及应对不提供单调时钟的平台，[`duration_since`]、[`elapsed`] 和 [`sub`] 会饱和（saturate）到零。
+/// 在较旧的 Rust 版本中，这种情形会导致 panic。可以用 [`checked_duration_since`] 来检测并处理
+/// 单调性被违反、或 `Instant` 相减顺序写反的情况。
 ///
-/// This workaround obscures programming errors where earlier and later instants are accidentally
-/// swapped. For this reason future Rust versions may reintroduce panics.
+/// 这种绕过手段会掩盖一类编程错误：把较早和较晚的 instant 不小心写反。出于这个原因，
+/// 未来的 Rust 版本可能会重新引入 panic。
 ///
 /// [tier 1]: https://doc.rust-lang.org/rustc/platform-support.html
 /// [`duration_since`]: Instant::duration_since
@@ -156,38 +151,27 @@ use crate::sys::{FromInner, IntoInner, time};
 #[cfg_attr(not(test), rustc_diagnostic_item = "Instant")]
 pub struct Instant(time::Instant);
 
-/// A measurement of the system clock, useful for talking to
-/// external entities like the file system or other processes.
+/// 对系统时钟的度量，适用于与外部实体（如文件系统或其他进程）交互。
 ///
-/// Distinct from the [`Instant`] type, this time measurement **is not
-/// monotonic**. This means that you can save a file to the file system, then
-/// save another file to the file system, **and the second file has a
-/// `SystemTime` measurement earlier than the first**. In other words, an
-/// operation that happens after another operation in real time may have an
-/// earlier `SystemTime`!
+/// 与 [`Instant`] 类型不同，这种时间度量**不是单调的**。这意味着：你可以先把一个文件保存到
+/// 文件系统，再保存另一个文件，**而第二个文件的 `SystemTime` 度量值却可能早于第一个**。
+/// 换言之，在真实时间里发生得更晚的操作，其 `SystemTime` 反而可能更早！
 ///
-/// Consequently, comparing two `SystemTime` instances to learn about the
-/// duration between them returns a [`Result`] instead of an infallible [`Duration`]
-/// to indicate that this sort of time drift may happen and needs to be handled.
+/// 因此，比较两个 `SystemTime` 实例以得知它们之间的时长时，返回的是 [`Result`] 而非
+/// 不会失败的 [`Duration`]，以表明这种时间漂移（time drift）可能发生、需要被处理。
 ///
-/// Although a `SystemTime` cannot be directly inspected, the [`UNIX_EPOCH`]
-/// constant is provided in this module as an anchor in time to learn
-/// information about a `SystemTime`. By calculating the duration from this
-/// fixed point in time, a `SystemTime` can be converted to a human-readable time,
-/// or perhaps some other string representation.
+/// 虽然 `SystemTime` 不能被直接检视，但本模块提供了 [`UNIX_EPOCH`] 常量作为时间锚点，
+/// 用于了解某个 `SystemTime` 的信息。通过计算相对这个固定时间点的时长，
+/// 可以把 `SystemTime` 转换成人类可读的时间，或者某种字符串表示。
 ///
-/// The size of a `SystemTime` struct may vary depending on the target operating
-/// system.
+/// `SystemTime` 结构体的大小可能因目标操作系统而异。
 ///
-/// A `SystemTime` does not count leap seconds.
-/// `SystemTime::now()`'s behavior around a leap second
-/// is the same as the operating system's wall clock.
-/// The precise behavior near a leap second
-/// (e.g. whether the clock appears to run slow or fast, or stop, or jump)
-/// depends on platform and configuration,
-/// so should not be relied on.
+/// `SystemTime` 不计入闰秒（leap second）。
+/// `SystemTime::now()` 在闰秒附近的行为与操作系统的挂钟一致。
+/// 闰秒附近的精确行为（例如时钟看起来变慢、变快、停止还是跳变）取决于平台和配置，
+/// 因此不应依赖它。
 ///
-/// Example:
+/// 示例：
 ///
 /// ```no_run
 /// use std::time::{Duration, SystemTime};
@@ -196,29 +180,27 @@ pub struct Instant(time::Instant);
 /// fn main() {
 ///    let now = SystemTime::now();
 ///
-///    // we sleep for 2 seconds
+///    // 我们睡眠 2 秒
 ///    sleep(Duration::new(2, 0));
 ///    match now.elapsed() {
 ///        Ok(elapsed) => {
-///            // it prints '2'
+///            // 打印 '2'
 ///            println!("{}", elapsed.as_secs());
 ///        }
 ///        Err(e) => {
-///            // the system clock went backwards!
+///            // 系统时钟倒退了！
 ///            println!("Great Scott! {e:?}");
 ///        }
 ///    }
 /// }
 /// ```
 ///
-/// # Platform-specific behavior
+/// # 平台特定行为
 ///
-/// The precision of `SystemTime` can depend on the underlying OS-specific time format.
-/// For example, on Windows the time is represented in 100 nanosecond intervals whereas Linux
-/// can represent nanosecond intervals.
+/// `SystemTime` 的精度可能取决于底层 OS 特定的时间格式。例如，在 Windows 上时间以 100 纳秒
+/// 为间隔表示，而 Linux 可以表示纳秒级间隔。
 ///
-/// The following system calls are [currently] being used by `now()` to find out
-/// the current time:
+/// `now()` [目前][currently]使用以下系统调用来获取当前时间：
 ///
 /// |  Platform |               System call                                            |
 /// |-----------|----------------------------------------------------------------------|
@@ -238,10 +220,9 @@ pub struct Instant(time::Instant);
 /// [GetSystemTimePreciseAsFileTime]: https://docs.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-getsystemtimepreciseasfiletime
 /// [GetSystemTimeAsFileTime]: https://docs.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-getsystemtimeasfiletime
 ///
-/// **Disclaimer:** These system calls might change over time.
+/// **免责声明（Disclaimer）：** 这些系统调用可能随时间变化。
 ///
-/// > Note: mathematical operations like [`add`] may panic if the underlying
-/// > structure cannot represent the new point in time.
+/// > 注意：诸如 [`add`] 之类的数学运算可能会 panic，如果底层结构无法表示新的时间点的话。
 ///
 /// [`add`]: SystemTime::add
 /// [`UNIX_EPOCH`]: SystemTime::UNIX_EPOCH
@@ -249,11 +230,10 @@ pub struct Instant(time::Instant);
 #[stable(feature = "time2", since = "1.8.0")]
 pub struct SystemTime(time::SystemTime);
 
-/// An error returned from the `duration_since` and `elapsed` methods on
-/// `SystemTime`, used to learn how far in the opposite direction a system time
-/// lies.
+/// 由 `SystemTime` 上的 `duration_since` 和 `elapsed` 方法返回的错误，
+/// 用于得知系统时间在反方向上偏离了多远。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```no_run
 /// use std::thread::sleep;
@@ -272,9 +252,9 @@ pub struct SystemTime(time::SystemTime);
 pub struct SystemTimeError(Duration);
 
 impl Instant {
-    /// Returns an instant corresponding to "now".
+    /// 返回对应于“现在（now）”的 instant。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::time::Instant;
@@ -288,18 +268,17 @@ impl Instant {
         Instant(time::Instant::now())
     }
 
-    /// Returns the amount of time elapsed from another instant to this one,
-    /// or zero duration if that instant is later than this one.
+    /// 返回从另一个 instant 到本 instant 所经过的时长；
+    /// 如果那个 instant 晚于本 instant，则返回零时长。
     ///
     /// # Panics
     ///
-    /// Previous Rust versions panicked when `earlier` was later than `self`. Currently this
-    /// method saturates. Future versions may reintroduce the panic in some circumstances.
-    /// See [Monotonicity].
+    /// 旧版 Rust 在 `earlier` 晚于 `self` 时会 panic。当前此方法改为饱和（saturate）处理。
+    /// 未来版本可能在某些情形下重新引入 panic。参见[单调性][Monotonicity]。
     ///
     /// [Monotonicity]: Instant#monotonicity
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::time::{Duration, Instant};
@@ -317,15 +296,15 @@ impl Instant {
         self.checked_duration_since(earlier).unwrap_or_default()
     }
 
-    /// Returns the amount of time elapsed from another instant to this one,
-    /// or None if that instant is later than this one.
+    /// 返回从另一个 instant 到本 instant 所经过的时长；
+    /// 如果那个 instant 晚于本 instant，则返回 None。
     ///
-    /// Due to [monotonicity bugs], even under correct logical ordering of the passed `Instant`s,
-    /// this method can return `None`.
+    /// 由于[单调性 bug][monotonicity bugs]，即便传入的 `Instant` 在逻辑顺序上是正确的，
+    /// 此方法也可能返回 `None`。
     ///
     /// [monotonicity bugs]: Instant#monotonicity
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::time::{Duration, Instant};
@@ -343,10 +322,10 @@ impl Instant {
         self.0.checked_sub_instant(&earlier.0)
     }
 
-    /// Returns the amount of time elapsed from another instant to this one,
-    /// or zero duration if that instant is later than this one.
+    /// 返回从另一个 instant 到本 instant 所经过的时长；
+    /// 如果那个 instant 晚于本 instant，则返回零时长。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::time::{Duration, Instant};
@@ -364,17 +343,16 @@ impl Instant {
         self.checked_duration_since(earlier).unwrap_or_default()
     }
 
-    /// Returns the amount of time elapsed since this instant.
+    /// 返回自本 instant 以来所经过的时长。
     ///
     /// # Panics
     ///
-    /// Previous Rust versions panicked when the current time was earlier than self. Currently this
-    /// method returns a Duration of zero in that case. Future versions may reintroduce the panic.
-    /// See [Monotonicity].
+    /// 旧版 Rust 在当前时间早于 self 时会 panic。当前此方法在该情形下返回零时长。
+    /// 未来版本可能重新引入 panic。参见[单调性][Monotonicity]。
     ///
     /// [Monotonicity]: Instant#monotonicity
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::thread::sleep;
@@ -391,23 +369,21 @@ impl Instant {
         Instant::now() - *self
     }
 
-    /// Returns `Some(t)` where `t` is the time `self + duration` if `t` can be represented as
-    /// `Instant` (which means it's inside the bounds of the underlying data structure), `None`
-    /// otherwise.
+    /// 返回 `Some(t)`，其中 `t` 为时间 `self + duration`，前提是 `t` 能表示为
+    /// `Instant`（即落在底层数据结构的边界之内）；否则返回 `None`。
     #[stable(feature = "time_checked_add", since = "1.34.0")]
     pub fn checked_add(&self, duration: Duration) -> Option<Instant> {
         self.0.checked_add_duration(&duration).map(Instant)
     }
 
-    /// Returns `Some(t)` where `t` is the time `self - duration` if `t` can be represented as
-    /// `Instant` (which means it's inside the bounds of the underlying data structure), `None`
-    /// otherwise.
+    /// 返回 `Some(t)`，其中 `t` 为时间 `self - duration`，前提是 `t` 能表示为
+    /// `Instant`（即落在底层数据结构的边界之内）；否则返回 `None`。
     #[stable(feature = "time_checked_add", since = "1.34.0")]
     pub fn checked_sub(&self, duration: Duration) -> Option<Instant> {
         self.0.checked_sub_duration(&duration).map(Instant)
     }
 
-    // Used by platform specific `sleep_until` implementations such as the one used on Linux.
+    // 被平台特定的 `sleep_until` 实现使用，例如 Linux 上所用的那个。
     #[cfg_attr(
         not(target_os = "linux"),
         allow(unused, reason = "not every platform has a specific `sleep_until`")
@@ -423,8 +399,8 @@ impl Add<Duration> for Instant {
 
     /// # Panics
     ///
-    /// This function may panic if the resulting point in time cannot be represented by the
-    /// underlying data structure. See [`Instant::checked_add`] for a version without panic.
+    /// 如果结果时间点无法被底层数据结构表示，此函数可能 panic。
+    /// 不会 panic 的版本见 [`Instant::checked_add`]。
     fn add(self, other: Duration) -> Instant {
         self.checked_add(other).expect("overflow when adding duration to instant")
     }
@@ -457,14 +433,13 @@ impl SubAssign<Duration> for Instant {
 impl Sub<Instant> for Instant {
     type Output = Duration;
 
-    /// Returns the amount of time elapsed from another instant to this one,
-    /// or zero duration if that instant is later than this one.
+    /// 返回从另一个 instant 到本 instant 所经过的时长；
+    /// 如果那个 instant 晚于本 instant，则返回零时长。
     ///
     /// # Panics
     ///
-    /// Previous Rust versions panicked when `other` was later than `self`. Currently this
-    /// method saturates. Future versions may reintroduce the panic in some circumstances.
-    /// See [Monotonicity].
+    /// 旧版 Rust 在 `other` 晚于 `self` 时会 panic。当前此方法改为饱和（saturate）处理。
+    /// 未来版本可能在某些情形下重新引入 panic。参见[单调性][Monotonicity]。
     ///
     /// [Monotonicity]: Instant#monotonicity
     fn sub(self, other: Instant) -> Duration {
@@ -480,24 +455,19 @@ impl fmt::Debug for Instant {
 }
 
 impl SystemTime {
-    /// An anchor in time which can be used to create new `SystemTime` instances or
-    /// learn about where in time a `SystemTime` lies.
+    /// 一个时间锚点，可用于创建新的 `SystemTime` 实例，或了解某个 `SystemTime` 处于时间轴上的位置。
     //
-    // NOTE! this documentation is duplicated, here and in std::time::UNIX_EPOCH.
-    // The two copies are not quite identical, because of the difference in naming.
+    // 注意！这段文档是重复的：此处与 std::time::UNIX_EPOCH 各有一份。
+    // 由于命名不同，两份内容并不完全一致。
     ///
-    /// This constant is defined to be "1970-01-01 00:00:00 UTC" on all systems with
-    /// respect to the system clock. Using `duration_since` on an existing
-    /// `SystemTime` instance can tell how far away from this point in time a
-    /// measurement lies, and using `UNIX_EPOCH + duration` can be used to create a
-    /// `SystemTime` instance to represent another fixed point in time.
+    /// 就系统时钟而言，该常量在所有系统上都被定义为 "1970-01-01 00:00:00 UTC"。
+    /// 对一个已有的 `SystemTime` 实例调用 `duration_since`，可以得知它距离这个时间点有多远；
+    /// 而用 `UNIX_EPOCH + duration` 则可以创建一个表示另一固定时间点的 `SystemTime` 实例。
     ///
-    /// `duration_since(UNIX_EPOCH).unwrap().as_secs()` returns
-    /// the number of non-leap seconds since the start of 1970 UTC.
-    /// This is a POSIX `time_t` (as a `u64`),
-    /// and is the same time representation as used in many Internet protocols.
+    /// `duration_since(UNIX_EPOCH).unwrap().as_secs()` 返回自 1970 UTC 起始以来的非闰秒秒数。
+    /// 这是一个 POSIX `time_t`（以 `u64` 表示），与许多互联网协议所用的时间表示相同。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::time::SystemTime;
@@ -510,33 +480,29 @@ impl SystemTime {
     #[stable(feature = "assoc_unix_epoch", since = "1.28.0")]
     pub const UNIX_EPOCH: SystemTime = UNIX_EPOCH;
 
-    /// Represents the maximum value representable by [`SystemTime`] on this platform.
+    /// 表示本平台上 [`SystemTime`] 可表示的最大值。
     ///
-    /// This value differs a lot between platforms, but it is always the case
-    /// that any positive addition of a [`Duration`], whose value is greater
-    /// than or equal to the time precision of the operating system, to
-    /// [`SystemTime::MAX`] will fail.
+    /// 该值在不同平台间差异很大，但始终满足：向 [`SystemTime::MAX`] 做任何正向加法，
+    /// 只要所加 [`Duration`] 的值大于或等于操作系统的时间精度，就一定会失败。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// #![feature(time_systemtime_limits)]
     /// use std::time::{Duration, SystemTime};
     ///
-    /// // Adding zero will change nothing.
+    /// // 加上零不会改变任何东西。
     /// assert_eq!(SystemTime::MAX.checked_add(Duration::ZERO), Some(SystemTime::MAX));
     ///
-    /// // But adding just one second will already fail ...
+    /// // 但仅仅加上一秒就已经会失败……
     /// //
-    /// // Keep in mind that this in fact may succeed, if the Duration is
-    /// // smaller than the time precision of the operating system, which
-    /// // happens to be 1ns on most operating systems, with Windows being the
-    /// // notable exception by using 100ns, hence why this example uses 1s.
+    /// // 请记住：如果 Duration 小于操作系统的时间精度，这其实可能成功；
+    /// // 在大多数操作系统上该精度恰好是 1ns，而 Windows 是个显著的例外，
+    /// // 它使用 100ns，因此本示例使用 1s。
     /// assert_eq!(SystemTime::MAX.checked_add(Duration::new(1, 0)), None);
     ///
-    /// // Utilize this for saturating arithmetic to improve error handling.
-    /// // In this case, we will use a certificate with a timestamp in the
-    /// // future as a practical example.
+    /// // 利用它进行饱和算术以改进错误处理。
+    /// // 这里我们以一个时间戳位于未来的证书作为实际例子。
     /// let configured_offset = Duration::from_secs(60 * 60 * 24);
     /// let valid_after =
     ///     SystemTime::now()
@@ -546,38 +512,33 @@ impl SystemTime {
     #[unstable(feature = "time_systemtime_limits", issue = "149067")]
     pub const MAX: SystemTime = SystemTime(time::SystemTime::MAX);
 
-    /// Represents the minimum value representable by [`SystemTime`] on this platform.
+    /// 表示本平台上 [`SystemTime`] 可表示的最小值。
     ///
-    /// This value differs a lot between platforms, but it is always the case
-    /// that any positive subtraction of a [`Duration`] from, whose value is
-    /// greater than or equal to the time precision of the operating system, to
-    /// [`SystemTime::MIN`] will fail.
+    /// 该值在不同平台间差异很大，但始终满足：从 [`SystemTime::MIN`] 做任何正向减法，
+    /// 只要所减 [`Duration`] 的值大于或等于操作系统的时间精度，就一定会失败。
     ///
-    /// Depending on the platform, this may be either less than or equal to
-    /// [`SystemTime::UNIX_EPOCH`], depending on whether the operating system
-    /// supports the representation of timestamps before the Unix epoch or not.
-    /// However, it is always guaranteed that a [`SystemTime::UNIX_EPOCH`] fits
-    /// between a [`SystemTime::MIN`] and [`SystemTime::MAX`].
+    /// 取决于平台，该值可能小于或等于 [`SystemTime::UNIX_EPOCH`]，这取决于操作系统
+    /// 是否支持表示 Unix epoch 之前的时间戳。不过始终保证 [`SystemTime::UNIX_EPOCH`]
+    /// 落在 [`SystemTime::MIN`] 与 [`SystemTime::MAX`] 之间。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(time_systemtime_limits)]
     /// use std::time::{Duration, SystemTime};
     ///
-    /// // Subtracting zero will change nothing.
+    /// // 减去零不会改变任何东西。
     /// assert_eq!(SystemTime::MIN.checked_sub(Duration::ZERO), Some(SystemTime::MIN));
     ///
-    /// // But subtracting just one second will already fail.
+    /// // 但仅仅减去一秒就已经会失败。
     /// //
-    /// // Keep in mind that this in fact may succeed, if the Duration is
-    /// // smaller than the time precision of the operating system, which
-    /// // happens to be 1ns on most operating systems, with Windows being the
-    /// // notable exception by using 100ns, hence why this example uses 1s.
+    /// // 请记住：如果 Duration 小于操作系统的时间精度，这其实可能成功；
+    /// // 在大多数操作系统上该精度恰好是 1ns，而 Windows 是个显著的例外，
+    /// // 它使用 100ns，因此本示例使用 1s。
     /// assert_eq!(SystemTime::MIN.checked_sub(Duration::new(1, 0)), None);
     ///
-    /// // Utilize this for saturating arithmetic to improve error handling.
-    /// // In this case, we will use a cache expiry as a practical example.
+    /// // 利用它进行饱和算术以改进错误处理。
+    /// // 这里我们以缓存过期（cache expiry）作为实际例子。
     /// let configured_expiry = Duration::from_secs(60 * 3);
     /// let expiry_threshold =
     ///     SystemTime::now()
@@ -587,9 +548,9 @@ impl SystemTime {
     #[unstable(feature = "time_systemtime_limits", issue = "149067")]
     pub const MIN: SystemTime = SystemTime(time::SystemTime::MIN);
 
-    /// Returns the system time corresponding to "now".
+    /// 返回对应于“现在（now）”的系统时间。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::time::SystemTime;
@@ -602,20 +563,18 @@ impl SystemTime {
         SystemTime(time::SystemTime::now())
     }
 
-    /// Returns the amount of time elapsed from an earlier point in time.
+    /// 返回自某个更早时间点以来所经过的时长。
     ///
-    /// This function may fail because measurements taken earlier are not
-    /// guaranteed to always be before later measurements (due to anomalies such
-    /// as the system clock being adjusted either forwards or backwards).
-    /// [`Instant`] can be used to measure elapsed time without this risk of failure.
+    /// 此函数可能失败，因为更早测得的时间不保证总是早于较晚测得的时间
+    /// （由于诸如系统时钟被向前或向后调整之类的异常）。
+    /// [`Instant`] 可用于测量经过的时间而没有这种失败风险。
     ///
-    /// If successful, <code>[Ok]\([Duration])</code> is returned where the duration represents
-    /// the amount of time elapsed from the specified measurement to this one.
+    /// 如果成功，返回 <code>[Ok]\([Duration])</code>，其中 duration 表示从指定测量值到本测量值
+    /// 所经过的时长。
     ///
-    /// Returns an [`Err`] if `earlier` is later than `self`, and the error
-    /// contains how far from `self` the time is.
+    /// 如果 `earlier` 晚于 `self`，则返回 [`Err`]，错误中包含该时间距离 `self` 有多远。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::time::SystemTime;
@@ -631,21 +590,17 @@ impl SystemTime {
         self.0.sub_time(&earlier.0).map_err(SystemTimeError)
     }
 
-    /// Returns the difference from this system time to the
-    /// current clock time.
+    /// 返回从本系统时间到当前时钟时间的差值。
     ///
-    /// This function may fail as the underlying system clock is susceptible to
-    /// drift and updates (e.g., the system clock could go backwards), so this
-    /// function might not always succeed. If successful, <code>[Ok]\([Duration])</code> is
-    /// returned where the duration represents the amount of time elapsed from
-    /// this time measurement to the current time.
+    /// 此函数可能失败，因为底层系统时钟易受漂移（drift）和更新影响（例如系统时钟可能倒退），
+    /// 所以本函数未必总能成功。如果成功，返回 <code>[Ok]\([Duration])</code>，
+    /// 其中 duration 表示从本次时间测量到当前时间所经过的时长。
     ///
-    /// To measure elapsed time reliably, use [`Instant`] instead.
+    /// 要可靠地测量经过的时间，请改用 [`Instant`]。
     ///
-    /// Returns an [`Err`] if `self` is later than the current system time, and
-    /// the error contains how far from the current system time `self` is.
+    /// 如果 `self` 晚于当前系统时间，则返回 [`Err`]，错误中包含 `self` 距离当前系统时间有多远。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::thread::sleep;
@@ -661,23 +616,19 @@ impl SystemTime {
         SystemTime::now().duration_since(*self)
     }
 
-    /// Returns `Some(t)` where `t` is the time `self + duration` if `t` can be represented as
-    /// `SystemTime` (which means it's inside the bounds of the underlying data structure), `None`
-    /// otherwise.
+    /// 返回 `Some(t)`，其中 `t` 为时间 `self + duration`，前提是 `t` 能表示为
+    /// `SystemTime`（即落在底层数据结构的边界之内）；否则返回 `None`。
     ///
-    /// In the case that the `duration` is smaller than the time precision of the operating
-    /// system, `Some(self)` will be returned.
+    /// 如果 `duration` 小于操作系统的时间精度，则返回 `Some(self)`。
     #[stable(feature = "time_checked_add", since = "1.34.0")]
     pub fn checked_add(&self, duration: Duration) -> Option<SystemTime> {
         self.0.checked_add_duration(&duration).map(SystemTime)
     }
 
-    /// Returns `Some(t)` where `t` is the time `self - duration` if `t` can be represented as
-    /// `SystemTime` (which means it's inside the bounds of the underlying data structure), `None`
-    /// otherwise.
+    /// 返回 `Some(t)`，其中 `t` 为时间 `self - duration`，前提是 `t` 能表示为
+    /// `SystemTime`（即落在底层数据结构的边界之内）；否则返回 `None`。
     ///
-    /// In the case that the `duration` is smaller than the time precision of the operating
-    /// system, `Some(self)` will be returned.
+    /// 如果 `duration` 小于操作系统的时间精度，则返回 `Some(self)`。
     #[stable(feature = "time_checked_add", since = "1.34.0")]
     pub fn checked_sub(&self, duration: Duration) -> Option<SystemTime> {
         self.0.checked_sub_duration(&duration).map(SystemTime)
@@ -690,8 +641,8 @@ impl Add<Duration> for SystemTime {
 
     /// # Panics
     ///
-    /// This function may panic if the resulting point in time cannot be represented by the
-    /// underlying data structure. See [`SystemTime::checked_add`] for a version without panic.
+    /// 如果结果时间点无法被底层数据结构表示，此函数可能 panic。
+    /// 不会 panic 的版本见 [`SystemTime::checked_add`]。
     fn add(self, dur: Duration) -> SystemTime {
         self.checked_add(dur).expect("overflow when adding duration to instant")
     }
@@ -727,24 +678,19 @@ impl fmt::Debug for SystemTime {
     }
 }
 
-/// An anchor in time which can be used to create new `SystemTime` instances or
-/// learn about where in time a `SystemTime` lies.
+/// 一个时间锚点，可用于创建新的 `SystemTime` 实例，或了解某个 `SystemTime` 处于时间轴上的位置。
 //
-// NOTE! this documentation is duplicated, here and in SystemTime::UNIX_EPOCH.
-// The two copies are not quite identical, because of the difference in naming.
+// 注意！这段文档是重复的：此处与 SystemTime::UNIX_EPOCH 各有一份。
+// 由于命名不同，两份内容并不完全一致。
 ///
-/// This constant is defined to be "1970-01-01 00:00:00 UTC" on all systems with
-/// respect to the system clock. Using `duration_since` on an existing
-/// [`SystemTime`] instance can tell how far away from this point in time a
-/// measurement lies, and using `UNIX_EPOCH + duration` can be used to create a
-/// [`SystemTime`] instance to represent another fixed point in time.
+/// 就系统时钟而言，该常量在所有系统上都被定义为 "1970-01-01 00:00:00 UTC"。
+/// 对一个已有的 [`SystemTime`] 实例调用 `duration_since`，可以得知它距离这个时间点有多远；
+/// 而用 `UNIX_EPOCH + duration` 则可以创建一个表示另一固定时间点的 [`SystemTime`] 实例。
 ///
-/// `duration_since(UNIX_EPOCH).unwrap().as_secs()` returns
-/// the number of non-leap seconds since the start of 1970 UTC.
-/// This is a POSIX `time_t` (as a `u64`),
-/// and is the same time representation as used in many Internet protocols.
+/// `duration_since(UNIX_EPOCH).unwrap().as_secs()` 返回自 1970 UTC 起始以来的非闰秒秒数。
+/// 这是一个 POSIX `time_t`（以 `u64` 表示），与许多互联网协议所用的时间表示相同。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```no_run
 /// use std::time::{SystemTime, UNIX_EPOCH};
@@ -758,14 +704,13 @@ impl fmt::Debug for SystemTime {
 pub const UNIX_EPOCH: SystemTime = SystemTime(time::UNIX_EPOCH);
 
 impl SystemTimeError {
-    /// Returns the positive duration which represents how far forward the
-    /// second system time was from the first.
+    /// 返回一个正的时长，表示第二个系统时间比第一个向前超出了多远。
     ///
-    /// A `SystemTimeError` is returned from the [`SystemTime::duration_since`]
-    /// and [`SystemTime::elapsed`] methods whenever the second system time
-    /// represents a point later in time than the `self` of the method call.
+    /// 每当第二个系统时间所表示的时间点晚于方法调用时的 `self`，
+    /// [`SystemTime::duration_since`] 与 [`SystemTime::elapsed`] 方法就会返回一个
+    /// `SystemTimeError`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::thread::sleep;

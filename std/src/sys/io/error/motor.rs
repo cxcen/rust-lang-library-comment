@@ -2,26 +2,25 @@ use crate::io;
 use crate::sys::io::RawOsError;
 
 pub fn errno() -> RawOsError {
-    // Not used in Motor OS because it is ambiguous: Motor OS
-    // is micro-kernel-based, and I/O happens via a shared-memory
-    // ring buffer, so an I/O operation that on a unix is a syscall
-    // may involve no sycalls on Motor OS at all, or a syscall
-    // that e.g. waits for a notification from the I/O driver
-    // (sys-io); and the wait syscall may succeed, but the
-    // driver may report an I/O error; or a bunch of results
-    // for several I/O operations, some successful and some
-    // not.
+    // 在 Motor OS 中不使用，因为它含义模糊：Motor OS
+    // 是基于微内核(micro-kernel）的，I/O 通过共享内存
+    // 环形缓冲区进行，因此一个在 unix 上属于系统调用的 I/O 操作
+    // 在 Motor OS 上可能根本不涉及任何系统调用，或者是一个
+    // 例如等待 I/O 驱动(sys-io）通知的系统调用；而该等待
+    // 系统调用可能成功，但驱动可能报告一个 I/O 错误；或者是
+    // 针对若干个 I/O 操作的一批结果，其中一些成功一些
+    // 不成功。
     //
-    // Also I/O operations in a Motor OS process are handled by a
-    // separate runtime background/I/O thread, so it is really hard
-    // to define what "last system error in the current thread"
-    // actually means.
+    // 另外，Motor OS 进程中的 I/O 操作由一个
+    // 独立的运行时后台/I/O 线程处理，所以实在很难
+    // 定义「当前线程中的最后一个系统错误」
+    // 究竟意味着什么。
     let error_code: moto_rt::ErrorCode = moto_rt::Error::Unknown.into();
     error_code.into()
 }
 
 pub fn is_interrupted(_code: io::RawOsError) -> bool {
-    false // Motor OS doesn't have signals.
+    false // Motor OS 没有信号(signal）。
 }
 
 pub fn decode_error_kind(code: io::RawOsError) -> io::ErrorKind {

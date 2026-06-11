@@ -4,9 +4,9 @@ use crate::sys::sync::Mutex;
 use crate::time::Duration;
 
 pub struct Condvar {
-    // The value of this atomic is simply incremented on every notification.
-    // This is used by `.wait()` to not miss any notifications after
-    // unlocking the mutex and before waiting for notifications.
+    // 这个原子量的值会在每次 notification（通知）时简单地自增。
+    // `.wait()` 用它来确保不会漏掉在「解锁 mutex 之后、开始等待通知之前」
+    // 这段窗口里发生的任何通知。
     futex: Futex,
 }
 
@@ -16,8 +16,8 @@ impl Condvar {
         Self { futex: Futex::new(0) }
     }
 
-    // All the memory orderings here are `Relaxed`,
-    // because synchronization is done by unlocking and locking the mutex.
+    // 这里所有的内存序都是 `Relaxed`，
+    // 因为同步是由对 mutex 的解锁与加锁来完成的。
 
     pub fn notify_one(&self) {
         self.futex.fetch_add(1, Relaxed);
@@ -38,17 +38,16 @@ impl Condvar {
     }
 
     unsafe fn wait_optional_timeout(&self, mutex: &Mutex, timeout: Option<Duration>) -> bool {
-        // Examine the notification counter _before_ we unlock the mutex.
+        // 在解锁 mutex *之前* 先读取通知计数器的值。
         let futex_value = self.futex.load(Relaxed);
 
-        // Unlock the mutex before going to sleep.
+        // 进入休眠前先解锁 mutex。
         mutex.unlock();
 
-        // Wait, but only if there hasn't been any
-        // notification since we unlocked the mutex.
+        // 等待，但仅当自我们解锁 mutex 以来还没有发生过任何通知时才真正等待。
         let r = futex_wait(&self.futex, futex_value, timeout);
 
-        // Lock the mutex again.
+        // 重新对 mutex 加锁。
         mutex.lock();
 
         r

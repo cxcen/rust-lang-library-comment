@@ -8,17 +8,14 @@ use crate::sys::pal::winsock::{self, cvt};
 pub fn hostname() -> Result<OsString> {
     winsock::startup();
 
-    // The documentation of GetHostNameW says that a buffer size of 256 is
-    // always enough.
+    // GetHostNameW 的文档说明缓冲区大小为 256 时总是足够的。
     let mut buffer = [const { MaybeUninit::<u16>::uninit() }; 256];
-    // SAFETY: these parameters specify a valid, writable region of memory.
+    // SAFETY: 这些参数指定了一块有效且可写的内存区域。
     cvt(unsafe { c::GetHostNameW(buffer.as_mut_ptr().cast(), buffer.len() as i32) })?;
-    // Use `lstrlenW` here as it does not require the bytes after the nul
-    // terminator to be initialized.
-    // SAFETY: if `GetHostNameW` returns successfully, the name is nul-terminated.
+    // 此处使用 `lstrlenW`，因为它不要求 nul 终止符之后的字节已被初始化。
+    // SAFETY: 如果 `GetHostNameW` 成功返回，则名称是以 nul 结尾的。
     let len = unsafe { c::lstrlenW(buffer.as_ptr().cast()) };
-    // SAFETY: the length of the name is `len`, hence `len` bytes have been
-    //         initialized by `GetHostNameW`.
+    // SAFETY: 名称的长度为 `len`，因此 `GetHostNameW` 已初始化了 `len` 个字节。
     let name = unsafe { buffer[..len as usize].assume_init_ref() };
     Ok(OsString::from_wide(name))
 }

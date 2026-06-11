@@ -3,7 +3,7 @@ use crate::sys::sync::{Mutex, OnceBox};
 use crate::time::Duration;
 
 pub struct Condvar {
-    // FIXME: `UnsafeList` is not movable.
+    // FIXME: `UnsafeList` 不可移动（not movable）。
     inner: OnceBox<SpinMutex<WaitVariable<()>>>,
 }
 

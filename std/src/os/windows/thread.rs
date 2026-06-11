@@ -1,4 +1,4 @@
-//! Windows-specific extensions to primitives in the [`std::thread`] module.
+//! Windows 平台对 [`std::thread`] 模块中各原语的特定扩展。
 //!
 //! [`std::thread`]: crate::thread
 

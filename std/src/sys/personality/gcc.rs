@@ -1,40 +1,35 @@
-//! Implementation of panics backed by libgcc/libunwind (in some form).
+//! 由 libgcc/libunwind（以某种形式）支撑的 panic 实现。
 //!
-//! For background on exception handling and stack unwinding please see
-//! "Exception Handling in LLVM" (llvm.org/docs/ExceptionHandling.html) and
-//! documents linked from it.
-//! These are also good reads:
+//! 关于异常处理与栈展开（stack unwinding）的背景知识，请参见
+//! “Exception Handling in LLVM”（llvm.org/docs/ExceptionHandling.html）
+//! 以及从中链接出的各份文档。
+//! 以下这些资料也值得一读：
 //!  * <https://itanium-cxx-abi.github.io/cxx-abi/abi-eh.html>
 //!  * <https://nicolasbrailo.github.io/blog/projects_texts/13exceptionsunderthehood.html>
 //!  * <https://www.airs.com/blog/index.php?s=exception+frames>
 //!
-//! ## A brief summary
+//! ## 简要概述
 //!
-//! Exception handling happens in two phases: a search phase and a cleanup
-//! phase.
+//! 异常处理分两个阶段进行：搜索阶段（search phase）和清理阶段（cleanup phase）。
 //!
-//! In both phases the unwinder walks stack frames from top to bottom using
-//! information from the stack frame unwind sections of the current process's
-//! modules ("module" here refers to an OS module, i.e., an executable or a
-//! dynamic library).
+//! 在这两个阶段中，unwinder（展开器）都会利用当前进程各模块的栈帧展开节
+//!（stack frame unwind sections）中的信息，自顶向下遍历栈帧
+//!（这里的“模块”指的是 OS 模块，即一个可执行文件或一个动态库）。
 //!
-//! For each stack frame, it invokes the associated "personality routine", whose
-//! address is also stored in the unwind info section.
+//! 对于每个栈帧，它都会调用与之关联的 “personality routine”（personality 例程），
+//! 其地址同样存储在展开信息节（unwind info section）中。
 //!
-//! In the search phase, the job of a personality routine is to examine
-//! exception object being thrown, and to decide whether it should be caught at
-//! that stack frame. Once the handler frame has been identified, cleanup phase
-//! begins.
+//! 在搜索阶段，personality 例程的职责是检查正在被抛出的异常对象，
+//! 并决定该异常是否应在那个栈帧处被捕获。一旦确定了处理者栈帧
+//!（handler frame），清理阶段便开始。
 //!
-//! In the cleanup phase, the unwinder invokes each personality routine again.
-//! This time it decides which (if any) cleanup code needs to be run for
-//! the current stack frame. If so, the control is transferred to a special
-//! branch in the function body, the "landing pad", which invokes destructors,
-//! frees memory, etc. At the end of the landing pad, control is transferred
-//! back to the unwinder and unwinding resumes.
+//! 在清理阶段，unwinder 会再次调用每个 personality 例程。这一次它会决定
+//! 当前栈帧需要运行哪些清理代码（如果有的话）。如果需要，控制流会被转移到
+//! 函数体中的一个特殊分支，即“落地区（landing pad）”，由它来调用析构函数、
+//! 释放内存等。在落地区的末尾，控制流被转回 unwinder，展开继续进行。
 //!
-//! Once stack has been unwound down to the handler frame level, unwinding stops
-//! and the last personality routine transfers control to the catch block.
+//! 一旦栈被展开到处理者栈帧那一层，展开便停止，最后一个 personality 例程
+//! 把控制流转移到 catch 块。
 #![forbid(unsafe_op_in_unsafe_fn)]
 
 use unwind as uw;
@@ -42,11 +37,10 @@ use unwind as uw;
 use super::dwarf::eh::{self, EHAction, EHContext};
 use crate::ffi::c_int;
 
-// Register ids were lifted from LLVM's TargetLowering::getExceptionPointerRegister()
-// and TargetLowering::getExceptionSelectorRegister() for each architecture,
-// then mapped to DWARF register numbers via register definition tables
-// (typically <arch>RegisterInfo.td, search for "DwarfRegNum").
-// See also https://llvm.org/docs/WritingAnLLVMBackend.html#defining-a-register.
+// 这些寄存器 id 取自 LLVM 中各架构的 TargetLowering::getExceptionPointerRegister()
+// 和 TargetLowering::getExceptionSelectorRegister()，然后通过寄存器定义表
+//（通常是 <arch>RegisterInfo.td，搜索 "DwarfRegNum"）映射为 DWARF 寄存器号。
+// 另见 https://llvm.org/docs/WritingAnLLVMBackend.html#defining-a-register 。
 
 #[cfg(target_arch = "x86")]
 const UNWIND_DATA_REG: (i32, i32) = (0, 2); // EAX, EDX
@@ -89,7 +83,7 @@ const UNWIND_DATA_REG: (i32, i32) = (10, 11); // x10, x11
 #[cfg(any(target_arch = "loongarch32", target_arch = "loongarch64"))]
 const UNWIND_DATA_REG: (i32, i32) = (4, 5); // a0, a1
 
-// The following code is based on GCC's C and C++ personality routines.  For reference, see:
+// 以下代码基于 GCC 的 C 和 C++ personality 例程。参考资料如下：
 // https://github.com/gcc-mirror/gcc/blob/master/libstdc++-v3/libsupc++/eh_personality.cc
 // https://github.com/gcc-mirror/gcc/blob/trunk/libgcc/unwind-c.c
 
@@ -99,11 +93,10 @@ cfg_select! {
         not(target_vendor = "apple"),
         not(target_os = "netbsd"),
     ) => {
-        /// personality fn called by [ARM EHABI][armeabi-eh]
+        /// 由 [ARM EHABI][armeabi-eh] 调用的 personality 函数
         ///
-        /// 32-bit ARM on iOS/tvOS/watchOS does not use ARM EHABI, it uses
-        /// either "setjmp-longjmp" unwinding or DWARF CFI unwinding, which is
-        /// handled by the default routine.
+        /// iOS/tvOS/watchOS 上的 32 位 ARM 并不使用 ARM EHABI，它使用的是
+        /// “setjmp-longjmp” 展开或 DWARF CFI 展开，这两者由默认例程处理。
         ///
         /// [armeabi-eh]: https://web.archive.org/web/20190728160938/https://infocenter.arm.com/help/topic/com.arm.doc.ihi0038b/IHI0038B_ehabi.pdf
         #[lang = "eh_personality"]
@@ -116,10 +109,9 @@ cfg_select! {
                 let state = state as c_int;
                 let action = state & uw::_US_ACTION_MASK as c_int;
                 let search_phase = if action == uw::_US_VIRTUAL_UNWIND_FRAME as c_int {
-                    // Backtraces on ARM will call the personality routine with
-                    // state == _US_VIRTUAL_UNWIND_FRAME | _US_FORCE_UNWIND. In those cases
-                    // we want to continue unwinding the stack, otherwise all our backtraces
-                    // would end at __rust_try
+                    // 在 ARM 上，backtrace 会以 state == _US_VIRTUAL_UNWIND_FRAME | _US_FORCE_UNWIND
+                    // 来调用 personality 例程。在那些情况下，我们希望继续展开栈，
+                    // 否则我们所有的 backtrace 都会终止在 __rust_try 处
                     if state & uw::_US_FORCE_UNWIND as c_int != 0 {
                         return continue_unwind(exception_object, context);
                     }
@@ -132,16 +124,16 @@ cfg_select! {
                     return uw::_URC_FAILURE;
                 };
 
-                // The DWARF unwinder assumes that _Unwind_Context holds things like the function
-                // and LSDA pointers, however ARM EHABI places them into the exception object.
-                // To preserve signatures of functions like _Unwind_GetLanguageSpecificData(), which
-                // take only the context pointer, GCC personality routines stash a pointer to
-                // exception_object in the context, using location reserved for ARM's
-                // "scratch register" (r12).
+                // DWARF unwinder 假定 _Unwind_Context 中保存着诸如函数指针和
+                // LSDA 指针之类的东西，然而 ARM EHABI 却把它们放进了异常对象里。
+                // 为了保持像 _Unwind_GetLanguageSpecificData() 这类只接收上下文指针的
+                // 函数的签名不变，GCC 的 personality 例程会把一个指向 exception_object
+                // 的指针藏在上下文中，使用为 ARM 的“暂存寄存器（scratch register）”(r12)
+                // 保留的位置。
                 uw::_Unwind_SetGR(context, uw::UNWIND_POINTER_REG, exception_object as uw::_Unwind_Ptr);
-                // ...A more principled approach would be to provide the full definition of ARM's
-                // _Unwind_Context in our libunwind bindings and fetch the required data from there
-                // directly, bypassing DWARF compatibility functions.
+                // ……一种更有原则的做法是：在我们的 libunwind 绑定中提供 ARM 的
+                // _Unwind_Context 的完整定义，直接从那里取出所需数据，绕开 DWARF
+                // 兼容函数。
 
                 let eh_action = match find_eh_action(context) {
                     Ok(action) => action,
@@ -153,8 +145,8 @@ cfg_select! {
                             return continue_unwind(exception_object, context);
                         }
                         EHAction::Catch(_) | EHAction::Filter(_) => {
-                            // EHABI requires the personality routine to update the
-                            // SP value in the barrier cache of the exception object.
+                            // EHABI 要求 personality 例程更新异常对象的屏障缓存
+                            //（barrier cache）中的 SP 值。
                             (*exception_object).private[5] =
                                 uw::_Unwind_GetGR(context, uw::UNWIND_SP_REG);
                             return uw::_URC_HANDLER_FOUND;
@@ -179,8 +171,8 @@ cfg_select! {
                     }
                 }
 
-                // On ARM EHABI the personality routine is responsible for actually
-                // unwinding a single stack frame before returning (ARM EHABI Sec. 6.1).
+                // 在 ARM EHABI 上，personality 例程负责在返回之前实际展开
+                // 单个栈帧（ARM EHABI 第 6.1 节）。
                 unsafe fn continue_unwind(
                     exception_object: *mut uw::_Unwind_Exception,
                     context: *mut uw::_Unwind_Context,
@@ -193,7 +185,7 @@ cfg_select! {
                         }
                     }
                 }
-                // defined in libgcc
+                // 定义于 libgcc 中
                 unsafe extern "C" {
                     fn __gnu_unwind_frame(
                         exception_object: *mut uw::_Unwind_Exception,
@@ -204,8 +196,8 @@ cfg_select! {
         }
     }
     _ => {
-        /// Default personality routine, which is used directly on most targets
-        /// and indirectly on Windows x86_64 and AArch64 via SEH.
+        /// 默认的 personality 例程，它在大多数 target 上被直接使用，
+        /// 并在 Windows x86_64 与 AArch64 上经由 SEH 间接使用。
         unsafe extern "C" fn rust_eh_personality_impl(
             version: c_int,
             actions: uw::_Unwind_Action,
@@ -230,7 +222,7 @@ cfg_select! {
                 } else {
                     match eh_action {
                         EHAction::None => uw::_URC_CONTINUE_UNWIND,
-                        // Forced unwinding hits a terminate action.
+                        // 强制展开（forced unwinding）遇到了一个 terminate 动作。
                         EHAction::Filter(_) if actions & uw::_UA_FORCE_UNWIND != 0 => uw::_URC_CONTINUE_UNWIND,
                         EHAction::Cleanup(lpad) | EHAction::Catch(lpad) | EHAction::Filter(lpad) => {
                             uw::_Unwind_SetGR(
@@ -253,10 +245,11 @@ cfg_select! {
                 all(windows, any(target_arch = "aarch64", target_arch = "x86_64"), target_env = "gnu"),
                 target_os = "cygwin",
             ) => {
-                /// personality fn called by [Windows Structured Exception Handling][windows-eh]
+                /// 由 [Windows 结构化异常处理（Structured Exception Handling）][windows-eh]
+                /// 调用的 personality 函数
                 ///
-                /// On x86_64 and AArch64 MinGW targets, the unwinding mechanism is SEH,
-                /// however the unwind handler data (aka LSDA) uses GCC-compatible encoding
+                /// 在 x86_64 和 AArch64 MinGW target 上，展开机制是 SEH，
+                /// 然而展开处理者数据（即 LSDA）使用的是 GCC 兼容的编码
                 ///
                 /// [windows-eh]: https://learn.microsoft.com/en-us/cpp/cpp/structured-exception-handling-c-cpp?view=msvc-170
                 #[lang = "eh_personality"]
@@ -267,9 +260,9 @@ cfg_select! {
                     contextRecord: *mut uw::CONTEXT,
                     dispatcherContext: *mut uw::DISPATCHER_CONTEXT,
                 ) -> uw::EXCEPTION_DISPOSITION {
-                    // SAFETY: the cfg is still target_os = "windows" and target_env = "gnu",
-                    // which means that this is the correct function to call, passing our impl fn
-                    // as the callback which gets actually used
+                    // SAFETY：cfg 仍然是 target_os = "windows" 且 target_env = "gnu"，
+                    // 这意味着这是要调用的正确函数，并把我们的 impl 函数作为实际被使用的
+                    // 回调传入
                     unsafe {
                         uw::_GCC_specific_handler(
                             exceptionRecord,
@@ -282,17 +275,15 @@ cfg_select! {
                 }
             }
             _ => {
-                /// personality fn called by [Itanium C++ ABI Exception Handling][itanium-eh]
+                /// 由 [Itanium C++ ABI 异常处理][itanium-eh] 调用的 personality 函数
                 ///
-                /// The personality routine for most non-Windows targets. This will be called by
-                /// the unwinding library:
-                /// - "In the search phase, the framework repeatedly calls the personality routine,
-                ///   with the _UA_SEARCH_PHASE flag as described below, first for the current PC
-                ///   and register state, and then unwinding a frame to a new PC at each step..."
-                /// - "If the search phase reports success, the framework restarts in the cleanup
-                ///    phase. Again, it repeatedly calls the personality routine, with the
-                ///   _UA_CLEANUP_PHASE flag as described below, first for the current PC and
-                ///   register state, and then unwinding a frame to a new PC at each step..."i
+                /// 这是大多数非 Windows target 的 personality 例程。它会被展开库调用：
+                /// - “在搜索阶段，框架会反复调用 personality 例程，并附带下文所述的
+                ///   _UA_SEARCH_PHASE 标志，先针对当前的 PC 和寄存器状态调用，然后在每一步
+                ///   把一帧展开到一个新的 PC……”
+                /// - “如果搜索阶段报告成功，框架便在清理阶段重新开始。同样，它会反复调用
+                ///   personality 例程，并附带下文所述的 _UA_CLEANUP_PHASE 标志，先针对当前的
+                ///   PC 和寄存器状态调用，然后在每一步把一帧展开到一个新的 PC……”
                 ///
                 /// [itanium-eh]: https://itanium-cxx-abi.github.io/cxx-abi/abi-eh.html
                 #[lang = "eh_personality"]
@@ -303,8 +294,8 @@ cfg_select! {
                     exception_object: *mut uw::_Unwind_Exception,
                     context: *mut uw::_Unwind_Context,
                 ) -> uw::_Unwind_Reason_Code {
-                    // SAFETY: the platform support must modify the cfg for the inner fn
-                    // if it needs something different than what is currently invoked.
+                    // SAFETY：如果平台支持需要与当前所调用的不同的东西，
+                    // 它必须为内部 fn 修改 cfg。
                     unsafe {
                         rust_eh_personality_impl(
                             version,
@@ -326,10 +317,10 @@ unsafe fn find_eh_action(context: *mut uw::_Unwind_Context) -> Result<EHAction, 
         let mut ip_before_instr: c_int = 0;
         let ip = uw::_Unwind_GetIPInfo(context, &mut ip_before_instr);
         let eh_context = EHContext {
-            // The return address points 1 byte past the call instruction,
-            // which could be in the next IP range in LSDA range table.
+            // 返回地址指向调用指令之后的 1 个字节处，它可能落在 LSDA 范围表
+            //（range table）中的下一个 IP 区间里。
             //
-            // `ip = -1` has special meaning, so use wrapping sub to allow for that
+            // `ip = -1` 有特殊含义，所以使用 wrapping sub 来允许这种情况
             ip: if ip_before_instr != 0 { ip } else { ip.wrapping_sub(1) },
             func_start: uw::_Unwind_GetRegionStart(context),
             get_text_start: &|| uw::_Unwind_GetTextRelBase(context),

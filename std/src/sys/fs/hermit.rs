@@ -30,7 +30,7 @@ impl FileAttr {
     }
 }
 
-// all DirEntry's will have a reference to this struct
+// 所有 DirEntry 都会持有一个对该结构体的引用
 struct InnerReadDir {
     root: PathBuf,
     dir: Vec<u8>,
@@ -54,26 +54,26 @@ impl ReadDir {
 }
 
 pub struct DirEntry {
-    /// path to the entry
+    /// 指向该条目（entry）的路径
     root: PathBuf,
-    /// 64-bit inode number
+    /// 64 位 inode 编号
     ino: u64,
-    /// File type
+    /// 文件类型
     type_: u8,
-    /// name of the entry
+    /// 该条目的名称
     name: OsString,
 }
 
 #[derive(Clone, Debug)]
 pub struct OpenOptions {
-    // generic
+    // 通用部分
     read: bool,
     write: bool,
     append: bool,
     truncate: bool,
     create: bool,
     create_new: bool,
-    // system-specific
+    // 系统特定部分
     mode: i32,
 }
 
@@ -142,7 +142,7 @@ impl FileAttr {
 
 impl FilePermissions {
     pub fn readonly(&self) -> bool {
-        // check if any class (owner, group, others) has write permission
+        // 检查是否有任意一类（owner、group、others）拥有写权限
         self.mode & 0o222 == 0
     }
 
@@ -175,8 +175,8 @@ impl FileType {
 
 impl fmt::Debug for ReadDir {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // This will only be called from std::fs::ReadDir, which will add a "ReadDir()" frame.
-        // Thus the result will be e.g. 'ReadDir("/home")'
+        // 它只会从 std::fs::ReadDir 中被调用，后者会添加一个 "ReadDir()" 帧。
+        // 因此结果会是例如 'ReadDir("/home")' 这样的形式。
         fmt::Debug::fmt(&*self.inner.root, f)
     }
 }
@@ -188,9 +188,9 @@ impl Iterator for ReadDir {
         let mut counter: usize = 0;
         let mut offset: usize = 0;
 
-        // loop over all directory entries and search the entry for the current position
+        // 遍历所有目录条目，查找当前位置对应的条目
         loop {
-            // leave function, if the loop reaches the of the buffer (with all entries)
+            // 如果循环到达缓冲区末尾（即所有条目都遍历完了），就退出函数
             if offset >= self.inner.dir.len() {
                 return None;
             }
@@ -200,10 +200,10 @@ impl Iterator for ReadDir {
             if counter == self.pos {
                 self.pos += 1;
 
-                // After dirent64, the file name is stored. d_reclen represents the length of the dirent64
-                // plus the length of the file name. Consequently, file name has a size of d_reclen minus
-                // the size of dirent64. The file name is always a C string and terminated by `\0`.
-                // Consequently, we are able to ignore the last byte.
+                // 在 dirent64 之后存放着文件名。d_reclen 表示 dirent64 的长度
+                // 加上文件名的长度。因此，文件名的大小是 d_reclen 减去 dirent64
+                // 的大小。文件名始终是一个 C 字符串，以 `\0` 结尾。
+                // 因此，我们可以忽略最后一个字节。
                 let name_bytes =
                     unsafe { CStr::from_ptr(&dir.d_name as *const _ as *const c_char).to_bytes() };
                 let entry = DirEntry {
@@ -218,7 +218,7 @@ impl Iterator for ReadDir {
 
             counter += 1;
 
-            // move to the next dirent64, which is directly stored after the previous one
+            // 移动到下一个 dirent64，它紧接着前一个之后存放
             offset = offset + usize::from(dir.d_reclen);
         }
     }
@@ -256,14 +256,14 @@ impl DirEntry {
 impl OpenOptions {
     pub fn new() -> OpenOptions {
         OpenOptions {
-            // generic
+            // 通用部分
             read: false,
             write: false,
             append: false,
             truncate: false,
             create: false,
             create_new: false,
-            // system-specific
+            // 系统特定部分
             mode: 0o777,
         }
     }
@@ -519,33 +519,33 @@ pub fn readdir(path: &Path) -> io::Result<ReadDir> {
     let fd = unsafe { FileDesc::from_raw_fd(fd_raw as i32) };
     let root = path.to_path_buf();
 
-    // read all director entries
+    // 读取所有目录条目
     let mut vec: Vec<u8> = Vec::new();
     let mut sz = 512;
     loop {
-        // reserve memory to receive all directory entries
+        // 预留内存以接收所有目录条目
         vec.resize(sz, 0);
 
         let readlen = unsafe {
             hermit_abi::getdents64(fd.as_raw_fd(), vec.as_mut_ptr() as *mut dirent64, sz)
         };
         if readlen > 0 {
-            // shrink down to the minimal size
+            // 收缩到最小所需大小
             vec.resize(readlen.try_into().unwrap(), 0);
             break;
         }
 
-        // if the buffer is too small, getdents64 returns EINVAL
-        // otherwise, getdents64 returns an error number
+        // 如果缓冲区太小，getdents64 返回 EINVAL
+        // 否则，getdents64 返回一个错误码
         if readlen != (-hermit_abi::errno::EINVAL).into() {
             return Err(Error::from_raw_os_error(readlen.try_into().unwrap()));
         }
 
-        // we don't have enough memory => try to increase the vector size
+        // 内存不够 => 尝试增大向量的大小
         sz = sz * 2;
 
-        // 1 MB for directory entries should be enough
-        // stop here to avoid an endless loop
+        // 用 1 MB 来容纳目录条目应该足够了
+        // 在此处停止以避免死循环
         if sz > 0x100000 {
             return Err(Error::from(ErrorKind::Uncategorized));
         }

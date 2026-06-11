@@ -1,6 +1,5 @@
-//! This is a fairly simple unpacked error representation that's used on
-//! non-64bit targets, where the packed 64 bit representation wouldn't work, and
-//! would have no benefit.
+//! 这是一种相当简单的「未压缩」错误表示，用于非 64 位目标平台。在这些平台上，
+//! 那种压缩进 64 位的表示无法工作，而且也带不来任何好处。
 
 use super::{Custom, ErrorData, ErrorKind, RawOsError, SimpleMessage};
 

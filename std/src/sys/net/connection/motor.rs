@@ -8,8 +8,8 @@ use crate::sys::fd::FileDesc;
 use crate::sys::{AsInner, FromInner, IntoInner, map_motor_error};
 use crate::time::Duration;
 
-// We want to re-use as much of Rust's stdlib code as possible,
-// and most of it is unixy, but with a lot of nesting.
+// 我们希望尽可能多地复用 Rust 标准库的代码，
+// 其中大部分是 unix 风格的，但嵌套层级很多。
 #[derive(Debug)]
 pub struct Socket(FileDesc);
 
@@ -442,7 +442,7 @@ fn into_netc(addr: &SocketAddr) -> netc::sockaddr {
 }
 
 fn from_netc(addr: &netc::sockaddr) -> SocketAddr {
-    // SAFETY: all variants of union netc::sockaddr have `sin_family` at the same offset.
+    // SAFETY: union netc::sockaddr 的所有变体都在相同的偏移处具有 `sin_family`。
     let family = unsafe { addr.v4.sin_family };
     match family {
         netc::AF_INET => SocketAddr::V4(crate::net::SocketAddrV4::from(unsafe { addr.v4 })),

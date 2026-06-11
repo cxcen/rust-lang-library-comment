@@ -1,6 +1,6 @@
-//! SGX-specific extension to the primitives in the `std::ffi` module
+//! 针对 `std::ffi` 模块中各类基础类型的 SGX 平台特定扩展
 //!
-//! # Examples
+//! # 示例
 //!
 //! ```
 //! use std::ffi::OsString;

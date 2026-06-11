@@ -1,4 +1,4 @@
-//! Unix-specific primitives available on all unix platforms.
+//! 在所有 unix 平台上均可用的 Unix 特有基础类型。
 
 #![stable(feature = "raw_ext", since = "1.1.0")]
 #![deprecated(

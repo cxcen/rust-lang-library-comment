@@ -1,4 +1,4 @@
-//! Platform-dependent environment variables abstraction.
+//! 与平台相关的环境变量抽象。
 
 #![forbid(unsafe_op_in_unsafe_fn)]
 

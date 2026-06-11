@@ -41,15 +41,15 @@ impl TcpListener {
         }
     }
 
-    /// This returns the raw fd of a Listener, so that it can also be used by the
-    /// accept routine to replenish the Listener object after its handle has been converted into
-    /// a TcpStream object.
+    /// 这会返回一个 Listener 的原始 fd，以便 accept 例程在 Listener 的
+    /// handle 被转换成一个 TcpStream 对象之后，也能用它来补充（重建）
+    /// 该 Listener 对象。
     fn bind_inner(addr: &mut SocketAddr) -> io::Result<u16> {
-        // Construct the request
+        // 构造请求
         let mut connect_request = ConnectRequest { raw: [0u8; 4096] };
 
-        // Serialize the StdUdpBind structure. This is done "manually" because we don't want to
-        // make an auto-serdes (like bincode or rkyv) crate a dependency of Xous.
+        // 序列化 StdUdpBind 结构体。这里之所以“手动”进行，是因为我们不想让
+        // 某个自动 serdes（如 bincode 或 rkyv）crate 成为 Xous 的依赖。
         let port_bytes = addr.port().to_le_bytes();
         connect_request.raw[0] = port_bytes[0];
         connect_request.raw[1] = port_bytes[1];
@@ -78,8 +78,7 @@ impl TcpListener {
             return Err(io::const_error!(io::ErrorKind::InvalidInput, "invalid response"));
         };
 
-        // The first four bytes should be zero upon success, and will be nonzero
-        // for an error.
+        // 成功时前四个字节应当为零，出错时则会是非零值。
         let response = connect_request.raw;
         if response[0] != 0 || valid == 0 {
             let errcode = response[1];
@@ -98,7 +97,8 @@ impl TcpListener {
         }
         let fd = response[1] as usize;
         if addr.port() == 0 {
-            // oddly enough, this is a valid port and it means "give me something valid, up to you what that is"
+            // 奇怪的是，这是一个有效的端口，它的含义是“给我一个有效的端口，
+            // 具体是什么由你决定”
             let assigned_port = u16::from_le_bytes(response[2..4].try_into().unwrap());
             addr.set_port(assigned_port);
         }
@@ -114,10 +114,10 @@ impl TcpListener {
         let mut receive_request = ReceiveData { raw: [0u8; 4096] };
 
         if self.nonblocking.load(Ordering::Relaxed) {
-            // nonblocking
+            // 非阻塞
             receive_request.raw[0] = 0;
         } else {
-            // blocking
+            // 阻塞
             receive_request.raw[0] = 1;
         }
 
@@ -129,7 +129,7 @@ impl TcpListener {
             0,
         ) {
             if receive_request.raw[0] != 0 {
-                // error case
+                // 错误情形
                 if receive_request.raw[1] == NetError::TimedOut as u8 {
                     return Err(io::const_error!(io::ErrorKind::TimedOut, "accept timed out"));
                 } else if receive_request.raw[1] == NetError::WouldBlock as u8 {
@@ -140,7 +140,7 @@ impl TcpListener {
                     return Err(io::const_error!(io::ErrorKind::Other, "library error"));
                 }
             } else {
-                // accept successful
+                // accept 成功
                 let rr = &receive_request.raw;
                 let stream_fd = u16::from_le_bytes(rr[1..3].try_into().unwrap());
                 let port = u16::from_le_bytes(rr[20..22].try_into().unwrap());
@@ -164,12 +164,12 @@ impl TcpListener {
                     return Err(io::const_error!(io::ErrorKind::Other, "library error"));
                 };
 
-                // replenish the listener
-                let mut local_copy = self.local.clone(); // port is non-0 by this time, but the method signature needs a mut
+                // 补充（重建）该 listener
+                let mut local_copy = self.local.clone(); // 到此时 port 已非 0，但该方法签名需要一个 mut
                 let new_fd = TcpListener::bind_inner(&mut local_copy)?;
                 self.fd.store(new_fd, Ordering::Relaxed);
 
-                // now return a stream converted from the old stream's fd
+                // 现在返回一个由旧 stream 的 fd 转换而来的 stream
                 Ok((TcpStream::from_listener(stream_fd, self.local.port(), port, addr), addr))
             }
         } else {
@@ -212,7 +212,7 @@ impl TcpListener {
     }
 
     pub fn take_error(&self) -> io::Result<Option<io::Error>> {
-        // this call doesn't have a meaning on our platform, but we can at least not panic if it's used.
+        // 这个调用在我们的平台上没有意义，但至少在它被使用时我们可以不 panic。
         Ok(None)
     }
 
@@ -231,7 +231,7 @@ impl fmt::Debug for TcpListener {
 impl Drop for TcpListener {
     fn drop(&mut self) {
         if self.handle_count.fetch_sub(1, Ordering::Relaxed) == 1 {
-            // only drop if we're the last clone
+            // 只有当我们是最后一个克隆体时才进行 drop
             crate::os::xous::ffi::blocking_scalar(
                 services::net_server(),
                 crate::os::xous::services::NetBlockingScalar::StdTcpClose(

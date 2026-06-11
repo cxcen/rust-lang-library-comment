@@ -4,59 +4,53 @@ use crate::os::unix::ffi::OsStringExt;
 use crate::sys::io::errno;
 
 pub fn hostname() -> io::Result<OsString> {
-    // Query the system for the maximum host name length.
+    // 向系统查询主机名的最大长度。
     let host_name_max = match unsafe { libc::sysconf(libc::_SC_HOST_NAME_MAX) } {
-        // If this fails (possibly because there is no maximum length), then
-        // assume a maximum length of _POSIX_HOST_NAME_MAX (255).
+        // 如果查询失败（可能是因为没有最大长度限制），
+        // 则假定最大长度为 _POSIX_HOST_NAME_MAX（255）。
         -1 => 255,
         max => max as usize,
     };
 
-    // Reserve space for the nul terminator too.
+    // 也为 nul 终止符预留空间。
     let mut buf = Vec::<u8>::try_with_capacity(host_name_max + 1)?;
     loop {
-        // SAFETY: `buf.capacity()` bytes of `buf` are writable.
+        // SAFETY: `buf` 中有 `buf.capacity()` 个字节可写。
         let r = unsafe { libc::gethostname(buf.as_mut_ptr().cast(), buf.capacity()) };
         match (r != 0).then(errno) {
             None => {
-                // Unfortunately, the UNIX specification says that the name will
-                // be truncated if it does not fit in the buffer, without returning
-                // an error. As additionally, the truncated name may still be null-
-                // terminated, there is no reliable way to  detect truncation.
-                // Fortunately, most platforms ignore what the specification says
-                // and return an error (mostly ENAMETOOLONG). Should that not be
-                // the case, the following detects truncation if the null-terminator
-                // was omitted. Note that this check does not impact performance at
-                // all as we need to find the length of the string anyways.
+                // 不幸的是，UNIX 规范规定：如果名称放不下缓冲区，名称将被
+                // 截断，而不会返回错误。此外，被截断的名称仍可能是以 null
+                // 结尾的，因此没有可靠的办法检测截断。
+                // 幸运的是，大多数平台忽略了规范的规定，会返回一个错误
+                //（通常是 ENAMETOOLONG）。万一并非如此，下面的代码会在 null
+                // 终止符被省略时检测出截断。注意这一检查完全不会影响性能，
+                // 因为无论如何我们都需要求出字符串的长度。
                 //
-                // Use `strnlen` as it does not place an initialization requirement
-                // on the bytes after the nul terminator.
+                // 使用 `strnlen`，因为它不对 nul 终止符之后的字节施加初始化要求。
                 //
-                // SAFETY: `buf.capacity()` bytes of `buf` are accessible, and are
-                // initialized up to and including a possible nul terminator.
+                // SAFETY: `buf` 中有 `buf.capacity()` 个字节可访问，且这些字节
+                // 已被初始化，直到（并包括）一个可能存在的 nul 终止符。
                 let len = unsafe { libc::strnlen(buf.as_ptr().cast(), buf.capacity()) };
                 if len < buf.capacity() {
-                    // If the string is nul-terminated, we assume that is has not
-                    // been truncated, as the capacity *should be* enough to hold
-                    // `HOST_NAME_MAX` bytes.
-                    // SAFETY: `len + 1` bytes have been initialized (we exclude
-                    // the nul terminator from the string).
+                    // 如果字符串是以 nul 结尾的，我们便认为它没有被截断，
+                    // 因为其容量*应当*足以容纳 `HOST_NAME_MAX` 个字节。
+                    // SAFETY: 已初始化了 `len + 1` 个字节（我们将 nul 终止符
+                    // 排除在字符串之外）。
                     unsafe { buf.set_len(len) };
                     return Ok(OsString::from_vec(buf));
                 }
             }
-            // As `buf.capacity()` is always less than or equal to `isize::MAX`
-            // (Rust allocations cannot exceed that limit), the only way `EINVAL`
-            // can be returned is if the system uses `EINVAL` to report that the
-            // name does not fit in the provided buffer. In that case (or in the
-            // case of `ENAMETOOLONG`), resize the buffer and try again.
+            // 由于 `buf.capacity()` 始终小于或等于 `isize::MAX`（Rust 的分配
+            // 不能超过该上限），唯一可能返回 `EINVAL` 的情况是：系统用
+            // `EINVAL` 来报告名称放不下所提供的缓冲区。在那种情况下（或在
+            // `ENAMETOOLONG` 的情况下），扩大缓冲区后重试。
             Some(libc::EINVAL | libc::ENAMETOOLONG) => {}
-            // Other error codes (e.g. EPERM) have nothing to do with the buffer
-            // size and should be returned to the user.
+            // 其他错误码（例如 EPERM）与缓冲区大小无关，应当返回给用户。
             Some(err) => return Err(io::Error::from_raw_os_error(err)),
         }
 
-        // Resize the buffer (according to `Vec`'s resizing rules) and try again.
+        // 调整缓冲区大小（按照 `Vec` 的扩容规则）后重试。
         buf.try_reserve(buf.capacity() + 1)?;
     }
 }

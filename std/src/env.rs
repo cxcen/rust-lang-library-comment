@@ -1,12 +1,10 @@
-//! Inspection and manipulation of the process's environment.
+//! 检视与操作进程的环境（environment）。
 //!
-//! This module contains functions to inspect various aspects such as
-//! environment variables, process arguments, the current directory, and various
-//! other important directories.
+//! 本模块包含一些函数，用于检视各种状态，例如环境变量、进程参数、当前目录，
+//! 以及其他若干重要目录。
 //!
-//! There are several functions and structs in this module that have a
-//! counterpart ending in `os`. Those ending in `os` will return an [`OsString`]
-//! and those without will return a [`String`].
+//! 本模块中有若干函数和结构体带有以 `os` 结尾的对应版本。以 `os` 结尾的会返回
+//! [`OsString`]，不带 `os` 的则返回 [`String`]。
 
 #![stable(feature = "env", since = "1.0.0")]
 
@@ -18,24 +16,23 @@ use crate::path::{Path, PathBuf};
 use crate::sys::{env as env_imp, os as os_imp};
 use crate::{array, fmt, io, sys};
 
-/// Returns the current working directory as a [`PathBuf`].
+/// 以 [`PathBuf`] 形式返回当前工作目录。
 ///
-/// # Platform-specific behavior
+/// # 平台特定行为
 ///
-/// This function [currently] corresponds to the `getcwd` function on Unix
-/// and the `GetCurrentDirectoryW` function on Windows.
+/// 此函数[目前][currently]在 Unix 上对应 `getcwd` 函数，在 Windows 上对应
+/// `GetCurrentDirectoryW` 函数。
 ///
 /// [currently]: crate::io#platform-specific-behavior
 ///
-/// # Errors
+/// # 错误(Errors）
 ///
-/// Returns an [`Err`] if the current working directory value is invalid.
-/// Possible cases:
+/// 如果当前工作目录的值无效，则返回 [`Err`]。可能的情形：
 ///
-/// * Current directory does not exist.
-/// * There are insufficient permissions to access the current directory.
+/// * 当前目录不存在。
+/// * 没有足够的权限访问当前目录。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use std::env;
@@ -54,18 +51,18 @@ pub fn current_dir() -> io::Result<PathBuf> {
     os_imp::getcwd()
 }
 
-/// Changes the current working directory to the specified path.
+/// 将当前工作目录更改为指定路径。
 ///
-/// # Platform-specific behavior
+/// # 平台特定行为
 ///
-/// This function [currently] corresponds to the `chdir` function on Unix
-/// and the `SetCurrentDirectoryW` function on Windows.
+/// 此函数[目前][currently]在 Unix 上对应 `chdir` 函数，在 Windows 上对应
+/// `SetCurrentDirectoryW` 函数。
 ///
-/// Returns an [`Err`] if the operation fails.
+/// 如果操作失败，则返回 [`Err`]。
 ///
 /// [currently]: crate::io#platform-specific-behavior
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use std::env;
@@ -81,9 +78,9 @@ pub fn set_current_dir<P: AsRef<Path>>(path: P) -> io::Result<()> {
     os_imp::chdir(path.as_ref())
 }
 
-/// An iterator over a snapshot of the environment variables of this process.
+/// 对本进程环境变量的一份快照进行迭代的迭代器。
 ///
-/// This structure is created by [`env::vars()`]. See its documentation for more.
+/// 该结构体由 [`env::vars()`] 创建。更多内容见其文档。
 ///
 /// [`env::vars()`]: vars
 #[stable(feature = "env", since = "1.0.0")]
@@ -91,9 +88,9 @@ pub struct Vars {
     inner: VarsOs,
 }
 
-/// An iterator over a snapshot of the environment variables of this process.
+/// 对本进程环境变量的一份快照进行迭代的迭代器。
 ///
-/// This structure is created by [`env::vars_os()`]. See its documentation for more.
+/// 该结构体由 [`env::vars_os()`] 创建。更多内容见其文档。
 ///
 /// [`env::vars_os()`]: vars_os
 #[stable(feature = "env", since = "1.0.0")]
@@ -101,23 +98,20 @@ pub struct VarsOs {
     inner: env_imp::Env,
 }
 
-/// Returns an iterator of (variable, value) pairs of strings, for all the
-/// environment variables of the current process.
+/// 返回一个迭代器，产出当前进程所有环境变量的 (变量, 值) 字符串对。
 ///
-/// The returned iterator contains a snapshot of the process's environment
-/// variables at the time of this invocation. Modifications to environment
-/// variables afterwards will not be reflected in the returned iterator.
+/// 返回的迭代器包含调用此函数时进程环境变量的一份快照。此后对环境变量的修改
+/// 不会反映到返回的迭代器中。
 ///
 /// # Panics
 ///
-/// While iterating, the returned iterator will panic if any key or value in the
-/// environment is not valid unicode. If this is not desired, consider using
-/// [`env::vars_os()`].
+/// 在迭代过程中，如果环境中任何键或值不是有效的 unicode，返回的迭代器将 panic。
+/// 若不希望如此，可考虑使用 [`env::vars_os()`]。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
-/// // Print all environment variables.
+/// // 打印所有环境变量。
 /// for (key, value) in std::env::vars() {
 ///     println!("{key}: {value}");
 /// }
@@ -130,21 +124,18 @@ pub fn vars() -> Vars {
     Vars { inner: vars_os() }
 }
 
-/// Returns an iterator of (variable, value) pairs of OS strings, for all the
-/// environment variables of the current process.
+/// 返回一个迭代器，产出当前进程所有环境变量的 (变量, 值) OS 字符串对。
 ///
-/// The returned iterator contains a snapshot of the process's environment
-/// variables at the time of this invocation. Modifications to environment
-/// variables afterwards will not be reflected in the returned iterator.
+/// 返回的迭代器包含调用此函数时进程环境变量的一份快照。此后对环境变量的修改
+/// 不会反映到返回的迭代器中。
 ///
-/// Note that the returned iterator will not check if the environment variables
-/// are valid Unicode. If you want to panic on invalid UTF-8,
-/// use the [`vars`] function instead.
+/// 注意：返回的迭代器不会检查环境变量是否为有效 Unicode。如果你希望在遇到
+/// 无效 UTF-8 时 panic，请改用 [`vars`] 函数。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
-/// // Print all environment variables.
+/// // 打印所有环境变量。
 /// for (key, value) in std::env::vars_os() {
 ///     println!("{key:?}: {value:?}");
 /// }
@@ -193,21 +184,20 @@ impl fmt::Debug for VarsOs {
     }
 }
 
-/// Fetches the environment variable `key` from the current process.
+/// 从当前进程获取环境变量 `key`。
 ///
-/// # Errors
+/// # 错误(Errors）
 ///
-/// Returns [`VarError::NotPresent`] if:
-/// - The variable is not set.
-/// - The variable's name contains an equal sign or NUL (`'='` or `'\0'`).
+/// 在以下情况返回 [`VarError::NotPresent`]：
+/// - 该变量未设置。
+/// - 该变量名包含等号或 NUL（`'='` 或 `'\0'`）。
 ///
-/// Returns [`VarError::NotUnicode`] if the variable's value is not valid
-/// Unicode. If this is not desired, consider using [`var_os`].
+/// 如果该变量的值不是有效 Unicode，则返回 [`VarError::NotUnicode`]。
+/// 若不希望如此，可考虑使用 [`var_os`]。
 ///
-/// Use [`env!`] or [`option_env!`] instead if you want to check environment
-/// variables at compile time.
+/// 如果你想在编译期检查环境变量，请改用 [`env!`] 或 [`option_env!`]。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use std::env;
@@ -230,17 +220,14 @@ fn _var(key: &OsStr) -> Result<String, VarError> {
     }
 }
 
-/// Fetches the environment variable `key` from the current process, returning
-/// [`None`] if the variable isn't set or if there is another error.
+/// 从当前进程获取环境变量 `key`；如果该变量未设置，或发生其他错误，则返回 [`None`]。
 ///
-/// It may return `None` if the environment variable's name contains
-/// the equal sign character (`=`) or the NUL character.
+/// 当环境变量名包含等号字符（`=`）或 NUL 字符时，可能返回 `None`。
 ///
-/// Note that this function will not check if the environment variable
-/// is valid Unicode. If you want to have an error on invalid UTF-8,
-/// use the [`var`] function instead.
+/// 注意：此函数不会检查环境变量是否为有效 Unicode。如果你希望在遇到无效 UTF-8 时
+/// 得到一个错误，请改用 [`var`] 函数。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use std::env;
@@ -252,8 +239,7 @@ fn _var(key: &OsStr) -> Result<String, VarError> {
 /// }
 /// ```
 ///
-/// If expecting a delimited variable (such as `PATH`), [`split_paths`]
-/// can be used to separate items.
+/// 如果期望的是一个带分隔符的变量（例如 `PATH`），可以用 [`split_paths`] 将各项分开。
 #[must_use]
 #[stable(feature = "env", since = "1.0.0")]
 pub fn var_os<K: AsRef<OsStr>>(key: K) -> Option<OsString> {
@@ -264,21 +250,19 @@ fn _var_os(key: &OsStr) -> Option<OsString> {
     env_imp::getenv(key)
 }
 
-/// The error type for operations interacting with environment variables.
-/// Possibly returned from [`env::var()`].
+/// 与环境变量交互的各种操作的错误类型。
+/// 可能由 [`env::var()`] 返回。
 ///
 /// [`env::var()`]: var
 #[derive(Debug, PartialEq, Eq, Clone)]
 #[stable(feature = "env", since = "1.0.0")]
 pub enum VarError {
-    /// The specified environment variable was not present in the current
-    /// process's environment.
+    /// 指定的环境变量在当前进程的环境中不存在。
     #[stable(feature = "env", since = "1.0.0")]
     NotPresent,
 
-    /// The specified environment variable was found, but it did not contain
-    /// valid unicode data. The found data is returned as a payload of this
-    /// variant.
+    /// 找到了指定的环境变量，但它不包含有效的 unicode 数据。
+    /// 找到的数据作为该变体的载荷（payload）返回。
     #[stable(feature = "env", since = "1.0.0")]
     NotUnicode(#[stable(feature = "env", since = "1.0.0")] OsString),
 }
@@ -298,49 +282,40 @@ impl fmt::Display for VarError {
 #[stable(feature = "env", since = "1.0.0")]
 impl Error for VarError {}
 
-/// Sets the environment variable `key` to the value `value` for the currently running
-/// process.
+/// 为当前正在运行的进程，将环境变量 `key` 设置为值 `value`。
 ///
-/// # Safety
+/// # 安全性(Safety）
 ///
-/// This function is safe to call in a single-threaded program.
+/// 在单线程程序中调用此函数是安全的。
 ///
-/// This function is also always safe to call on Windows, in single-threaded
-/// and multi-threaded programs.
+/// 在 Windows 上，无论单线程还是多线程程序，调用此函数也总是安全的。
 ///
-/// In multi-threaded programs on other operating systems, the only safe option is
-/// to not use `set_var` or `remove_var` at all.
+/// 在其他操作系统的多线程程序中，唯一安全的选择是完全不使用 `set_var` 或 `remove_var`。
 ///
-/// The exact requirement is: you
-/// must ensure that there are no other threads concurrently writing or
-/// *reading*(!) the environment through functions or global variables other
-/// than the ones in this module. The problem is that these operating systems
-/// do not provide a thread-safe way to read the environment, and most C
-/// libraries, including libc itself, do not advertise which functions read
-/// from the environment. Even functions from the Rust standard library may
-/// read the environment without going through this module, e.g. for DNS
-/// lookups from [`std::net::ToSocketAddrs`]. No stable guarantee is made about
-/// which functions may read from the environment in future versions of a
-/// library. All this makes it not practically possible for you to guarantee
-/// that no other thread will read the environment, so the only safe option is
-/// to not use `set_var` or `remove_var` in multi-threaded programs at all.
+/// 确切的要求是：你必须确保没有其他线程通过本模块以外的函数或全局变量并发地写入或
+/// *读取*(!) 环境。问题在于，这些操作系统并未提供线程安全的环境读取方式，而且大多数 C
+/// 库（包括 libc 本身）也不会声明哪些函数会读取环境。即使是 Rust 标准库中的函数也可能
+/// 在不经过本模块的情况下读取环境，例如 [`std::net::ToSocketAddrs`] 进行的 DNS 查找。
+/// 对于某个库未来版本中哪些函数可能读取环境，并不作任何稳定保证。所有这些都使得你实际上
+/// 不可能保证没有其他线程会读取环境，因此唯一安全的选择就是在多线程程序中完全不使用
+/// `set_var` 或 `remove_var`。
 ///
-/// Discussion of this unsafety on Unix may be found in:
+/// 关于 Unix 上这种不安全性的讨论可见于：
 ///
 ///  - [Austin Group Bugzilla (for POSIX)](https://austingroupbugs.net/view.php?id=188)
 ///  - [GNU C library Bugzilla](https://sourceware.org/bugzilla/show_bug.cgi?id=15607#c2)
 ///
-/// To pass an environment variable to a child process, you can instead use [`Command::env`].
+/// 要把环境变量传递给子进程，可以改用 [`Command::env`]。
 ///
 /// [`std::net::ToSocketAddrs`]: crate::net::ToSocketAddrs
 /// [`Command::env`]: crate::process::Command::env
 ///
 /// # Panics
 ///
-/// This function may panic if `key` is empty, contains an ASCII equals sign `'='`
-/// or the NUL character `'\0'`, or when `value` contains the NUL character.
+/// 如果 `key` 为空、包含 ASCII 等号 `'='` 或 NUL 字符 `'\0'`，或者 `value` 包含 NUL 字符，
+/// 此函数可能 panic。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use std::env;
@@ -362,39 +337,30 @@ pub unsafe fn set_var<K: AsRef<OsStr>, V: AsRef<OsStr>>(key: K, value: V) {
     })
 }
 
-/// Removes an environment variable from the environment of the currently running process.
+/// 从当前正在运行的进程的环境中移除一个环境变量。
 ///
-/// # Safety
+/// # 安全性(Safety）
 ///
-/// This function is safe to call in a single-threaded program.
+/// 在单线程程序中调用此函数是安全的。
 ///
-/// This function is also always safe to call on Windows, in single-threaded
-/// and multi-threaded programs.
+/// 在 Windows 上，无论单线程还是多线程程序，调用此函数也总是安全的。
 ///
-/// In multi-threaded programs on other operating systems, the only safe option is
-/// to not use `set_var` or `remove_var` at all.
+/// 在其他操作系统的多线程程序中，唯一安全的选择是完全不使用 `set_var` 或 `remove_var`。
 ///
-/// The exact requirement is: you
-/// must ensure that there are no other threads concurrently writing or
-/// *reading*(!) the environment through functions or global variables other
-/// than the ones in this module. The problem is that these operating systems
-/// do not provide a thread-safe way to read the environment, and most C
-/// libraries, including libc itself, do not advertise which functions read
-/// from the environment. Even functions from the Rust standard library may
-/// read the environment without going through this module, e.g. for DNS
-/// lookups from [`std::net::ToSocketAddrs`]. No stable guarantee is made about
-/// which functions may read from the environment in future versions of a
-/// library. All this makes it not practically possible for you to guarantee
-/// that no other thread will read the environment, so the only safe option is
-/// to not use `set_var` or `remove_var` in multi-threaded programs at all.
+/// 确切的要求是：你必须确保没有其他线程通过本模块以外的函数或全局变量并发地写入或
+/// *读取*(!) 环境。问题在于，这些操作系统并未提供线程安全的环境读取方式，而且大多数 C
+/// 库（包括 libc 本身）也不会声明哪些函数会读取环境。即使是 Rust 标准库中的函数也可能
+/// 在不经过本模块的情况下读取环境，例如 [`std::net::ToSocketAddrs`] 进行的 DNS 查找。
+/// 对于某个库未来版本中哪些函数可能读取环境，并不作任何稳定保证。所有这些都使得你实际上
+/// 不可能保证没有其他线程会读取环境，因此唯一安全的选择就是在多线程程序中完全不使用
+/// `set_var` 或 `remove_var`。
 ///
-/// Discussion of this unsafety on Unix may be found in:
+/// 关于 Unix 上这种不安全性的讨论可见于：
 ///
 ///  - [Austin Group Bugzilla](https://austingroupbugs.net/view.php?id=188)
 ///  - [GNU C library Bugzilla](https://sourceware.org/bugzilla/show_bug.cgi?id=15607#c2)
 ///
-/// To prevent a child process from inheriting an environment variable, you can
-/// instead use [`Command::env_remove`] or [`Command::env_clear`].
+/// 要防止子进程继承某个环境变量，可以改用 [`Command::env_remove`] 或 [`Command::env_clear`]。
 ///
 /// [`std::net::ToSocketAddrs`]: crate::net::ToSocketAddrs
 /// [`Command::env_remove`]: crate::process::Command::env_remove
@@ -402,11 +368,10 @@ pub unsafe fn set_var<K: AsRef<OsStr>, V: AsRef<OsStr>>(key: K, value: V) {
 ///
 /// # Panics
 ///
-/// This function may panic if `key` is empty, contains an ASCII equals sign
-/// `'='` or the NUL character `'\0'`, or when the value contains the NUL
-/// character.
+/// 如果 `key` 为空、包含 ASCII 等号 `'='` 或 NUL 字符 `'\0'`，或者值包含 NUL 字符，
+/// 此函数可能 panic。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```no_run
 /// use std::env;
@@ -432,13 +397,11 @@ pub unsafe fn remove_var<K: AsRef<OsStr>>(key: K) {
         .unwrap_or_else(|e| panic!("failed to remove environment variable `{key:?}`: {e}"))
 }
 
-/// An iterator that splits an environment variable into paths according to
-/// platform-specific conventions.
+/// 一个迭代器，按平台特定约定将某个环境变量拆分成多个路径。
 ///
-/// The iterator element type is [`PathBuf`].
+/// 该迭代器的元素类型为 [`PathBuf`]。
 ///
-/// This structure is created by [`env::split_paths()`]. See its
-/// documentation for more.
+/// 该结构体由 [`env::split_paths()`] 创建。更多内容见其文档。
 ///
 /// [`env::split_paths()`]: split_paths
 #[must_use = "iterators are lazy and do nothing unless consumed"]
@@ -447,23 +410,20 @@ pub struct SplitPaths<'a> {
     inner: os_imp::SplitPaths<'a>,
 }
 
-/// Parses input according to platform conventions for the `PATH`
-/// environment variable.
+/// 按 `PATH` 环境变量的平台约定解析输入。
 ///
-/// Returns an iterator over the paths contained in `unparsed`. The iterator
-/// element type is [`PathBuf`].
+/// 返回一个迭代器，遍历 `unparsed` 中包含的各个路径。迭代器元素类型为 [`PathBuf`]。
 ///
-/// On most Unix platforms, the separator is `:` and on Windows it is `;`. This
-/// also performs unquoting on Windows.
+/// 在大多数 Unix 平台上，分隔符是 `:`，而在 Windows 上是 `;`。在 Windows 上还会执行去引号
+/// （unquoting）处理。
 ///
-/// [`join_paths`] can be used to recombine elements.
+/// 可以用 [`join_paths`] 把各元素重新组合起来。
 ///
 /// # Panics
 ///
-/// This will panic on systems where there is no delimited `PATH` variable,
-/// such as UEFI.
+/// 在不存在带分隔符的 `PATH` 变量的系统上（例如 UEFI），此函数会 panic。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use std::env;
@@ -501,8 +461,7 @@ impl fmt::Debug for SplitPaths<'_> {
     }
 }
 
-/// The error type for operations on the `PATH` variable. Possibly returned from
-/// [`env::join_paths()`].
+/// `PATH` 变量相关操作的错误类型。可能由 [`env::join_paths()`] 返回。
 ///
 /// [`env::join_paths()`]: join_paths
 #[derive(Debug)]
@@ -511,19 +470,17 @@ pub struct JoinPathsError {
     inner: os_imp::JoinPathsError,
 }
 
-/// Joins a collection of [`Path`]s appropriately for the `PATH`
-/// environment variable.
+/// 将一组 [`Path`] 适当地拼接，以用于 `PATH` 环境变量。
 ///
-/// # Errors
+/// # 错误(Errors）
 ///
-/// Returns an [`Err`] (containing an error message) if one of the input
-/// [`Path`]s contains an invalid character for constructing the `PATH`
-/// variable (a double quote on Windows or a colon on Unix), or if the system
-/// does not have a `PATH`-like variable (e.g. UEFI or WASI).
+/// 如果某个输入 [`Path`] 包含构造 `PATH` 变量时的无效字符（Windows 上是双引号，
+/// Unix 上是冒号），或者系统没有类似 `PATH` 的变量（例如 UEFI 或 WASI），
+/// 则返回 [`Err`]（其中含一条错误消息）。
 ///
-/// # Examples
+/// # 示例
 ///
-/// Joining paths on a Unix-like platform:
+/// 在类 Unix 平台上拼接路径：
 ///
 /// ```
 /// use std::env;
@@ -540,8 +497,7 @@ pub struct JoinPathsError {
 /// }
 /// ```
 ///
-/// Joining a path containing a colon on a Unix-like platform results in an
-/// error:
+/// 在类 Unix 平台上拼接一个包含冒号的路径会导致错误：
 ///
 /// ```
 /// # if cfg!(unix) {
@@ -553,8 +509,7 @@ pub struct JoinPathsError {
 /// # }
 /// ```
 ///
-/// Using `env::join_paths()` with [`env::split_paths()`] to append an item to
-/// the `PATH` environment variable:
+/// 配合 [`env::split_paths()`] 使用 `env::join_paths()`，向 `PATH` 环境变量追加一项：
 ///
 /// ```
 /// use std::env;
@@ -597,38 +552,36 @@ impl Error for JoinPathsError {
     }
 }
 
-/// Returns the path of the current user's home directory if known.
+/// 返回当前用户主目录（home directory）的路径（如果已知）。
 ///
-/// This may return `None` if getting the directory fails or if the platform does not have user home directories.
+/// 如果获取该目录失败，或平台没有用户主目录的概念，可能返回 `None`。
 ///
-/// For storing user data and configuration it is often preferable to use more specific directories.
-/// For example, [XDG Base Directories] on Unix or the `LOCALAPPDATA` and `APPDATA` environment variables on Windows.
+/// 对于存储用户数据和配置，通常更宜使用更具体的目录。例如 Unix 上的 [XDG Base Directories]，
+/// 或 Windows 上的 `LOCALAPPDATA` 与 `APPDATA` 环境变量。
 ///
 /// [XDG Base Directories]: https://specifications.freedesktop.org/basedir-spec/latest/
 ///
 /// # Unix
 ///
-/// - Returns the value of the 'HOME' environment variable if it is set
-///   (and not an empty string).
-/// - Otherwise, it tries to determine the home directory by invoking the `getpwuid_r` function
-///   using the UID of the current user. An empty home directory field returned from the
-///   `getpwuid_r` function is considered to be a valid value.
-/// - Returns `None` if the current user has no entry in the /etc/passwd file.
+/// - 如果设置了 'HOME' 环境变量（且不为空字符串），返回其值。
+/// - 否则，尝试通过使用当前用户的 UID 调用 `getpwuid_r` 函数来确定主目录。
+///   `getpwuid_r` 函数返回的空主目录字段会被视为有效值。
+/// - 如果当前用户在 /etc/passwd 文件中没有对应条目，则返回 `None`。
 ///
 /// # Windows
 ///
-/// - Returns the value of the 'USERPROFILE' environment variable if it is set, and is not an empty string.
-/// - Otherwise, [`GetUserProfileDirectory`][msdn] is used to return the path. This may change in the future.
+/// - 如果设置了 'USERPROFILE' 环境变量且不为空字符串，返回其值。
+/// - 否则，使用 [`GetUserProfileDirectory`][msdn] 返回该路径。这在未来可能改变。
 ///
 /// [msdn]: https://docs.microsoft.com/en-us/windows/win32/api/userenv/nf-userenv-getuserprofiledirectorya
 ///
-/// In UWP (Universal Windows Platform) targets this function is unimplemented and always returns `None`.
+/// 在 UWP（Universal Windows Platform）目标上，此函数未实现，总是返回 `None`。
 ///
-/// Before Rust 1.85.0, this function used to return the value of the 'HOME' environment variable
-/// on Windows, which in Cygwin or Mingw environments could return non-standard paths like `/home/you`
-/// instead of `C:\Users\you`.
+/// 在 Rust 1.85.0 之前，此函数在 Windows 上曾返回 'HOME' 环境变量的值，
+/// 这在 Cygwin 或 Mingw 环境中可能返回像 `/home/you` 这样的非标准路径，
+/// 而非 `C:\Users\you`。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use std::env;
@@ -644,34 +597,29 @@ pub fn home_dir() -> Option<PathBuf> {
     os_imp::home_dir()
 }
 
-/// Returns the path of a temporary directory.
+/// 返回一个临时目录的路径。
 ///
-/// The temporary directory may be shared among users, or between processes
-/// with different privileges; thus, the creation of any files or directories
-/// in the temporary directory must use a secure method to create a uniquely
-/// named file. Creating a file or directory with a fixed or predictable name
-/// may result in "insecure temporary file" security vulnerabilities. Consider
-/// using a crate that securely creates temporary files or directories.
+/// 该临时目录可能被多个用户共享，或被具有不同权限的进程共享；因此，在临时目录中创建任何
+/// 文件或目录时，都必须使用安全的方法来创建一个唯一命名的文件。使用固定或可预测名称创建
+/// 文件或目录可能导致“不安全临时文件（insecure temporary file）”安全漏洞。可考虑使用某个
+/// 能安全创建临时文件或目录的 crate。
 ///
-/// Note that the returned value may be a symbolic link, not a directory.
+/// 注意：返回的值可能是一个符号链接（symbolic link），而非目录。
 ///
-/// # Platform-specific behavior
+/// # 平台特定行为
 ///
-/// On Unix, returns the value of the `TMPDIR` environment variable if it is
-/// set, otherwise the value is OS-specific:
-/// - On Android, there is no global temporary folder (it is usually allocated
-///   per-app), it will return the application's cache dir if the program runs
-///   in application's namespace and system version is Android 13 (or above), or
-///   `/data/local/tmp` otherwise.
-/// - On Darwin-based OSes (macOS, iOS, etc) it returns the directory provided
-///   by `confstr(_CS_DARWIN_USER_TEMP_DIR, ...)`, as recommended by [Apple's
-///   security guidelines][appledoc].
-/// - On all other unix-based OSes, it returns `/tmp`.
+/// 在 Unix 上，如果设置了 `TMPDIR` 环境变量则返回其值，否则该值与具体 OS 有关：
+/// - 在 Android 上没有全局临时文件夹（通常按应用单独分配）；如果程序运行在应用的命名空间中
+///   且系统版本为 Android 13（或以上），则返回应用的 cache 目录，否则返回
+///   `/data/local/tmp`。
+/// - 在基于 Darwin 的系统（macOS、iOS 等）上，返回 `confstr(_CS_DARWIN_USER_TEMP_DIR, ...)`
+///   提供的目录，正如 [Apple 的安全指南][appledoc]所推荐。
+/// - 在所有其他基于 unix 的系统上，返回 `/tmp`。
 ///
-/// On Windows, the behavior is equivalent to that of [`GetTempPath2`][GetTempPath2] /
-/// [`GetTempPath`][GetTempPath], which this function uses internally.
+/// 在 Windows 上，其行为等价于 [`GetTempPath2`][GetTempPath2] /
+/// [`GetTempPath`][GetTempPath]，本函数内部即使用它们。
 ///
-/// Note that, this [may change in the future][changes].
+/// 注意，这[在未来可能改变][changes]。
 ///
 /// [changes]: io#platform-specific-behavior
 /// [GetTempPath2]: https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-gettemppath2a
@@ -693,49 +641,39 @@ pub fn temp_dir() -> PathBuf {
     os_imp::temp_dir()
 }
 
-/// Returns the full filesystem path of the current running executable.
+/// 返回当前正在运行的可执行文件的完整文件系统路径。
 ///
-/// # Platform-specific behavior
+/// # 平台特定行为
 ///
-/// If the executable was invoked through a symbolic link, some platforms will
-/// return the path of the symbolic link and other platforms will return the
-/// path of the symbolic link’s target.
+/// 如果该可执行文件是通过符号链接被调用的，某些平台会返回符号链接本身的路径，
+/// 而另一些平台会返回符号链接目标的路径。
 ///
-/// If the executable is renamed while it is running, platforms may return the
-/// path at the time it was loaded instead of the new path.
+/// 如果可执行文件在运行期间被重命名，某些平台可能返回它加载时的路径，而非新路径。
 ///
-/// # Errors
+/// # 错误(Errors）
 ///
-/// Acquiring the path of the current executable is a platform-specific operation
-/// that can fail for a good number of reasons. Some errors can include, but not
-/// be limited to, filesystem operations failing or general syscall failures.
+/// 获取当前可执行文件的路径是一个平台特定的操作，可能因许多原因而失败。一些错误可能包括
+/// 但不限于：文件系统操作失败，或一般的系统调用失败。
 ///
-/// # Security
+/// # 安全性(Security）
 ///
-/// The output of this function should not be trusted for anything
-/// that might have security implications. Basically, if users can run
-/// the executable, they can change the output arbitrarily.
+/// 此函数的输出不应被信任用于任何可能涉及安全的用途。基本上，如果用户能运行该可执行文件，
+/// 他们就能任意改变其输出。
 ///
-/// As an example, you can easily introduce a race condition. It goes
-/// like this:
+/// 举个例子，你很容易引入一个竞态条件（race condition）。过程是这样的：
 ///
-/// 1. You get the path to the current executable using `current_exe()`, and
-///    store it in a variable.
-/// 2. Time passes. A malicious actor removes the current executable, and
-///    replaces it with a malicious one.
-/// 3. You then use the stored path to re-execute the current
-///    executable.
+/// 1. 你用 `current_exe()` 获取当前可执行文件的路径，并将其存入一个变量。
+/// 2. 时间流逝。某个恶意行为者移除了当前可执行文件，并用一个恶意文件替换它。
+/// 3. 然后你使用先前存储的路径来重新执行当前可执行文件。
 ///
-/// You expected to safely execute the current executable, but you're
-/// instead executing something completely different. The code you
-/// just executed run with your privileges.
+/// 你以为在安全地执行当前可执行文件，结果却执行了完全不同的东西。你刚刚执行的代码
+/// 以你的权限运行。
 ///
-/// This sort of behavior has been known to [lead to privilege escalation] when
-/// used incorrectly.
+/// 这类行为在使用不当时，已知会[导致权限提升][lead to privilege escalation]。
 ///
 /// [lead to privilege escalation]: https://securityvulns.com/Wdocument183.html
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use std::env;
@@ -751,15 +689,12 @@ pub fn current_exe() -> io::Result<PathBuf> {
     os_imp::current_exe()
 }
 
-/// An iterator over the arguments of a process, yielding a [`String`] value for
-/// each argument.
+/// 对进程参数进行迭代的迭代器，为每个参数产出一个 [`String`] 值。
 ///
-/// This struct is created by [`env::args()`]. See its documentation
-/// for more.
+/// 该结构体由 [`env::args()`] 创建。更多内容见其文档。
 ///
-/// The first element is traditionally the path of the executable, but it can be
-/// set to arbitrary text, and might not even exist. This means this property
-/// should not be relied upon for security purposes.
+/// 第一个元素按惯例是可执行文件的路径，但它可以被设为任意文本，甚至可能根本不存在。
+/// 这意味着该属性不应被用于安全用途。
 ///
 /// [`env::args()`]: args
 #[must_use = "iterators are lazy and do nothing unless consumed"]
@@ -768,15 +703,12 @@ pub struct Args {
     inner: ArgsOs,
 }
 
-/// An iterator over the arguments of a process, yielding an [`OsString`] value
-/// for each argument.
+/// 对进程参数进行迭代的迭代器，为每个参数产出一个 [`OsString`] 值。
 ///
-/// This struct is created by [`env::args_os()`]. See its documentation
-/// for more.
+/// 该结构体由 [`env::args_os()`] 创建。更多内容见其文档。
 ///
-/// The first element is traditionally the path of the executable, but it can be
-/// set to arbitrary text, and might not even exist. This means this property
-/// should not be relied upon for security purposes.
+/// 第一个元素按惯例是可执行文件的路径，但它可以被设为任意文本，甚至可能根本不存在。
+/// 这意味着该属性不应被用于安全用途。
 ///
 /// [`env::args_os()`]: args_os
 #[must_use = "iterators are lazy and do nothing unless consumed"]
@@ -785,34 +717,30 @@ pub struct ArgsOs {
     inner: sys::args::Args,
 }
 
-/// Returns the arguments that this program was started with (normally passed
-/// via the command line).
+/// 返回本程序启动时所带的参数（通常通过命令行传入）。
 ///
-/// The first element is traditionally the path of the executable, but it can be
-/// set to arbitrary text, and might not even exist. This means this property should
-/// not be relied upon for security purposes.
+/// 第一个元素按惯例是可执行文件的路径，但它可以被设为任意文本，甚至可能根本不存在。
+/// 这意味着该属性不应被用于安全用途。
 ///
-/// On Unix systems the shell usually expands unquoted arguments with glob patterns
-/// (such as `*` and `?`). On Windows this is not done, and such arguments are
-/// passed as-is.
+/// 在 Unix 系统上，shell 通常会对未加引号、带 glob 模式（例如 `*` 和 `?`）的参数进行展开。
+/// 在 Windows 上不会这样做，这类参数会按原样传入。
 ///
-/// On glibc Linux systems, arguments are retrieved by placing a function in `.init_array`.
-/// glibc passes `argc`, `argv`, and `envp` to functions in `.init_array`, as a non-standard
-/// extension. This allows `std::env::args` to work even in a `cdylib` or `staticlib`, as it
-/// does on macOS and Windows.
+/// 在 glibc Linux 系统上，参数是通过把一个函数放入 `.init_array` 来获取的。glibc 会把
+/// `argc`、`argv` 和 `envp` 作为非标准扩展传给 `.init_array` 中的函数。这使得
+/// `std::env::args` 即使在 `cdylib` 或 `staticlib` 中也能工作，正如它在 macOS 和
+/// Windows 上那样。
 ///
 /// # Panics
 ///
-/// The returned iterator will panic during iteration if any argument to the
-/// process is not valid Unicode. If this is not desired,
-/// use the [`args_os`] function instead.
+/// 如果进程的任何参数不是有效 Unicode，返回的迭代器将在迭代过程中 panic。
+/// 若不希望如此，请改用 [`args_os`] 函数。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use std::env;
 ///
-/// // Prints each argument on a separate line
+/// // 每行打印一个参数
 /// for argument in env::args() {
 ///     println!("{argument}");
 /// }
@@ -822,32 +750,28 @@ pub fn args() -> Args {
     Args { inner: args_os() }
 }
 
-/// Returns the arguments that this program was started with (normally passed
-/// via the command line).
+/// 返回本程序启动时所带的参数（通常通过命令行传入）。
 ///
-/// The first element is traditionally the path of the executable, but it can be
-/// set to arbitrary text, and might not even exist. This means this property should
-/// not be relied upon for security purposes.
+/// 第一个元素按惯例是可执行文件的路径，但它可以被设为任意文本，甚至可能根本不存在。
+/// 这意味着该属性不应被用于安全用途。
 ///
-/// On Unix systems the shell usually expands unquoted arguments with glob patterns
-/// (such as `*` and `?`). On Windows this is not done, and such arguments are
-/// passed as-is.
+/// 在 Unix 系统上，shell 通常会对未加引号、带 glob 模式（例如 `*` 和 `?`）的参数进行展开。
+/// 在 Windows 上不会这样做，这类参数会按原样传入。
 ///
-/// On glibc Linux systems, arguments are retrieved by placing a function in `.init_array`.
-/// glibc passes `argc`, `argv`, and `envp` to functions in `.init_array`, as a non-standard
-/// extension. This allows `std::env::args_os` to work even in a `cdylib` or `staticlib`, as it
-/// does on macOS and Windows.
+/// 在 glibc Linux 系统上，参数是通过把一个函数放入 `.init_array` 来获取的。glibc 会把
+/// `argc`、`argv` 和 `envp` 作为非标准扩展传给 `.init_array` 中的函数。这使得
+/// `std::env::args_os` 即使在 `cdylib` 或 `staticlib` 中也能工作，正如它在 macOS 和
+/// Windows 上那样。
 ///
-/// Note that the returned iterator will not check if the arguments to the
-/// process are valid Unicode. If you want to panic on invalid UTF-8,
-/// use the [`args`] function instead.
+/// 注意：返回的迭代器不会检查进程参数是否为有效 Unicode。如果你希望在遇到无效 UTF-8 时
+/// panic，请改用 [`args`] 函数。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use std::env;
 ///
-/// // Prints each argument on a separate line
+/// // 每行打印一个参数
 /// for argument in env::args_os() {
 ///     println!("{argument:?}");
 /// }
@@ -876,16 +800,15 @@ impl Iterator for Args {
         self.inner.size_hint()
     }
 
-    // Methods which skip args cannot simply delegate to the inner iterator,
-    // because `env::args` states that we will "panic during iteration if any
-    // argument to the process is not valid Unicode".
+    // 跳过参数的方法不能简单地委托给内层迭代器，因为 `env::args` 声明它会“在任何进程参数
+    // 不是有效 Unicode 时于迭代过程中 panic”。
     //
-    // This offers two possible interpretations:
-    // - a skipped argument is never encountered "during iteration"
-    // - even a skipped argument is encountered "during iteration"
+    // 这有两种可能的解读：
+    // - 被跳过的参数从不会在“迭代过程中”被遇到
+    // - 即便被跳过的参数也算在“迭代过程中”被遇到
     //
-    // As a panic can be observed, we err towards validating even skipped
-    // arguments for now, though this is not explicitly promised by the API.
+    // 由于 panic 是可被观察到的，我们目前倾向于即使是被跳过的参数也加以校验，
+    // 尽管该 API 并未明确承诺这一点。
 }
 
 #[stable(feature = "env", since = "1.0.0")]
@@ -1010,15 +933,15 @@ impl fmt::Debug for ArgsOs {
     }
 }
 
-/// Constants associated with the current target
+/// 与当前目标（target）相关联的常量
 #[stable(feature = "env", since = "1.0.0")]
 pub mod consts {
     use crate::sys::env_consts::os;
 
-    /// A string describing the architecture of the CPU that is currently in use.
-    /// An example value may be: `"x86"`, `"arm"` or `"riscv64"`.
+    /// 描述当前所用 CPU 架构的字符串。
+    /// 一个示例值可能是：`"x86"`、`"arm"` 或 `"riscv64"`。
     ///
-    /// <details><summary>Full list of possible values</summary>
+    /// <details><summary>可能取值的完整列表</summary>
     ///
     /// * `"x86"`
     /// * `"x86_64"`
@@ -1045,12 +968,12 @@ pub mod consts {
     #[stable(feature = "env", since = "1.0.0")]
     pub const ARCH: &str = env!("STD_ENV_ARCH");
 
-    /// A string describing the family of the operating system.
-    /// An example value may be: `"unix"`, or `"windows"`.
+    /// 描述操作系统家族（family）的字符串。
+    /// 一个示例值可能是：`"unix"` 或 `"windows"`。
     ///
-    /// This value may be an empty string if the family is unknown.
+    /// 如果家族未知，该值可能为空字符串。
     ///
-    /// <details><summary>Full list of possible values</summary>
+    /// <details><summary>可能取值的完整列表</summary>
     ///
     /// * `"unix"`
     /// * `"windows"`
@@ -1062,10 +985,10 @@ pub mod consts {
     #[stable(feature = "env", since = "1.0.0")]
     pub const FAMILY: &str = os::FAMILY;
 
-    /// A string describing the specific operating system in use.
-    /// An example value may be: `"linux"`, or `"freebsd"`.
+    /// 描述当前所用具体操作系统的字符串。
+    /// 一个示例值可能是：`"linux"` 或 `"freebsd"`。
     ///
-    /// <details><summary>Full list of possible values</summary>
+    /// <details><summary>可能取值的完整列表</summary>
     ///
     /// * `"linux"`
     /// * `"windows"`
@@ -1107,22 +1030,22 @@ pub mod consts {
     #[stable(feature = "env", since = "1.0.0")]
     pub const OS: &str = os::OS;
 
-    /// Specifies the filename prefix, if any, used for shared libraries on this platform.
-    /// This is either `"lib"` or an empty string. (`""`).
+    /// 指定本平台上共享库（shared libraries）所用的文件名前缀（如果有的话）。
+    /// 它要么是 `"lib"`，要么是空字符串（`""`）。
     #[stable(feature = "env", since = "1.0.0")]
     pub const DLL_PREFIX: &str = os::DLL_PREFIX;
 
-    /// Specifies the filename suffix, if any, used for shared libraries on this platform.
-    /// An example value may be: `".so"`, `".elf"`, or `".dll"`.
+    /// 指定本平台上共享库所用的文件名后缀（如果有的话）。
+    /// 一个示例值可能是：`".so"`、`".elf"` 或 `".dll"`。
     ///
-    /// The possible values are identical to those of [`DLL_EXTENSION`], but with the leading period included.
+    /// 其可能取值与 [`DLL_EXTENSION`] 相同，只是带上了前导的点号。
     #[stable(feature = "env", since = "1.0.0")]
     pub const DLL_SUFFIX: &str = os::DLL_SUFFIX;
 
-    /// Specifies the file extension, if any, used for shared libraries on this platform that goes after the dot.
-    /// An example value may be: `"so"`, `"elf"`, or `"dll"`.
+    /// 指定本平台上共享库所用的文件扩展名（如果有的话），不含点号。
+    /// 一个示例值可能是：`"so"`、`"elf"` 或 `"dll"`。
     ///
-    /// <details><summary>Full list of possible values</summary>
+    /// <details><summary>可能取值的完整列表</summary>
     ///
     /// * `"so"`
     /// * `"dylib"`
@@ -1137,17 +1060,17 @@ pub mod consts {
     #[stable(feature = "env", since = "1.0.0")]
     pub const DLL_EXTENSION: &str = os::DLL_EXTENSION;
 
-    /// Specifies the filename suffix, if any, used for executable binaries on this platform.
-    /// An example value may be: `".exe"`, or `".efi"`.
+    /// 指定本平台上可执行二进制文件所用的文件名后缀（如果有的话）。
+    /// 一个示例值可能是：`".exe"` 或 `".efi"`。
     ///
-    /// The possible values are identical to those of [`EXE_EXTENSION`], but with the leading period included.
+    /// 其可能取值与 [`EXE_EXTENSION`] 相同，只是带上了前导的点号。
     #[stable(feature = "env", since = "1.0.0")]
     pub const EXE_SUFFIX: &str = os::EXE_SUFFIX;
 
-    /// Specifies the file extension, if any, used for executable binaries on this platform.
-    /// An example value may be: `"exe"`, or an empty string (`""`).
+    /// 指定本平台上可执行二进制文件所用的文件扩展名（如果有的话）。
+    /// 一个示例值可能是：`"exe"` 或空字符串（`""`）。
     ///
-    /// <details><summary>Full list of possible values</summary>
+    /// <details><summary>可能取值的完整列表</summary>
     ///
     /// * `"bin"`
     /// * `"exe"`

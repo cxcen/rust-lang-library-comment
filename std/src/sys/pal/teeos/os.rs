@@ -1,4 +1,4 @@
-//! Implementation of `std::os` functionality for teeos
+//! 为 teeos 实现的 `std::os` 功能
 
 use core::marker::PhantomData;
 
@@ -7,13 +7,13 @@ use crate::ffi::{OsStr, OsString};
 use crate::path::PathBuf;
 use crate::{fmt, io, path};
 
-// Hardcoded to return 4096, since `sysconf` is only implemented as a stub.
+// 硬编码为返回 4096，因为 `sysconf` 目前只实现为一个桩（stub）。
 pub fn page_size() -> usize {
     // unsafe { libc::sysconf(libc::_SC_PAGESIZE) as usize };
     4096
 }
 
-// Everything below are stubs and copied from unsupported.rs
+// 下面的所有内容都是桩（stub），从 unsupported.rs 复制而来
 
 pub fn getcwd() -> io::Result<PathBuf> {
     unsupported()

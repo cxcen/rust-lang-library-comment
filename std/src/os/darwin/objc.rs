@@ -1,13 +1,13 @@
-//! Defines types and macros for Objective-C interoperability.
+//! 定义用于 Objective-C 互操作（interoperability）的类型与宏。
 //!
-//! This module re-exports all the items in [`core::os::darwin::objc`].
+//! 本模块重导出 [`core::os::darwin::objc`] 中的所有项。
 //!
 //! [`core::os::darwin::objc`]: ../../../../core/os/darwin/objc/index.html "mod core::os::darwin::objc"
 
 #![unstable(feature = "darwin_objc", issue = "145496")]
 
-// We can't generate an intra-doc link for this automatically since `core::os::darwin` isn't
-// compiled into `core` on every platform even though it's documented on every platform.
-// We just link to it directly in the module documentation above instead.
+// 我们无法为此自动生成 intra-doc 链接，因为 `core::os::darwin` 并非在每个平台上
+// 都会被编译进 `core`，尽管它在每个平台上都有文档。
+// 我们改为在上方的模块文档中直接链接到它。
 #[cfg(not(doc))]
 pub use core::os::darwin::objc::*;

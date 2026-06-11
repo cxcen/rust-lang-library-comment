@@ -1,4 +1,4 @@
-//! Common code for printing backtraces.
+//! 打印 backtrace（调用栈回溯）的公共代码。
 #![forbid(unsafe_op_in_unsafe_fn)]
 
 use crate::backtrace_rs::{self, BacktraceFmt, BytesOrWideString, PrintFmt};
@@ -8,11 +8,11 @@ use crate::path::{self, Path, PathBuf};
 use crate::sync::{Mutex, MutexGuard, PoisonError};
 use crate::{env, fmt, io};
 
-/// Max number of frames to print.
+/// 最多打印的栈帧数量。
 const MAX_NB_FRAMES: usize = 100;
 
 pub(crate) const FULL_BACKTRACE_DEFAULT: bool = cfg_select! {
-    // Fuchsia components default to full backtrace.
+    // Fuchsia 的组件默认使用完整 backtrace。
     target_os = "fuchsia" => true,
     _ => false,
 };
@@ -25,12 +25,11 @@ pub(crate) fn lock<'a>() -> BacktraceLock<'a> {
 }
 
 impl BacktraceLock<'_> {
-    /// Prints the current backtrace.
+    /// 打印当前的 backtrace。
     pub(crate) fn print(&mut self, w: &mut dyn Write, format: PrintFmt) -> io::Result<()> {
-        // There are issues currently linking libbacktrace into tests, and in
-        // general during std's own unit tests we're not testing this path. In
-        // test mode immediately return here to optimize away any references to the
-        // libbacktrace symbols
+        // 目前把 libbacktrace 链接进测试中存在问题，而且在 std 自身的单元测试里
+        // 我们一般也不测试这条路径。因此在 test 模式下立即返回，以便优化掉对
+        // libbacktrace 各符号的任何引用。
         if cfg!(test) {
             return Ok(());
         }
@@ -40,7 +39,7 @@ impl BacktraceLock<'_> {
         }
         impl fmt::Display for DisplayBacktrace {
             fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-                // SAFETY: the backtrace lock is held
+                // SAFETY: backtrace 锁已被持有
                 unsafe { _print_fmt(fmt, self.format) }
             }
         }
@@ -48,12 +47,12 @@ impl BacktraceLock<'_> {
     }
 }
 
-/// # Safety
+/// # 安全性(Safety）
 ///
-/// This function is not Sync. The caller must hold a mutex lock, or there must be only one thread in the program.
+/// 本函数不是 Sync 的。调用者必须持有一个互斥锁，或者保证程序中只有一个线程。
 unsafe fn _print_fmt(fmt: &mut fmt::Formatter<'_>, print_fmt: PrintFmt) -> fmt::Result {
-    // Always 'fail' to get the cwd when running under Miri -
-    // this allows Miri to display backtraces in isolation mode
+    // 在 Miri 下始终“故意失败”地获取 cwd ——
+    // 这样可以让 Miri 在隔离（isolation）模式下也能显示 backtrace
     let cwd = if !cfg!(miri) { env::current_dir().ok() } else { None };
 
     let mut print_path = move |fmt: &mut fmt::Formatter<'_>, bows: BytesOrWideString<'_>| {
@@ -66,10 +65,10 @@ unsafe fn _print_fmt(fmt: &mut fmt::Formatter<'_>, print_fmt: PrintFmt) -> fmt::
     let mut res = Ok(());
     let mut omitted_count: usize = 0;
     let mut first_omit = true;
-    // If we're using a short backtrace, ignore all frames until we're told to start printing.
+    // 如果使用的是简短（short）backtrace，则在被告知开始打印之前忽略所有栈帧。
     let mut print = print_fmt != PrintFmt::Short;
     set_image_base();
-    // SAFETY: we roll our own locking in this town
+    // SAFETY: 在这片地界我们自行实现锁机制
     unsafe {
         backtrace_rs::trace_unsynchronized(|frame| {
             if print_fmt == PrintFmt::Short && idx > MAX_NB_FRAMES {
@@ -85,8 +84,8 @@ unsafe fn _print_fmt(fmt: &mut fmt::Formatter<'_>, print_fmt: PrintFmt) -> fmt::
                 backtrace_rs::resolve_frame_unsynchronized(frame, |symbol| {
                     hit = true;
 
-                    // `__rust_end_short_backtrace` means we are done hiding symbols
-                    // for now. Print until we see `__rust_begin_short_backtrace`.
+                    // 出现 `__rust_end_short_backtrace` 表示我们暂时不再隐藏符号。
+                    // 一直打印，直到看到 `__rust_begin_short_backtrace` 为止。
                     if print_fmt == PrintFmt::Short {
                         if let Some(sym) = symbol.name().and_then(|s| s.as_str()) {
                             if sym.contains("__rust_end_short_backtrace") {
@@ -106,7 +105,7 @@ unsafe fn _print_fmt(fmt: &mut fmt::Formatter<'_>, print_fmt: PrintFmt) -> fmt::
                     if print {
                         if omitted_count > 0 {
                             debug_assert!(print_fmt == PrintFmt::Short);
-                            // only print the message between the middle of frames
+                            // 只在两段栈帧之间打印该提示信息
                             if !first_omit {
                                 let _ = writeln!(
                                     bt_fmt.formatter(),
@@ -155,9 +154,9 @@ unsafe fn _print_fmt(fmt: &mut fmt::Formatter<'_>, print_fmt: PrintFmt) -> fmt::
     Ok(())
 }
 
-/// Fixed frame used to clean the backtrace with `RUST_BACKTRACE=1`. Note that
-/// this is only inline(never) when backtraces in std are enabled, otherwise
-/// it's fine to optimize away.
+/// 用于在 `RUST_BACKTRACE=1` 时清理 backtrace 的固定栈帧。注意，
+/// 只有在 std 中启用了 backtrace 时它才是 inline(never)；否则
+/// 把它优化掉是没问题的。
 #[cfg_attr(feature = "backtrace", inline(never))]
 pub fn __rust_begin_short_backtrace<F, T>(f: F) -> T
 where
@@ -165,15 +164,15 @@ where
 {
     let result = f();
 
-    // prevent this frame from being tail-call optimised away
+    // 防止该栈帧被尾调用优化（tail-call optimisation）掉
     crate::hint::black_box(());
 
     result
 }
 
-/// Fixed frame used to clean the backtrace with `RUST_BACKTRACE=1`. Note that
-/// this is only inline(never) when backtraces in std are enabled, otherwise
-/// it's fine to optimize away.
+/// 用于在 `RUST_BACKTRACE=1` 时清理 backtrace 的固定栈帧。注意，
+/// 只有在 std 中启用了 backtrace 时它才是 inline(never)；否则
+/// 把它优化掉是没问题的。
 #[cfg_attr(feature = "backtrace", inline(never))]
 pub fn __rust_end_short_backtrace<F, T>(f: F) -> T
 where
@@ -181,15 +180,15 @@ where
 {
     let result = f();
 
-    // prevent this frame from being tail-call optimised away
+    // 防止该栈帧被尾调用优化（tail-call optimisation）掉
     crate::hint::black_box(());
 
     result
 }
 
-/// Prints the filename of the backtrace frame.
+/// 打印 backtrace 栈帧的文件名。
 ///
-/// See also `output`.
+/// 另见 `output`。
 pub fn output_filename(
     fmt: &mut fmt::Formatter<'_>,
     bows: BytesOrWideString<'_>,
@@ -234,5 +233,5 @@ pub fn set_image_base() {
 
 #[cfg(not(all(target_vendor = "fortanix", target_env = "sgx")))]
 pub fn set_image_base() {
-    // nothing to do for platforms other than SGX
+    // 对于 SGX 以外的平台无需任何操作
 }

@@ -1,4 +1,4 @@
-//! Fuchsia-specific definitions
+//! Fuchsia 平台特有的定义
 
 #![stable(feature = "raw_ext", since = "1.1.0")]
 

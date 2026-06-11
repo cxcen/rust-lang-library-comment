@@ -1,49 +1,39 @@
-//! Multi-producer, multi-consumer FIFO queue communication primitives.
+//! 多生产者、多消费者（multi-producer, multi-consumer）FIFO 队列通信原语。
 //!
-//! This module provides message-based communication over channels, concretely
-//! defined by two types:
+//! 本模块提供基于消息的通道（channel）通信，具体由两个类型定义：
 //!
 //! * [`Sender`]
 //! * [`Receiver`]
 //!
-//! [`Sender`]s are used to send data to a set of [`Receiver`]s where each item
-//! sent is delivered to (at most) one receiver. Both sender and receiver are
-//! cloneable (multi-producer) such that many threads can send simultaneously
-//! to receivers (multi-consumer).
+//! [`Sender`] 用于把数据发送给一组 [`Receiver`]；其中每一条被发送的消息都会被投递给
+//! （至多）一个接收者。发送端与接收端都可以克隆（多生产者），因此多个线程可以同时向多个
+//! 接收者发送（多消费者）。
 //!
-//! These channels come in two flavors:
+//! 这些通道有两种 flavor（风味/变体）：
 //!
-//! 1. An asynchronous, infinitely buffered channel. The [`channel`] function
-//!    will return a `(Sender, Receiver)` tuple where all sends will be
-//!    **asynchronous** (they never block). The channel conceptually has an
-//!    infinite buffer.
+//! 1. 异步、缓冲区无限大的通道。[`channel`] 函数返回一个 `(Sender, Receiver)` 元组，其中所有
+//!    发送都是 **异步的**（永不阻塞）。该通道在概念上拥有一个无限大的缓冲区。
 //!
-//! 2. A synchronous, bounded channel. The [`sync_channel`] function will
-//!    return a `(Sender, Receiver)` tuple where the storage for pending
-//!    messages is a pre-allocated buffer of a fixed size. All sends will be
-//!    **synchronous** by blocking until there is buffer space available. Note
-//!    that a bound of 0 is allowed, causing the channel to become a "rendezvous"
-//!    channel where each sender atomically hands off a message to a receiver.
+//! 2. 同步、有界的通道。[`sync_channel`] 函数返回一个 `(Sender, Receiver)` 元组，其中待处理
+//!    消息的存储是一块预先分配、固定大小的缓冲区。所有发送都是 **同步的**：当缓冲区满时会
+//!    阻塞，直到有空位为止。注意：边界（bound）为 0 是允许的，此时通道变为“会合”
+//!    （rendezvous）通道，即每个发送者以原子方式把一条消息直接交到某个接收者手中。
 //!
 //! [`send`]: Sender::send
 //!
-//! ## Disconnection
+//! ## 断连（Disconnection）
 //!
-//! The send and receive operations on channels will all return a [`Result`]
-//! indicating whether the operation succeeded or not. An unsuccessful operation
-//! is normally indicative of the other half of a channel having "hung up" by
-//! being dropped in its corresponding thread.
+//! 通道上的发送与接收操作都会返回一个 [`Result`]，用于指示操作是否成功。一次不成功的操作
+//! 通常意味着通道的另一半已在其对应线程中被丢弃（drop），即“挂断”（hung up）了。
 //!
-//! Once half of a channel has been deallocated, most operations can no longer
-//! continue to make progress, so [`Err`] will be returned. Many applications
-//! will continue to [`unwrap`] the results returned from this module,
-//! instigating a propagation of failure among threads if one unexpectedly dies.
+//! 一旦通道的某一半被释放，大多数操作便无法再继续推进，于是会返回 [`Err`]。许多应用会对
+//! 本模块返回的结果直接 [`unwrap`]，从而在某个线程意外死亡时，将失败在线程间传播开来。
 //!
 //! [`unwrap`]: Result::unwrap
 //!
-//! # Examples
+//! # 示例
 //!
-//! Simple usage:
+//! 简单用法：
 //!
 //! ```
 //! #![feature(mpmc_channel)]
@@ -51,7 +41,7 @@
 //! use std::thread;
 //! use std::sync::mpmc::channel;
 //!
-//! // Create a simple streaming channel
+//! // 创建一个简单的流式通道
 //! let (tx, rx) = channel();
 //! thread::spawn(move || {
 //!     tx.send(10).unwrap();
@@ -59,7 +49,7 @@
 //! assert_eq!(rx.recv().unwrap(), 10);
 //! ```
 //!
-//! Shared usage:
+//! 共享用法：
 //!
 //! ```
 //! #![feature(mpmc_channel)]
@@ -68,9 +58,9 @@
 //! use std::sync::mpmc::channel;
 //!
 //! thread::scope(|s| {
-//!     // Create a shared channel that can be sent along from many threads
-//!     // where tx is the sending half (tx for transmission), and rx is the receiving
-//!     // half (rx for receiving).
+//!     // 创建一个可在多个线程间传递的共享通道，
+//!     // 其中 tx 是发送半（tx 取自 transmission），rx 是接收半
+//!     // （rx 取自 receiving）。
 //!     let (tx, rx) = channel();
 //!     for i in 0..10 {
 //!         let tx = tx.clone();
@@ -94,22 +84,22 @@
 //! })
 //! ```
 //!
-//! Propagating panics:
+//! 传播 panic：
 //!
 //! ```
 //! #![feature(mpmc_channel)]
 //!
 //! use std::sync::mpmc::channel;
 //!
-//! // The call to recv() will return an error because the channel has already
-//! // hung up (or been deallocated)
+//! // 这次 recv() 调用会返回一个错误，因为通道已经
+//! // 挂断（或已被释放）
 //! let (tx, rx) = channel::<i32>();
 //! drop(tx);
 //! assert!(rx.recv().is_err());
 //! ```
 
-// This module is used as the implementation for the channels in `sync::mpsc`.
-// The implementation comes from the crossbeam-channel crate:
+// 本模块被用作 `sync::mpsc` 中各通道的实现基础。
+// 该实现来自 crossbeam-channel crate：
 //
 // Copyright (c) 2019 The Crossbeam Project Developers
 //
@@ -153,26 +143,24 @@ use crate::fmt;
 use crate::panic::{RefUnwindSafe, UnwindSafe};
 use crate::time::{Duration, Instant};
 
-/// Creates a new asynchronous channel, returning the sender/receiver halves.
+/// 创建一个新的异步通道，返回发送端/接收端这一对句柄。
 ///
-/// All data sent on the [`Sender`] will become available on the [`Receiver`] in
-/// the same order as it was sent, and no [`send`] will block the calling thread
-/// (this channel has an "infinite buffer", unlike [`sync_channel`], which will
-/// block after its buffer limit is reached). [`recv`] will block until a message
-/// is available while there is at least one [`Sender`] alive (including clones).
+/// 在 [`Sender`] 上发送的所有数据都会以发送时的相同顺序在 [`Receiver`] 处变为可用，且任何
+/// [`send`] 都不会阻塞调用线程（该通道拥有“无限缓冲区”，这与 [`sync_channel`] 不同——后者
+/// 在缓冲区达到上限后会阻塞）。只要至少还存在一个 [`Sender`]（含其克隆），[`recv`] 就会
+/// 阻塞，直到有消息可用为止。
 ///
-/// The [`Sender`] can be cloned to [`send`] to the same channel multiple times.
-/// The [`Receiver`] also can be cloned to have multi receivers.
+/// [`Sender`] 可以被克隆，以便多次向同一通道 [`send`]。[`Receiver`] 同样可以被克隆，以拥有
+/// 多个接收者。
 ///
-/// If the [`Receiver`] is disconnected while trying to [`send`] with the
-/// [`Sender`], the [`send`] method will return a [`SendError`]. Similarly, if the
-/// [`Sender`] is disconnected while trying to [`recv`], the [`recv`] method will
-/// return a [`RecvError`].
+/// 如果在用 [`Sender`] 尝试 [`send`] 时 [`Receiver`] 已断连，则 [`send`] 方法会返回一个
+/// [`SendError`]。同理，如果在尝试 [`recv`] 时 [`Sender`] 已断连，则 [`recv`] 方法会返回一个
+/// [`RecvError`]。
 ///
 /// [`send`]: Sender::send
 /// [`recv`]: Receiver::recv
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// #![feature(mpmc_channel)]
@@ -182,15 +170,15 @@ use crate::time::{Duration, Instant};
 ///
 /// let (sender, receiver) = channel();
 ///
-/// // Spawn off an expensive computation
+/// // 启动一项开销很大的计算
 /// thread::spawn(move || {
 /// #   fn expensive_computation() {}
 ///     sender.send(expensive_computation()).unwrap();
 /// });
 ///
-/// // Do some useful work for a while
+/// // 在此期间做一些有用的工作
 ///
-/// // Let's see what that answer was
+/// // 来看看那个答案是什么
 /// println!("{:?}", receiver.recv().unwrap());
 /// ```
 #[must_use]
@@ -202,31 +190,27 @@ pub fn channel<T>() -> (Sender<T>, Receiver<T>) {
     (s, r)
 }
 
-/// Creates a new synchronous, bounded channel.
+/// 创建一个新的同步、有界的通道。
 ///
-/// All data sent on the [`Sender`] will become available on the [`Receiver`]
-/// in the same order as it was sent. Like asynchronous [`channel`]s, the
-/// [`Receiver`] will block until a message becomes available. `sync_channel`
-/// differs greatly in the semantics of the sender, however.
+/// 在 [`Sender`] 上发送的所有数据都会以发送时的相同顺序在 [`Receiver`] 处变为可用。与异步的
+/// [`channel`] 一样，[`Receiver`] 会阻塞直到有消息可用。然而 `sync_channel` 在发送端的语义上
+/// 差别很大。
 ///
-/// This channel has an internal buffer on which messages will be queued.
-/// `bound` specifies the buffer size. When the internal buffer becomes full,
-/// future sends will *block* waiting for the buffer to open up. Note that a
-/// buffer size of 0 is valid, in which case this becomes "rendezvous channel"
-/// where each [`send`] will not return until a [`recv`] is paired with it.
+/// 该通道拥有一块内部缓冲区，消息会在其中排队。`bound` 指定缓冲区大小。当内部缓冲区变满时，
+/// 后续的发送将 *阻塞*，等待缓冲区腾出空位。注意：缓冲区大小为 0 是合法的，此时通道变为
+/// “会合通道”（rendezvous channel），即每次 [`send`] 都不会返回，直到有一次 [`recv`] 与之配对。
 ///
-/// The [`Sender`] can be cloned to [`send`] to the same channel multiple
-/// times. The [`Receiver`] also can be cloned to have multi receivers.
+/// [`Sender`] 可以被克隆，以便多次向同一通道 [`send`]。[`Receiver`] 同样可以被克隆，以拥有
+/// 多个接收者。
 ///
-/// Like asynchronous channels, if the [`Receiver`] is disconnected while trying
-/// to [`send`] with the [`Sender`], the [`send`] method will return a
-/// [`SendError`]. Similarly, If the [`Sender`] is disconnected while trying
-/// to [`recv`], the [`recv`] method will return a [`RecvError`].
+/// 与异步通道一样，如果在用 [`Sender`] 尝试 [`send`] 时 [`Receiver`] 已断连，则 [`send`] 方法
+/// 会返回一个 [`SendError`]。同理，如果在尝试 [`recv`] 时 [`Sender`] 已断连，则 [`recv`] 方法
+/// 会返回一个 [`RecvError`]。
 ///
 /// [`send`]: Sender::send
 /// [`recv`]: Receiver::recv
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use std::sync::mpsc::sync_channel;
@@ -234,11 +218,11 @@ pub fn channel<T>() -> (Sender<T>, Receiver<T>) {
 ///
 /// let (sender, receiver) = sync_channel(1);
 ///
-/// // this returns immediately
+/// // 这次调用立即返回
 /// sender.send(1).unwrap();
 ///
 /// thread::spawn(move || {
-///     // this will block until the previous message has been received
+///     // 这次发送会阻塞，直到前一条消息被接收
 ///     sender.send(2).unwrap();
 /// });
 ///
@@ -261,16 +245,16 @@ pub fn sync_channel<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
     }
 }
 
-/// The sending-half of Rust's synchronous [`channel`] type.
+/// Rust 同步 [`channel`] 类型的发送半（sending-half）。
 ///
-/// Messages can be sent through this channel with [`send`].
+/// 可以通过 [`send`] 经由该通道发送消息。
 ///
-/// Note: all senders (the original and its clones) need to be dropped for the receiver
-/// to stop blocking to receive messages with [`Receiver::recv`].
+/// 注意：所有发送者（包括最初的那个及其全部克隆）都必须被丢弃，接收者才会停止阻塞，
+/// 不再用 [`Receiver::recv`] 等待接收消息。
 ///
 /// [`send`]: Sender::send
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```rust
 /// #![feature(mpmc_channel)]
@@ -281,12 +265,12 @@ pub fn sync_channel<T>(cap: usize) -> (Sender<T>, Receiver<T>) {
 /// let (sender, receiver) = channel();
 /// let sender2 = sender.clone();
 ///
-/// // First thread owns sender
+/// // 第一个线程拥有 sender
 /// thread::spawn(move || {
 ///     sender.send(1).unwrap();
 /// });
 ///
-/// // Second thread owns sender2
+/// // 第二个线程拥有 sender2
 /// thread::spawn(move || {
 ///     sender2.send(2).unwrap();
 /// });
@@ -301,15 +285,15 @@ pub struct Sender<T> {
     flavor: SenderFlavor<T>,
 }
 
-/// Sender flavors.
+/// 发送端的各种 flavor（变体）。
 enum SenderFlavor<T> {
-    /// Bounded channel based on a preallocated array.
+    /// 基于预分配数组的有界通道。
     Array(counter::Sender<array::Channel<T>>),
 
-    /// Unbounded channel implemented as a linked list.
+    /// 以链表实现的无界通道。
     List(counter::Sender<list::Channel<T>>),
 
-    /// Zero-capacity channel.
+    /// 容量为零的通道。
     Zero(counter::Sender<zero::Channel<T>>),
 }
 
@@ -324,15 +308,15 @@ impl<T> UnwindSafe for Sender<T> {}
 impl<T> RefUnwindSafe for Sender<T> {}
 
 impl<T> Sender<T> {
-    /// Attempts to send a message into the channel without blocking.
+    /// 尝试以非阻塞方式向通道发送一条消息。
     ///
-    /// This method will either send a message into the channel immediately or return an error if
-    /// the channel is full or disconnected. The returned error contains the original message.
+    /// 此方法要么立即把消息发入通道，要么在通道已满或已断连时返回一个错误。返回的错误中
+    /// 携带着原始消息。
     ///
-    /// If called on a zero-capacity channel, this method will send the message only if there
-    /// happens to be a receive operation on the other side of the channel at the same time.
+    /// 若在容量为零的通道上调用此方法，则只有当此刻恰好有一个接收操作正位于通道另一端时，
+    /// 才会把消息发送出去。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```rust
     /// #![feature(mpmc_channel)]
@@ -352,28 +336,20 @@ impl<T> Sender<T> {
         }
     }
 
-    /// Attempts to send a value on this channel, returning it back if it could
-    /// not be sent.
+    /// 尝试在该通道上发送一个值；若无法发送，则将其原样返回。
     ///
-    /// A successful send occurs when it is determined that the other end of
-    /// the channel has not hung up already. An unsuccessful send would be one
-    /// where the corresponding receiver has already been deallocated. Note
-    /// that a return value of [`Err`] means that the data will never be
-    /// received, but a return value of [`Ok`] does *not* mean that the data
-    /// will be received. It is possible for the corresponding receiver to
-    /// hang up immediately after this function returns [`Ok`]. However, if
-    /// the channel is zero-capacity, it acts as a rendezvous channel and a
-    /// return value of [`Ok`] means that the data has been received.
+    /// 当确定通道的另一端尚未挂断时，发送即为成功。发送不成功则意味着对应的接收者已被
+    /// 释放。注意：返回值为 [`Err`] 意味着数据永远不会被接收到；但返回值为 [`Ok`] 并 *不*
+    /// 意味着数据一定会被接收到——对应的接收者完全可能在本函数返回 [`Ok`] 之后立刻挂断。
+    /// 不过，如果通道容量为零，它就充当一个会合（rendezvous）通道，此时返回值为 [`Ok`] 即
+    /// 表示数据已经被接收。
     ///
-    /// If the channel is full and not disconnected, this call will block until
-    /// the send operation can proceed. If the channel becomes disconnected,
-    /// this call will wake up and return an error. The returned error contains
-    /// the original message.
+    /// 如果通道已满且未断连，本次调用会阻塞，直到发送操作能够继续推进。如果通道变为断连，
+    /// 本次调用会被唤醒并返回一个错误。返回的错误中携带着原始消息。
     ///
-    /// If called on a zero-capacity channel, this method will wait for a receive
-    /// operation to appear on the other side of the channel.
+    /// 若在容量为零的通道上调用此方法，则它会等待，直到通道另一端出现一个接收操作。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(mpmc_channel)]
@@ -382,10 +358,10 @@ impl<T> Sender<T> {
     ///
     /// let (tx, rx) = channel();
     ///
-    /// // This send is always successful
+    /// // 这次发送总是成功的
     /// tx.send(1).unwrap();
     ///
-    /// // This send will fail because the receiver is gone
+    /// // 这次发送会失败，因为接收者已经不在了
     /// drop(rx);
     /// assert!(tx.send(1).is_err());
     /// ```
@@ -404,16 +380,14 @@ impl<T> Sender<T> {
 }
 
 impl<T> Sender<T> {
-    /// Waits for a message to be sent into the channel, but only for a limited time.
+    /// 等待一条消息被发送进通道，但只等待有限的一段时间。
     ///
-    /// If the channel is full and not disconnected, this call will block until the send operation
-    /// can proceed or the operation times out. If the channel becomes disconnected, this call will
-    /// wake up and return an error. The returned error contains the original message.
+    /// 如果通道已满且未断连，本次调用会阻塞，直到发送操作能够继续推进，或者操作超时。如果
+    /// 通道变为断连，本次调用会被唤醒并返回一个错误。返回的错误中携带着原始消息。
     ///
-    /// If called on a zero-capacity channel, this method will wait for a receive operation to
-    /// appear on the other side of the channel.
+    /// 若在容量为零的通道上调用此方法，则它会等待，直到通道另一端出现一个接收操作。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(mpmc_channel)]
@@ -429,21 +403,19 @@ impl<T> Sender<T> {
     pub fn send_timeout(&self, msg: T, timeout: Duration) -> Result<(), SendTimeoutError<T>> {
         match Instant::now().checked_add(timeout) {
             Some(deadline) => self.send_deadline(msg, deadline),
-            // So far in the future that it's practically the same as waiting indefinitely.
+            // 超时点远在未来，实际上等同于无限期等待。
             None => self.send(msg).map_err(SendTimeoutError::from),
         }
     }
 
-    /// Waits for a message to be sent into the channel, but only until a given deadline.
+    /// 等待一条消息被发送进通道，但只等到给定的截止时刻（deadline）。
     ///
-    /// If the channel is full and not disconnected, this call will block until the send operation
-    /// can proceed or the operation times out. If the channel becomes disconnected, this call will
-    /// wake up and return an error. The returned error contains the original message.
+    /// 如果通道已满且未断连，本次调用会阻塞，直到发送操作能够继续推进，或者操作超时。如果
+    /// 通道变为断连，本次调用会被唤醒并返回一个错误。返回的错误中携带着原始消息。
     ///
-    /// If called on a zero-capacity channel, this method will wait for a receive operation to
-    /// appear on the other side of the channel.
+    /// 若在容量为零的通道上调用此方法，则它会等待，直到通道另一端出现一个接收操作。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(mpmc_channel)]
@@ -465,11 +437,11 @@ impl<T> Sender<T> {
         }
     }
 
-    /// Returns `true` if the channel is empty.
+    /// 如果通道为空，返回 `true`。
     ///
-    /// Note: Zero-capacity channels are always empty.
+    /// 注意：容量为零的通道永远为空。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(mpmc_channel)]
@@ -501,11 +473,11 @@ impl<T> Sender<T> {
         }
     }
 
-    /// Returns `true` if the channel is full.
+    /// 如果通道已满，返回 `true`。
     ///
-    /// Note: Zero-capacity channels are always full.
+    /// 注意：容量为零的通道永远是满的。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(mpmc_channel)]
@@ -535,9 +507,9 @@ impl<T> Sender<T> {
         }
     }
 
-    /// Returns the number of messages in the channel.
+    /// 返回通道中消息的数量。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(mpmc_channel)]
@@ -567,9 +539,9 @@ impl<T> Sender<T> {
         }
     }
 
-    /// If the channel is bounded, returns its capacity.
+    /// 如果通道是有界的，返回其容量。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(mpmc_channel)]
@@ -599,9 +571,9 @@ impl<T> Sender<T> {
         }
     }
 
-    /// Returns `true` if senders belong to the same channel.
+    /// 如果两个发送者属于同一个通道，返回 `true`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(mpmc_channel)]
@@ -658,14 +630,14 @@ impl<T> fmt::Debug for Sender<T> {
     }
 }
 
-/// The receiving half of Rust's [`channel`] (or [`sync_channel`]) type.
-/// Different threads can share this [`Receiver`] by cloning it.
+/// Rust [`channel`]（或 [`sync_channel`]）类型的接收半（receiving half）。
+/// 不同的线程可以通过克隆来共享这个 [`Receiver`]。
 ///
-/// Messages sent to the channel can be retrieved using [`recv`].
+/// 发往通道的消息可以用 [`recv`] 取出。
 ///
 /// [`recv`]: Receiver::recv
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```rust
 /// #![feature(mpmc_channel)]
@@ -678,16 +650,16 @@ impl<T> fmt::Debug for Sender<T> {
 ///
 /// let tx_thread = thread::spawn(move || {
 ///     send.send("Hello world!").unwrap();
-///     thread::sleep(Duration::from_secs(2)); // block for two seconds
+///     thread::sleep(Duration::from_secs(2)); // 阻塞两秒
 ///     send.send("Delayed for 2 seconds").unwrap();
 /// });
 ///
 /// let (rx1, rx2) = (recv.clone(), recv.clone());
 /// let rx_thread_1 = thread::spawn(move || {
-///     println!("{}", rx1.recv().unwrap()); // Received immediately
+///     println!("{}", rx1.recv().unwrap()); // 立即收到
 /// });
 /// let rx_thread_2 = thread::spawn(move || {
-///     println!("{}", rx2.recv().unwrap()); // Received after 2 seconds
+///     println!("{}", rx2.recv().unwrap()); // 两秒后收到
 /// });
 ///
 /// tx_thread.join().unwrap();
@@ -699,16 +671,15 @@ pub struct Receiver<T> {
     flavor: ReceiverFlavor<T>,
 }
 
-/// An iterator over messages on a [`Receiver`], created by [`iter`].
+/// 遍历 [`Receiver`] 上消息的迭代器，由 [`iter`] 创建。
 ///
-/// This iterator will block whenever [`next`] is called,
-/// waiting for a new message, and [`None`] will be returned
-/// when the corresponding channel has hung up.
+/// 每次调用 [`next`] 时，该迭代器都会阻塞，等待一条新消息；当对应的通道挂断时，将返回
+/// [`None`]。
 ///
 /// [`iter`]: Receiver::iter
 /// [`next`]: Iterator::next
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```rust
 /// #![feature(mpmc_channel)]
@@ -734,18 +705,15 @@ pub struct Iter<'a, T: 'a> {
     rx: &'a Receiver<T>,
 }
 
-/// An iterator that attempts to yield all pending values for a [`Receiver`],
-/// created by [`try_iter`].
+/// 一个尝试取出 [`Receiver`] 上所有待处理（pending）值的迭代器，由 [`try_iter`] 创建。
 ///
-/// [`None`] will be returned when there are no pending values remaining or
-/// if the corresponding channel has hung up.
+/// 当没有剩余的待处理值、或对应的通道已挂断时，将返回 [`None`]。
 ///
-/// This iterator will never block the caller in order to wait for data to
-/// become available. Instead, it will return [`None`].
+/// 该迭代器为了等待数据可用而 **永不** 阻塞调用方；相反，它会返回 [`None`]。
 ///
 /// [`try_iter`]: Receiver::try_iter
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```rust
 /// #![feature(mpmc_channel)]
@@ -756,7 +724,7 @@ pub struct Iter<'a, T: 'a> {
 ///
 /// let (sender, receiver) = channel();
 ///
-/// // Nothing is in the buffer yet
+/// // 缓冲区里暂时还什么都没有
 /// assert!(receiver.try_iter().next().is_none());
 /// println!("Nothing in the buffer...");
 ///
@@ -767,7 +735,7 @@ pub struct Iter<'a, T: 'a> {
 /// });
 ///
 /// println!("Going to sleep...");
-/// thread::sleep(Duration::from_secs(2)); // block for two seconds
+/// thread::sleep(Duration::from_secs(2)); // 阻塞两秒
 ///
 /// for x in receiver.try_iter() {
 ///     println!("Got: {x}");
@@ -779,17 +747,15 @@ pub struct TryIter<'a, T: 'a> {
     rx: &'a Receiver<T>,
 }
 
-/// An owning iterator over messages on a [`Receiver`],
-/// created by [`into_iter`].
+/// 一个拥有所有权（owning）、遍历 [`Receiver`] 上消息的迭代器，由 [`into_iter`] 创建。
 ///
-/// This iterator will block whenever [`next`]
-/// is called, waiting for a new message, and [`None`] will be
-/// returned if the corresponding channel has hung up.
+/// 每次调用 [`next`] 时，该迭代器都会阻塞，等待一条新消息；当对应的通道挂断时，将返回
+/// [`None`]。
 ///
 /// [`into_iter`]: Receiver::into_iter
 /// [`next`]: Iterator::next
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```rust
 /// #![feature(mpmc_channel)]
@@ -861,15 +827,15 @@ impl<T> IntoIterator for Receiver<T> {
     }
 }
 
-/// Receiver flavors.
+/// 接收端的各种 flavor（变体）。
 enum ReceiverFlavor<T> {
-    /// Bounded channel based on a preallocated array.
+    /// 基于预分配数组的有界通道。
     Array(counter::Receiver<array::Channel<T>>),
 
-    /// Unbounded channel implemented as a linked list.
+    /// 以链表实现的无界通道。
     List(counter::Receiver<list::Channel<T>>),
 
-    /// Zero-capacity channel.
+    /// 容量为零的通道。
     Zero(counter::Receiver<zero::Channel<T>>),
 }
 
@@ -884,24 +850,21 @@ impl<T> UnwindSafe for Receiver<T> {}
 impl<T> RefUnwindSafe for Receiver<T> {}
 
 impl<T> Receiver<T> {
-    /// Attempts to receive a message from the channel without blocking.
+    /// 尝试以非阻塞方式从通道接收一条消息。
     ///
-    /// This method will never block the caller in order to wait for data to
-    /// become available. Instead, this will always return immediately with a
-    /// possible option of pending data on the channel.
+    /// 此方法为了等待数据可用而 **永不** 阻塞调用方；相反，它总是立即返回，结果是一个可能
+    /// 携带通道上待处理数据的 option。
     ///
-    /// If called on a zero-capacity channel, this method will receive a message only if there
-    /// happens to be a send operation on the other side of the channel at the same time.
+    /// 若在容量为零的通道上调用此方法，则只有当此刻恰好有一个发送操作正位于通道另一端时，
+    /// 才会接收到一条消息。
     ///
-    /// This is useful for a flavor of "optimistic check" before deciding to
-    /// block on a receiver.
+    /// 这对于在决定阻塞于某个接收者之前进行一种“乐观检查”（optimistic check）很有用。
     ///
-    /// Compared with [`recv`], this function has two failure cases instead of one
-    /// (one for disconnection, one for an empty buffer).
+    /// 与 [`recv`] 相比，本函数有两种失败情形而非一种（一种是断连，另一种是缓冲区为空）。
     ///
     /// [`recv`]: Self::recv
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```rust
     /// #![feature(mpmc_channel)]
@@ -921,21 +884,16 @@ impl<T> Receiver<T> {
         }
     }
 
-    /// Attempts to wait for a value on this receiver, returning an error if the
-    /// corresponding channel has hung up.
+    /// 尝试在该接收者上等待一个值；如果对应的通道已挂断，则返回一个错误。
     ///
-    /// This function will always block the current thread if there is no data
-    /// available and it's possible for more data to be sent (at least one sender
-    /// still exists). Once a message is sent to the corresponding [`Sender`],
-    /// this receiver will wake up and return that message.
+    /// 只要没有数据可用、且仍有可能发来更多数据（即至少还存在一个发送者），本函数就总会
+    /// 阻塞当前线程。一旦有消息被发往对应的 [`Sender`]，该接收者便会被唤醒并返回那条消息。
     ///
-    /// If the corresponding [`Sender`] has disconnected, or it disconnects while
-    /// this call is blocking, this call will wake up and return [`Err`] to
-    /// indicate that no more messages can ever be received on this channel.
-    /// However, since channels are buffered, messages sent before the disconnect
-    /// will still be properly received.
+    /// 如果对应的 [`Sender`] 已断连，或在本次调用阻塞期间发生断连，本次调用会被唤醒并返回
+    /// [`Err`]，以表明此通道上永远不会再收到任何消息了。不过，由于通道是带缓冲的，在断连
+    /// 之前发送的消息仍会被正确接收。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(mpmc_channel)]
@@ -953,7 +911,7 @@ impl<T> Receiver<T> {
     /// assert_eq!(Ok(1), recv.recv());
     /// ```
     ///
-    /// Buffering behavior:
+    /// 缓冲行为：
     ///
     /// ```
     /// #![feature(mpmc_channel)]
@@ -970,7 +928,7 @@ impl<T> Receiver<T> {
     ///     drop(send);
     /// });
     ///
-    /// // wait for the thread to join so we ensure the sender is dropped
+    /// // 等待该线程 join，以确保 sender 已被丢弃
     /// handle.join().unwrap();
     ///
     /// assert_eq!(Ok(1), recv.recv());
@@ -988,23 +946,19 @@ impl<T> Receiver<T> {
         .map_err(|_| RecvError)
     }
 
-    /// Attempts to wait for a value on this receiver, returning an error if the
-    /// corresponding channel has hung up, or if it waits more than `timeout`.
+    /// 尝试在该接收者上等待一个值；如果对应的通道已挂断、或等待时间超过 `timeout`，则返回
+    /// 一个错误。
     ///
-    /// This function will always block the current thread if there is no data
-    /// available and it's possible for more data to be sent (at least one sender
-    /// still exists). Once a message is sent to the corresponding [`Sender`],
-    /// this receiver will wake up and return that message.
+    /// 只要没有数据可用、且仍有可能发来更多数据（即至少还存在一个发送者），本函数就总会
+    /// 阻塞当前线程。一旦有消息被发往对应的 [`Sender`]，该接收者便会被唤醒并返回那条消息。
     ///
-    /// If the corresponding [`Sender`] has disconnected, or it disconnects while
-    /// this call is blocking, this call will wake up and return [`Err`] to
-    /// indicate that no more messages can ever be received on this channel.
-    /// However, since channels are buffered, messages sent before the disconnect
-    /// will still be properly received.
+    /// 如果对应的 [`Sender`] 已断连，或在本次调用阻塞期间发生断连，本次调用会被唤醒并返回
+    /// [`Err`]，以表明此通道上永远不会再收到任何消息了。不过，由于通道是带缓冲的，在断连
+    /// 之前发送的消息仍会被正确接收。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Successfully receiving value before encountering timeout:
+    /// 在遇到超时之前成功收到值：
     ///
     /// ```no_run
     /// #![feature(mpmc_channel)]
@@ -1025,7 +979,7 @@ impl<T> Receiver<T> {
     /// );
     /// ```
     ///
-    /// Receiving an error upon reaching timeout:
+    /// 到达超时时收到一个错误：
     ///
     /// ```no_run
     /// #![feature(mpmc_channel)]
@@ -1050,28 +1004,24 @@ impl<T> Receiver<T> {
     pub fn recv_timeout(&self, timeout: Duration) -> Result<T, RecvTimeoutError> {
         match Instant::now().checked_add(timeout) {
             Some(deadline) => self.recv_deadline(deadline),
-            // So far in the future that it's practically the same as waiting indefinitely.
+            // 超时点远在未来，实际上等同于无限期等待。
             None => self.recv().map_err(RecvTimeoutError::from),
         }
     }
 
-    /// Attempts to wait for a value on this receiver, returning an error if the
-    /// corresponding channel has hung up, or if `deadline` is reached.
+    /// 尝试在该接收者上等待一个值；如果对应的通道已挂断、或到达了 `deadline`，则返回一个
+    /// 错误。
     ///
-    /// This function will always block the current thread if there is no data
-    /// available and it's possible for more data to be sent. Once a message is
-    /// sent to the corresponding [`Sender`], then this receiver will wake up
-    /// and return that message.
+    /// 只要没有数据可用、且仍有可能发来更多数据，本函数就总会阻塞当前线程。一旦有消息被
+    /// 发往对应的 [`Sender`]，该接收者便会被唤醒并返回那条消息。
     ///
-    /// If the corresponding [`Sender`] has disconnected, or it disconnects while
-    /// this call is blocking, this call will wake up and return [`Err`] to
-    /// indicate that no more messages can ever be received on this channel.
-    /// However, since channels are buffered, messages sent before the disconnect
-    /// will still be properly received.
+    /// 如果对应的 [`Sender`] 已断连，或在本次调用阻塞期间发生断连，本次调用会被唤醒并返回
+    /// [`Err`]，以表明此通道上永远不会再收到任何消息了。不过，由于通道是带缓冲的，在断连
+    /// 之前发送的消息仍会被正确接收。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Successfully receiving value before reaching deadline:
+    /// 在到达截止时刻之前成功收到值：
     ///
     /// ```no_run
     /// #![feature(mpmc_channel)]
@@ -1092,7 +1042,7 @@ impl<T> Receiver<T> {
     /// );
     /// ```
     ///
-    /// Receiving an error upon reaching deadline:
+    /// 到达截止时刻时收到一个错误：
     ///
     /// ```no_run
     /// #![feature(mpmc_channel)]
@@ -1122,12 +1072,10 @@ impl<T> Receiver<T> {
         }
     }
 
-    /// Returns an iterator that will attempt to yield all pending values.
-    /// It will return `None` if there are no more pending values or if the
-    /// channel has hung up. The iterator will never [`panic!`] or block the
-    /// user by waiting for values.
+    /// 返回一个尝试取出所有待处理值的迭代器。当没有更多待处理值、或通道已挂断时，它会返回
+    /// `None`。该迭代器既不会 [`panic!`]，也不会因等待值而阻塞使用者。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// #![feature(mpmc_channel)]
@@ -1138,7 +1086,7 @@ impl<T> Receiver<T> {
     ///
     /// let (sender, receiver) = channel();
     ///
-    /// // nothing is in the buffer yet
+    /// // 缓冲区里暂时还什么都没有
     /// assert!(receiver.try_iter().next().is_none());
     ///
     /// thread::spawn(move || {
@@ -1148,10 +1096,10 @@ impl<T> Receiver<T> {
     ///     sender.send(3).unwrap();
     /// });
     ///
-    /// // nothing is in the buffer yet
+    /// // 缓冲区里暂时还什么都没有
     /// assert!(receiver.try_iter().next().is_none());
     ///
-    /// // block for two seconds
+    /// // 阻塞两秒
     /// thread::sleep(Duration::from_secs(2));
     ///
     /// let mut iter = receiver.try_iter();
@@ -1167,11 +1115,11 @@ impl<T> Receiver<T> {
 }
 
 impl<T> Receiver<T> {
-    /// Returns `true` if the channel is empty.
+    /// 如果通道为空，返回 `true`。
     ///
-    /// Note: Zero-capacity channels are always empty.
+    /// 注意：容量为零的通道永远为空。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(mpmc_channel)]
@@ -1200,11 +1148,11 @@ impl<T> Receiver<T> {
         }
     }
 
-    /// Returns `true` if the channel is full.
+    /// 如果通道已满，返回 `true`。
     ///
-    /// Note: Zero-capacity channels are always full.
+    /// 注意：容量为零的通道永远是满的。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(mpmc_channel)]
@@ -1233,9 +1181,9 @@ impl<T> Receiver<T> {
         }
     }
 
-    /// Returns the number of messages in the channel.
+    /// 返回通道中消息的数量。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(mpmc_channel)]
@@ -1264,9 +1212,9 @@ impl<T> Receiver<T> {
         }
     }
 
-    /// If the channel is bounded, returns its capacity.
+    /// 如果通道是有界的，返回其容量。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(mpmc_channel)]
@@ -1295,9 +1243,9 @@ impl<T> Receiver<T> {
         }
     }
 
-    /// Returns `true` if receivers belong to the same channel.
+    /// 如果两个接收者属于同一个通道，返回 `true`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// #![feature(mpmc_channel)]
@@ -1320,10 +1268,10 @@ impl<T> Receiver<T> {
         }
     }
 
-    /// Returns an iterator that will block waiting for messages, but never
-    /// [`panic!`]. It will return [`None`] when the channel has hung up.
+    /// 返回一个会阻塞等待消息、但绝不会 [`panic!`] 的迭代器。当通道挂断时，它会返回
+    /// [`None`]。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```rust
     /// #![feature(mpmc_channel)]

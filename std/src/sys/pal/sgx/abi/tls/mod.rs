@@ -8,14 +8,14 @@ use crate::{mem, ptr};
 
 #[cfg(target_pointer_width = "64")]
 const USIZE_BITS: usize = 64;
-const TLS_KEYS: usize = 128; // Same as POSIX minimum
+const TLS_KEYS: usize = 128; // 与 POSIX 的最小值相同
 const TLS_KEYS_BITSET_SIZE: usize = (TLS_KEYS + (USIZE_BITS - 1)) / USIZE_BITS;
 
-// Specifying linkage/symbol name is solely to ensure a single instance between this crate and its unit tests
+// 指定 linkage/符号名仅仅是为了确保本 crate 与其单元测试之间只存在单一实例
 #[cfg_attr(test, linkage = "available_externally")]
 #[unsafe(export_name = "_ZN16__rust_internals3std3sys3pal3sgx3abi3tls14TLS_KEY_IN_USEE")]
 static TLS_KEY_IN_USE: SyncBitset = SYNC_BITSET_INIT;
-// Specifying linkage/symbol name is solely to ensure a single instance between this crate and its unit tests
+// 指定 linkage/符号名仅仅是为了确保本 crate 与其单元测试之间只存在单一实例
 #[cfg_attr(test, linkage = "available_externally")]
 #[unsafe(export_name = "_ZN16__rust_internals3std3sys3pal3sgx3abi3tls14TLS_DESTRUCTORE")]
 static TLS_DESTRUCTOR: [Atomic<usize>; TLS_KEYS] = [const { AtomicUsize::new(0) }; TLS_KEYS];
@@ -84,13 +84,13 @@ impl Tls {
     }
 
     pub unsafe fn activate(&self) -> ActiveTls<'_> {
-        // FIXME: Needs safety information. See entry.S for `set_tls_ptr` definition.
+        // FIXME: 需要补充安全性信息。关于 `set_tls_ptr` 的定义，参见 entry.S。
         unsafe { set_tls_ptr(self as *const Tls as _) };
         ActiveTls { tls: self }
     }
 
     unsafe fn current<'a>() -> &'a Tls {
-        // FIXME: Needs safety information. See entry.S for `set_tls_ptr` definition.
+        // FIXME: 需要补充安全性信息。关于 `set_tls_ptr` 的定义，参见 entry.S。
         unsafe { &*(get_tls_ptr() as *const Tls) }
     }
 

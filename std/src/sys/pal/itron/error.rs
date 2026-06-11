@@ -1,27 +1,27 @@
 use super::abi;
 use crate::{fmt, io};
 
-/// Wraps a μITRON error code.
+/// 包装一个 μITRON 错误码。
 #[derive(Debug, Copy, Clone)]
 pub struct ItronError {
     er: abi::ER,
 }
 
 impl ItronError {
-    /// Constructs `ItronError` from the specified error code. Returns `None` if the
-    /// error code does not represent a failure or warning.
+    /// 从指定的错误码构造 `ItronError`。如果该错误码并不表示失败或警告，
+    /// 则返回 `None`。
     #[inline]
     pub fn new(er: abi::ER) -> Option<Self> {
         if er < 0 { Some(Self { er }) } else { None }
     }
 
-    /// Returns `Ok(er)` if `er` represents a success or `Err(_)` otherwise.
+    /// 如果 `er` 表示成功则返回 `Ok(er)`，否则返回 `Err(_)`。
     #[inline]
     pub fn err_if_negative(er: abi::ER) -> Result<abi::ER, Self> {
         if let Some(error) = Self::new(er) { Err(error) } else { Ok(er) }
     }
 
-    /// Gets the raw error code.
+    /// 获取原始错误码。
     #[inline]
     pub fn as_raw(&self) -> abi::ER {
         self.er
@@ -30,7 +30,7 @@ impl ItronError {
 
 impl fmt::Display for ItronError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Allow the platforms to extend `error_name`
+        // 允许各平台扩展 `error_name`
         if let Some(name) = crate::sys::error::error_name(self.er) {
             write!(f, "{} ({})", name, self.er)
         } else {
@@ -39,11 +39,10 @@ impl fmt::Display for ItronError {
     }
 }
 
-/// Describe the specified μITRON error code. Returns `None` if it's an
-/// undefined error code.
+/// 描述指定的 μITRON 错误码。如果它是未定义的错误码，则返回 `None`。
 pub fn error_name(er: abi::ER) -> Option<&'static str> {
     match er {
-        // Success
+        // 成功
         er if er >= 0 => None,
 
         // μITRON 4.0
@@ -69,7 +68,7 @@ pub fn error_name(er: abi::ER) -> Option<&'static str> {
         abi::E_WBLK => Some("non-blocking code accepted"),
         abi::E_BOVR => Some("buffer overflow"),
 
-        // The TOPPERS third generation kernels
+        // TOPPERS 第三代内核
         abi::E_NORES => Some("insufficient system resources"),
         abi::E_RASTER => Some("termination request raised"),
         abi::E_COMM => Some("communication failure"),
@@ -85,7 +84,7 @@ pub fn is_interrupted(er: abi::ER) -> bool {
 
 pub fn decode_error_kind(er: abi::ER) -> io::ErrorKind {
     match er {
-        // Success
+        // 成功
         er if er >= 0 => io::ErrorKind::Uncategorized,
 
         // μITRON 4.0
@@ -111,7 +110,7 @@ pub fn decode_error_kind(er: abi::ER) -> io::ErrorKind {
         // abi::E_WBLK
         // abi::E_BOVR
 
-        // The TOPPERS third generation kernels
+        // TOPPERS 第三代内核
         abi::E_NORES => io::ErrorKind::OutOfMemory, // Some("insufficient system resources"),
         // abi::E_RASTER
         // abi::E_COMM
@@ -119,15 +118,12 @@ pub fn decode_error_kind(er: abi::ER) -> io::ErrorKind {
     }
 }
 
-/// Similar to `ItronError::err_if_negative(er).expect()` except that, while
-/// panicking, it prints the message to `panic_output` and aborts the program
-/// instead. This ensures the error message is not obscured by double
-/// panicking.
+/// 类似于 `ItronError::err_if_negative(er).expect()`，区别在于：在 panic 的同时，
+/// 它会把消息打印到 `panic_output` 并改为中止（abort）程序。这样可确保错误消息
+/// 不会被二次 panic 所掩盖。
 ///
-/// This is useful for diagnosing creation failures of synchronization
-/// primitives that are used by `std`'s internal mechanisms. Such failures
-/// are common when the system is mis-configured to provide a too-small pool for
-/// kernel objects.
+/// 这对于诊断 `std` 内部机制所用的同步原语的创建失败很有用。当系统被错误配置为
+/// 给内核对象提供过小的池（pool）时，这类失败很常见。
 #[inline]
 pub fn expect_success(er: abi::ER, msg: &&str) -> abi::ER {
     match ItronError::err_if_negative(er) {
@@ -136,10 +132,9 @@ pub fn expect_success(er: abi::ER, msg: &&str) -> abi::ER {
     }
 }
 
-/// Similar to `ItronError::err_if_negative(er).expect()` but aborts instead.
+/// 类似于 `ItronError::err_if_negative(er).expect()`，但改为中止（abort）。
 ///
-/// Use this where panicking is not allowed or the effect of the failure
-/// would be persistent.
+/// 在不允许 panic、或失败的影响会是持久性的场合使用它。
 #[inline]
 pub fn expect_success_aborting(er: abi::ER, msg: &&str) -> abi::ER {
     match ItronError::err_if_negative(er) {

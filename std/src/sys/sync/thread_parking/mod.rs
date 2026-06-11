@@ -27,7 +27,7 @@ cfg_select! {
         pub use windows7::Parker;
     }
     all(target_vendor = "apple", not(miri)) => {
-        // Doesn't work in Miri, see <https://github.com/rust-lang/miri/issues/2589>.
+        // 在 Miri 下无法工作，参见 <https://github.com/rust-lang/miri/issues/2589>。
         mod darwin;
         pub use darwin::Parker;
     }

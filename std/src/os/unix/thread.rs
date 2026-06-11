@@ -1,4 +1,4 @@
-//! Unix-specific extensions to primitives in the [`std::thread`] module.
+//! 针对 [`std::thread`] 模块中各基础类型的 Unix 特有扩展。
 //!
 //! [`std::thread`]: crate::thread
 
@@ -13,18 +13,18 @@ use crate::thread::JoinHandle;
 #[allow(deprecated)]
 pub type RawPthread = pthread_t;
 
-/// Unix-specific extensions to [`JoinHandle`].
+/// 针对 [`JoinHandle`] 的 Unix 特有扩展。
 #[stable(feature = "thread_extensions", since = "1.9.0")]
 pub trait JoinHandleExt {
-    /// Extracts the raw pthread_t without taking ownership
+    /// 提取裸 pthread_t，但不取得其所有权
     #[stable(feature = "thread_extensions", since = "1.9.0")]
     fn as_pthread_t(&self) -> RawPthread;
 
-    /// Consumes the thread, returning the raw pthread_t
+    /// 消耗该线程，返回其裸 pthread_t
     ///
-    /// This function **transfers ownership** of the underlying pthread_t to
-    /// the caller. Callers are then the unique owners of the pthread_t and
-    /// must either detach or join the pthread_t once it's no longer needed.
+    /// 该函数把底层 pthread_t 的所有权**转移（transfers ownership）**给调用方。
+    /// 调用方随即成为该 pthread_t 的唯一所有者，并必须在不再需要它时对其进行
+    /// detach 或 join。
     #[stable(feature = "thread_extensions", since = "1.9.0")]
     fn into_pthread_t(self) -> RawPthread;
 }

@@ -28,8 +28,8 @@ impl Into<[usize; 5]> for TicktimerScalar {
     }
 }
 
-/// Returns a `Connection` to the ticktimer server. This server is used for synchronization
-/// primitives such as sleep, Mutex, and Condvar.
+/// 返回一个到 ticktimer 服务器的 `Connection`。该服务器用于诸如 sleep、Mutex 和 Condvar
+/// 之类的同步原语。
 pub(crate) fn ticktimer_server() -> Connection {
     static TICKTIMER_SERVER_CONNECTION: Atomic<u32> = AtomicU32::new(0);
     let cid = TICKTIMER_SERVER_CONNECTION.load(Ordering::Relaxed);

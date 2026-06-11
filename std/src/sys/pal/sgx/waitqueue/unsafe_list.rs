@@ -1,5 +1,4 @@
-//! A doubly-linked list where callers are in charge of memory allocation
-//! of the nodes in the list.
+//! 一个双向链表，其中链表节点的内存分配由调用方负责管理。
 
 #[cfg(test)]
 mod tests;
@@ -23,7 +22,7 @@ impl<T> UnsafeListEntry<T> {
     }
 }
 
-// WARNING: self-referential struct!
+// 警告：自引用（self-referential）结构体！
 pub struct UnsafeList<T> {
     head_tail: NonNull<UnsafeListEntry<T>>,
     head_tail_entry: Option<UnsafeListEntry<T>>,
@@ -34,14 +33,14 @@ impl<T> UnsafeList<T> {
         unsafe { UnsafeList { head_tail: NonNull::new_unchecked(1 as _), head_tail_entry: None } }
     }
 
-    /// # Safety
+    /// # 安全性(Safety）
     unsafe fn init(&mut self) {
         if self.head_tail_entry.is_none() {
             self.head_tail_entry = Some(UnsafeListEntry::dummy());
-            // SAFETY: `head_tail_entry` must be non-null, which it is because we assign it above.
+            // SAFETY: `head_tail_entry` 必须非空，而它确实非空，因为我们在上面对其赋了值。
             self.head_tail =
                 unsafe { NonNull::new_unchecked(self.head_tail_entry.as_mut().unwrap()) };
-            // SAFETY: `self.head_tail` must meet all requirements for a mutable reference.
+            // SAFETY: `self.head_tail` 必须满足可变引用的所有要求。
             unsafe { self.head_tail.as_mut() }.next = self.head_tail;
             unsafe { self.head_tail.as_mut() }.prev = self.head_tail;
         }
@@ -54,7 +53,7 @@ impl<T> UnsafeList<T> {
                 // ,-------> /---------\ next ---,
                 // |         |head_tail|         |
                 // `--- prev \---------/ <-------`
-                // SAFETY: `self.head_tail` must meet all requirements for a reference.
+                // SAFETY: `self.head_tail` 必须满足引用的所有要求。
                 unsafe { rtassert!(self.head_tail.as_ref().prev == first) };
                 true
             } else {
@@ -65,55 +64,53 @@ impl<T> UnsafeList<T> {
         }
     }
 
-    /// Pushes an entry onto the back of the list.
+    /// 将一个 entry 压入链表尾部。
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// The entry must remain allocated until the entry is removed from the
-    /// list AND the caller who popped is done using the entry. Special
-    /// care must be taken in the caller of `push` to ensure unwinding does
-    /// not destroy the stack frame containing the entry.
+    /// 该 entry 必须保持已分配状态，直到它被从链表中移除、并且执行 pop 的调用方
+    /// 已用完该 entry 为止。在 `push` 的调用方中必须特别小心，确保栈展开
+    /// （unwinding）不会销毁包含该 entry 的栈帧。
     pub unsafe fn push<'a>(&mut self, entry: &'a mut UnsafeListEntry<T>) -> &'a T {
         unsafe { self.init() };
 
-        // BEFORE:
+        // 操作前(BEFORE)：
         //     /---------\ next ---> /---------\
         // ... |prev_tail|           |head_tail| ...
         //     \---------/ <--- prev \---------/
         //
-        // AFTER:
+        // 操作后(AFTER)：
         //     /---------\ next ---> /-----\ next ---> /---------\
         // ... |prev_tail|           |entry|           |head_tail| ...
         //     \---------/ <--- prev \-----/ <--- prev \---------/
         let mut entry = unsafe { NonNull::new_unchecked(entry) };
         let mut prev_tail = mem::replace(&mut unsafe { self.head_tail.as_mut() }.prev, entry);
-        // SAFETY: `entry` must meet all requirements for a mutable reference.
+        // SAFETY: `entry` 必须满足可变引用的所有要求。
         unsafe { entry.as_mut() }.prev = prev_tail;
         unsafe { entry.as_mut() }.next = self.head_tail;
-        // SAFETY: `prev_tail` must meet all requirements for a mutable reference.
+        // SAFETY: `prev_tail` 必须满足可变引用的所有要求。
         unsafe { prev_tail.as_mut() }.next = entry;
-        // unwrap ok: always `Some` on non-dummy entries
+        // unwrap ok: 在非 dummy 的 entry 上始终为 `Some`
         unsafe { (*entry.as_ptr()).value.as_ref() }.unwrap()
     }
 
-    /// Pops an entry from the front of the list.
+    /// 从链表头部弹出一个 entry。
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// The caller must make sure to synchronize ending the borrow of the
-    /// return value and deallocation of the containing entry.
+    /// 调用方必须确保对返回值的借用的结束与所属 entry 的释放之间是同步的。
     pub unsafe fn pop<'a>(&mut self) -> Option<&'a T> {
         unsafe { self.init() };
 
         if self.is_empty() {
             None
         } else {
-            // BEFORE:
+            // 操作前(BEFORE)：
             //     /---------\ next ---> /-----\ next ---> /------\
             // ... |head_tail|           |first|           |second| ...
             //     \---------/ <--- prev \-----/ <--- prev \------/
             //
-            // AFTER:
+            // 操作后(AFTER)：
             //     /---------\ next ---> /------\
             // ... |head_tail|           |second| ...
             //     \---------/ <--- prev \------/
@@ -123,31 +120,31 @@ impl<T> UnsafeList<T> {
             unsafe { second.as_mut() }.prev = self.head_tail;
             unsafe { first.as_mut() }.next = NonNull::dangling();
             unsafe { first.as_mut() }.prev = NonNull::dangling();
-            // unwrap ok: always `Some` on non-dummy entries
+            // unwrap ok: 在非 dummy 的 entry 上始终为 `Some`
             Some(unsafe { (*first.as_ptr()).value.as_ref() }.unwrap())
         }
     }
 
-    /// Removes an entry from the list.
+    /// 从链表中移除一个 entry。
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// The caller must ensure that `entry` has been pushed onto `self`
-    /// prior to this call and has not moved since then.
+    /// 调用方必须确保在本次调用之前 `entry` 已被压入（push）到 `self` 中，并且
+    /// 自那以后没有发生移动。
     pub unsafe fn remove(&mut self, entry: &mut UnsafeListEntry<T>) {
         rtassert!(!self.is_empty());
-        // BEFORE:
+        // 操作前(BEFORE)：
         //     /----\ next ---> /-----\ next ---> /----\
         // ... |prev|           |entry|           |next| ...
         //     \----/ <--- prev \-----/ <--- prev \----/
         //
-        // AFTER:
+        // 操作后(AFTER)：
         //     /----\ next ---> /----\
         // ... |prev|           |next| ...
         //     \----/ <--- prev \----/
         let mut prev = entry.prev;
         let mut next = entry.next;
-        // SAFETY: `prev` and `next` must meet all requirements for a mutable reference.entry
+        // SAFETY: `prev` 和 `next` 必须满足可变引用的所有要求。entry
         unsafe { prev.as_mut() }.next = next;
         unsafe { next.as_mut() }.prev = prev;
         entry.next = NonNull::dangling();

@@ -6,17 +6,16 @@ use crate::ptr;
 unsafe impl GlobalAlloc for System {
     #[inline]
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        // jemalloc provides alignment less than MIN_ALIGN for small allocations.
-        // So only rely on MIN_ALIGN if size >= align.
-        // Also see <https://github.com/rust-lang/rust/issues/45955> and
-        // <https://github.com/rust-lang/rust/issues/62251#issuecomment-507580914>.
+        // 对于小块分配，jemalloc 提供的对齐可能小于 MIN_ALIGN。
+        // 因此只有在 size >= align 时才依赖 MIN_ALIGN。
+        // 另见 <https://github.com/rust-lang/rust/issues/45955> 与
+        // <https://github.com/rust-lang/rust/issues/62251#issuecomment-507580914>。
         if layout.align() <= MIN_ALIGN && layout.align() <= layout.size() {
             unsafe { libc::malloc(layout.size()) as *mut u8 }
         } else {
-            // `posix_memalign` returns a non-aligned value if supplied a very
-            // large alignment on older versions of Apple's platforms (unknown
-            // exactly which version range, but the issue is definitely
-            // present in macOS 10.14 and iOS 13.3).
+            // 在 Apple 旧版本平台上，如果传入一个非常大的对齐值，
+            // `posix_memalign` 会返回未对齐的值（具体是哪个版本区间不详，
+            // 但该问题在 macOS 10.14 与 iOS 13.3 中确实存在）。
             //
             // <https://github.com/rust-lang/rust/issues/30170>
             #[cfg(target_vendor = "apple")]
@@ -31,7 +30,7 @@ unsafe impl GlobalAlloc for System {
 
     #[inline]
     unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
-        // See the comment above in `alloc` for why this check looks the way it does.
+        // 此处检查为何写成这样，参见上面 `alloc` 中的注释。
         if layout.align() <= MIN_ALIGN && layout.align() <= layout.size() {
             unsafe { libc::calloc(layout.size(), 1) as *mut u8 }
         } else {
@@ -59,8 +58,8 @@ unsafe impl GlobalAlloc for System {
 }
 
 cfg_select! {
-    // We use posix_memalign wherever possible, but some targets have very incomplete POSIX coverage
-    // so we need a fallback for those.
+    // 我们尽可能使用 posix_memalign，但某些目标平台对 POSIX 的覆盖非常不完整，
+    // 因此需要为它们准备一个回退方案。
     any(target_os = "horizon", target_os = "vita") => {
         #[inline]
         unsafe fn aligned_malloc(layout: &Layout) -> *mut u8 {
@@ -72,13 +71,12 @@ cfg_select! {
         #[cfg_attr(target_os = "vxworks", allow(unused_unsafe))]
         unsafe fn aligned_malloc(layout: &Layout) -> *mut u8 {
             let mut out = ptr::null_mut();
-            // We prefer posix_memalign over aligned_alloc since it is more widely available, and
-            // since with aligned_alloc, implementations are making almost arbitrary choices for
-            // which alignments are "supported", making it hard to use. For instance, some
-            // implementations require the size to be a multiple of the alignment (wasi emmalloc),
-            // while others require the alignment to be at least the pointer size (Illumos, macOS).
-            // posix_memalign only has one, clear requirement: that the alignment be a multiple of
-            // `sizeof(void*)`. Since these are all powers of 2, we can just use max.
+            // 我们偏好 posix_memalign 而非 aligned_alloc，因为前者可用范围更广；而且
+            // 对于 aligned_alloc，各实现对哪些对齐值“受支持”几乎是任意选择的，导致
+            // 难以使用。例如，有的实现要求 size 必须是对齐的整数倍（wasi emmalloc），
+            // 另一些则要求对齐至少为指针大小（Illumos、macOS）。
+            // posix_memalign 只有一条清晰的要求：对齐必须是 `sizeof(void*)` 的整数倍。
+            // 由于这些都是 2 的幂，我们直接取 max 即可。
             let align = layout.align().max(size_of::<usize>());
             let ret = unsafe { libc::posix_memalign(&mut out, align, layout.size()) };
             if ret != 0 { ptr::null_mut() } else { out as *mut u8 }

@@ -1,5 +1,5 @@
-//! The PAL (platform abstraction layer) contains platform-specific abstractions
-//! for implementing the features in the other submodules, such as e.g. bindings.
+//! PAL（platform abstraction layer，平台抽象层）包含各平台专有的抽象实现，
+//! 用于支撑其他子模块中的功能特性，例如各种系统调用绑定等。
 
 #![allow(missing_debug_implementations)]
 

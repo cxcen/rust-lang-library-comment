@@ -30,7 +30,7 @@ impl<'a> Drop for CompletionGuard<'a> {
     }
 }
 
-// Safety: threads are not supported on this platform.
+// Safety: 本平台不支持线程。
 unsafe impl Sync for Once {}
 
 impl Once {
@@ -75,15 +75,15 @@ impl Once {
         let state = self.state.get();
         match state {
             State::Poisoned if !ignore_poisoning => {
-                // Panic to propagate the poison.
+                // Panic 以传播毒化（poison）状态。
                 panic!("Once instance has previously been poisoned");
             }
             State::Incomplete | State::Poisoned => {
                 self.state.set(State::Running);
-                // `guard` will set the new state on drop.
+                // `guard` 会在 drop 时设置新的状态。
                 let mut guard =
                     CompletionGuard { state: &self.state, set_state_on_drop_to: State::Poisoned };
-                // Run the function, letting it know if we're poisoned or not.
+                // 运行该函数，并告知它我们是否处于毒化状态。
                 let f_state = public::OnceState {
                     inner: OnceState {
                         poisoned: state == State::Poisoned,

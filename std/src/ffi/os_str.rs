@@ -1,4 +1,4 @@
-//! The [`OsStr`] and [`OsString`] types and associated utilities.
+//! [`OsStr`] 和 [`OsString`] 类型及相关实用工具。
 
 #[cfg(test)]
 mod tests;
@@ -16,74 +16,71 @@ use crate::sys::os_str::{Buf, Slice};
 use crate::sys::{AsInner, FromInner, IntoInner};
 use crate::{cmp, fmt, slice};
 
-/// A type that can represent owned, mutable platform-native strings, but is
-/// cheaply inter-convertible with Rust strings.
+/// 一种能够表示拥有所有权、可变的平台原生字符串的类型，同时它与 Rust
+/// 字符串之间可以廉价地相互转换。
 ///
-/// The need for this type arises from the fact that:
+/// 这种类型的需求源于以下事实：
 ///
-/// * On Unix systems, strings are often arbitrary sequences of non-zero
-///   bytes, in many cases interpreted as UTF-8.
+/// * 在 Unix 系统上，字符串往往是任意的非零字节序列，在许多情况下被
+///   解释为 UTF-8。
 ///
-/// * On Windows, strings are often arbitrary sequences of non-zero 16-bit
-///   values, interpreted as UTF-16 when it is valid to do so.
+/// * 在 Windows 上，字符串往往是任意的非零 16 位值序列，在可以这样解释
+///   时被解释为 UTF-16。
 ///
-/// * In Rust, strings are always valid UTF-8, which may contain zeros.
+/// * 在 Rust 中，字符串始终是有效的 UTF-8，其中可能含有零。
 ///
-/// `OsString` and [`OsStr`] bridge this gap by simultaneously representing Rust
-/// and platform-native string values, and in particular allowing a Rust string
-/// to be converted into an "OS" string with no cost if possible. A consequence
-/// of this is that `OsString` instances are *not* `NUL` terminated; in order
-/// to pass to e.g., Unix system call, you should create a [`CStr`].
+/// `OsString` 和 [`OsStr`] 通过同时表示 Rust 字符串值和平台原生字符串值
+/// 来弥合这一鸿沟，特别是在可能的情况下允许把 Rust 字符串零开销地转换成
+/// 一个 "OS" 字符串。其结果之一是，`OsString` 实例*不是* `NUL` 结尾的；
+/// 为了传给例如 Unix 系统调用，你应该创建一个 [`CStr`]。
 ///
-/// `OsString` is to <code>&[OsStr]</code> as [`String`] is to <code>&[str]</code>: the former
-/// in each pair are owned strings; the latter are borrowed
-/// references.
+/// `OsString` 之于 <code>&[OsStr]</code> 就如同 [`String`] 之于
+/// <code>&[str]</code>：每一对中前者是拥有所有权的字符串；后者是借用的引用。
 ///
-/// Note, `OsString` and [`OsStr`] internally do not necessarily hold strings in
-/// the form native to the platform; While on Unix, strings are stored as a
-/// sequence of 8-bit values, on Windows, where strings are 16-bit value based
-/// as just discussed, strings are also actually stored as a sequence of 8-bit
-/// values, encoded in a less-strict variant of UTF-8. This is useful to
-/// understand when handling capacity and length values.
+/// 注意，`OsString` 和 [`OsStr`] 在内部不一定以平台原生的形式持有字符串；
+/// 在 Unix 上，字符串以一串 8 位值的形式存储，而在 Windows 上，如前所述
+/// 字符串基于 16 位值，但实际上同样以一串 8 位值的形式存储，采用 UTF-8 的
+/// 一个不那么严格的变体编码（即 WTF-8）。在处理容量和长度值时，理解这一点
+/// 很有用。
 ///
 /// # Capacity of `OsString`
 ///
-/// Capacity uses units of UTF-8 bytes for OS strings which were created from valid unicode, and
-/// uses units of bytes in an unspecified encoding for other contents. On a given target, all
-/// `OsString` and `OsStr` values use the same units for capacity, so the following will work:
+/// 对于由有效 unicode 创建的 OS 字符串，容量以 UTF-8 字节为单位；对于其他
+/// 内容，则以某种未指定编码下的字节为单位。在给定的目标平台上，所有
+/// `OsString` 和 `OsStr` 值的容量都使用相同的单位，因此下面的代码可以正常
+/// 工作：
 /// ```
 /// use std::ffi::{OsStr, OsString};
 ///
 /// fn concat_os_strings(a: &OsStr, b: &OsStr) -> OsString {
-///     let mut ret = OsString::with_capacity(a.len() + b.len()); // This will allocate
-///     ret.push(a); // This will not allocate further
-///     ret.push(b); // This will not allocate further
+///     let mut ret = OsString::with_capacity(a.len() + b.len()); // 这里会分配内存
+///     ret.push(a); // 这里不会再分配
+///     ret.push(b); // 这里不会再分配
 ///     ret
 /// }
 /// ```
 ///
 /// # Creating an `OsString`
 ///
-/// **From a Rust string**: `OsString` implements
-/// <code>[From]<[String]></code>, so you can use <code>my_string.[into]\()</code> to
-/// create an `OsString` from a normal Rust string.
+/// **From a Rust string**：`OsString` 实现了
+/// <code>[From]<[String]></code>，因此你可以使用
+/// <code>my_string.[into]\()</code> 从一个普通的 Rust 字符串创建一个
+/// `OsString`。
 ///
-/// **From slices:** Just like you can start with an empty Rust
-/// [`String`] and then [`String::push_str`] some <code>&[str]</code>
-/// sub-string slices into it, you can create an empty `OsString` with
-/// the [`OsString::new`] method and then push string slices into it with the
-/// [`OsString::push`] method.
+/// **From slices:** 正如你可以从一个空的 Rust [`String`] 开始，然后用
+/// [`String::push_str`] 把若干 <code>&[str]</code> 子串切片推入其中一样，
+/// 你也可以用 [`OsString::new`] 方法创建一个空的 `OsString`，然后用
+/// [`OsString::push`] 方法把字符串切片推入其中。
 ///
 /// # Extracting a borrowed reference to the whole OS string
 ///
-/// You can use the [`OsString::as_os_str`] method to get an <code>&[OsStr]</code> from
-/// an `OsString`; this is effectively a borrowed reference to the
-/// whole string.
+/// 你可以使用 [`OsString::as_os_str`] 方法从一个 `OsString` 得到一个
+/// <code>&[OsStr]</code>；这实际上是对整个字符串的借用引用。
 ///
 /// # Conversions
 ///
-/// See the [module's toplevel documentation about conversions][conversions] for a discussion on
-/// the traits which `OsString` implements for [conversions] from/to native representations.
+/// 关于 `OsString` 为从/到原生表示进行 [conversions] 而实现的那些 trait
+/// 的讨论，参见[模块顶层关于转换的文档][conversions]。
 ///
 /// [`CStr`]: crate::ffi::CStr
 /// [conversions]: super#conversions
@@ -94,40 +91,39 @@ pub struct OsString {
     inner: Buf,
 }
 
-/// Allows extension traits within `std`.
+/// 允许在 `std` 内部使用扩展 trait。
 #[unstable(feature = "sealed", issue = "none")]
 impl crate::sealed::Sealed for OsString {}
 
-/// Borrowed reference to an OS string (see [`OsString`]).
+/// 对一个 OS 字符串的借用引用（参见 [`OsString`]）。
 ///
-/// This type represents a borrowed reference to a string in the operating system's preferred
-/// representation.
+/// 这种类型表示对一个字符串的借用引用，该字符串采用操作系统偏好的表示形式。
 ///
-/// `&OsStr` is to [`OsString`] as <code>&[str]</code> is to [`String`]: the
-/// former in each pair are borrowed references; the latter are owned strings.
+/// `&OsStr` 之于 [`OsString`] 就如同 <code>&[str]</code> 之于 [`String`]：
+/// 每一对中前者是借用的引用；后者是拥有所有权的字符串。
 ///
-/// See the [module's toplevel documentation about conversions][conversions] for a discussion on
-/// the traits which `OsStr` implements for [conversions] from/to native representations.
+/// 关于 `OsStr` 为从/到原生表示进行 [conversions] 而实现的那些 trait 的
+/// 讨论，参见[模块顶层关于转换的文档][conversions]。
 ///
 /// [conversions]: super#conversions
 #[cfg_attr(not(test), rustc_diagnostic_item = "OsStr")]
 #[stable(feature = "rust1", since = "1.0.0")]
-// `OsStr::from_inner` and `impl CloneToUninit for OsStr` current implementation relies
-// on `OsStr` being layout-compatible with `Slice`.
-// However, `OsStr` layout is considered an implementation detail and must not be relied upon.
+// `OsStr::from_inner` 以及 `impl CloneToUninit for OsStr` 当前的实现依赖于
+// `OsStr` 与 `Slice` 在内存布局上兼容。
+// 但是，`OsStr` 的布局被视为实现细节，绝不应被依赖。
 #[repr(transparent)]
 pub struct OsStr {
     inner: Slice,
 }
 
-/// Allows extension traits within `std`.
+/// 允许在 `std` 内部使用扩展 trait。
 #[unstable(feature = "sealed", issue = "none")]
 impl crate::sealed::Sealed for OsStr {}
 
 impl OsString {
-    /// Constructs a new empty `OsString`.
+    /// 构造一个新的空 `OsString`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::ffi::OsString;
@@ -142,25 +138,26 @@ impl OsString {
         OsString { inner: Buf::from_string(String::new()) }
     }
 
-    /// Converts bytes to an `OsString` without checking that the bytes contains
-    /// valid [`OsStr`]-encoded data.
+    /// 把字节转换为 `OsString`，不检查这些字节是否含有有效的 [`OsStr`] 编码
+    /// 数据。
     ///
-    /// The byte encoding is an unspecified, platform-specific, self-synchronizing superset of UTF-8.
-    /// By being a self-synchronizing superset of UTF-8, this encoding is also a superset of 7-bit
-    /// ASCII.
+    /// 该字节编码是 UTF-8 的一个未指定的、平台相关的、自同步（self-synchronizing）
+    /// 超集。由于它是 UTF-8 的一个自同步超集，因此该编码也是 7 位 ASCII 的
+    /// 超集。
     ///
-    /// See the [module's toplevel documentation about conversions][conversions] for safe,
-    /// cross-platform [conversions] from/to native representations.
+    /// 关于从/到原生表示进行安全、跨平台的 [conversions]，参见[模块顶层关于
+    /// 转换的文档][conversions]。
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// As the encoding is unspecified, callers must pass in bytes that originated as a mixture of
-    /// validated UTF-8 and bytes from [`OsStr::as_encoded_bytes`] from within the same Rust version
-    /// built for the same target platform.  For example, reconstructing an `OsString` from bytes sent
-    /// over the network or stored in a file will likely violate these safety rules.
+    /// 由于编码是未指定的，调用者必须传入这样的字节：它们源自经过校验的
+    /// UTF-8 与来自 [`OsStr::as_encoded_bytes`] 的字节的混合，且这些字节是
+    /// 在相同 Rust 版本、为相同目标平台构建的环境下产生的。例如，从经网络
+    /// 发送或存储于文件中的字节重建一个 `OsString`，很可能会违反这些安全
+    /// 规则。
     ///
-    /// Due to the encoding being self-synchronizing, the bytes from [`OsStr::as_encoded_bytes`] can be
-    /// split either immediately before or immediately after any valid non-empty UTF-8 substring.
+    /// 由于该编码是自同步的，来自 [`OsStr::as_encoded_bytes`] 的字节可以在
+    /// 任意有效的非空 UTF-8 子串的紧前或紧后被切分。
     ///
     /// # Example
     ///
@@ -171,9 +168,9 @@ impl OsString {
     /// let bytes = os_str.as_encoded_bytes();
     /// let words = bytes.split(|b| *b == b' ');
     /// let words: Vec<&OsStr> = words.map(|word| {
-    ///     // SAFETY:
-    ///     // - Each `word` only contains content that originated from `OsStr::as_encoded_bytes`
-    ///     // - Only split with ASCII whitespace which is a non-empty UTF-8 substring
+    ///     // SAFETY：
+    ///     // - 每个 `word` 只包含源自 `OsStr::as_encoded_bytes` 的内容
+    ///     // - 仅以 ASCII 空白进行切分，而它是一个非空的 UTF-8 子串
     ///     unsafe { OsStr::from_encoded_bytes_unchecked(word) }
     /// }).collect();
     /// ```
@@ -185,9 +182,9 @@ impl OsString {
         OsString { inner: unsafe { Buf::from_encoded_bytes_unchecked(bytes) } }
     }
 
-    /// Converts to an [`OsStr`] slice.
+    /// 转换为一个 [`OsStr`] 切片。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::ffi::{OsString, OsStr};
@@ -204,18 +201,17 @@ impl OsString {
         self
     }
 
-    /// Converts the `OsString` into a byte vector.  To convert the byte vector back into an
-    /// `OsString`, use the [`OsString::from_encoded_bytes_unchecked`] function.
+    /// 把 `OsString` 转换为一个字节向量。要把该字节向量转换回 `OsString`，
+    /// 请使用 [`OsString::from_encoded_bytes_unchecked`] 函数。
     ///
-    /// The byte encoding is an unspecified, platform-specific, self-synchronizing superset of UTF-8.
-    /// By being a self-synchronizing superset of UTF-8, this encoding is also a superset of 7-bit
-    /// ASCII.
+    /// 该字节编码是 UTF-8 的一个未指定的、平台相关的、自同步超集。由于它是
+    /// UTF-8 的一个自同步超集，因此该编码也是 7 位 ASCII 的超集。
     ///
-    /// Note: As the encoding is unspecified, any sub-slice of bytes that is not valid UTF-8 should
-    /// be treated as opaque and only comparable within the same Rust version built for the same
-    /// target platform.  For example, sending the bytes over the network or storing it in a file
-    /// will likely result in incompatible data.  See [`OsString`] for more encoding details
-    /// and [`std::ffi`] for platform-specific, specified conversions.
+    /// 注意：由于编码是未指定的，任何并非有效 UTF-8 的字节子切片都应被视为
+    /// 不透明的，且只能在相同 Rust 版本、为相同目标平台构建的环境内进行
+    /// 比较。例如，把这些字节经网络发送或存储于文件中，很可能会得到不兼容的
+    /// 数据。关于编码的更多细节参见 [`OsString`]，关于平台相关的、已明确指定
+    /// 的转换参见 [`std::ffi`]。
     ///
     /// [`std::ffi`]: crate::ffi
     #[inline]
@@ -224,11 +220,11 @@ impl OsString {
         self.inner.into_encoded_bytes()
     }
 
-    /// Converts the `OsString` into a [`String`] if it contains valid Unicode data.
+    /// 如果 `OsString` 含有有效的 Unicode 数据，则把它转换成一个 [`String`]。
     ///
-    /// On failure, ownership of the original `OsString` is returned.
+    /// 失败时，返回原始 `OsString` 的所有权。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::ffi::OsString;
@@ -243,9 +239,9 @@ impl OsString {
         self.inner.into_string().map_err(|buf| OsString { inner: buf })
     }
 
-    /// Extends the string with the given <code>&[OsStr]</code> slice.
+    /// 用给定的 <code>&[OsStr]</code> 切片扩展该字符串。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::ffi::OsString;
@@ -269,7 +265,7 @@ impl OsString {
             }
         }
 
-        // Use a more efficient implementation when the string is UTF-8.
+        // 当字符串是 UTF-8 时，使用更高效的实现。
         macro spec_str($T:ty) {
             impl SpecPushTo for $T {
                 #[inline]
@@ -284,16 +280,15 @@ impl OsString {
         s.spec_push_to(self)
     }
 
-    /// Creates a new `OsString` with at least the given capacity.
+    /// 创建一个至少具有给定容量的新 `OsString`。
     ///
-    /// The string will be able to hold at least `capacity` length units of other
-    /// OS strings without reallocating. This method is allowed to allocate for
-    /// more units than `capacity`. If `capacity` is 0, the string will not
-    /// allocate.
+    /// 该字符串将能够容纳至少 `capacity` 个长度单位的其他 OS 字符串而无需
+    /// 重新分配。本方法允许分配多于 `capacity` 的单位数。如果 `capacity`
+    /// 为 0，该字符串将不会分配内存。
     ///
-    /// See the main `OsString` documentation information about encoding and capacity units.
+    /// 关于编码和容量单位的信息，参见 `OsString` 的主文档。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::ffi::OsString;
@@ -301,7 +296,7 @@ impl OsString {
     /// let mut os_string = OsString::with_capacity(10);
     /// let capacity = os_string.capacity();
     ///
-    /// // This push is done without reallocating
+    /// // 这次 push 不会重新分配
     /// os_string.push("foo");
     ///
     /// assert_eq!(capacity, os_string.capacity());
@@ -313,9 +308,9 @@ impl OsString {
         OsString { inner: Buf::with_capacity(capacity) }
     }
 
-    /// Truncates the `OsString` to zero length.
+    /// 把 `OsString` 截断到零长度。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::ffi::OsString;
@@ -332,11 +327,11 @@ impl OsString {
         self.inner.clear()
     }
 
-    /// Returns the capacity this `OsString` can hold without reallocating.
+    /// 返回该 `OsString` 在不重新分配的情况下所能容纳的容量。
     ///
-    /// See the main `OsString` documentation information about encoding and capacity units.
+    /// 关于编码和容量单位的信息，参见 `OsString` 的主文档。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::ffi::OsString;
@@ -351,15 +346,14 @@ impl OsString {
         self.inner.capacity()
     }
 
-    /// Reserves capacity for at least `additional` more capacity to be inserted
-    /// in the given `OsString`. Does nothing if the capacity is
-    /// already sufficient.
+    /// 为该 `OsString` 预留至少能再插入 `additional` 个容量单位的空间。
+    /// 如果容量已经足够，则什么也不做。
     ///
-    /// The collection may reserve more space to speculatively avoid frequent reallocations.
+    /// 集合可能会预留比所需更多的空间，以推测性地避免频繁的重新分配。
     ///
-    /// See the main `OsString` documentation information about encoding and capacity units.
+    /// 关于编码和容量单位的信息，参见 `OsString` 的主文档。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::ffi::OsString;
@@ -374,21 +368,19 @@ impl OsString {
         self.inner.reserve(additional)
     }
 
-    /// Tries to reserve capacity for at least `additional` more length units
-    /// in the given `OsString`. The string may reserve more space to speculatively avoid
-    /// frequent reallocations. After calling `try_reserve`, capacity will be
-    /// greater than or equal to `self.len() + additional` if it returns `Ok(())`.
-    /// Does nothing if capacity is already sufficient. This method preserves
-    /// the contents even if an error occurs.
+    /// 尝试为该 `OsString` 预留至少能再插入 `additional` 个长度单位的空间。
+    /// 该字符串可能会预留更多空间，以推测性地避免频繁的重新分配。调用
+    /// `try_reserve` 之后，如果它返回 `Ok(())`，则容量将大于或等于
+    /// `self.len() + additional`。如果容量已经足够，则什么也不做。即使发生
+    /// 错误，本方法也会保留其内容。
     ///
-    /// See the main `OsString` documentation information about encoding and capacity units.
+    /// 关于编码和容量单位的信息，参见 `OsString` 的主文档。
     ///
     /// # Errors
     ///
-    /// If the capacity overflows, or the allocator reports a failure, then an error
-    /// is returned.
+    /// 如果容量溢出，或分配器报告失败，则返回一个错误。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::ffi::{OsStr, OsString};
@@ -397,10 +389,10 @@ impl OsString {
     /// fn process_data(data: &str) -> Result<OsString, TryReserveError> {
     ///     let mut s = OsString::new();
     ///
-    ///     // Pre-reserve the memory, exiting if we can't
+    ///     // 预先预留内存，如果无法预留则退出
     ///     s.try_reserve(OsStr::new(data).len())?;
     ///
-    ///     // Now we know this can't OOM in the middle of our complex work
+    ///     // 现在我们知道在执行复杂工作的中途不会发生 OOM
     ///     s.push(data);
     ///
     ///     Ok(s)
@@ -413,19 +405,17 @@ impl OsString {
         self.inner.try_reserve(additional)
     }
 
-    /// Reserves the minimum capacity for at least `additional` more capacity to
-    /// be inserted in the given `OsString`. Does nothing if the capacity is
-    /// already sufficient.
+    /// 为该 `OsString` 预留最小的容量，使其至少能再插入 `additional` 个容量
+    /// 单位。如果容量已经足够，则什么也不做。
     ///
-    /// Note that the allocator may give the collection more space than it
-    /// requests. Therefore, capacity can not be relied upon to be precisely
-    /// minimal. Prefer [`reserve`] if future insertions are expected.
+    /// 注意，分配器给集合的空间可能比请求的多。因此，不能依赖容量恰好是
+    /// 最小值。如果预期之后还会插入，更应优先使用 [`reserve`]。
     ///
     /// [`reserve`]: OsString::reserve
     ///
-    /// See the main `OsString` documentation information about encoding and capacity units.
+    /// 关于编码和容量单位的信息，参见 `OsString` 的主文档。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::ffi::OsString;
@@ -440,26 +430,22 @@ impl OsString {
         self.inner.reserve_exact(additional)
     }
 
-    /// Tries to reserve the minimum capacity for at least `additional`
-    /// more length units in the given `OsString`. After calling
-    /// `try_reserve_exact`, capacity will be greater than or equal to
-    /// `self.len() + additional` if it returns `Ok(())`.
-    /// Does nothing if the capacity is already sufficient.
+    /// 尝试为该 `OsString` 预留最小的容量，使其至少能再插入 `additional` 个
+    /// 长度单位。调用 `try_reserve_exact` 之后，如果它返回 `Ok(())`，则容量将
+    /// 大于或等于 `self.len() + additional`。如果容量已经足够，则什么也不做。
     ///
-    /// Note that the allocator may give the `OsString` more space than it
-    /// requests. Therefore, capacity can not be relied upon to be precisely
-    /// minimal. Prefer [`try_reserve`] if future insertions are expected.
+    /// 注意，分配器给 `OsString` 的空间可能比请求的多。因此，不能依赖容量
+    /// 恰好是最小值。如果预期之后还会插入，更应优先使用 [`try_reserve`]。
     ///
     /// [`try_reserve`]: OsString::try_reserve
     ///
-    /// See the main `OsString` documentation information about encoding and capacity units.
+    /// 关于编码和容量单位的信息，参见 `OsString` 的主文档。
     ///
     /// # Errors
     ///
-    /// If the capacity overflows, or the allocator reports a failure, then an error
-    /// is returned.
+    /// 如果容量溢出，或分配器报告失败，则返回一个错误。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::ffi::{OsStr, OsString};
@@ -468,10 +454,10 @@ impl OsString {
     /// fn process_data(data: &str) -> Result<OsString, TryReserveError> {
     ///     let mut s = OsString::new();
     ///
-    ///     // Pre-reserve the memory, exiting if we can't
+    ///     // 预先预留内存，如果无法预留则退出
     ///     s.try_reserve_exact(OsStr::new(data).len())?;
     ///
-    ///     // Now we know this can't OOM in the middle of our complex work
+    ///     // 现在我们知道在执行复杂工作的中途不会发生 OOM
     ///     s.push(data);
     ///
     ///     Ok(s)
@@ -484,11 +470,11 @@ impl OsString {
         self.inner.try_reserve_exact(additional)
     }
 
-    /// Shrinks the capacity of the `OsString` to match its length.
+    /// 将该 `OsString` 的容量收缩到与其长度相匹配。
     ///
-    /// See the main `OsString` documentation information about encoding and capacity units.
+    /// 关于编码和容量单位的信息，参见 `OsString` 的主文档。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::ffi::OsString;
@@ -507,16 +493,15 @@ impl OsString {
         self.inner.shrink_to_fit()
     }
 
-    /// Shrinks the capacity of the `OsString` with a lower bound.
+    /// 将该 `OsString` 的容量收缩到一个下界。
     ///
-    /// The capacity will remain at least as large as both the length
-    /// and the supplied value.
+    /// 容量将至少保持与长度和所提供的值二者一样大。
     ///
-    /// If the current capacity is less than the lower limit, this is a no-op.
+    /// 如果当前容量小于该下限，则这是一个空操作（no-op）。
     ///
-    /// See the main `OsString` documentation information about encoding and capacity units.
+    /// 关于编码和容量单位的信息，参见 `OsString` 的主文档。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::ffi::OsString;
@@ -537,9 +522,9 @@ impl OsString {
         self.inner.shrink_to(min_capacity)
     }
 
-    /// Converts this `OsString` into a boxed [`OsStr`].
+    /// 把该 `OsString` 转换成一个装箱（boxed）的 [`OsStr`]。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::ffi::{OsString, OsStr};
@@ -555,17 +540,17 @@ impl OsString {
         unsafe { Box::from_raw(rw) }
     }
 
-    /// Consumes and leaks the `OsString`, returning a mutable reference to the contents,
-    /// `&'a mut OsStr`.
+    /// 消耗并泄漏（leak）该 `OsString`，返回一个对其内容的可变引用
+    /// `&'a mut OsStr`。
     ///
-    /// The caller has free choice over the returned lifetime, including 'static.
-    /// Indeed, this function is ideally used for data that lives for the remainder of
-    /// the program’s life, as dropping the returned reference will cause a memory leak.
+    /// 调用者可以自由选择返回引用的生命周期，包括 'static。事实上，本函数最
+    /// 适合用于在程序剩余生命周期内一直存活的数据，因为丢弃返回的引用会导致
+    /// 内存泄漏。
     ///
-    /// It does not reallocate or shrink the `OsString`, so the leaked allocation may include
-    /// unused capacity that is not part of the returned slice. If you want to discard excess
-    /// capacity, call [`into_boxed_os_str`], and then [`Box::leak`] instead.
-    /// However, keep in mind that trimming the capacity may result in a reallocation and copy.
+    /// 它不会重新分配或收缩该 `OsString`，因此被泄漏的分配可能包含不属于
+    /// 返回切片的未使用容量。如果你想丢弃多余的容量，请改为调用
+    /// [`into_boxed_os_str`]，然后再调用 [`Box::leak`]。不过要记住，裁剪容量
+    /// 可能导致一次重新分配和拷贝。
     ///
     /// [`into_boxed_os_str`]: Self::into_boxed_os_str
     #[stable(feature = "os_string_pathbuf_leak", since = "1.89.0")]
@@ -574,42 +559,42 @@ impl OsString {
         OsStr::from_inner_mut(self.inner.leak())
     }
 
-    /// Truncate the `OsString` to the specified length.
+    /// 把该 `OsString` 截断到指定的长度。
     ///
     /// # Panics
-    /// Panics if `len` does not lie on a valid `OsStr` boundary
-    /// (as described in [`OsStr::slice_encoded_bytes`]).
+    /// 如果 `len` 没有落在有效的 `OsStr` 边界上（如
+    /// [`OsStr::slice_encoded_bytes`] 所述），则 panic。
     #[inline]
     #[unstable(feature = "os_string_truncate", issue = "133262")]
     pub fn truncate(&mut self, len: usize) {
         self.as_os_str().inner.check_public_boundary(len);
-        // SAFETY: The length was just checked to be at a valid boundary.
+        // SAFETY: 刚刚已检查过该长度落在有效边界上。
         unsafe { self.inner.truncate_unchecked(len) };
     }
 
-    /// Provides plumbing to `Vec::extend_from_slice` without giving full
-    /// mutable access to the `Vec`.
+    /// 提供通往 `Vec::extend_from_slice` 的内部通道，同时不暴露对该 `Vec` 的
+    /// 完整可变访问。
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// The slice must be valid for the platform encoding (as described in
-    /// [`OsStr::from_encoded_bytes_unchecked`]).
+    /// 该切片必须对平台编码有效（如
+    /// [`OsStr::from_encoded_bytes_unchecked`] 所述）。
     ///
-    /// This bypasses the encoding-dependent surrogate joining, so either
-    /// `self` must not end with a leading surrogate half, or `other` must not
-    /// start with a trailing surrogate half.
+    /// 这会绕过依赖编码的代理项拼接（surrogate joining），因此要么 `self`
+    /// 不能以一个前导代理项半部（leading surrogate half）结尾，要么 `other`
+    /// 不能以一个后尾代理项半部（trailing surrogate half）开头。
     #[inline]
     pub(crate) unsafe fn extend_from_slice_unchecked(&mut self, other: &[u8]) {
-        // SAFETY: Guaranteed by caller.
+        // SAFETY: 由调用者保证。
         unsafe { self.inner.extend_from_slice_unchecked(other) };
     }
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
 impl From<String> for OsString {
-    /// Converts a [`String`] into an [`OsString`].
+    /// 把一个 [`String`] 转换成一个 [`OsString`]。
     ///
-    /// This conversion does not allocate or copy memory.
+    /// 这种转换不会分配或拷贝内存。
     #[inline]
     fn from(s: String) -> OsString {
         OsString { inner: Buf::from_string(s) }
@@ -618,8 +603,8 @@ impl From<String> for OsString {
 
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<T: ?Sized + AsRef<OsStr>> From<&T> for OsString {
-    /// Copies any value implementing <code>[AsRef]&lt;[OsStr]&gt;</code>
-    /// into a newly allocated [`OsString`].
+    /// 把任何实现了 <code>[AsRef]&lt;[OsStr]&gt;</code> 的值拷贝进一个新分配的
+    /// [`OsString`]。
     fn from(s: &T) -> OsString {
         trait SpecToOsString {
             fn spec_to_os_string(&self) -> OsString;
@@ -632,7 +617,7 @@ impl<T: ?Sized + AsRef<OsStr>> From<&T> for OsString {
             }
         }
 
-        // Preserve the known-UTF-8 property for strings.
+        // 为字符串保留其已知为 UTF-8 的属性。
         macro spec_str($T:ty) {
             impl SpecToOsString for $T {
                 #[inline]
@@ -686,7 +671,7 @@ impl ops::DerefMut for OsString {
 
 #[stable(feature = "osstring_default", since = "1.9.0")]
 impl Default for OsString {
-    /// Constructs an empty `OsString`.
+    /// 构造一个空的 `OsString`。
     #[inline]
     fn default() -> OsString {
         OsString::new()
@@ -700,10 +685,10 @@ impl Clone for OsString {
         OsString { inner: self.inner.clone() }
     }
 
-    /// Clones the contents of `source` into `self`.
+    /// 把 `source` 的内容克隆进 `self`。
     ///
-    /// This method is preferred over simply assigning `source.clone()` to `self`,
-    /// as it avoids reallocation if possible.
+    /// 相比简单地把 `source.clone()` 赋值给 `self`，更应优先使用本方法，
+    /// 因为它在可能的情况下避免重新分配。
     #[inline]
     fn clone_from(&mut self, source: &Self) {
         self.inner.clone_from(&source.inner)
@@ -817,9 +802,9 @@ impl fmt::Write for OsString {
 }
 
 impl OsStr {
-    /// Coerces into an `OsStr` slice.
+    /// 强制转换为一个 `OsStr` 切片。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::ffi::OsStr;
@@ -833,25 +818,24 @@ impl OsStr {
         s.as_ref()
     }
 
-    /// Converts a slice of bytes to an OS string slice without checking that the string contains
-    /// valid `OsStr`-encoded data.
+    /// 把一个字节切片转换为一个 OS 字符串切片，不检查该字符串是否含有有效的
+    /// `OsStr` 编码数据。
     ///
-    /// The byte encoding is an unspecified, platform-specific, self-synchronizing superset of UTF-8.
-    /// By being a self-synchronizing superset of UTF-8, this encoding is also a superset of 7-bit
-    /// ASCII.
+    /// 该字节编码是 UTF-8 的一个未指定的、平台相关的、自同步超集。由于它是
+    /// UTF-8 的一个自同步超集，因此该编码也是 7 位 ASCII 的超集。
     ///
-    /// See the [module's toplevel documentation about conversions][conversions] for safe,
-    /// cross-platform [conversions] from/to native representations.
+    /// 关于从/到原生表示进行安全、跨平台的 [conversions]，参见[模块顶层关于
+    /// 转换的文档][conversions]。
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// As the encoding is unspecified, callers must pass in bytes that originated as a mixture of
-    /// validated UTF-8 and bytes from [`OsStr::as_encoded_bytes`] from within the same Rust version
-    /// built for the same target platform.  For example, reconstructing an `OsStr` from bytes sent
-    /// over the network or stored in a file will likely violate these safety rules.
+    /// 由于编码是未指定的，调用者必须传入这样的字节：它们源自经过校验的
+    /// UTF-8 与来自 [`OsStr::as_encoded_bytes`] 的字节的混合，且这些字节是
+    /// 在相同 Rust 版本、为相同目标平台构建的环境下产生的。例如，从经网络
+    /// 发送或存储于文件中的字节重建一个 `OsStr`，很可能会违反这些安全规则。
     ///
-    /// Due to the encoding being self-synchronizing, the bytes from [`OsStr::as_encoded_bytes`] can be
-    /// split either immediately before or immediately after any valid non-empty UTF-8 substring.
+    /// 由于该编码是自同步的，来自 [`OsStr::as_encoded_bytes`] 的字节可以在
+    /// 任意有效的非空 UTF-8 子串的紧前或紧后被切分。
     ///
     /// # Example
     ///
@@ -862,9 +846,9 @@ impl OsStr {
     /// let bytes = os_str.as_encoded_bytes();
     /// let words = bytes.split(|b| *b == b' ');
     /// let words: Vec<&OsStr> = words.map(|word| {
-    ///     // SAFETY:
-    ///     // - Each `word` only contains content that originated from `OsStr::as_encoded_bytes`
-    ///     // - Only split with ASCII whitespace which is a non-empty UTF-8 substring
+    ///     // SAFETY：
+    ///     // - 每个 `word` 只包含源自 `OsStr::as_encoded_bytes` 的内容
+    ///     // - 仅以 ASCII 空白进行切分，而它是一个非空的 UTF-8 子串
     ///     unsafe { OsStr::from_encoded_bytes_unchecked(word) }
     /// }).collect();
     /// ```
@@ -879,26 +863,26 @@ impl OsStr {
     #[inline]
     #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
     const fn from_inner(inner: &Slice) -> &OsStr {
-        // SAFETY: OsStr is just a wrapper of Slice,
-        // therefore converting &Slice to &OsStr is safe.
+        // SAFETY: OsStr 只是 Slice 的一个包装，
+        // 因此把 &Slice 转换为 &OsStr 是安全的。
         unsafe { &*(inner as *const Slice as *const OsStr) }
     }
 
     #[inline]
     #[rustc_const_unstable(feature = "const_convert", issue = "143773")]
     const fn from_inner_mut(inner: &mut Slice) -> &mut OsStr {
-        // SAFETY: OsStr is just a wrapper of Slice,
-        // therefore converting &mut Slice to &mut OsStr is safe.
-        // Any method that mutates OsStr must be careful not to
-        // break platform-specific encoding, in particular Wtf8 on Windows.
+        // SAFETY: OsStr 只是 Slice 的一个包装，
+        // 因此把 &mut Slice 转换为 &mut OsStr 是安全的。
+        // 任何会修改 OsStr 的方法都必须小心，不要破坏平台相关的编码，
+        // 特别是 Windows 上的 Wtf8。
         unsafe { &mut *(inner as *mut Slice as *mut OsStr) }
     }
 
-    /// Yields a <code>&[str]</code> slice if the `OsStr` is valid Unicode.
+    /// 如果该 `OsStr` 是有效的 Unicode，则产出一个 <code>&[str]</code> 切片。
     ///
-    /// This conversion may entail doing a check for UTF-8 validity.
+    /// 这种转换可能需要做一次 UTF-8 有效性检查。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::ffi::OsStr;
@@ -914,32 +898,31 @@ impl OsStr {
         self.inner.to_str().ok()
     }
 
-    /// Converts an `OsStr` to a <code>[Cow]<[str]></code>.
+    /// 把一个 `OsStr` 转换为 <code>[Cow]<[str]></code>。
     ///
-    /// Any non-UTF-8 sequences are replaced with
-    /// [`U+FFFD REPLACEMENT CHARACTER`][U+FFFD].
+    /// 任何非 UTF-8 序列都会被替换为
+    /// [`U+FFFD REPLACEMENT CHARACTER`][U+FFFD]。
     ///
     /// [U+FFFD]: crate::char::REPLACEMENT_CHARACTER
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Calling `to_string_lossy` on an `OsStr` with invalid unicode:
+    /// 在一个含有无效 unicode 的 `OsStr` 上调用 `to_string_lossy`：
     ///
     /// ```
-    /// // Note, due to differences in how Unix and Windows represent strings,
-    /// // we are forced to complicate this example, setting up example `OsStr`s
-    /// // with different source data and via different platform extensions.
-    /// // Understand that in reality you could end up with such example invalid
-    /// // sequences simply through collecting user command line arguments, for
-    /// // example.
+    /// // 注意，由于 Unix 和 Windows 表示字符串的方式不同，
+    /// // 我们不得不把这个示例复杂化，分别用不同的源数据、通过不同的平台
+    /// // 扩展来构造示例 `OsStr`。
+    /// // 要理解，在现实中你完全可能仅仅通过收集用户的命令行参数，就得到
+    /// // 这样的无效序列示例。
     ///
     /// #[cfg(unix)] {
     ///     use std::ffi::OsStr;
     ///     use std::os::unix::ffi::OsStrExt;
     ///
-    ///     // Here, the values 0x66 and 0x6f correspond to 'f' and 'o'
-    ///     // respectively. The value 0x80 is a lone continuation byte, invalid
-    ///     // in a UTF-8 sequence.
+    ///     // 这里，值 0x66 和 0x6f 分别对应 'f' 和 'o'。
+    ///     // 值 0x80 是一个孤立的延续字节（continuation byte），在 UTF-8
+    ///     // 序列中是无效的。
     ///     let source = [0x66, 0x6f, 0x80, 0x6f];
     ///     let os_str = OsStr::from_bytes(&source[..]);
     ///
@@ -949,9 +932,9 @@ impl OsStr {
     ///     use std::ffi::OsString;
     ///     use std::os::windows::prelude::*;
     ///
-    ///     // Here the values 0x0066 and 0x006f correspond to 'f' and 'o'
-    ///     // respectively. The value 0xD800 is a lone surrogate half, invalid
-    ///     // in a UTF-16 sequence.
+    ///     // 这里，值 0x0066 和 0x006f 分别对应 'f' 和 'o'。
+    ///     // 值 0xD800 是一个孤立的代理项半部（surrogate half），在 UTF-16
+    ///     // 序列中是无效的。
     ///     let source = [0x0066, 0x006f, 0xD800, 0x006f];
     ///     let os_string = OsString::from_wide(&source[..]);
     ///     let os_str = os_string.as_os_str();
@@ -967,9 +950,9 @@ impl OsStr {
         self.inner.to_string_lossy()
     }
 
-    /// Copies the slice into an owned [`OsString`].
+    /// 把该切片拷贝进一个拥有所有权的 [`OsString`]。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::ffi::{OsStr, OsString};
@@ -987,9 +970,9 @@ impl OsStr {
         OsString { inner: self.inner.to_owned() }
     }
 
-    /// Checks whether the `OsStr` is empty.
+    /// 检查该 `OsStr` 是否为空。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::ffi::OsStr;
@@ -1007,23 +990,21 @@ impl OsStr {
         self.inner.inner.is_empty()
     }
 
-    /// Returns the length of this `OsStr`.
+    /// 返回该 `OsStr` 的长度。
     ///
-    /// Note that this does **not** return the number of bytes in the string in
-    /// OS string form.
+    /// 注意，这**不**返回该字符串在 OS 字符串形式下的字节数。
     ///
-    /// The length returned is that of the underlying storage used by `OsStr`.
-    /// As discussed in the [`OsString`] introduction, [`OsString`] and `OsStr`
-    /// store strings in a form best suited for cheap inter-conversion between
-    /// native-platform and Rust string forms, which may differ significantly
-    /// from both of them, including in storage size and encoding.
+    /// 所返回的长度是 `OsStr` 所用底层存储的长度。如 [`OsString`] 引言中所
+    /// 讨论的，[`OsString`] 和 `OsStr` 以一种最适合在平台原生形式与 Rust
+    /// 字符串形式之间廉价相互转换的形式来存储字符串，这种形式在存储大小和
+    /// 编码上都可能与两者有显著差异。
     ///
-    /// This number is simply useful for passing to other methods, like
-    /// [`OsString::with_capacity`] to avoid reallocations.
+    /// 这个数值仅在传给其他方法（例如 [`OsString::with_capacity`] 以避免
+    /// 重新分配）时有用。
     ///
-    /// See the main `OsString` documentation information about encoding and capacity units.
+    /// 关于编码和容量单位的信息，参见 `OsString` 的主文档。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::ffi::OsStr;
@@ -1041,7 +1022,8 @@ impl OsStr {
         self.inner.inner.len()
     }
 
-    /// Converts a <code>[Box]<[OsStr]></code> into an [`OsString`] without copying or allocating.
+    /// 把一个 <code>[Box]<[OsStr]></code> 转换成一个 [`OsString`]，不进行拷贝
+    /// 或分配。
     #[stable(feature = "into_boxed_os_str", since = "1.20.0")]
     #[must_use = "`self` will be dropped if the result is not used"]
     pub fn into_os_string(self: Box<Self>) -> OsString {
@@ -1049,18 +1031,17 @@ impl OsStr {
         OsString { inner: Buf::from_box(boxed) }
     }
 
-    /// Converts an OS string slice to a byte slice.  To convert the byte slice back into an OS
-    /// string slice, use the [`OsStr::from_encoded_bytes_unchecked`] function.
+    /// 把一个 OS 字符串切片转换为一个字节切片。要把该字节切片转换回 OS
+    /// 字符串切片，请使用 [`OsStr::from_encoded_bytes_unchecked`] 函数。
     ///
-    /// The byte encoding is an unspecified, platform-specific, self-synchronizing superset of UTF-8.
-    /// By being a self-synchronizing superset of UTF-8, this encoding is also a superset of 7-bit
-    /// ASCII.
+    /// 该字节编码是 UTF-8 的一个未指定的、平台相关的、自同步超集。由于它是
+    /// UTF-8 的一个自同步超集，因此该编码也是 7 位 ASCII 的超集。
     ///
-    /// Note: As the encoding is unspecified, any sub-slice of bytes that is not valid UTF-8 should
-    /// be treated as opaque and only comparable within the same Rust version built for the same
-    /// target platform.  For example, sending the slice over the network or storing it in a file
-    /// will likely result in incompatible byte slices.  See [`OsString`] for more encoding details
-    /// and [`std::ffi`] for platform-specific, specified conversions.
+    /// 注意：由于编码是未指定的，任何并非有效 UTF-8 的字节子切片都应被视为
+    /// 不透明的，且只能在相同 Rust 版本、为相同目标平台构建的环境内进行
+    /// 比较。例如，把该切片经网络发送或存储于文件中，很可能会得到不兼容的
+    /// 字节切片。关于编码的更多细节参见 [`OsString`]，关于平台相关的、已明确
+    /// 指定的转换参见 [`std::ffi`]。
     ///
     /// [`std::ffi`]: crate::ffi
     #[inline]
@@ -1069,20 +1050,19 @@ impl OsStr {
         self.inner.as_encoded_bytes()
     }
 
-    /// Takes a substring based on a range that corresponds to the return value of
-    /// [`OsStr::as_encoded_bytes`].
+    /// 基于一个与 [`OsStr::as_encoded_bytes`] 返回值相对应的范围取出一个子串。
     ///
-    /// The range's start and end must lie on valid `OsStr` boundaries.
-    /// A valid `OsStr` boundary is one of:
-    /// - The start of the string
-    /// - The end of the string
-    /// - Immediately before a valid non-empty UTF-8 substring
-    /// - Immediately after a valid non-empty UTF-8 substring
+    /// 该范围的起点和终点必须落在有效的 `OsStr` 边界上。一个有效的 `OsStr`
+    /// 边界是以下之一：
+    /// - 字符串的起点
+    /// - 字符串的终点
+    /// - 紧位于一个有效的非空 UTF-8 子串之前
+    /// - 紧位于一个有效的非空 UTF-8 子串之后
     ///
     /// # Panics
     ///
-    /// Panics if `range` does not lie on valid `OsStr` boundaries or if it
-    /// exceeds the end of the string.
+    /// 如果 `range` 没有落在有效的 `OsStr` 边界上，或者它超出了字符串的
+    /// 末尾，则 panic。
     ///
     /// # Example
     ///
@@ -1105,29 +1085,27 @@ impl OsStr {
         let encoded_bytes = self.as_encoded_bytes();
         let Range { start, end } = slice::range(range, ..encoded_bytes.len());
 
-        // `check_public_boundary` should panic if the index does not lie on an
-        // `OsStr` boundary as described above. It's possible to do this in an
-        // encoding-agnostic way, but details of the internal encoding might
-        // permit a more efficient implementation.
+        // 如果索引没有落在如上所述的 `OsStr` 边界上，`check_public_boundary`
+        // 应当 panic。可以用一种与编码无关的方式来实现这一点，但内部编码的
+        // 细节可能允许更高效的实现。
         self.inner.check_public_boundary(start);
         self.inner.check_public_boundary(end);
 
-        // SAFETY: `slice::range` ensures that `start` and `end` are valid
+        // SAFETY: `slice::range` 保证 `start` 和 `end` 是有效的
         let slice = unsafe { encoded_bytes.get_unchecked(start..end) };
 
-        // SAFETY: `slice` comes from `self` and we validated the boundaries
+        // SAFETY: `slice` 来自 `self`，并且我们已校验过边界
         unsafe { Self::from_encoded_bytes_unchecked(slice) }
     }
 
-    /// Converts this string to its ASCII lower case equivalent in-place.
+    /// 就地（in-place）把该字符串转换为其 ASCII 小写等价形式。
     ///
-    /// ASCII letters 'A' to 'Z' are mapped to 'a' to 'z',
-    /// but non-ASCII letters are unchanged.
+    /// ASCII 字母 'A' 到 'Z' 被映射为 'a' 到 'z'，但非 ASCII 字母保持不变。
     ///
-    /// To return a new lowercased value without modifying the existing one, use
-    /// [`OsStr::to_ascii_lowercase`].
+    /// 若要返回一个新的小写化值而不修改现有值，请使用
+    /// [`OsStr::to_ascii_lowercase`]。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::ffi::OsString;
@@ -1144,15 +1122,14 @@ impl OsStr {
         self.inner.make_ascii_lowercase()
     }
 
-    /// Converts this string to its ASCII upper case equivalent in-place.
+    /// 就地把该字符串转换为其 ASCII 大写等价形式。
     ///
-    /// ASCII letters 'a' to 'z' are mapped to 'A' to 'Z',
-    /// but non-ASCII letters are unchanged.
+    /// ASCII 字母 'a' 到 'z' 被映射为 'A' 到 'Z'，但非 ASCII 字母保持不变。
     ///
-    /// To return a new uppercased value without modifying the existing one, use
-    /// [`OsStr::to_ascii_uppercase`].
+    /// 若要返回一个新的大写化值而不修改现有值，请使用
+    /// [`OsStr::to_ascii_uppercase`]。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::ffi::OsString;
@@ -1169,15 +1146,13 @@ impl OsStr {
         self.inner.make_ascii_uppercase()
     }
 
-    /// Returns a copy of this string where each character is mapped to its
-    /// ASCII lower case equivalent.
+    /// 返回该字符串的一个副本，其中每个字符都被映射为其 ASCII 小写等价形式。
     ///
-    /// ASCII letters 'A' to 'Z' are mapped to 'a' to 'z',
-    /// but non-ASCII letters are unchanged.
+    /// ASCII 字母 'A' 到 'Z' 被映射为 'a' 到 'z'，但非 ASCII 字母保持不变。
     ///
-    /// To lowercase the value in-place, use [`OsStr::make_ascii_lowercase`].
+    /// 若要就地把该值小写化，请使用 [`OsStr::make_ascii_lowercase`]。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::ffi::OsString;
@@ -1191,15 +1166,13 @@ impl OsStr {
         OsString::from_inner(self.inner.to_ascii_lowercase())
     }
 
-    /// Returns a copy of this string where each character is mapped to its
-    /// ASCII upper case equivalent.
+    /// 返回该字符串的一个副本，其中每个字符都被映射为其 ASCII 大写等价形式。
     ///
-    /// ASCII letters 'a' to 'z' are mapped to 'A' to 'Z',
-    /// but non-ASCII letters are unchanged.
+    /// ASCII 字母 'a' 到 'z' 被映射为 'A' 到 'Z'，但非 ASCII 字母保持不变。
     ///
-    /// To uppercase the value in-place, use [`OsStr::make_ascii_uppercase`].
+    /// 若要就地把该值大写化，请使用 [`OsStr::make_ascii_uppercase`]。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::ffi::OsString;
@@ -1213,11 +1186,11 @@ impl OsStr {
         OsString::from_inner(self.inner.to_ascii_uppercase())
     }
 
-    /// Checks if all characters in this string are within the ASCII range.
+    /// 检查该字符串中的所有字符是否都在 ASCII 范围内。
     ///
-    /// An empty string returns `true`.
+    /// 空字符串返回 `true`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::ffi::OsString;
@@ -1235,12 +1208,12 @@ impl OsStr {
         self.inner.is_ascii()
     }
 
-    /// Checks that two strings are an ASCII case-insensitive match.
+    /// 检查两个字符串是否为 ASCII 大小写不敏感的匹配。
     ///
-    /// Same as `to_ascii_lowercase(a) == to_ascii_lowercase(b)`,
-    /// but without allocating and copying temporaries.
+    /// 等同于 `to_ascii_lowercase(a) == to_ascii_lowercase(b)`，
+    /// 但不会分配和拷贝临时值。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::ffi::OsString;
@@ -1254,16 +1227,14 @@ impl OsStr {
         self.inner.eq_ignore_ascii_case(&other.as_ref().inner)
     }
 
-    /// Returns an object that implements [`Display`] for safely printing an
-    /// [`OsStr`] that may contain non-Unicode data. This may perform lossy
-    /// conversion, depending on the platform.  If you would like an
-    /// implementation which escapes the [`OsStr`] please use [`Debug`]
-    /// instead.
+    /// 返回一个实现了 [`Display`] 的对象，用于安全地打印一个可能含有非 Unicode
+    /// 数据的 [`OsStr`]。这可能会执行有损转换，取决于平台。如果你想要一个
+    /// 对 [`OsStr`] 进行转义的实现，请改用 [`Debug`]。
     ///
     /// [`Display`]: fmt::Display
     /// [`Debug`]: fmt::Debug
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::ffi::OsStr;
@@ -1279,11 +1250,11 @@ impl OsStr {
         Display { os_str: self }
     }
 
-    /// Returns the same string as a string slice `&OsStr`.
+    /// 把该字符串作为一个字符串切片 `&OsStr` 原样返回。
     ///
-    /// This method is redundant when used directly on `&OsStr`, but
-    /// it helps dereferencing other string-like types to string slices,
-    /// for example references to `Box<OsStr>` or `Arc<OsStr>`.
+    /// 当直接在 `&OsStr` 上使用时，本方法是多余的，但它有助于把其他类似
+    /// 字符串的类型解引用为字符串切片，例如对 `Box<OsStr>` 或 `Arc<OsStr>`
+    /// 的引用。
     #[inline]
     #[unstable(feature = "str_as_str", issue = "130366")]
     pub const fn as_os_str(&self) -> &OsStr {
@@ -1293,7 +1264,7 @@ impl OsStr {
 
 #[stable(feature = "box_from_os_str", since = "1.17.0")]
 impl From<&OsStr> for Box<OsStr> {
-    /// Copies the string into a newly allocated <code>[Box]&lt;[OsStr]&gt;</code>.
+    /// 把该字符串拷贝进一个新分配的 <code>[Box]&lt;[OsStr]&gt;</code>。
     #[inline]
     fn from(s: &OsStr) -> Box<OsStr> {
         Box::clone_from_ref(s)
@@ -1302,7 +1273,7 @@ impl From<&OsStr> for Box<OsStr> {
 
 #[stable(feature = "box_from_mut_slice", since = "1.84.0")]
 impl From<&mut OsStr> for Box<OsStr> {
-    /// Copies the string into a newly allocated <code>[Box]&lt;[OsStr]&gt;</code>.
+    /// 把该字符串拷贝进一个新分配的 <code>[Box]&lt;[OsStr]&gt;</code>。
     #[inline]
     fn from(s: &mut OsStr) -> Box<OsStr> {
         Self::from(&*s)
@@ -1311,8 +1282,8 @@ impl From<&mut OsStr> for Box<OsStr> {
 
 #[stable(feature = "box_from_cow", since = "1.45.0")]
 impl From<Cow<'_, OsStr>> for Box<OsStr> {
-    /// Converts a `Cow<'a, OsStr>` into a <code>[Box]&lt;[OsStr]&gt;</code>,
-    /// by copying the contents if they are borrowed.
+    /// 把一个 `Cow<'a, OsStr>` 转换成一个 <code>[Box]&lt;[OsStr]&gt;</code>，
+    /// 如果内容是借用的则进行拷贝。
     #[inline]
     fn from(cow: Cow<'_, OsStr>) -> Box<OsStr> {
         match cow {
@@ -1324,8 +1295,8 @@ impl From<Cow<'_, OsStr>> for Box<OsStr> {
 
 #[stable(feature = "os_string_from_box", since = "1.18.0")]
 impl From<Box<OsStr>> for OsString {
-    /// Converts a <code>[Box]<[OsStr]></code> into an [`OsString`] without copying or
-    /// allocating.
+    /// 把一个 <code>[Box]<[OsStr]></code> 转换成一个 [`OsString`]，不进行拷贝
+    /// 或分配。
     #[inline]
     fn from(boxed: Box<OsStr>) -> OsString {
         boxed.into_os_string()
@@ -1334,7 +1305,8 @@ impl From<Box<OsStr>> for OsString {
 
 #[stable(feature = "box_from_os_string", since = "1.20.0")]
 impl From<OsString> for Box<OsStr> {
-    /// Converts an [`OsString`] into a <code>[Box]<[OsStr]></code> without copying or allocating.
+    /// 把一个 [`OsString`] 转换成一个 <code>[Box]<[OsStr]></code>，不进行拷贝
+    /// 或分配。
     #[inline]
     fn from(s: OsString) -> Box<OsStr> {
         s.into_boxed_os_str()
@@ -1354,15 +1326,15 @@ unsafe impl CloneToUninit for OsStr {
     #[inline]
     #[cfg_attr(debug_assertions, track_caller)]
     unsafe fn clone_to_uninit(&self, dst: *mut u8) {
-        // SAFETY: we're just a transparent wrapper around a platform-specific Slice
+        // SAFETY: 我们只是平台相关的 Slice 之上的一个 transparent 包装
         unsafe { self.inner.clone_to_uninit(dst) }
     }
 }
 
 #[stable(feature = "shared_from_slice2", since = "1.24.0")]
 impl From<OsString> for Arc<OsStr> {
-    /// Converts an [`OsString`] into an <code>[Arc]<[OsStr]></code> by moving the [`OsString`]
-    /// data into a new [`Arc`] buffer.
+    /// 通过把 [`OsString`] 的数据移入一个新的 [`Arc`] 缓冲区，把一个
+    /// [`OsString`] 转换成一个 <code>[Arc]<[OsStr]></code>。
     #[inline]
     fn from(s: OsString) -> Arc<OsStr> {
         let arc = s.inner.into_arc();
@@ -1372,7 +1344,7 @@ impl From<OsString> for Arc<OsStr> {
 
 #[stable(feature = "shared_from_slice2", since = "1.24.0")]
 impl From<&OsStr> for Arc<OsStr> {
-    /// Copies the string into a newly allocated <code>[Arc]&lt;[OsStr]&gt;</code>.
+    /// 把该字符串拷贝进一个新分配的 <code>[Arc]&lt;[OsStr]&gt;</code>。
     #[inline]
     fn from(s: &OsStr) -> Arc<OsStr> {
         let arc = s.inner.into_arc();
@@ -1382,7 +1354,7 @@ impl From<&OsStr> for Arc<OsStr> {
 
 #[stable(feature = "shared_from_mut_slice", since = "1.84.0")]
 impl From<&mut OsStr> for Arc<OsStr> {
-    /// Copies the string into a newly allocated <code>[Arc]&lt;[OsStr]&gt;</code>.
+    /// 把该字符串拷贝进一个新分配的 <code>[Arc]&lt;[OsStr]&gt;</code>。
     #[inline]
     fn from(s: &mut OsStr) -> Arc<OsStr> {
         Arc::from(&*s)
@@ -1391,8 +1363,8 @@ impl From<&mut OsStr> for Arc<OsStr> {
 
 #[stable(feature = "shared_from_slice2", since = "1.24.0")]
 impl From<OsString> for Rc<OsStr> {
-    /// Converts an [`OsString`] into an <code>[Rc]<[OsStr]></code> by moving the [`OsString`]
-    /// data into a new [`Rc`] buffer.
+    /// 通过把 [`OsString`] 的数据移入一个新的 [`Rc`] 缓冲区，把一个
+    /// [`OsString`] 转换成一个 <code>[Rc]<[OsStr]></code>。
     #[inline]
     fn from(s: OsString) -> Rc<OsStr> {
         let rc = s.inner.into_rc();
@@ -1402,7 +1374,7 @@ impl From<OsString> for Rc<OsStr> {
 
 #[stable(feature = "shared_from_slice2", since = "1.24.0")]
 impl From<&OsStr> for Rc<OsStr> {
-    /// Copies the string into a newly allocated <code>[Rc]&lt;[OsStr]&gt;</code>.
+    /// 把该字符串拷贝进一个新分配的 <code>[Rc]&lt;[OsStr]&gt;</code>。
     #[inline]
     fn from(s: &OsStr) -> Rc<OsStr> {
         let rc = s.inner.into_rc();
@@ -1412,7 +1384,7 @@ impl From<&OsStr> for Rc<OsStr> {
 
 #[stable(feature = "shared_from_mut_slice", since = "1.84.0")]
 impl From<&mut OsStr> for Rc<OsStr> {
-    /// Copies the string into a newly allocated <code>[Rc]&lt;[OsStr]&gt;</code>.
+    /// 把该字符串拷贝进一个新分配的 <code>[Rc]&lt;[OsStr]&gt;</code>。
     #[inline]
     fn from(s: &mut OsStr) -> Rc<OsStr> {
         Rc::from(&*s)
@@ -1421,7 +1393,7 @@ impl From<&mut OsStr> for Rc<OsStr> {
 
 #[stable(feature = "cow_from_osstr", since = "1.28.0")]
 impl<'a> From<OsString> for Cow<'a, OsStr> {
-    /// Moves the string into a [`Cow::Owned`].
+    /// 把该字符串移入一个 [`Cow::Owned`]。
     #[inline]
     fn from(s: OsString) -> Cow<'a, OsStr> {
         Cow::Owned(s)
@@ -1430,7 +1402,7 @@ impl<'a> From<OsString> for Cow<'a, OsStr> {
 
 #[stable(feature = "cow_from_osstr", since = "1.28.0")]
 impl<'a> From<&'a OsStr> for Cow<'a, OsStr> {
-    /// Converts the string reference into a [`Cow::Borrowed`].
+    /// 把该字符串引用转换成一个 [`Cow::Borrowed`]。
     #[inline]
     fn from(s: &'a OsStr) -> Cow<'a, OsStr> {
         Cow::Borrowed(s)
@@ -1439,7 +1411,7 @@ impl<'a> From<&'a OsStr> for Cow<'a, OsStr> {
 
 #[stable(feature = "cow_from_osstr", since = "1.28.0")]
 impl<'a> From<&'a OsString> for Cow<'a, OsStr> {
-    /// Converts the string reference into a [`Cow::Borrowed`].
+    /// 把该字符串引用转换成一个 [`Cow::Borrowed`]。
     #[inline]
     fn from(s: &'a OsString) -> Cow<'a, OsStr> {
         Cow::Borrowed(s.as_os_str())
@@ -1448,8 +1420,8 @@ impl<'a> From<&'a OsString> for Cow<'a, OsStr> {
 
 #[stable(feature = "osstring_from_cow_osstr", since = "1.28.0")]
 impl<'a> From<Cow<'a, OsStr>> for OsString {
-    /// Converts a `Cow<'a, OsStr>` into an [`OsString`],
-    /// by copying the contents if they are borrowed.
+    /// 把一个 `Cow<'a, OsStr>` 转换成一个 [`OsString`]，如果内容是借用的则
+    /// 进行拷贝。
     #[inline]
     fn from(s: Cow<'a, OsStr>) -> Self {
         s.into_owned()
@@ -1460,7 +1432,7 @@ impl<'a> From<Cow<'a, OsStr>> for OsString {
 impl<'a> TryFrom<&'a OsStr> for &'a str {
     type Error = crate::str::Utf8Error;
 
-    /// Tries to convert an `&OsStr` to a `&str`.
+    /// 尝试把一个 `&OsStr` 转换成一个 `&str`。
     ///
     /// ```
     /// use std::ffi::OsStr;
@@ -1485,7 +1457,7 @@ impl Default for Box<OsStr> {
 
 #[stable(feature = "osstring_default", since = "1.9.0")]
 impl Default for &OsStr {
-    /// Creates an empty `OsStr`.
+    /// 创建一个空的 `OsStr`。
     #[inline]
     fn default() -> Self {
         OsStr::new("")
@@ -1551,8 +1523,8 @@ impl PartialOrd<str> for OsStr {
     }
 }
 
-// FIXME (#19470): cannot provide PartialOrd<OsStr> for str until we
-// have more flexible coherence rules.
+// FIXME (#19470): 在我们拥有更灵活的一致性（coherence）规则之前，
+// 无法为 str 提供 PartialOrd<OsStr>。
 
 #[stable(feature = "rust1", since = "1.0.0")]
 impl Ord for OsStr {
@@ -1619,15 +1591,14 @@ impl fmt::Debug for OsStr {
     }
 }
 
-/// Helper struct for safely printing an [`OsStr`] with [`format!`] and `{}`.
+/// 用于配合 [`format!`] 和 `{}` 安全打印一个 [`OsStr`] 的辅助结构体。
 ///
-/// An [`OsStr`] might contain non-Unicode data. This `struct` implements the
-/// [`Display`] trait in a way that mitigates that. It is created by the
-/// [`display`](OsStr::display) method on [`OsStr`]. This may perform lossy
-/// conversion, depending on the platform. If you would like an implementation
-/// which escapes the [`OsStr`] please use [`Debug`] instead.
+/// 一个 [`OsStr`] 可能含有非 Unicode 数据。这个 `struct` 以一种缓解该问题的
+/// 方式实现了 [`Display`] trait。它由 [`OsStr`] 上的 [`display`](OsStr::display)
+/// 方法创建。这可能会执行有损转换，取决于平台。如果你想要一个对 [`OsStr`]
+/// 进行转义的实现，请改用 [`Debug`]。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use std::ffi::OsStr;
@@ -1795,9 +1766,8 @@ impl FromIterator<OsString> for OsString {
     fn from_iter<I: IntoIterator<Item = OsString>>(iter: I) -> Self {
         let mut iterator = iter.into_iter();
 
-        // Because we're iterating over `OsString`s, we can avoid at least
-        // one allocation by getting the first string from the iterator
-        // and appending to it all the subsequent strings.
+        // 因为我们在遍历多个 `OsString`，所以可以通过从迭代器取出第一个
+        // 字符串、再把后续所有字符串追加到它上面，从而至少省去一次分配。
         match iterator.next() {
             None => OsString::new(),
             Some(mut buf) => {
@@ -1826,9 +1796,9 @@ impl<'a> FromIterator<Cow<'a, OsStr>> for OsString {
     fn from_iter<I: IntoIterator<Item = Cow<'a, OsStr>>>(iter: I) -> Self {
         let mut iterator = iter.into_iter();
 
-        // Because we're iterating over `OsString`s, we can avoid at least
-        // one allocation by getting the first owned string from the iterator
-        // and appending to it all the subsequent strings.
+        // 因为我们在遍历多个 `OsString`，所以可以通过从迭代器取出第一个
+        // 拥有所有权的字符串、再把后续所有字符串追加到它上面，从而至少省去
+        // 一次分配。
         match iterator.next() {
             None => OsString::new(),
             Some(Cow::Owned(mut buf)) => {

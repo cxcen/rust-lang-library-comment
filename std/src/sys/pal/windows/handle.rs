@@ -9,9 +9,9 @@ use crate::os::windows::io::{
 };
 use crate::sys::{AsInner, FromInner, IntoInner, c, cvt};
 
-/// An owned container for `HANDLE` object, closing them on Drop.
+/// 对 `HANDLE` 对象的拥有式容器，会在 Drop 时关闭它们。
 ///
-/// All methods are inherited through a `Deref` impl to `RawHandle`
+/// 所有方法都通过对 `RawHandle` 的 `Deref` 实现继承而来
 #[derive(Debug)]
 pub struct Handle(OwnedHandle);
 
@@ -79,10 +79,9 @@ impl Handle {
         match res {
             Ok(read) => Ok(read),
 
-            // The special treatment of BrokenPipe is to deal with Windows
-            // pipe semantics, which yields this error when *reading* from
-            // a pipe after the other end has closed; we interpret that as
-            // EOF on the pipe.
+            // 对 BrokenPipe 的特殊处理是为了应对 Windows 的管道语义：
+            // 当从管道*读取*而另一端已经关闭时，会产生该错误；
+            // 我们将其解释为管道上的 EOF。
             Err(ref e) if e.kind() == io::ErrorKind::BrokenPipe => Ok(0),
 
             Err(e) => Err(e),
@@ -115,17 +114,16 @@ impl Handle {
 
         match res {
             Ok(read) => {
-                // Safety: `read` bytes were written to the initialized portion of the buffer
+                // Safety: 已有 `read` 个字节被写入到缓冲区已初始化的部分
                 unsafe {
                     cursor.advance_unchecked(read);
                 }
                 Ok(())
             }
 
-            // The special treatment of BrokenPipe is to deal with Windows
-            // pipe semantics, which yields this error when *reading* from
-            // a pipe after the other end has closed; we interpret that as
-            // EOF on the pipe.
+            // 对 BrokenPipe 的特殊处理是为了应对 Windows 的管道语义：
+            // 当从管道*读取*而另一端已经关闭时，会产生该错误；
+            // 我们将其解释为管道上的 EOF。
             Err(ref e) if e.kind() == io::ErrorKind::BrokenPipe => Ok(()),
 
             Err(e) => Err(e),
@@ -133,12 +131,12 @@ impl Handle {
     }
 
     pub fn read_buf_at(&self, mut cursor: BorrowedCursor<'_>, offset: u64) -> io::Result<()> {
-        // SAFETY: `cursor.as_mut()` starts with `cursor.capacity()` writable bytes
+        // SAFETY: `cursor.as_mut()` 起始处有 `cursor.capacity()` 个可写字节
         let read = unsafe {
             self.synchronous_read(cursor.as_mut().as_mut_ptr(), cursor.capacity(), Some(offset))
         }?;
 
-        // SAFETY: `read` bytes were written to the initialized portion of the buffer
+        // SAFETY: 已有 `read` 个字节被写入到缓冲区已初始化的部分
         unsafe {
             cursor.advance_unchecked(read);
         }
@@ -156,8 +154,8 @@ impl Handle {
         buf: &mut [mem::MaybeUninit<u8>],
         overlapped: *mut c::OVERLAPPED,
     ) -> io::Result<Option<usize>> {
-        // SAFETY: We have exclusive access to the buffer and it's up to the caller to
-        // ensure the OVERLAPPED pointer is valid for the lifetime of this function.
+        // SAFETY: 我们对缓冲区拥有独占访问权；至于在本函数的整个执行期间
+        // OVERLAPPED 指针是否有效，则由调用方负责保证。
         let (res, amt) = unsafe {
             let len = cmp::min(buf.len(), u32::MAX as usize) as u32;
             let mut amt = 0;
@@ -238,12 +236,12 @@ impl Handle {
         Ok(Self(self.0.as_handle().duplicate(access, inherit, options)?))
     }
 
-    /// Performs a synchronous read.
+    /// 执行一次同步读取。
     ///
-    /// If the handle is opened for asynchronous I/O then this abort the process.
-    /// See #81357.
+    /// 如果该句柄是以异步 I/O 方式打开的，则本操作会中止进程。
+    /// 参见 #81357。
     ///
-    /// If `offset` is `None` then the current file position is used.
+    /// 如果 `offset` 为 `None`，则使用当前文件位置。
     unsafe fn synchronous_read(
         &self,
         buf: *mut mem::MaybeUninit<u8>,
@@ -252,10 +250,9 @@ impl Handle {
     ) -> io::Result<usize> {
         let mut io_status = c::IO_STATUS_BLOCK::PENDING;
 
-        // The length is clamped at u32::MAX.
+        // 长度被限制（clamp）在 u32::MAX。
         let len = cmp::min(len, u32::MAX as usize) as u32;
-        // SAFETY: It's up to the caller to ensure `buf` is writeable up to
-        // the provided `len`.
+        // SAFETY: 由调用方负责确保 `buf` 在所给定的 `len` 范围内是可写的。
         let status = unsafe {
             c::NtReadFile(
                 self.as_raw_handle(),
@@ -277,15 +274,14 @@ impl Handle {
             status
         };
         match status {
-            // If the operation has not completed then abort the process.
-            // Doing otherwise means that the buffer and stack may be written to
-            // after this function returns.
+            // 如果操作尚未完成，则中止进程。
+            // 否则意味着在本函数返回之后，缓冲区和栈可能还会被写入。
             c::STATUS_PENDING => rtabort!("I/O error: operation failed to complete synchronously"),
 
-            // Return `Ok(0)` when there's nothing more to read.
+            // 当没有更多内容可读时，返回 `Ok(0)`。
             c::STATUS_END_OF_FILE => Ok(0),
 
-            // Success!
+            // 成功！
             status if c::nt_success(status) => Ok(io_status.Information),
 
             status => {
@@ -295,16 +291,16 @@ impl Handle {
         }
     }
 
-    /// Performs a synchronous write.
+    /// 执行一次同步写入。
     ///
-    /// If the handle is opened for asynchronous I/O then this abort the process.
-    /// See #81357.
+    /// 如果该句柄是以异步 I/O 方式打开的，则本操作会中止进程。
+    /// 参见 #81357。
     ///
-    /// If `offset` is `None` then the current file position is used.
+    /// 如果 `offset` 为 `None`，则使用当前文件位置。
     fn synchronous_write(&self, buf: &[u8], offset: Option<u64>) -> io::Result<usize> {
         let mut io_status = c::IO_STATUS_BLOCK::PENDING;
 
-        // The length is clamped at u32::MAX.
+        // 长度被限制（clamp）在 u32::MAX。
         let len = cmp::min(buf.len(), u32::MAX as usize) as u32;
         let status = unsafe {
             c::NtWriteFile(
@@ -326,12 +322,11 @@ impl Handle {
             status
         };
         match status {
-            // If the operation has not completed then abort the process.
-            // Doing otherwise means that the buffer may be read and the stack
-            // written to after this function returns.
+            // 如果操作尚未完成，则中止进程。
+            // 否则意味着在本函数返回之后，缓冲区可能还会被读取、栈可能还会被写入。
             c::STATUS_PENDING => rtabort!("I/O error: operation failed to complete synchronously"),
 
-            // Success!
+            // 成功！
             status if c::nt_success(status) => Ok(io_status.Information),
 
             status => {

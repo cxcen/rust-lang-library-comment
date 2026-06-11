@@ -5,10 +5,10 @@ const SECS_IN_MINUTE: u64 = 60;
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub struct Instant(Duration);
 
-/// When a Timezone is specified, the stored Duration is in UTC. If timezone is unspecified, then
-/// the timezone is assumed to be in UTC.
+/// 当指定了时区时，存储的 Duration 以 UTC 为准。如果未指定时区，则
+/// 假定时区为 UTC。
 ///
-/// UEFI SystemTime is stored as Duration from 1900-01-01-00:00:00 with timezone -1440 as anchor
+/// UEFI SystemTime 以从 1900-01-01-00:00:00 起、以时区 -1440 为锚点的 Duration 形式存储
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub struct SystemTime(Duration);
 
@@ -44,7 +44,7 @@ const MAX_UEFI_TIME: SystemTime = SystemTime::from_uefi(r_efi::efi::Time {
 
 impl Instant {
     pub fn now() -> Instant {
-        // If we have a timestamp protocol, use it.
+        // 如果有 timestamp 协议可用，就使用它。
         if let Some(x) = instant_internal::timestamp_protocol() {
             return x;
         }
@@ -99,8 +99,8 @@ impl SystemTime {
         timezone: i16,
         daylight: u8,
     ) -> Result<r_efi::efi::Time, i16> {
-        // system_time_internal::to_uefi requires a valid timezone. In case of unspecified timezone,
-        // we just pass 0 since it is assumed that no timezone related adjustments are required.
+        // system_time_internal::to_uefi 要求一个有效的时区。在时区未指定的情况下，
+        // 我们直接传 0，因为此时假定不需要做任何与时区相关的调整。
         if timezone == r_efi::efi::UNSPECIFIED_TIMEZONE {
             system_time_internal::to_uefi(&self.0, 0, daylight)
         } else {
@@ -108,8 +108,7 @@ impl SystemTime {
         }
     }
 
-    /// Create UEFI Time with the closest timezone (minute offset) that still allows the time to be
-    /// represented.
+    /// 以仍能表示该时间的最接近的时区（分钟偏移）创建 UEFI Time。
     pub(crate) fn to_uefi_loose(self, timezone: i16, daylight: u8) -> r_efi::efi::Time {
         match self.to_uefi(timezone, daylight) {
             Ok(x) => x,
@@ -129,7 +128,7 @@ impl SystemTime {
     pub fn checked_add_duration(&self, other: &Duration) -> Option<SystemTime> {
         let temp = Self(self.0.checked_add(*other)?);
 
-        // Check if can be represented in UEFI
+        // 检查是否能在 UEFI 中表示
         if temp <= MAX_UEFI_TIME { Some(temp) } else { None }
     }
 
@@ -164,11 +163,11 @@ pub(crate) mod system_time_internal {
         unsafe { t.assume_init() }
     }
 
-    /// This algorithm is a modified form of the one described in the post
+    /// 该算法是对下文这篇文章中所描述算法的一个改造版本
     /// https://blog.reverberate.org/2020/05/12/optimizing-date-algorithms.html
     ///
-    /// The changes are to use 1900-01-01-00:00:00 with timezone -1440 as anchor instead of UNIX
-    /// epoch used in the original algorithm.
+    /// 所做的修改是使用 1900-01-01-00:00:00、时区 -1440 作为锚点，而非原算法
+    /// 所用的 UNIX 纪元。
     pub(crate) const fn from_uefi(t: &Time) -> Option<Duration> {
         if !(t.month <= 12
             && t.month != 0
@@ -186,11 +185,10 @@ pub(crate) mod system_time_internal {
             return None;
         }
 
-        const YEAR_BASE: u32 = 4800; /* Before min year, multiple of 400. */
+        const YEAR_BASE: u32 = 4800; /* 早于最小年份，且为 400 的倍数。 */
 
-        // Calculate the number of days since 1/1/1900. This is the earliest supported date in UEFI
-        // time.
-        // Use 1 March as the start
+        // 计算自 1/1/1900 以来的天数。这是 UEFI time 所支持的最早日期。
+        // 以 3 月 1 日作为起点
         let (m_adj, overflow): (u32, bool) = (t.month as u32).overflowing_sub(3);
         let (carry, adjust): (u32, u32) = if overflow { (1, 12) } else { (0, 0) };
         let y_adj: u32 = (t.year as u32) + YEAR_BASE - carry;
@@ -209,31 +207,30 @@ pub(crate) mod system_time_internal {
             (t.timezone as i64) * SECS_IN_MINUTE as i64 - SYSTEMTIME_TIMEZONE
         };
 
-        // Calculate the offset from 1/1/1900 at timezone -1440 min
+        // 计算相对于时区 -1440 分钟下 1/1/1900 的偏移量
         let epoch = localtime_epoch.checked_add_signed(normalized_timezone).unwrap();
 
         Some(Duration::new(epoch, t.nanosecond))
     }
 
-    /// This algorithm is a modified version of the one described in the post:
+    /// 该算法是对下文这篇文章中所描述算法的一个改造版本：
     /// https://howardhinnant.github.io/date_algorithms.html#clive_from_days
     ///
-    /// The changes are to use 1900-01-01-00:00:00 with timezone -1440 as anchor instead of UNIX
-    /// epoch used in the original algorithm.
+    /// 所做的修改是使用 1900-01-01-00:00:00、时区 -1440 作为锚点，而非原算法
+    /// 所用的 UNIX 纪元。
     pub(crate) const fn to_uefi(dur: &Duration, timezone: i16, daylight: u8) -> Result<Time, i16> {
         const MIN_IN_HOUR: u64 = 60;
         const MIN_IN_DAY: u64 = MIN_IN_HOUR * 24;
 
-        // Check timezone validity
+        // 检查时区是否有效
         assert!(timezone <= 1440 && timezone >= -1440);
 
-        // Convert to seconds since 1900-01-01-00:00:00 in timezone.
+        // 转换为该时区下自 1900-01-01-00:00:00 以来的秒数。
         let Some(secs) = dur
             .as_secs()
             .checked_add_signed(SYSTEMTIME_TIMEZONE - (timezone as i64 * SECS_IN_MINUTE as i64))
         else {
-            // If the current timezone cannot be used, find the closest timezone that will allow the
-            // conversion to succeed.
+            // 如果当前时区无法使用，则寻找能让转换成功的最接近的时区。
             let new_tz = (dur.as_secs() / SECS_IN_MINUTE) as i16
                 + (SYSTEMTIME_TIMEZONE / SECS_IN_MINUTE as i64) as i16;
             return Err(new_tz);
@@ -260,8 +257,8 @@ pub(crate) mod system_time_internal {
         let minute = ((remaining_secs % SECS_IN_HOUR) / SECS_IN_MINUTE) as u8;
         let second = (remaining_secs % SECS_IN_MINUTE) as u8;
 
-        // At this point, invalid time will be greater than MAX representable time. It cannot be less
-        // than minimum time since we already take care of that case above.
+        // 到这一步，无效的时间会大于可表示的 MAX 时间。它不可能小于最小时间，
+        // 因为上面已经处理了那种情况。
         if y <= 9999 {
             Ok(Time {
                 year: y as u16,
@@ -352,8 +349,8 @@ pub(crate) mod instant_internal {
     fn timestamp_rdtsc() -> Option<Duration> {
         static FREQUENCY: crate::sync::OnceLock<u64> = crate::sync::OnceLock::new();
 
-        // Get Frequency in Mhz
-        // Inspired by [`edk2/UefiCpuPkg/Library/CpuTimerLib/CpuTimerLib.c`](https://github.com/tianocore/edk2/blob/master/UefiCpuPkg/Library/CpuTimerLib/CpuTimerLib.c)
+        // 获取以 MHz 为单位的频率
+        // 灵感来自 [`edk2/UefiCpuPkg/Library/CpuTimerLib/CpuTimerLib.c`](https://github.com/tianocore/edk2/blob/master/UefiCpuPkg/Library/CpuTimerLib/CpuTimerLib.c)
         let freq = FREQUENCY
             .get_or_try_init(|| {
                 let cpuid = crate::arch::x86_64::__cpuid(0x15);

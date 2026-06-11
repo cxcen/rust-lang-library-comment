@@ -33,8 +33,8 @@ pub unsafe extern "C" fn _start() -> ! {
         fn main() -> i32;
     }
 
-    // Clear the .bss (uninitialized statics) section by filling it with zeroes.
-    // This is required, since the compiler assumes it will be zeroed on first access.
+    // 通过填充零来清空 .bss（未初始化静态变量）段。
+    // 这是必需的，因为编译器假定它在首次访问时已被清零。
     ptr::write_bytes(
         &raw mut __bss_start,
         0,
@@ -47,17 +47,17 @@ pub unsafe extern "C" fn _start() -> ! {
     abort_internal()
 }
 
-// SAFETY: must be called only once during runtime cleanup.
-// NOTE: this is not guaranteed to run, for example when the program aborts.
+// SAFETY: 必须在运行时清理期间仅调用一次。
+// NOTE: 不保证一定会被运行，例如当程序中止（abort）时。
 pub unsafe fn cleanup() {
     let exit_time = Instant::now();
     const FLUSH_TIMEOUT: Duration = Duration::from_millis(15);
 
-    // Force the serial buffer to flush
+    // 强制刷新串口（serial）缓冲区
     while exit_time.elapsed() < FLUSH_TIMEOUT {
         vex_sdk::vexTasksRun();
 
-        // If the buffer has been fully flushed, exit the loop
+        // 如果缓冲区已被完全刷新，则退出循环
         if vex_sdk::vexSerialWriteFree(stdio::STDIO_CHANNEL) == (stdio::STDOUT_BUF_SIZE as i32) {
             break;
         }

@@ -1,4 +1,4 @@
-//! Linux-specific extensions to primitives in the [`std::process`] module.
+//! 针对 [`std::process`] 模块中各类型的 Linux 平台特有扩展。
 //!
 //! [`std::process`]: crate::process
 
@@ -15,13 +15,12 @@ use crate::sys::{fd::FileDesc, linux::pidfd::PidFd as InnerPidFd};
 #[cfg(doc)]
 struct InnerPidFd;
 
-/// This type represents a file descriptor that refers to a process.
+/// 该类型表示一个引用某个进程的文件描述符（file descriptor）。
 ///
-/// A `PidFd` can be obtained by setting the corresponding option on [`Command`]
-/// with [`create_pidfd`]. Subsequently, the created pidfd can be retrieved
-/// from the [`Child`] by calling [`pidfd`] or [`into_pidfd`].
+/// 可以通过在 [`Command`] 上调用 [`create_pidfd`] 设置相应选项来获得 `PidFd`。
+/// 随后，创建出的 pidfd 可以通过对 [`Child`] 调用 [`pidfd`] 或 [`into_pidfd`] 取得。
 ///
-/// Example:
+/// 示例：
 /// ```no_run
 /// #![feature(linux_pidfd)]
 /// use std::os::linux::process::{CommandExt, ChildExt};
@@ -36,9 +35,9 @@ struct InnerPidFd;
 ///     .into_pidfd()
 ///     .expect("Failed to retrieve pidfd");
 ///
-/// // The file descriptor will be closed when `pidfd` is dropped.
+/// // 当 `pidfd` 被丢弃（drop）时，该文件描述符将被关闭。
 /// ```
-/// Refer to the man page of [`pidfd_open(2)`] for further details.
+/// 更多细节请参阅 [`pidfd_open(2)`] 的手册页（man page）。
 ///
 /// [`Command`]: process::Command
 /// [`create_pidfd`]: CommandExt::create_pidfd
@@ -53,34 +52,32 @@ pub struct PidFd {
 }
 
 impl PidFd {
-    /// Forces the child process to exit.
+    /// 强制子进程退出。
     ///
-    /// Unlike [`Child::kill`] it is possible to attempt to kill
-    /// reaped children since PidFd does not suffer from pid recycling
-    /// races. But doing so will return an Error.
+    /// 与 [`Child::kill`] 不同，对已被回收（reaped）的子进程也可以尝试 kill，
+    /// 因为 PidFd 不会受 pid 复用（recycling）竞争的影响。但这样做会返回一个 Error。
     ///
     /// [`Child::kill`]: process::Child::kill
     pub fn kill(&self) -> Result<()> {
         self.inner.kill()
     }
 
-    /// Waits for the child to exit completely, returning the status that it exited with.
+    /// 等待子进程完全退出，并返回它退出时的状态。
     ///
-    /// Unlike [`Child::wait`] it does not ensure that the stdin handle is closed.
+    /// 与 [`Child::wait`] 不同，本方法不会确保 stdin 句柄被关闭。
     ///
-    /// Additionally on kernels prior to 6.15 only the first attempt to
-    /// reap a child will return an ExitStatus, further attempts
-    /// will return an Error.
+    /// 此外，在 6.15 之前的内核上，只有第一次回收（reap）子进程的尝试
+    /// 会返回 ExitStatus，后续尝试将返回 Error。
     ///
     /// [`Child::wait`]: process::Child::wait
     pub fn wait(&self) -> Result<ExitStatus> {
         self.inner.wait().map(FromInner::from_inner)
     }
 
-    /// Attempts to collect the exit status of the child if it has already exited.
+    /// 若子进程已经退出，则尝试收集其退出状态。
     ///
-    /// On kernels prior to 6.15, and unlike [`Child::try_wait`], only the first attempt
-    /// to reap a child will return an ExitStatus, further attempts will return an Error.
+    /// 在 6.15 之前的内核上，并且与 [`Child::try_wait`] 不同，只有第一次回收（reap）
+    /// 子进程的尝试会返回 ExitStatus，后续尝试将返回 Error。
     ///
     /// [`Child::try_wait`]: process::Child::try_wait
     pub fn try_wait(&self) -> Result<Option<ExitStatus>> {
@@ -144,35 +141,32 @@ impl From<PidFd> for OwnedFd {
     }
 }
 
-/// Os-specific extensions for [`Child`]
+/// 针对 [`Child`] 的 OS 平台特有扩展。
 ///
 /// [`Child`]: process::Child
 pub trait ChildExt: Sealed {
-    /// Obtains a reference to the [`PidFd`] created for this [`Child`], if available.
+    /// 获取为此 [`Child`] 创建的 [`PidFd`] 的引用（如果可用）。
     ///
-    /// A pidfd will only be available if its creation was requested with
-    /// [`create_pidfd`] when the corresponding [`Command`] was created.
+    /// 仅当在创建对应的 [`Command`] 时通过 [`create_pidfd`] 请求过创建 pidfd，
+    /// 该 pidfd 才会可用。
     ///
-    /// Even if requested, a pidfd may not be available due to an older
-    /// version of Linux being in use, or if some other error occurred.
+    /// 即便请求过，pidfd 也可能因为使用的 Linux 版本过旧、或发生了其他错误而不可用。
     ///
     /// [`Command`]: process::Command
     /// [`create_pidfd`]: CommandExt::create_pidfd
     /// [`Child`]: process::Child
     fn pidfd(&self) -> Result<&PidFd>;
 
-    /// Returns the [`PidFd`] created for this [`Child`], if available.
-    /// Otherwise self is returned.
+    /// 返回为此 [`Child`] 创建的 [`PidFd`]（如果可用）。否则返回 self。
     ///
-    /// A pidfd will only be available if its creation was requested with
-    /// [`create_pidfd`] when the corresponding [`Command`] was created.
+    /// 仅当在创建对应的 [`Command`] 时通过 [`create_pidfd`] 请求过创建 pidfd，
+    /// 该 pidfd 才会可用。
     ///
-    /// Taking ownership of the PidFd consumes the Child to avoid pid reuse
-    /// races. Use [`pidfd`] and [`BorrowedFd::try_clone_to_owned`] if
-    /// you don't want to disassemble the Child yet.
+    /// 取得 PidFd 的所有权会消耗（consume）掉 Child，以避免 pid 复用竞争。
+    /// 如果你还不想拆解（disassemble）Child，可改用 [`pidfd`] 与
+    /// [`BorrowedFd::try_clone_to_owned`]。
     ///
-    /// Even if requested, a pidfd may not be available due to an older
-    /// version of Linux being in use, or if some other error occurred.
+    /// 即便请求过，pidfd 也可能因为使用的 Linux 版本过旧、或发生了其他错误而不可用。
     ///
     /// [`Command`]: process::Command
     /// [`create_pidfd`]: CommandExt::create_pidfd
@@ -183,24 +177,22 @@ pub trait ChildExt: Sealed {
         Self: Sized;
 }
 
-/// Os-specific extensions for [`Command`]
+/// 针对 [`Command`] 的 OS 平台特有扩展。
 ///
 /// [`Command`]: process::Command
 pub trait CommandExt: Sealed {
-    /// Sets whether a [`PidFd`](struct@PidFd) should be created for the [`Child`]
-    /// spawned by this [`Command`].
-    /// By default, no pidfd will be created.
+    /// 设置是否应为此 [`Command`] 派生（spawn）的 [`Child`] 创建一个
+    /// [`PidFd`](struct@PidFd)。默认不创建任何 pidfd。
     ///
-    /// The pidfd can be retrieved from the child with [`pidfd`] or [`into_pidfd`].
+    /// 该 pidfd 可以通过 [`pidfd`] 或 [`into_pidfd`] 从子进程取得。
     ///
-    /// A pidfd will only be created if it is possible to do so
-    /// in a guaranteed race-free manner. Otherwise, [`pidfd`] will return an error.
+    /// 只有在能够以保证无竞争（race-free）的方式创建时才会创建 pidfd。
+    /// 否则，[`pidfd`] 将返回一个错误。
     ///
-    /// If a pidfd has been successfully created and not been taken from the `Child`
-    /// then calls to `kill()`, `wait()` and `try_wait()` will use the pidfd
-    /// instead of the pid. This can prevent pid recycling races, e.g.
-    /// those  caused by rogue libraries in the same process prematurely reaping
-    /// zombie children via `waitpid(-1, ...)` calls.
+    /// 如果 pidfd 已成功创建且未从 `Child` 中取走，那么对 `kill()`、`wait()`
+    /// 和 `try_wait()` 的调用将使用该 pidfd 而非 pid。这可以避免 pid 复用竞争，
+    /// 例如那些由同一进程内的流氓库（rogue libraries）通过 `waitpid(-1, ...)`
+    /// 调用过早回收僵尸子进程（zombie children）所引发的竞争。
     ///
     /// [`Command`]: process::Command
     /// [`Child`]: process::Child

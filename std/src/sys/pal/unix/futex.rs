@@ -11,36 +11,36 @@
 use crate::sync::atomic::Atomic;
 use crate::time::Duration;
 
-/// An atomic for use as a futex that is at least 32-bits but may be larger
+/// 用作 futex 的原子类型，至少 32 位，但可能更大
 pub type Futex = Atomic<Primitive>;
-/// Must be the underlying type of Futex
+/// 必须是 Futex 的底层类型
 pub type Primitive = u32;
 
-/// An atomic for use as a futex that is at least 8-bits but may be larger.
+/// 用作 futex 的原子类型，至少 8 位，但可能更大。
 pub type SmallFutex = Atomic<SmallPrimitive>;
-/// Must be the underlying type of SmallFutex
+/// 必须是 SmallFutex 的底层类型
 pub type SmallPrimitive = u32;
 
-/// Waits for a `futex_wake` operation to wake us.
+/// 等待一次 `futex_wake` 操作来唤醒我们。
 ///
-/// Returns directly if the futex doesn't hold the expected value.
+/// 如果 futex 没有持有期望的值，则直接返回。
 ///
-/// Returns false on timeout, and true in all other cases.
+/// 超时返回 false，其他所有情况返回 true。
 #[cfg(any(target_os = "linux", target_os = "android", target_os = "freebsd"))]
 pub fn futex_wait(futex: &Atomic<u32>, expected: u32, timeout: Option<Duration>) -> bool {
     use super::time::Timespec;
     use crate::ptr::null;
     use crate::sync::atomic::Ordering::Relaxed;
 
-    // Calculate the timeout as an absolute timespec.
+    // 把超时计算成一个绝对的 timespec。
     //
-    // Overflows are rounded up to an infinite timeout (None).
+    // 溢出会被向上取整为无限超时（None）。
     let timespec = timeout
         .and_then(|d| Timespec::now(libc::CLOCK_MONOTONIC).checked_add_duration(&d))
         .and_then(|t| t.to_timespec());
 
     loop {
-        // No need to wait if the value already changed.
+        // 如果值已经改变，就无需等待。
         if futex.load(Relaxed) != expected {
             return true;
         }
@@ -48,10 +48,9 @@ pub fn futex_wait(futex: &Atomic<u32>, expected: u32, timeout: Option<Duration>)
         let r = unsafe {
             cfg_select! {
                 target_os = "freebsd" => {
-                    // FreeBSD doesn't have futex(), but it has
-                    // _umtx_op(UMTX_OP_WAIT_UINT_PRIVATE), which is nearly
-                    // identical. It supports absolute timeouts through a flag
-                    // in the _umtx_time struct.
+                    // FreeBSD 没有 futex()，但它有
+                    // _umtx_op(UMTX_OP_WAIT_UINT_PRIVATE)，二者几乎完全相同。
+                    // 它通过 _umtx_time 结构体里的一个标志位支持绝对超时。
                     let umtx_timeout = timespec.map(|t| libc::_umtx_time {
                         _timeout: t,
                         _flags: libc::UMTX_ABSTIME,
@@ -68,16 +67,16 @@ pub fn futex_wait(futex: &Atomic<u32>, expected: u32, timeout: Option<Duration>)
                     )
                 }
                 any(target_os = "linux", target_os = "android") => {
-                    // Use FUTEX_WAIT_BITSET rather than FUTEX_WAIT to be able to give an
-                    // absolute time rather than a relative time.
+                    // 使用 FUTEX_WAIT_BITSET 而非 FUTEX_WAIT，以便能够给出
+                    // 绝对时间而非相对时间。
                     libc::syscall(
                         libc::SYS_futex,
                         futex as *const Atomic<u32>,
                         libc::FUTEX_WAIT_BITSET | libc::FUTEX_PRIVATE_FLAG,
                         expected,
                         timespec.as_ref().map_or(null(), |t| t as *const libc::timespec),
-                        null::<u32>(), // This argument is unused for FUTEX_WAIT_BITSET.
-                        !0u32,         // A full bitmask, to make it behave like a regular FUTEX_WAIT.
+                        null::<u32>(), // 该参数对 FUTEX_WAIT_BITSET 未使用。
+                        !0u32,         // 一个全 1 的位掩码，使其行为与普通的 FUTEX_WAIT 相同。
                     )
                 }
                 _ => {
@@ -94,12 +93,12 @@ pub fn futex_wait(futex: &Atomic<u32>, expected: u32, timeout: Option<Duration>)
     }
 }
 
-/// Wakes up one thread that's blocked on `futex_wait` on this futex.
+/// 唤醒一个阻塞在该 futex 上 `futex_wait` 的线程。
 ///
-/// Returns true if this actually woke up such a thread,
-/// or false if no thread was waiting on this futex.
+/// 如果确实唤醒了这样一个线程则返回 true，
+/// 如果没有线程在该 futex 上等待则返回 false。
 ///
-/// On some platforms, this always returns false.
+/// 在某些平台上，它始终返回 false。
 #[cfg(any(target_os = "linux", target_os = "android"))]
 pub fn futex_wake(futex: &Atomic<u32>) -> bool {
     let ptr = futex as *const Atomic<u32>;
@@ -107,7 +106,7 @@ pub fn futex_wake(futex: &Atomic<u32>) -> bool {
     unsafe { libc::syscall(libc::SYS_futex, ptr, op, 1) > 0 }
 }
 
-/// Wakes up all threads that are waiting on `futex_wait` on this futex.
+/// 唤醒所有在该 futex 上 `futex_wait` 等待的线程。
 #[cfg(any(target_os = "linux", target_os = "android"))]
 pub fn futex_wake_all(futex: &Atomic<u32>) {
     let ptr = futex as *const Atomic<u32>;
@@ -117,7 +116,7 @@ pub fn futex_wake_all(futex: &Atomic<u32>) {
     }
 }
 
-// FreeBSD doesn't tell us how many threads are woken up, so this always returns false.
+// FreeBSD 不会告诉我们唤醒了多少个线程，因此它始终返回 false。
 #[cfg(target_os = "freebsd")]
 pub fn futex_wake(futex: &Atomic<u32>) -> bool {
     use crate::ptr::null_mut;
@@ -152,7 +151,7 @@ pub fn futex_wait(futex: &Atomic<u32>, expected: u32, timeout: Option<Duration>)
     use super::time::Timespec;
     use crate::ptr::{null, null_mut};
 
-    // Overflows are rounded up to an infinite timeout (None).
+    // 溢出会被向上取整为无限超时（None）。
     let timespec = timeout
         .and_then(|d| Timespec::zero().checked_add_duration(&d))
         .and_then(|t| t.to_timespec());
@@ -200,9 +199,9 @@ pub fn futex_wake_all(futex: &Atomic<u32>) {
 
 #[cfg(target_os = "dragonfly")]
 pub fn futex_wait(futex: &Atomic<u32>, expected: u32, timeout: Option<Duration>) -> bool {
-    // A timeout of 0 means infinite.
-    // We round smaller timeouts up to 1 millisecond.
-    // Overflows are rounded up to an infinite timeout.
+    // 超时为 0 表示无限。
+    // 我们把更小的超时向上取整为 1 毫秒。
+    // 溢出会被向上取整为无限超时。
     let timeout_ms =
         timeout.and_then(|d| Some(i32::try_from(d.as_millis()).ok()?.max(1))).unwrap_or(0);
 
@@ -213,7 +212,7 @@ pub fn futex_wait(futex: &Atomic<u32>, expected: u32, timeout: Option<Duration>)
     r == 0 || crate::sys::io::errno() != libc::ETIMEDOUT
 }
 
-// DragonflyBSD doesn't tell us how many threads are woken up, so this always returns false.
+// DragonflyBSD 不会告诉我们唤醒了多少个线程，因此它始终返回 false。
 #[cfg(target_os = "dragonfly")]
 pub fn futex_wake(futex: &Atomic<u32>) -> bool {
     unsafe { libc::umtx_wakeup(futex as *const Atomic<u32> as *const i32, 1) };
@@ -260,7 +259,7 @@ pub fn futex_wake_all(futex: &Atomic<u32>) {
 pub fn futex_wait(futex: &Atomic<u32>, expected: u32, timeout: Option<Duration>) -> bool {
     use super::fuchsia::*;
 
-    // Sleep forever if the timeout is longer than fits in a i64.
+    // 如果超时比 i64 能容纳的还长，就永久休眠。
     let deadline = timeout
         .and_then(|d| i64::try_from(d.as_nanos()).ok()?.checked_add(zx_clock_get_monotonic()))
         .unwrap_or(ZX_TIME_INFINITE);
@@ -271,7 +270,7 @@ pub fn futex_wait(futex: &Atomic<u32>, expected: u32, timeout: Option<Duration>)
     }
 }
 
-// Fuchsia doesn't tell us how many threads are woken up, so this always returns false.
+// Fuchsia 不会告诉我们唤醒了多少个线程，因此它始终返回 false。
 #[cfg(target_os = "fuchsia")]
 pub fn futex_wake(futex: &Atomic<u32>) -> bool {
     unsafe { super::fuchsia::zx_futex_wake(futex, 1) };

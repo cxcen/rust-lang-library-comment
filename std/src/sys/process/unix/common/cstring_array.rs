@@ -2,51 +2,48 @@ use crate::ffi::{CStr, CString, c_char};
 use crate::ops::Index;
 use crate::{fmt, mem, ptr};
 
-/// Helper type to manage ownership of the strings within a C-style array.
+/// 用于管理 C 风格数组中各字符串所有权的辅助类型。
 ///
-/// This type manages an array of C-string pointers terminated by a null
-/// pointer. The pointer to the array (as returned by `as_ptr`) can be used as
-/// a value of `argv` or `environ`.
+/// 该类型管理一个以空指针（null pointer）结尾的 C 字符串指针数组。
+/// 指向该数组的指针（由 `as_ptr` 返回）可以用作 `argv` 或 `environ` 的值。
 pub struct CStringArray {
     ptrs: Vec<*const c_char>,
 }
 
 impl CStringArray {
-    /// Creates a new `CStringArray` with enough capacity to hold `capacity`
-    /// strings.
+    /// 创建一个新的 `CStringArray`，其容量足以容纳 `capacity` 个字符串。
     pub fn with_capacity(capacity: usize) -> Self {
         let mut result = CStringArray { ptrs: Vec::with_capacity(capacity + 1) };
         result.ptrs.push(ptr::null());
         result
     }
 
-    /// Replace the string at position `index`.
+    /// 替换位置 `index` 处的字符串。
     pub fn write(&mut self, index: usize, item: CString) {
         let argc = self.ptrs.len() - 1;
         let ptr = &mut self.ptrs[..argc][index];
         let old = mem::replace(ptr, item.into_raw());
         // SAFETY:
-        // `CStringArray` owns all of its strings, and they were all transformed
-        // into pointers using `CString::into_raw`. Also, this is not the null
-        // pointer since the indexing above would have failed.
+        // `CStringArray` 拥有它所有的字符串，并且它们都是用 `CString::into_raw`
+        // 转换成指针的。此外，这不是空指针，因为否则上面的索引操作就会失败。
         drop(unsafe { CString::from_raw(old.cast_mut()) });
     }
 
-    /// Push an additional string to the array.
+    /// 向数组中追加（push）一个额外的字符串。
     pub fn push(&mut self, item: CString) {
         let argc = self.ptrs.len() - 1;
-        // Replace the null pointer at the end of the array...
+        // 替换掉数组末尾的空指针……
         self.ptrs[argc] = item.into_raw();
-        // ... and recreate it to restore the data structure invariant.
+        // ……然后重新创建它，以恢复该数据结构的不变量（invariant）。
         self.ptrs.push(ptr::null());
     }
 
-    /// Returns a pointer to the C-string array managed by this type.
+    /// 返回一个指向该类型所管理的 C 字符串数组的指针。
     pub fn as_ptr(&self) -> *const *const c_char {
         self.ptrs.as_ptr()
     }
 
-    /// Returns an iterator over all `CStr`s contained in this array.
+    /// 返回一个遍历此数组中包含的所有 `CStr` 的迭代器。
     pub fn iter(&self) -> CStringIter<'_> {
         CStringIter { iter: self.ptrs[..self.ptrs.len() - 1].iter() }
     }
@@ -57,8 +54,8 @@ impl Index<usize> for CStringArray {
     fn index(&self, index: usize) -> &CStr {
         let ptr = self.ptrs[..self.ptrs.len() - 1][index];
         // SAFETY:
-        // `CStringArray` owns all of its strings. Also, this is not the null
-        // pointer since the indexing above would have failed.
+        // `CStringArray` 拥有它所有的字符串。此外，这不是空指针，
+        // 因为否则上面的索引操作就会失败。
         unsafe { CStr::from_ptr(ptr) }
     }
 }
@@ -69,23 +66,23 @@ impl fmt::Debug for CStringArray {
     }
 }
 
-// SAFETY: `CStringArray` is basically just a `Vec<CString>`
+// SAFETY: `CStringArray` 基本上就是一个 `Vec<CString>`
 unsafe impl Send for CStringArray {}
-// SAFETY: `CStringArray` is basically just a `Vec<CString>`
+// SAFETY: `CStringArray` 基本上就是一个 `Vec<CString>`
 unsafe impl Sync for CStringArray {}
 
 impl Drop for CStringArray {
     fn drop(&mut self) {
         // SAFETY:
-        // `CStringArray` owns all of its strings, and they were all transformed
-        // into pointers using `CString::into_raw`.
+        // `CStringArray` 拥有它所有的字符串，并且它们都是用 `CString::into_raw`
+        // 转换成指针的。
         self.ptrs[..self.ptrs.len() - 1]
             .iter()
             .for_each(|&p| drop(unsafe { CString::from_raw(p.cast_mut()) }))
     }
 }
 
-/// An iterator over all `CStr`s contained in a `CStringArray`.
+/// 一个遍历 `CStringArray` 中所包含的所有 `CStr` 的迭代器。
 #[derive(Clone)]
 pub struct CStringIter<'a> {
     iter: crate::slice::Iter<'a, *const c_char>,
@@ -95,8 +92,8 @@ impl<'a> Iterator for CStringIter<'a> {
     type Item = &'a CStr;
     fn next(&mut self) -> Option<&'a CStr> {
         // SAFETY:
-        // `CStringArray` owns all of its strings. Also, this is not the null
-        // pointer since the last element is excluded when creating `iter`.
+        // `CStringArray` 拥有它所有的字符串。此外，这不是空指针，
+        // 因为创建 `iter` 时已经排除了最后一个元素。
         self.iter.next().map(|&p| unsafe { CStr::from_ptr(p) })
     }
 

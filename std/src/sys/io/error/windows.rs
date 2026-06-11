@@ -83,7 +83,7 @@ pub fn decode_error_kind(errno: i32) -> io::ErrorKind {
     }
 }
 
-/// Gets a detailed string description for the given error number.
+/// 获取给定错误号的详细字符串描述。
 pub fn error_string(mut errnum: i32) -> String {
     let mut buf = [0 as c::WCHAR; 2048];
 
@@ -91,11 +91,11 @@ pub fn error_string(mut errnum: i32) -> String {
         let mut module = ptr::null_mut();
         let mut flags = 0;
 
-        // NTSTATUS errors may be encoded as HRESULT, which may returned from
-        // GetLastError. For more information about Windows error codes, see
+        // NTSTATUS 错误可能被编码为 HRESULT，而后者可能由 GetLastError 返回。
+        // 关于 Windows 错误码的更多信息，参见
         // `[MS-ERREF]`: https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-erref/0642cb2f-2075-4469-918c-4441e69c548a
         if (errnum & c::FACILITY_NT_BIT as i32) != 0 {
-            // format according to https://support.microsoft.com/en-us/help/259693
+            // 按照 https://support.microsoft.com/en-us/help/259693 进行格式化
             const NTDLL_DLL: &[u16] = &[
                 'N' as _, 'T' as _, 'D' as _, 'L' as _, 'L' as _, '.' as _, 'D' as _, 'L' as _,
                 'L' as _, 0,
@@ -118,14 +118,14 @@ pub fn error_string(mut errnum: i32) -> String {
             ptr::null(),
         ) as usize;
         if res == 0 {
-            // Sometimes FormatMessageW can fail e.g., system doesn't like 0 as langId,
+            // FormatMessageW 有时会失败，例如系统不喜欢把 0 作为 langId，
             let fm_err = errno();
             return format!("OS Error {errnum} (FormatMessageW() returned error {fm_err})");
         }
 
         match String::from_utf16(&buf[..res]) {
             Ok(mut msg) => {
-                // Trim trailing CRLF inserted by FormatMessageW
+                // 去掉 FormatMessageW 插入的尾部 CRLF
                 let len = msg.trim_end().len();
                 msg.truncate(len);
                 msg

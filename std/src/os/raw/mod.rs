@@ -1,4 +1,4 @@
-//! Compatibility module for C platform-specific types. Use [`core::ffi`] instead.
+//! 用于 C 平台特定类型的兼容性模块。请改用 [`core::ffi`]。
 
 #![stable(feature = "raw_os", since = "1.1.0")]
 

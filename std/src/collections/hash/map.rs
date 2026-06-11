@@ -13,53 +13,44 @@ use crate::hash::{BuildHasher, Hash, RandomState};
 use crate::iter::FusedIterator;
 use crate::ops::Index;
 
-/// A [hash map] implemented with quadratic probing and SIMD lookup.
+/// 基于二次探测（quadratic probing）与 SIMD 查找实现的 [hash map]（哈希映射）。
 ///
-/// By default, `HashMap` uses a hashing algorithm selected to provide
-/// resistance against HashDoS attacks. The algorithm is randomly seeded, and a
-/// reasonable best-effort is made to generate this seed from a high quality,
-/// secure source of randomness provided by the host without blocking the
-/// program. Because of this, the randomness of the seed depends on the output
-/// quality of the system's random number coroutine when the seed is created.
-/// In particular, seeds generated when the system's entropy pool is abnormally
-/// low such as during system boot may be of a lower quality.
+/// 默认情况下，`HashMap` 使用的哈希算法经过专门选择，用于抵御 HashDoS 攻击。
+/// 该算法使用随机种子，并尽最大努力从宿主提供的、高质量且安全的随机源中生成
+/// 这个种子，同时不会阻塞程序。正因如此，种子的随机性取决于种子创建时系统随机
+/// 数协程（random number coroutine）的输出质量。特别地，当系统熵池异常偏低时
+/// （例如系统启动期间）生成的种子，其质量可能较低。
 ///
-/// The default hashing algorithm is currently SipHash 1-3, though this is
-/// subject to change at any point in the future. While its performance is very
-/// competitive for medium sized keys, other hashing algorithms will outperform
-/// it for small keys such as integers as well as large keys such as long
-/// strings, though those algorithms will typically *not* protect against
-/// attacks such as HashDoS.
+/// 当前默认的哈希算法是 SipHash 1-3，不过这一点在未来任何时候都可能变化。
+/// 它在中等大小的键上性能非常有竞争力，但对于诸如整数这样的小键、以及诸如长字符串
+/// 这样的大键，其他哈希算法会更胜一筹——只是那些算法通常 *不能* 抵御 HashDoS
+/// 之类的攻击。
 ///
-/// The hashing algorithm can be replaced on a per-`HashMap` basis using the
-/// [`default`], [`with_hasher`], and [`with_capacity_and_hasher`] methods.
-/// There are many alternative [hashing algorithms available on crates.io].
+/// 哈希算法可以按每个 `HashMap` 单独替换，方法是使用 [`default`]、[`with_hasher`]
+/// 以及 [`with_capacity_and_hasher`]。crates.io 上还有许多
+/// [可替代的哈希算法][hashing algorithms available on crates.io]。
 ///
-/// It is required that the keys implement the [`Eq`] and [`Hash`] traits, although
-/// this can frequently be achieved by using `#[derive(PartialEq, Eq, Hash)]`.
-/// If you implement these yourself, it is important that the following
-/// property holds:
+/// 键必须实现 [`Eq`] 与 [`Hash`] trait，不过这通常可以通过
+/// `#[derive(PartialEq, Eq, Hash)]` 来达成。如果你要自己实现它们，那么务必保证
+/// 下面这条性质成立：
 ///
 /// ```text
 /// k1 == k2 -> hash(k1) == hash(k2)
 /// ```
 ///
-/// In other words, if two keys are equal, their hashes must be equal.
-/// Violating this property is a logic error.
+/// 换言之，如果两个键相等，它们的哈希值必须相等。违反这条性质属于逻辑错误
+/// （logic error）。
 ///
-/// It is also a logic error for a key to be modified in such a way that the key's
-/// hash, as determined by the [`Hash`] trait, or its equality, as determined by
-/// the [`Eq`] trait, changes while it is in the map. This is normally only
-/// possible through [`Cell`], [`RefCell`], global state, I/O, or unsafe code.
+/// 同样属于逻辑错误的是：当键已经位于 map 中时，以某种方式修改它，使得由 [`Hash`]
+/// trait 决定的键哈希值、或由 [`Eq`] trait 决定的键相等性发生改变。这通常只可能
+/// 通过 [`Cell`]、[`RefCell`]、全局状态、I/O 或 unsafe 代码做到。
 ///
-/// The behavior resulting from either logic error is not specified, but will
-/// be encapsulated to the `HashMap` that observed the logic error and not
-/// result in undefined behavior. This could include panics, incorrect results,
-/// aborts, memory leaks, and non-termination.
+/// 由上述任一逻辑错误所导致的行为是未指定的（not specified），但会被限制在那个
+/// 观测到此逻辑错误的 `HashMap` 内部，不会导致未定义行为（undefined behavior）。
+/// 这可能包括 panic、错误的结果、abort、内存泄漏以及不终止（non-termination）。
 ///
-/// The hash table implementation is a Rust port of Google's [SwissTable].
-/// The original C++ version of SwissTable can be found [here], and this
-/// [CppCon talk] gives an overview of how the algorithm works.
+/// 此哈希表实现是 Google [SwissTable] 的 Rust 移植版。SwissTable 的原始 C++ 版本
+/// 见 [here]，而 [CppCon talk] 这场演讲概述了该算法的工作原理。
 ///
 /// [hash map]: crate::collections#use-a-hashmap-when
 /// [hashing algorithms available on crates.io]: https://crates.io/keywords/hasher
@@ -67,16 +58,16 @@ use crate::ops::Index;
 /// [here]: https://github.com/abseil/abseil-cpp/blob/master/absl/container/internal/raw_hash_set.h
 /// [CppCon talk]: https://www.youtube.com/watch?v=ncHmEUmJZf4
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use std::collections::HashMap;
 ///
-/// // Type inference lets us omit an explicit type signature (which
-/// // would be `HashMap<String, String>` in this example).
+/// // 类型推断让我们可以省略显式的类型标注（在本例中应为
+/// // `HashMap<String, String>`）。
 /// let mut book_reviews = HashMap::new();
 ///
-/// // Review some books.
+/// // 评论一些书籍。
 /// book_reviews.insert(
 ///     "Adventures of Huckleberry Finn".to_string(),
 ///     "My favorite book.".to_string(),
@@ -94,18 +85,17 @@ use crate::ops::Index;
 ///     "Eye lyked it alot.".to_string(),
 /// );
 ///
-/// // Check for a specific one.
-/// // When collections store owned values (String), they can still be
-/// // queried using references (&str).
+/// // 检查某个特定的键。
+/// // 当集合存储的是拥有所有权的值（String）时，仍可用引用（&str）进行查询。
 /// if !book_reviews.contains_key("Les Misérables") {
 ///     println!("We've got {} reviews, but Les Misérables ain't one.",
 ///              book_reviews.len());
 /// }
 ///
-/// // oops, this review has a lot of spelling mistakes, let's delete it.
+/// // 糟糕，这条评论有不少拼写错误，把它删掉吧。
 /// book_reviews.remove("The Adventures of Sherlock Holmes");
 ///
-/// // Look up the values associated with some keys.
+/// // 查询某些键所关联的值。
 /// let to_find = ["Pride and Prejudice", "Alice's Adventure in Wonderland"];
 /// for &book in &to_find {
 ///     match book_reviews.get(book) {
@@ -114,16 +104,16 @@ use crate::ops::Index;
 ///     }
 /// }
 ///
-/// // Look up the value for a key (will panic if the key is not found).
+/// // 查询某个键对应的值（如果键不存在会 panic）。
 /// println!("Review for Jane: {}", book_reviews["Pride and Prejudice"]);
 ///
-/// // Iterate over everything.
+/// // 遍历所有内容。
 /// for (book, review) in &book_reviews {
 ///     println!("{book}: \"{review}\"");
 /// }
 /// ```
 ///
-/// A `HashMap` with a known list of items can be initialized from an array:
+/// 当项目列表已知时，`HashMap` 可以从数组初始化：
 ///
 /// ```
 /// use std::collections::HashMap;
@@ -138,42 +128,39 @@ use crate::ops::Index;
 ///
 /// ## `Entry` API
 ///
-/// `HashMap` implements an [`Entry` API](#method.entry), which allows
-/// for complex methods of getting, setting, updating and removing keys and
-/// their values:
+/// `HashMap` 实现了 [`Entry` API](#method.entry)，它支持获取、设置、更新和删除键
+/// 及其值的复杂操作：
 ///
 /// ```
 /// use std::collections::HashMap;
 ///
-/// // type inference lets us omit an explicit type signature (which
-/// // would be `HashMap<&str, u8>` in this example).
+/// // 类型推断让我们可以省略显式的类型标注（在本例中应为
+/// // `HashMap<&str, u8>`）。
 /// let mut player_stats = HashMap::new();
 ///
 /// fn random_stat_buff() -> u8 {
-///     // could actually return some random value here - let's just return
-///     // some fixed value for now
+///     // 这里其实可以返回某个随机值——为简单起见，暂时返回一个固定值。
 ///     42
 /// }
 ///
-/// // insert a key only if it doesn't already exist
+/// // 仅在键尚不存在时插入它
 /// player_stats.entry("health").or_insert(100);
 ///
-/// // insert a key using a function that provides a new value only if it
-/// // doesn't already exist
+/// // 使用一个提供新值的函数插入键，仅在键尚不存在时调用该函数
 /// player_stats.entry("defence").or_insert_with(random_stat_buff);
 ///
-/// // update a key, guarding against the key possibly not being set
+/// // 更新某个键，并防范该键可能尚未设置的情况
 /// let stat = player_stats.entry("attack").or_insert(100);
 /// *stat += random_stat_buff();
 ///
-/// // modify an entry before an insert with in-place mutation
+/// // 在插入之前以就地变更（in-place mutation）的方式修改一个 entry
 /// player_stats.entry("mana").and_modify(|mana| *mana += 200).or_insert(100);
 /// ```
 ///
-/// ## Usage with custom key types
+/// ## 与自定义键类型搭配使用
 ///
-/// The easiest way to use `HashMap` with a custom key type is to derive [`Eq`] and [`Hash`].
-/// We must also derive [`PartialEq`].
+/// 将 `HashMap` 与自定义键类型搭配使用，最简单的方式是为该类型 derive [`Eq`] 与
+/// [`Hash`]。我们还必须 derive [`PartialEq`]。
 ///
 /// [`RefCell`]: crate::cell::RefCell
 /// [`Cell`]: crate::cell::Cell
@@ -191,36 +178,35 @@ use crate::ops::Index;
 /// }
 ///
 /// impl Viking {
-///     /// Creates a new Viking.
+///     /// 创建一个新的 Viking。
 ///     fn new(name: &str, country: &str) -> Viking {
 ///         Viking { name: name.to_string(), country: country.to_string() }
 ///     }
 /// }
 ///
-/// // Use a HashMap to store the vikings' health points.
+/// // 用一个 HashMap 来存储这些 viking 的生命值。
 /// let vikings = HashMap::from([
 ///     (Viking::new("Einar", "Norway"), 25),
 ///     (Viking::new("Olaf", "Denmark"), 24),
 ///     (Viking::new("Harald", "Iceland"), 12),
 /// ]);
 ///
-/// // Use derived implementation to print the status of the vikings.
+/// // 使用 derive 得到的实现打印各 viking 的状态。
 /// for (viking, health) in &vikings {
 ///     println!("{viking:?} has {health} hp");
 /// }
 /// ```
 ///
-/// # Usage in `const` and `static`
+/// # 在 `const` 与 `static` 中使用
 ///
-/// As explained above, `HashMap` is randomly seeded: each `HashMap` instance uses a different seed,
-/// which means that `HashMap::new` normally cannot be used in a `const` or `static` initializer.
+/// 如上所述，`HashMap` 使用随机种子：每个 `HashMap` 实例都使用不同的种子，这意味着
+/// `HashMap::new` 通常无法用在 `const` 或 `static` 初始化器中。
 ///
-/// However, if you need to use a `HashMap` in a `const` or `static` initializer while retaining
-/// random seed generation, you can wrap the `HashMap` in [`LazyLock`].
+/// 不过，如果你既需要在 `const` 或 `static` 初始化器中使用 `HashMap`，又想保留随机
+/// 种子的生成，可以把 `HashMap` 包裹在 [`LazyLock`] 中。
 ///
-/// Alternatively, you can construct a `HashMap` in a `const` or `static` initializer using a different
-/// hasher that does not rely on a random seed. **Be aware that a `HashMap` created this way is not
-/// resistant to HashDoS attacks!**
+/// 或者，你也可以在 `const` 或 `static` 初始化器中使用一个不依赖随机种子的哈希器来
+/// 构造 `HashMap`。**请注意：以这种方式创建的 `HashMap` 无法抵御 HashDoS 攻击！**
 ///
 /// [`LazyLock`]: crate::sync::LazyLock
 /// ```rust
@@ -228,13 +214,13 @@ use crate::ops::Index;
 /// use std::hash::{BuildHasherDefault, DefaultHasher};
 /// use std::sync::{LazyLock, Mutex};
 ///
-/// // HashMaps with a fixed, non-random hasher
+/// // 使用固定的、非随机哈希器的 HashMap
 /// const NONRANDOM_EMPTY_MAP: HashMap<String, Vec<i32>, BuildHasherDefault<DefaultHasher>> =
 ///     HashMap::with_hasher(BuildHasherDefault::new());
 /// static NONRANDOM_MAP: Mutex<HashMap<String, Vec<i32>, BuildHasherDefault<DefaultHasher>>> =
 ///     Mutex::new(HashMap::with_hasher(BuildHasherDefault::new()));
 ///
-/// // HashMaps using LazyLock to retain random seeding
+/// // 使用 LazyLock 以保留随机种子的 HashMap
 /// const RANDOM_EMPTY_MAP: LazyLock<HashMap<String, Vec<i32>>> =
 ///     LazyLock::new(HashMap::new);
 /// static RANDOM_MAP: LazyLock<Mutex<HashMap<String, Vec<i32>>>> =
@@ -254,12 +240,11 @@ pub struct HashMap<
 }
 
 impl<K, V> HashMap<K, V, RandomState> {
-    /// Creates an empty `HashMap`.
+    /// 创建一个空的 `HashMap`。
     ///
-    /// The hash map is initially created with a capacity of 0, so it will not allocate until it
-    /// is first inserted into.
+    /// 该哈希 map 初始创建时容量为 0，因此在首次插入之前不会进行任何分配。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -272,13 +257,12 @@ impl<K, V> HashMap<K, V, RandomState> {
         Default::default()
     }
 
-    /// Creates an empty `HashMap` with at least the specified capacity.
+    /// 创建一个空的 `HashMap`，其容量至少为指定值。
     ///
-    /// The hash map will be able to hold at least `capacity` elements without
-    /// reallocating. This method is allowed to allocate for more elements than
-    /// `capacity`. If `capacity` is zero, the hash map will not allocate.
+    /// 该哈希 map 将能够在不重新分配的情况下至少容纳 `capacity` 个元素。本方法允许
+    /// 为多于 `capacity` 的元素进行分配。如果 `capacity` 为零，则该哈希 map 不会分配。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -293,12 +277,11 @@ impl<K, V> HashMap<K, V, RandomState> {
 }
 
 impl<K, V, A: Allocator> HashMap<K, V, RandomState, A> {
-    /// Creates an empty `HashMap` using the given allocator.
+    /// 使用给定的分配器（allocator）创建一个空的 `HashMap`。
     ///
-    /// The hash map is initially created with a capacity of 0, so it will not allocate until it
-    /// is first inserted into.
+    /// 该哈希 map 初始创建时容量为 0，因此在首次插入之前不会进行任何分配。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -311,14 +294,12 @@ impl<K, V, A: Allocator> HashMap<K, V, RandomState, A> {
         HashMap::with_hasher_in(Default::default(), alloc)
     }
 
-    /// Creates an empty `HashMap` with at least the specified capacity using
-    /// the given allocator.
+    /// 使用给定的分配器创建一个空的 `HashMap`，其容量至少为指定值。
     ///
-    /// The hash map will be able to hold at least `capacity` elements without
-    /// reallocating. This method is allowed to allocate for more elements than
-    /// `capacity`. If `capacity` is zero, the hash map will not allocate.
+    /// 该哈希 map 将能够在不重新分配的情况下至少容纳 `capacity` 个元素。本方法允许
+    /// 为多于 `capacity` 的元素进行分配。如果 `capacity` 为零，则该哈希 map 不会分配。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -333,20 +314,18 @@ impl<K, V, A: Allocator> HashMap<K, V, RandomState, A> {
 }
 
 impl<K, V, S> HashMap<K, V, S> {
-    /// Creates an empty `HashMap` which will use the given hash builder to hash
-    /// keys.
+    /// 创建一个空的 `HashMap`，它将使用给定的哈希构造器（hash builder）来对键做哈希。
     ///
-    /// The created map has the default initial capacity.
+    /// 创建出的 map 具有默认的初始容量。
     ///
-    /// Warning: `hash_builder` is normally randomly generated, and
-    /// is designed to allow HashMaps to be resistant to attacks that
-    /// cause many collisions and very poor performance. Setting it
-    /// manually using this function can expose a DoS attack vector.
+    /// 警告：`hash_builder` 通常是随机生成的，其设计目的是让 HashMap 能够抵御那些
+    /// 制造大量哈希冲突、从而导致性能极差的攻击。通过本函数手动设置它，可能会暴露出
+    /// 一个 DoS 攻击面。
     ///
-    /// The `hash_builder` passed should implement the [`BuildHasher`] trait for
-    /// the `HashMap` to be useful, see its documentation for details.
+    /// 传入的 `hash_builder` 应实现 [`BuildHasher`] trait，这样 `HashMap` 才有意义，
+    /// 详见其文档。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -363,22 +342,19 @@ impl<K, V, S> HashMap<K, V, S> {
         HashMap { base: base::HashMap::with_hasher(hash_builder) }
     }
 
-    /// Creates an empty `HashMap` with at least the specified capacity, using
-    /// `hasher` to hash the keys.
+    /// 创建一个空的 `HashMap`，其容量至少为指定值，并使用 `hasher` 来对键做哈希。
     ///
-    /// The hash map will be able to hold at least `capacity` elements without
-    /// reallocating. This method is allowed to allocate for more elements than
-    /// `capacity`. If `capacity` is zero, the hash map will not allocate.
+    /// 该哈希 map 将能够在不重新分配的情况下至少容纳 `capacity` 个元素。本方法允许
+    /// 为多于 `capacity` 的元素进行分配。如果 `capacity` 为零，则该哈希 map 不会分配。
     ///
-    /// Warning: `hasher` is normally randomly generated, and
-    /// is designed to allow HashMaps to be resistant to attacks that
-    /// cause many collisions and very poor performance. Setting it
-    /// manually using this function can expose a DoS attack vector.
+    /// 警告：`hasher` 通常是随机生成的，其设计目的是让 HashMap 能够抵御那些制造大量
+    /// 哈希冲突、从而导致性能极差的攻击。通过本函数手动设置它，可能会暴露出一个 DoS
+    /// 攻击面。
     ///
-    /// The `hasher` passed should implement the [`BuildHasher`] trait for
-    /// the `HashMap` to be useful, see its documentation for details.
+    /// 传入的 `hasher` 应实现 [`BuildHasher`] trait，这样 `HashMap` 才有意义，
+    /// 详见其文档。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -396,38 +372,34 @@ impl<K, V, S> HashMap<K, V, S> {
 }
 
 impl<K, V, S, A: Allocator> HashMap<K, V, S, A> {
-    /// Creates an empty `HashMap` which will use the given hash builder and
-    /// allocator.
+    /// 创建一个空的 `HashMap`，它将使用给定的哈希构造器和分配器。
     ///
-    /// The created map has the default initial capacity.
+    /// 创建出的 map 具有默认的初始容量。
     ///
-    /// Warning: `hash_builder` is normally randomly generated, and
-    /// is designed to allow HashMaps to be resistant to attacks that
-    /// cause many collisions and very poor performance. Setting it
-    /// manually using this function can expose a DoS attack vector.
+    /// 警告：`hash_builder` 通常是随机生成的，其设计目的是让 HashMap 能够抵御那些
+    /// 制造大量哈希冲突、从而导致性能极差的攻击。通过本函数手动设置它，可能会暴露出
+    /// 一个 DoS 攻击面。
     ///
-    /// The `hash_builder` passed should implement the [`BuildHasher`] trait for
-    /// the `HashMap` to be useful, see its documentation for details.
+    /// 传入的 `hash_builder` 应实现 [`BuildHasher`] trait，这样 `HashMap` 才有意义，
+    /// 详见其文档。
     #[inline]
     #[unstable(feature = "allocator_api", issue = "32838")]
     pub fn with_hasher_in(hash_builder: S, alloc: A) -> Self {
         HashMap { base: base::HashMap::with_hasher_in(hash_builder, alloc) }
     }
 
-    /// Creates an empty `HashMap` with at least the specified capacity, using
-    /// `hasher` to hash the keys and `alloc` to allocate memory.
+    /// 创建一个空的 `HashMap`，其容量至少为指定值，使用 `hasher` 来对键做哈希、
+    /// 并使用 `alloc` 来分配内存。
     ///
-    /// The hash map will be able to hold at least `capacity` elements without
-    /// reallocating. This method is allowed to allocate for more elements than
-    /// `capacity`. If `capacity` is zero, the hash map will not allocate.
+    /// 该哈希 map 将能够在不重新分配的情况下至少容纳 `capacity` 个元素。本方法允许
+    /// 为多于 `capacity` 的元素进行分配。如果 `capacity` 为零，则该哈希 map 不会分配。
     ///
-    /// Warning: `hasher` is normally randomly generated, and
-    /// is designed to allow HashMaps to be resistant to attacks that
-    /// cause many collisions and very poor performance. Setting it
-    /// manually using this function can expose a DoS attack vector.
+    /// 警告：`hasher` 通常是随机生成的，其设计目的是让 HashMap 能够抵御那些制造大量
+    /// 哈希冲突、从而导致性能极差的攻击。通过本函数手动设置它，可能会暴露出一个 DoS
+    /// 攻击面。
     ///
-    /// The `hasher` passed should implement the [`BuildHasher`] trait for
-    /// the `HashMap` to be useful, see its documentation for details.
+    /// 传入的 `hasher` 应实现 [`BuildHasher`] trait，这样 `HashMap` 才有意义，
+    /// 详见其文档。
     ///
     #[inline]
     #[unstable(feature = "allocator_api", issue = "32838")]
@@ -435,12 +407,12 @@ impl<K, V, S, A: Allocator> HashMap<K, V, S, A> {
         HashMap { base: base::HashMap::with_capacity_and_hasher_in(capacity, hash_builder, alloc) }
     }
 
-    /// Returns the number of elements the map can hold without reallocating.
+    /// 返回该 map 在不重新分配的情况下能够容纳的元素数量。
     ///
-    /// This number is a lower bound; the `HashMap<K, V>` might be able to hold
-    /// more, but is guaranteed to be able to hold at least this many.
+    /// 这个数字是一个下界；`HashMap<K, V>` 可能能够容纳更多元素，但保证至少能容纳
+    /// 这么多。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -453,10 +425,10 @@ impl<K, V, S, A: Allocator> HashMap<K, V, S, A> {
         self.base.capacity()
     }
 
-    /// An iterator visiting all keys in arbitrary order.
-    /// The iterator element type is `&'a K`.
+    /// 一个以任意顺序遍历所有键的迭代器。
+    /// 迭代器的元素类型为 `&'a K`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -474,19 +446,19 @@ impl<K, V, S, A: Allocator> HashMap<K, V, S, A> {
     ///
     /// # Performance
     ///
-    /// In the current implementation, iterating over keys takes O(capacity) time
-    /// instead of O(len) because it internally visits empty buckets too.
+    /// 在当前实现中，遍历键耗费 O(capacity) 的时间而非 O(len)，因为它内部也会访问
+    /// 空桶（empty buckets）。
     #[rustc_lint_query_instability]
     #[stable(feature = "rust1", since = "1.0.0")]
     pub fn keys(&self) -> Keys<'_, K, V> {
         Keys { inner: self.iter() }
     }
 
-    /// Creates a consuming iterator visiting all the keys in arbitrary order.
-    /// The map cannot be used after calling this.
-    /// The iterator element type is `K`.
+    /// 创建一个以任意顺序遍历所有键的消耗型（consuming）迭代器。
+    /// 调用之后该 map 不能再被使用。
+    /// 迭代器的元素类型为 `K`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -498,16 +470,16 @@ impl<K, V, S, A: Allocator> HashMap<K, V, S, A> {
     /// ]);
     ///
     /// let mut vec: Vec<&str> = map.into_keys().collect();
-    /// // The `IntoKeys` iterator produces keys in arbitrary order, so the
-    /// // keys must be sorted to test them against a sorted array.
+    /// // `IntoKeys` 迭代器以任意顺序产出键，所以必须先对键排序，才能与已排序的
+    /// // 数组进行比较。
     /// vec.sort_unstable();
     /// assert_eq!(vec, ["a", "b", "c"]);
     /// ```
     ///
     /// # Performance
     ///
-    /// In the current implementation, iterating over keys takes O(capacity) time
-    /// instead of O(len) because it internally visits empty buckets too.
+    /// 在当前实现中，遍历键耗费 O(capacity) 的时间而非 O(len)，因为它内部也会访问
+    /// 空桶。
     #[inline]
     #[rustc_lint_query_instability]
     #[stable(feature = "map_into_keys_values", since = "1.54.0")]
@@ -515,10 +487,10 @@ impl<K, V, S, A: Allocator> HashMap<K, V, S, A> {
         IntoKeys { inner: self.into_iter() }
     }
 
-    /// An iterator visiting all values in arbitrary order.
-    /// The iterator element type is `&'a V`.
+    /// 一个以任意顺序遍历所有值的迭代器。
+    /// 迭代器的元素类型为 `&'a V`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -536,18 +508,18 @@ impl<K, V, S, A: Allocator> HashMap<K, V, S, A> {
     ///
     /// # Performance
     ///
-    /// In the current implementation, iterating over values takes O(capacity) time
-    /// instead of O(len) because it internally visits empty buckets too.
+    /// 在当前实现中，遍历值耗费 O(capacity) 的时间而非 O(len)，因为它内部也会访问
+    /// 空桶。
     #[rustc_lint_query_instability]
     #[stable(feature = "rust1", since = "1.0.0")]
     pub fn values(&self) -> Values<'_, K, V> {
         Values { inner: self.iter() }
     }
 
-    /// An iterator visiting all values mutably in arbitrary order.
-    /// The iterator element type is `&'a mut V`.
+    /// 一个以任意顺序、以可变方式遍历所有值的迭代器。
+    /// 迭代器的元素类型为 `&'a mut V`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -569,19 +541,19 @@ impl<K, V, S, A: Allocator> HashMap<K, V, S, A> {
     ///
     /// # Performance
     ///
-    /// In the current implementation, iterating over values takes O(capacity) time
-    /// instead of O(len) because it internally visits empty buckets too.
+    /// 在当前实现中，遍历值耗费 O(capacity) 的时间而非 O(len)，因为它内部也会访问
+    /// 空桶。
     #[rustc_lint_query_instability]
     #[stable(feature = "map_values_mut", since = "1.10.0")]
     pub fn values_mut(&mut self) -> ValuesMut<'_, K, V> {
         ValuesMut { inner: self.iter_mut() }
     }
 
-    /// Creates a consuming iterator visiting all the values in arbitrary order.
-    /// The map cannot be used after calling this.
-    /// The iterator element type is `V`.
+    /// 创建一个以任意顺序遍历所有值的消耗型迭代器。
+    /// 调用之后该 map 不能再被使用。
+    /// 迭代器的元素类型为 `V`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -593,16 +565,16 @@ impl<K, V, S, A: Allocator> HashMap<K, V, S, A> {
     /// ]);
     ///
     /// let mut vec: Vec<i32> = map.into_values().collect();
-    /// // The `IntoValues` iterator produces values in arbitrary order, so
-    /// // the values must be sorted to test them against a sorted array.
+    /// // `IntoValues` 迭代器以任意顺序产出值，所以必须先对值排序，才能与已排序的
+    /// // 数组进行比较。
     /// vec.sort_unstable();
     /// assert_eq!(vec, [1, 2, 3]);
     /// ```
     ///
     /// # Performance
     ///
-    /// In the current implementation, iterating over values takes O(capacity) time
-    /// instead of O(len) because it internally visits empty buckets too.
+    /// 在当前实现中，遍历值耗费 O(capacity) 的时间而非 O(len)，因为它内部也会访问
+    /// 空桶。
     #[inline]
     #[rustc_lint_query_instability]
     #[stable(feature = "map_into_keys_values", since = "1.54.0")]
@@ -610,10 +582,10 @@ impl<K, V, S, A: Allocator> HashMap<K, V, S, A> {
         IntoValues { inner: self.into_iter() }
     }
 
-    /// An iterator visiting all key-value pairs in arbitrary order.
-    /// The iterator element type is `(&'a K, &'a V)`.
+    /// 一个以任意顺序遍历所有键值对的迭代器。
+    /// 迭代器的元素类型为 `(&'a K, &'a V)`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -631,19 +603,18 @@ impl<K, V, S, A: Allocator> HashMap<K, V, S, A> {
     ///
     /// # Performance
     ///
-    /// In the current implementation, iterating over map takes O(capacity) time
-    /// instead of O(len) because it internally visits empty buckets too.
+    /// 在当前实现中，遍历 map 耗费 O(capacity) 的时间而非 O(len)，因为它内部也会访问
+    /// 空桶。
     #[rustc_lint_query_instability]
     #[stable(feature = "rust1", since = "1.0.0")]
     pub fn iter(&self) -> Iter<'_, K, V> {
         Iter { base: self.base.iter() }
     }
 
-    /// An iterator visiting all key-value pairs in arbitrary order,
-    /// with mutable references to the values.
-    /// The iterator element type is `(&'a K, &'a mut V)`.
+    /// 一个以任意顺序遍历所有键值对的迭代器，且对值持有可变引用。
+    /// 迭代器的元素类型为 `(&'a K, &'a mut V)`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -654,7 +625,7 @@ impl<K, V, S, A: Allocator> HashMap<K, V, S, A> {
     ///     ("c", 3),
     /// ]);
     ///
-    /// // Update all values
+    /// // 更新所有值
     /// for (_, val) in map.iter_mut() {
     ///     *val *= 2;
     /// }
@@ -666,17 +637,17 @@ impl<K, V, S, A: Allocator> HashMap<K, V, S, A> {
     ///
     /// # Performance
     ///
-    /// In the current implementation, iterating over map takes O(capacity) time
-    /// instead of O(len) because it internally visits empty buckets too.
+    /// 在当前实现中，遍历 map 耗费 O(capacity) 的时间而非 O(len)，因为它内部也会访问
+    /// 空桶。
     #[rustc_lint_query_instability]
     #[stable(feature = "rust1", since = "1.0.0")]
     pub fn iter_mut(&mut self) -> IterMut<'_, K, V> {
         IterMut { base: self.base.iter_mut() }
     }
 
-    /// Returns the number of elements in the map.
+    /// 返回该 map 中元素的数量。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -691,9 +662,9 @@ impl<K, V, S, A: Allocator> HashMap<K, V, S, A> {
         self.base.len()
     }
 
-    /// Returns `true` if the map contains no elements.
+    /// 如果该 map 不含任何元素，则返回 `true`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -709,14 +680,12 @@ impl<K, V, S, A: Allocator> HashMap<K, V, S, A> {
         self.base.is_empty()
     }
 
-    /// Clears the map, returning all key-value pairs as an iterator. Keeps the
-    /// allocated memory for reuse.
+    /// 清空该 map，将所有键值对作为一个迭代器返回。保留已分配的内存以便复用。
     ///
-    /// If the returned iterator is dropped before being fully consumed, it
-    /// drops the remaining key-value pairs. The returned iterator keeps a
-    /// mutable borrow on the map to optimize its implementation.
+    /// 如果返回的迭代器在被完全消耗之前就被丢弃（drop），它会丢弃剩余的键值对。
+    /// 返回的迭代器对该 map 持有一个可变借用，以优化其实现。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -739,24 +708,22 @@ impl<K, V, S, A: Allocator> HashMap<K, V, S, A> {
         Drain { base: self.base.drain() }
     }
 
-    /// Creates an iterator which uses a closure to determine if an element (key-value pair) should be removed.
+    /// 创建一个迭代器，它使用一个闭包来判定某个元素（键值对）是否应被移除。
     ///
-    /// If the closure returns `true`, the element is removed from the map and
-    /// yielded. If the closure returns `false`, or panics, the element remains
-    /// in the map and will not be yielded.
+    /// 如果闭包返回 `true`，该元素会被从 map 中移除并产出。如果闭包返回 `false`
+    /// 或发生 panic，该元素仍保留在 map 中且不会被产出。
     ///
-    /// The iterator also lets you mutate the value of each element in the
-    /// closure, regardless of whether you choose to keep or remove it.
+    /// 该迭代器还允许你在闭包中变更每个元素的值，无论你选择保留还是移除它。
     ///
-    /// If the returned `ExtractIf` is not exhausted, e.g. because it is dropped without iterating
-    /// or the iteration short-circuits, then the remaining elements will be retained.
-    /// Use [`retain`] with a negated predicate if you do not need the returned iterator.
+    /// 如果返回的 `ExtractIf` 没有被耗尽（例如未经迭代就被丢弃、或迭代发生短路），
+    /// 那么剩余元素将被保留。如果你不需要返回的迭代器，请改用 [`retain`] 并传入一个
+    /// 取反的谓词。
     ///
     /// [`retain`]: HashMap::retain
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Splitting a map into even and odd keys, reusing the original map:
+    /// 将一个 map 按奇偶键拆分，并复用原始 map：
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -782,12 +749,12 @@ impl<K, V, S, A: Allocator> HashMap<K, V, S, A> {
         ExtractIf { base: self.base.extract_if(pred) }
     }
 
-    /// Retains only the elements specified by the predicate.
+    /// 只保留由谓词所指定的元素。
     ///
-    /// In other words, remove all pairs `(k, v)` for which `f(&k, &mut v)` returns `false`.
-    /// The elements are visited in unsorted (and unspecified) order.
+    /// 换言之，移除所有使 `f(&k, &mut v)` 返回 `false` 的键值对 `(k, v)`。
+    /// 元素的访问顺序是未排序的（且未指定）。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -799,8 +766,8 @@ impl<K, V, S, A: Allocator> HashMap<K, V, S, A> {
     ///
     /// # Performance
     ///
-    /// In the current implementation, this operation takes O(capacity) time
-    /// instead of O(len) because it internally visits empty buckets too.
+    /// 在当前实现中，此操作耗费 O(capacity) 的时间而非 O(len)，因为它内部也会访问
+    /// 空桶。
     #[inline]
     #[rustc_lint_query_instability]
     #[stable(feature = "retain_hash_collection", since = "1.18.0")]
@@ -811,10 +778,9 @@ impl<K, V, S, A: Allocator> HashMap<K, V, S, A> {
         self.base.retain(f)
     }
 
-    /// Clears the map, removing all key-value pairs. Keeps the allocated memory
-    /// for reuse.
+    /// 清空该 map，移除所有键值对。保留已分配的内存以便复用。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -830,9 +796,9 @@ impl<K, V, S, A: Allocator> HashMap<K, V, S, A> {
         self.base.clear();
     }
 
-    /// Returns a reference to the map's [`BuildHasher`].
+    /// 返回该 map 的 [`BuildHasher`] 的引用。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -855,17 +821,15 @@ where
     S: BuildHasher,
     A: Allocator,
 {
-    /// Reserves capacity for at least `additional` more elements to be inserted
-    /// in the `HashMap`. The collection may reserve more space to speculatively
-    /// avoid frequent reallocations. After calling `reserve`,
-    /// capacity will be greater than or equal to `self.len() + additional`.
-    /// Does nothing if capacity is already sufficient.
+    /// 为在 `HashMap` 中再插入至少 `additional` 个元素预留容量。该集合可能会预留
+    /// 更多空间，以推测性地避免频繁的重新分配。调用 `reserve` 之后，容量将大于或
+    /// 等于 `self.len() + additional`。如果容量已经足够，则什么也不做。
     ///
     /// # Panics
     ///
-    /// Panics if the new allocation size overflows [`usize`].
+    /// 如果新的分配大小溢出 [`usize`]，则 panic。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -878,19 +842,16 @@ where
         self.base.reserve(additional)
     }
 
-    /// Tries to reserve capacity for at least `additional` more elements to be inserted
-    /// in the `HashMap`. The collection may reserve more space to speculatively
-    /// avoid frequent reallocations. After calling `try_reserve`,
-    /// capacity will be greater than or equal to `self.len() + additional` if
-    /// it returns `Ok(())`.
-    /// Does nothing if capacity is already sufficient.
+    /// 尝试为在 `HashMap` 中再插入至少 `additional` 个元素预留容量。该集合可能会预留
+    /// 更多空间，以推测性地避免频繁的重新分配。调用 `try_reserve` 之后，如果它返回
+    /// `Ok(())`，则容量将大于或等于 `self.len() + additional`。如果容量已经足够，
+    /// 则什么也不做。
     ///
     /// # Errors
     ///
-    /// If the capacity overflows, or the allocator reports a failure, then an error
-    /// is returned.
+    /// 如果容量溢出，或分配器报告失败，则返回一个错误。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -904,11 +865,10 @@ where
         self.base.try_reserve(additional).map_err(map_try_reserve_error)
     }
 
-    /// Shrinks the capacity of the map as much as possible. It will drop
-    /// down as much as possible while maintaining the internal rules
-    /// and possibly leaving some space in accordance with the resize policy.
+    /// 尽可能收缩该 map 的容量。它会在维持内部规则的前提下尽量降低容量，并可能根据
+    /// 调整大小策略（resize policy）保留一些余量。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -926,13 +886,12 @@ where
         self.base.shrink_to_fit();
     }
 
-    /// Shrinks the capacity of the map with a lower limit. It will drop
-    /// down no lower than the supplied limit while maintaining the internal rules
-    /// and possibly leaving some space in accordance with the resize policy.
+    /// 将该 map 的容量收缩到一个下限。它会在维持内部规则的前提下，降低到不低于所给
+    /// 下限的水平，并可能根据调整大小策略保留一些余量。
     ///
-    /// If the current capacity is less than the lower limit, this is a no-op.
+    /// 如果当前容量小于该下限，则此操作为空操作（no-op）。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -952,9 +911,9 @@ where
         self.base.shrink_to(min_capacity);
     }
 
-    /// Gets the given key's corresponding entry in the map for in-place manipulation.
+    /// 获取给定键在 map 中所对应的 entry，以便进行就地操作。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -976,13 +935,12 @@ where
         map_entry(self.base.rustc_entry(key))
     }
 
-    /// Returns a reference to the value corresponding to the key.
+    /// 返回该键所对应的值的引用。
     ///
-    /// The key may be any borrowed form of the map's key type, but
-    /// [`Hash`] and [`Eq`] on the borrowed form *must* match those for
-    /// the key type.
+    /// 这个键可以是 map 键类型的任意借用形式（borrowed form），但借用形式上的
+    /// [`Hash`] 与 [`Eq`] *必须* 与键类型上的保持一致。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -1002,17 +960,15 @@ where
         self.base.get(k)
     }
 
-    /// Returns the key-value pair corresponding to the supplied key. This is
-    /// potentially useful:
-    /// - for key types where non-identical keys can be considered equal;
-    /// - for getting the `&K` stored key value from a borrowed `&Q` lookup key; or
-    /// - for getting a reference to a key with the same lifetime as the collection.
+    /// 返回所给键对应的键值对。这在以下情况可能有用：
+    /// - 对于那些不完全相同的键也可被视为相等的键类型；
+    /// - 用于从借用的 `&Q` 查找键获取存储着的 `&K` 键值；或者
+    /// - 用于获取一个与该集合具有相同生命周期的键的引用。
     ///
-    /// The supplied key may be any borrowed form of the map's key type, but
-    /// [`Hash`] and [`Eq`] on the borrowed form *must* match those for
-    /// the key type.
+    /// 所给的键可以是 map 键类型的任意借用形式，但借用形式上的 [`Hash`] 与 [`Eq`]
+    /// *必须* 与键类型上的保持一致。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -1021,8 +977,8 @@ where
     /// #[derive(Clone, Copy, Debug)]
     /// struct S {
     ///     id: u32,
-    /// #   #[allow(unused)] // prevents a "field `name` is never read" error
-    ///     name: &'static str, // ignored by equality and hashing operations
+    /// #   #[allow(unused)] // 防止出现 "field `name` is never read" 错误
+    ///     name: &'static str, // 在相等性与哈希操作中被忽略
     /// }
     ///
     /// impl PartialEq for S {
@@ -1047,7 +1003,7 @@ where
     /// let mut map = HashMap::new();
     /// map.insert(j_a, "Paris");
     /// assert_eq!(map.get_key_value(&j_a), Some((&j_a, &"Paris")));
-    /// assert_eq!(map.get_key_value(&j_b), Some((&j_a, &"Paris"))); // the notable case
+    /// assert_eq!(map.get_key_value(&j_b), Some((&j_a, &"Paris"))); // 值得注意的情形
     /// assert_eq!(map.get_key_value(&p), None);
     /// ```
     #[inline]
@@ -1060,19 +1016,19 @@ where
         self.base.get_key_value(k)
     }
 
-    /// Attempts to get mutable references to `N` values in the map at once.
+    /// 尝试一次性获取 map 中 `N` 个值的可变引用。
     ///
-    /// Returns an array of length `N` with the results of each query. For soundness, at most one
-    /// mutable reference will be returned to any value. `None` will be used if the key is missing.
+    /// 返回一个长度为 `N` 的数组，包含每次查询的结果。出于健全性（soundness）考虑，
+    /// 对任何一个值最多只会返回一个可变引用。如果某个键缺失，则相应位置为 `None`。
     ///
-    /// This method performs a check to ensure there are no duplicate keys, which currently has a time-complexity of O(n^2),
-    /// so be careful when passing many keys.
+    /// 本方法会执行一次检查以确保没有重复的键，该检查目前的时间复杂度为 O(n^2)，
+    /// 因此在传入大量键时要小心。
     ///
     /// # Panics
     ///
-    /// Panics if any keys are overlapping.
+    /// 如果有任何键相互重叠，则 panic。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -1083,7 +1039,7 @@ where
     /// libraries.insert("Herzogin-Anna-Amalia-Bibliothek".to_string(), 1691);
     /// libraries.insert("Library of Congress".to_string(), 1800);
     ///
-    /// // Get Athenæum and Bodleian Library
+    /// // 获取 Athenæum 和 Bodleian Library
     /// let [Some(a), Some(b)] = libraries.get_disjoint_mut([
     ///     "Athenæum",
     ///     "Bodleian Library",
@@ -1102,7 +1058,7 @@ where
     ///     ],
     /// );
     ///
-    /// // Missing keys result in None
+    /// // 缺失的键得到 None
     /// let got = libraries.get_disjoint_mut([
     ///     "Athenæum",
     ///     "New York Public Library",
@@ -1122,7 +1078,7 @@ where
     /// let mut libraries = HashMap::new();
     /// libraries.insert("Athenæum".to_string(), 1807);
     ///
-    /// // Duplicate keys panic!
+    /// // 重复的键会 panic！
     /// let got = libraries.get_disjoint_mut([
     ///     "Athenæum",
     ///     "Athenæum",
@@ -1142,22 +1098,21 @@ where
         self.base.get_disjoint_mut(ks)
     }
 
-    /// Attempts to get mutable references to `N` values in the map at once, without validating that
-    /// the values are unique.
+    /// 尝试一次性获取 map 中 `N` 个值的可变引用，且不校验这些值是否互不相同（unique）。
     ///
-    /// Returns an array of length `N` with the results of each query. `None` will be used if
-    /// the key is missing.
+    /// 返回一个长度为 `N` 的数组，包含每次查询的结果。如果某个键缺失，则相应位置为
+    /// `None`。
     ///
-    /// For a safe alternative see [`get_disjoint_mut`](`HashMap::get_disjoint_mut`).
+    /// 关于安全的替代方案，参见 [`get_disjoint_mut`](`HashMap::get_disjoint_mut`)。
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// Calling this method with overlapping keys is *[undefined behavior]* even if the resulting
-    /// references are not used.
+    /// 以相互重叠的键调用本方法属于*[未定义行为][undefined behavior]*，即使产生的
+    /// 那些引用并未被使用。
     ///
     /// [undefined behavior]: https://doc.rust-lang.org/reference/behavior-considered-undefined.html
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -1168,13 +1123,13 @@ where
     /// libraries.insert("Herzogin-Anna-Amalia-Bibliothek".to_string(), 1691);
     /// libraries.insert("Library of Congress".to_string(), 1800);
     ///
-    /// // SAFETY: The keys do not overlap.
+    /// // SAFETY: 这些键互不重叠。
     /// let [Some(a), Some(b)] = (unsafe { libraries.get_disjoint_unchecked_mut([
     ///     "Athenæum",
     ///     "Bodleian Library",
     /// ]) }) else { panic!() };
     ///
-    /// // SAFETY: The keys do not overlap.
+    /// // SAFETY: 这些键互不重叠。
     /// let got = unsafe { libraries.get_disjoint_unchecked_mut([
     ///     "Athenæum",
     ///     "Library of Congress",
@@ -1187,12 +1142,12 @@ where
     ///     ],
     /// );
     ///
-    /// // SAFETY: The keys do not overlap.
+    /// // SAFETY: 这些键互不重叠。
     /// let got = unsafe { libraries.get_disjoint_unchecked_mut([
     ///     "Athenæum",
     ///     "New York Public Library",
     /// ]) };
-    /// // Missing keys result in None
+    /// // 缺失的键得到 None
     /// assert_eq!(got, [Some(&mut 1807), None]);
     /// ```
     #[inline]
@@ -1209,13 +1164,12 @@ where
         unsafe { self.base.get_disjoint_unchecked_mut(ks) }
     }
 
-    /// Returns `true` if the map contains a value for the specified key.
+    /// 如果该 map 含有指定键对应的值，则返回 `true`。
     ///
-    /// The key may be any borrowed form of the map's key type, but
-    /// [`Hash`] and [`Eq`] on the borrowed form *must* match those for
-    /// the key type.
+    /// 这个键可以是 map 键类型的任意借用形式，但借用形式上的 [`Hash`] 与 [`Eq`]
+    /// *必须* 与键类型上的保持一致。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -1236,13 +1190,12 @@ where
         self.base.contains_key(k)
     }
 
-    /// Returns a mutable reference to the value corresponding to the key.
+    /// 返回该键所对应的值的可变引用。
     ///
-    /// The key may be any borrowed form of the map's key type, but
-    /// [`Hash`] and [`Eq`] on the borrowed form *must* match those for
-    /// the key type.
+    /// 这个键可以是 map 键类型的任意借用形式，但借用形式上的 [`Hash`] 与 [`Eq`]
+    /// *必须* 与键类型上的保持一致。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -1264,18 +1217,17 @@ where
         self.base.get_mut(k)
     }
 
-    /// Inserts a key-value pair into the map.
+    /// 向该 map 中插入一个键值对。
     ///
-    /// If the map did not have this key present, [`None`] is returned.
+    /// 如果该 map 此前不存在这个键，则返回 [`None`]。
     ///
-    /// If the map did have this key present, the value is updated, and the old
-    /// value is returned. The key is not updated, though; this matters for
-    /// types that can be `==` without being identical. See the [module-level
-    /// documentation] for more.
+    /// 如果该 map 此前已存在这个键，则更新其值，并返回旧值。不过键本身不会被更新；
+    /// 这对于那些可以 `==` 却并不完全相同的类型而言很重要。详见
+    /// [模块级文档][module-level documentation]。
     ///
     /// [module-level documentation]: crate::collections#insert-and-complex-keys
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -1296,15 +1248,14 @@ where
         self.base.insert(k, v)
     }
 
-    /// Tries to insert a key-value pair into the map, and returns
-    /// a mutable reference to the value in the entry.
+    /// 尝试向该 map 中插入一个键值对，并返回该 entry 中值的可变引用。
     ///
-    /// If the map already had this key present, nothing is updated, and
-    /// an error containing the occupied entry and the value is returned.
+    /// 如果该 map 中已存在这个键，则什么也不更新，并返回一个错误，其中包含被占用的
+    /// entry 与传入的值。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// Basic usage:
+    /// 基本用法：
     ///
     /// ```
     /// #![feature(map_try_insert)]
@@ -1327,14 +1278,12 @@ where
         }
     }
 
-    /// Removes a key from the map, returning the value at the key if the key
-    /// was previously in the map.
+    /// 从该 map 中移除一个键，如果该键此前位于 map 中，则返回该键处的值。
     ///
-    /// The key may be any borrowed form of the map's key type, but
-    /// [`Hash`] and [`Eq`] on the borrowed form *must* match those for
-    /// the key type.
+    /// 这个键可以是 map 键类型的任意借用形式，但借用形式上的 [`Hash`] 与 [`Eq`]
+    /// *必须* 与键类型上的保持一致。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -1355,14 +1304,12 @@ where
         self.base.remove(k)
     }
 
-    /// Removes a key from the map, returning the stored key and value if the
-    /// key was previously in the map.
+    /// 从该 map 中移除一个键，如果该键此前位于 map 中，则返回存储着的键和值。
     ///
-    /// The key may be any borrowed form of the map's key type, but
-    /// [`Hash`] and [`Eq`] on the borrowed form *must* match those for
-    /// the key type.
+    /// 这个键可以是 map 键类型的任意借用形式，但借用形式上的 [`Hash`] 与 [`Eq`]
+    /// *必须* 与键类型上的保持一致。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -1449,7 +1396,7 @@ impl<K, V, S> const Default for HashMap<K, V, S>
 where
     S: [const] Default,
 {
-    /// Creates an empty `HashMap<K, V, S>`, with the `Default` value for the hasher.
+    /// 创建一个空的 `HashMap<K, V, S>`，哈希器取其 `Default` 值。
     #[inline]
     fn default() -> HashMap<K, V, S> {
         HashMap::with_hasher(Default::default())
@@ -1466,11 +1413,11 @@ where
 {
     type Output = V;
 
-    /// Returns a reference to the value corresponding to the supplied key.
+    /// 返回所给键所对应的值的引用。
     ///
     /// # Panics
     ///
-    /// Panics if the key is not present in the `HashMap`.
+    /// 如果该键不在 `HashMap` 中，则 panic。
     #[inline]
     fn index(&self, key: &Q) -> &V {
         self.get(key).expect("no entry found for key")
@@ -1478,28 +1425,23 @@ where
 }
 
 #[stable(feature = "std_collections_from_array", since = "1.56.0")]
-// Note: as what is currently the most convenient built-in way to construct
-// a HashMap, a simple usage of this function must not *require* the user
-// to provide a type annotation in order to infer the third type parameter
-// (the hasher parameter, conventionally "S").
-// To that end, this impl is defined using RandomState as the concrete
-// type of S, rather than being generic over `S: BuildHasher + Default`.
-// It is expected that users who want to specify a hasher will manually use
-// `with_capacity_and_hasher`.
-// If type parameter defaults worked on impls, and if type parameter
-// defaults could be mixed with const generics, then perhaps
-// this could be generalized.
-// See also the equivalent impl on HashSet.
+// 注意：作为目前最便捷的内置 HashMap 构造方式，对本函数的简单使用绝不能*要求*用户
+// 提供类型标注来推断第三个类型参数（哈希器参数，惯例上记作 "S"）。
+// 为此，本 impl 使用 RandomState 作为 S 的具体类型来定义，而非对
+// `S: BuildHasher + Default` 泛型化。
+// 预期那些想要指定哈希器的用户会手动使用 `with_capacity_and_hasher`。
+// 假如类型参数默认值能在 impl 上生效、且类型参数默认值能与 const 泛型混用，那么
+// 或许可以将其泛化。
+// 另见 HashSet 上等价的 impl。
 impl<K, V, const N: usize> From<[(K, V); N]> for HashMap<K, V, RandomState>
 where
     K: Eq + Hash,
 {
-    /// Converts a `[(K, V); N]` into a `HashMap<K, V>`.
+    /// 将一个 `[(K, V); N]` 转换为 `HashMap<K, V>`。
     ///
-    /// If any entries in the array have equal keys,
-    /// all but one of the corresponding values will be dropped.
+    /// 如果数组中有任何 entry 的键相等，那么对应的值中除一个之外都会被丢弃。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -1513,14 +1455,13 @@ where
     }
 }
 
-/// An iterator over the entries of a `HashMap`.
+/// 一个遍历 `HashMap` 各 entry 的迭代器。
 ///
-/// This `struct` is created by the [`iter`] method on [`HashMap`]. See its
-/// documentation for more.
+/// 此 `struct` 由 [`HashMap`] 上的 [`iter`] 方法创建。详见其文档。
 ///
 /// [`iter`]: HashMap::iter
 ///
-/// # Example
+/// # 示例
 ///
 /// ```
 /// use std::collections::HashMap;
@@ -1536,7 +1477,7 @@ pub struct Iter<'a, K: 'a, V: 'a> {
     base: base::Iter<'a, K, V>,
 }
 
-// FIXME(#26925) Remove in favor of `#[derive(Clone)]`
+// FIXME(#26925) 改用 `#[derive(Clone)]` 后移除此实现
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<K, V> Clone for Iter<'_, K, V> {
     #[inline]
@@ -1560,14 +1501,13 @@ impl<K: Debug, V: Debug> fmt::Debug for Iter<'_, K, V> {
     }
 }
 
-/// A mutable iterator over the entries of a `HashMap`.
+/// 一个以可变方式遍历 `HashMap` 各 entry 的迭代器。
 ///
-/// This `struct` is created by the [`iter_mut`] method on [`HashMap`]. See its
-/// documentation for more.
+/// 此 `struct` 由 [`HashMap`] 上的 [`iter_mut`] 方法创建。详见其文档。
 ///
 /// [`iter_mut`]: HashMap::iter_mut
 ///
-/// # Example
+/// # 示例
 ///
 /// ```
 /// use std::collections::HashMap;
@@ -1584,7 +1524,7 @@ pub struct IterMut<'a, K: 'a, V: 'a> {
 }
 
 impl<'a, K, V> IterMut<'a, K, V> {
-    /// Returns an iterator of references over the remaining items.
+    /// 返回一个对剩余各项的引用迭代器。
     #[inline]
     pub(super) fn iter(&self) -> Iter<'_, K, V> {
         Iter { base: self.base.rustc_iter() }
@@ -1599,14 +1539,14 @@ impl<K, V> Default for IterMut<'_, K, V> {
     }
 }
 
-/// An owning iterator over the entries of a `HashMap`.
+/// 一个拥有所有权、遍历 `HashMap` 各 entry 的迭代器。
 ///
-/// This `struct` is created by the [`into_iter`] method on [`HashMap`]
-/// (provided by the [`IntoIterator`] trait). See its documentation for more.
+/// 此 `struct` 由 [`HashMap`] 上的 [`into_iter`] 方法创建（由 [`IntoIterator`]
+/// trait 提供）。详见其文档。
 ///
 /// [`into_iter`]: IntoIterator::into_iter
 ///
-/// # Example
+/// # 示例
 ///
 /// ```
 /// use std::collections::HashMap;
@@ -1626,7 +1566,7 @@ pub struct IntoIter<
 }
 
 impl<K, V, A: Allocator> IntoIter<K, V, A> {
-    /// Returns an iterator of references over the remaining items.
+    /// 返回一个对剩余各项的引用迭代器。
     #[inline]
     pub(super) fn iter(&self) -> Iter<'_, K, V> {
         Iter { base: self.base.rustc_iter() }
@@ -1641,14 +1581,13 @@ impl<K, V> Default for IntoIter<K, V> {
     }
 }
 
-/// An iterator over the keys of a `HashMap`.
+/// 一个遍历 `HashMap` 各键的迭代器。
 ///
-/// This `struct` is created by the [`keys`] method on [`HashMap`]. See its
-/// documentation for more.
+/// 此 `struct` 由 [`HashMap`] 上的 [`keys`] 方法创建。详见其文档。
 ///
 /// [`keys`]: HashMap::keys
 ///
-/// # Example
+/// # 示例
 ///
 /// ```
 /// use std::collections::HashMap;
@@ -1664,7 +1603,7 @@ pub struct Keys<'a, K: 'a, V: 'a> {
     inner: Iter<'a, K, V>,
 }
 
-// FIXME(#26925) Remove in favor of `#[derive(Clone)]`
+// FIXME(#26925) 移除它，改用 `#[derive(Clone)]`
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<K, V> Clone for Keys<'_, K, V> {
     #[inline]
@@ -1688,14 +1627,13 @@ impl<K: Debug, V> fmt::Debug for Keys<'_, K, V> {
     }
 }
 
-/// An iterator over the values of a `HashMap`.
+/// 一个遍历 `HashMap` 各值的迭代器。
 ///
-/// This `struct` is created by the [`values`] method on [`HashMap`]. See its
-/// documentation for more.
+/// 此 `struct` 由 [`HashMap`] 上的 [`values`] 方法创建。详见其文档。
 ///
 /// [`values`]: HashMap::values
 ///
-/// # Example
+/// # 示例
 ///
 /// ```
 /// use std::collections::HashMap;
@@ -1711,7 +1649,7 @@ pub struct Values<'a, K: 'a, V: 'a> {
     inner: Iter<'a, K, V>,
 }
 
-// FIXME(#26925) Remove in favor of `#[derive(Clone)]`
+// FIXME(#26925) 移除它，改用 `#[derive(Clone)]`
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<K, V> Clone for Values<'_, K, V> {
     #[inline]
@@ -1735,14 +1673,13 @@ impl<K, V: Debug> fmt::Debug for Values<'_, K, V> {
     }
 }
 
-/// A draining iterator over the entries of a `HashMap`.
+/// 一个对 `HashMap` 各 entry 进行抽空（draining）的迭代器。
 ///
-/// This `struct` is created by the [`drain`] method on [`HashMap`]. See its
-/// documentation for more.
+/// 此 `struct` 由 [`HashMap`] 上的 [`drain`] 方法创建。详见其文档。
 ///
 /// [`drain`]: HashMap::drain
 ///
-/// # Example
+/// # 示例
 ///
 /// ```
 /// use std::collections::HashMap;
@@ -1764,20 +1701,20 @@ pub struct Drain<
 }
 
 impl<'a, K, V, A: Allocator> Drain<'a, K, V, A> {
-    /// Returns an iterator of references over the remaining items.
+    /// 返回一个对剩余各项的引用迭代器。
     #[inline]
     pub(super) fn iter(&self) -> Iter<'_, K, V> {
         Iter { base: self.base.rustc_iter() }
     }
 }
 
-/// A draining, filtering iterator over the entries of a `HashMap`.
+/// 一个对 `HashMap` 各 entry 进行抽空并过滤（filtering）的迭代器。
 ///
-/// This `struct` is created by the [`extract_if`] method on [`HashMap`].
+/// 此 `struct` 由 [`HashMap`] 上的 [`extract_if`] 方法创建。
 ///
 /// [`extract_if`]: HashMap::extract_if
 ///
-/// # Example
+/// # 示例
 ///
 /// ```
 /// use std::collections::HashMap;
@@ -1800,14 +1737,13 @@ pub struct ExtractIf<
     base: base::ExtractIf<'a, K, V, F, A>,
 }
 
-/// A mutable iterator over the values of a `HashMap`.
+/// 一个以可变方式遍历 `HashMap` 各值的迭代器。
 ///
-/// This `struct` is created by the [`values_mut`] method on [`HashMap`]. See its
-/// documentation for more.
+/// 此 `struct` 由 [`HashMap`] 上的 [`values_mut`] 方法创建。详见其文档。
 ///
 /// [`values_mut`]: HashMap::values_mut
 ///
-/// # Example
+/// # 示例
 ///
 /// ```
 /// use std::collections::HashMap;
@@ -1831,14 +1767,13 @@ impl<K, V> Default for ValuesMut<'_, K, V> {
     }
 }
 
-/// An owning iterator over the keys of a `HashMap`.
+/// 一个拥有所有权、遍历 `HashMap` 各键的迭代器。
 ///
-/// This `struct` is created by the [`into_keys`] method on [`HashMap`].
-/// See its documentation for more.
+/// 此 `struct` 由 [`HashMap`] 上的 [`into_keys`] 方法创建。详见其文档。
 ///
 /// [`into_keys`]: HashMap::into_keys
 ///
-/// # Example
+/// # 示例
 ///
 /// ```
 /// use std::collections::HashMap;
@@ -1865,14 +1800,13 @@ impl<K, V> Default for IntoKeys<K, V> {
     }
 }
 
-/// An owning iterator over the values of a `HashMap`.
+/// 一个拥有所有权、遍历 `HashMap` 各值的迭代器。
 ///
-/// This `struct` is created by the [`into_values`] method on [`HashMap`].
-/// See its documentation for more.
+/// 此 `struct` 由 [`HashMap`] 上的 [`into_values`] 方法创建。详见其文档。
 ///
 /// [`into_values`]: HashMap::into_values
 ///
-/// # Example
+/// # 示例
 ///
 /// ```
 /// use std::collections::HashMap;
@@ -1899,9 +1833,9 @@ impl<K, V> Default for IntoValues<K, V> {
     }
 }
 
-/// A view into a single entry in a map, which may either be vacant or occupied.
+/// 对 map 中单个 entry 的视图（view），它可能是空缺的（vacant）或被占用的（occupied）。
 ///
-/// This `enum` is constructed from the [`entry`] method on [`HashMap`].
+/// 此 `enum` 由 [`HashMap`] 上的 [`entry`] 方法构造。
 ///
 /// [`entry`]: HashMap::entry
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -1912,11 +1846,11 @@ pub enum Entry<
     V: 'a,
     #[unstable(feature = "allocator_api", issue = "32838")] A: Allocator = Global,
 > {
-    /// An occupied entry.
+    /// 一个被占用的 entry。
     #[stable(feature = "rust1", since = "1.0.0")]
     Occupied(#[stable(feature = "rust1", since = "1.0.0")] OccupiedEntry<'a, K, V, A>),
 
-    /// A vacant entry.
+    /// 一个空缺的 entry。
     #[stable(feature = "rust1", since = "1.0.0")]
     Vacant(#[stable(feature = "rust1", since = "1.0.0")] VacantEntry<'a, K, V, A>),
 }
@@ -1931,8 +1865,8 @@ impl<K: Debug, V: Debug> Debug for Entry<'_, K, V> {
     }
 }
 
-/// A view into an occupied entry in a `HashMap`.
-/// It is part of the [`Entry`] enum.
+/// 对 `HashMap` 中一个被占用 entry 的视图。
+/// 它是 [`Entry`] 枚举的组成部分。
 #[stable(feature = "rust1", since = "1.0.0")]
 pub struct OccupiedEntry<
     'a,
@@ -1953,8 +1887,8 @@ impl<K: Debug, V: Debug, A: Allocator> Debug for OccupiedEntry<'_, K, V, A> {
     }
 }
 
-/// A view into a vacant entry in a `HashMap`.
-/// It is part of the [`Entry`] enum.
+/// 对 `HashMap` 中一个空缺 entry 的视图。
+/// 它是 [`Entry`] 枚举的组成部分。
 #[stable(feature = "rust1", since = "1.0.0")]
 pub struct VacantEntry<
     'a,
@@ -1972,9 +1906,9 @@ impl<K: Debug, V, A: Allocator> Debug for VacantEntry<'_, K, V, A> {
     }
 }
 
-/// The error returned by [`try_insert`](HashMap::try_insert) when the key already exists.
+/// 当键已经存在时，[`try_insert`](HashMap::try_insert) 所返回的错误。
 ///
-/// Contains the occupied entry, and the value that was not inserted.
+/// 其中包含被占用的 entry，以及那个未被插入的值。
 #[unstable(feature = "map_try_insert", issue = "82766")]
 pub struct OccupiedError<
     'a,
@@ -1982,9 +1916,9 @@ pub struct OccupiedError<
     V: 'a,
     #[unstable(feature = "allocator_api", issue = "32838")] A: Allocator = Global,
 > {
-    /// The entry in the map that was already occupied.
+    /// map 中那个已被占用的 entry。
     pub entry: OccupiedEntry<'a, K, V, A>,
-    /// The value which was not inserted, because the entry was already occupied.
+    /// 因为 entry 已被占用而未被插入的那个值。
     pub value: V,
 }
 
@@ -2044,11 +1978,10 @@ impl<K, V, S, A: Allocator> IntoIterator for HashMap<K, V, S, A> {
     type Item = (K, V);
     type IntoIter = IntoIter<K, V, A>;
 
-    /// Creates a consuming iterator, that is, one that moves each key-value
-    /// pair out of the map in arbitrary order. The map cannot be used after
-    /// calling this.
+    /// 创建一个消耗型迭代器，也就是说，它以任意顺序将每个键值对移出该 map。
+    /// 调用之后该 map 不能再被使用。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -2059,7 +1992,7 @@ impl<K, V, S, A: Allocator> IntoIterator for HashMap<K, V, S, A> {
     ///     ("c", 3),
     /// ]);
     ///
-    /// // Not possible with .iter()
+    /// // 用 .iter() 做不到这一点
     /// let vec: Vec<(&str, i32)> = map.into_iter().collect();
     /// ```
     #[inline]
@@ -2466,10 +2399,9 @@ where
 }
 
 impl<'a, K, V, A: Allocator> Entry<'a, K, V, A> {
-    /// Ensures a value is in the entry by inserting the default if empty, and returns
-    /// a mutable reference to the value in the entry.
+    /// 确保 entry 中存在一个值：若为空缺则插入 default，并返回该 entry 中值的可变引用。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -2491,10 +2423,10 @@ impl<'a, K, V, A: Allocator> Entry<'a, K, V, A> {
         }
     }
 
-    /// Ensures a value is in the entry by inserting the result of the default function if empty,
-    /// and returns a mutable reference to the value in the entry.
+    /// 确保 entry 中存在一个值：若为空缺则插入默认函数（default function）的返回值，
+    /// 并返回该 entry 中值的可变引用。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -2515,14 +2447,14 @@ impl<'a, K, V, A: Allocator> Entry<'a, K, V, A> {
         }
     }
 
-    /// Ensures a value is in the entry by inserting, if empty, the result of the default function.
-    /// This method allows for generating key-derived values for insertion by providing the default
-    /// function a reference to the key that was moved during the `.entry(key)` method call.
+    /// 确保 entry 中存在一个值：若为空缺则插入默认函数的返回值。
+    /// 本方法会向默认函数提供一个对那个在 `.entry(key)` 方法调用期间被移动的键的引用，
+    /// 从而允许生成由键派生而来的待插入值。
     ///
-    /// The reference to the moved key is provided so that cloning or copying the key is
-    /// unnecessary, unlike with `.or_insert_with(|| ... )`.
+    /// 之所以提供这个对被移动键的引用，是为了避免克隆或拷贝键的必要——这与
+    /// `.or_insert_with(|| ... )` 不同。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -2545,9 +2477,9 @@ impl<'a, K, V, A: Allocator> Entry<'a, K, V, A> {
         }
     }
 
-    /// Returns a reference to this entry's key.
+    /// 返回此 entry 的键的引用。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -2564,10 +2496,9 @@ impl<'a, K, V, A: Allocator> Entry<'a, K, V, A> {
         }
     }
 
-    /// Provides in-place mutable access to an occupied entry before any
-    /// potential inserts into the map.
+    /// 在向 map 进行任何可能的插入之前，提供对被占用 entry 的就地可变访问。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -2599,9 +2530,9 @@ impl<'a, K, V, A: Allocator> Entry<'a, K, V, A> {
         }
     }
 
-    /// Sets the value of the entry, and returns an `OccupiedEntry`.
+    /// 设置该 entry 的值，并返回一个 `OccupiedEntry`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -2625,10 +2556,10 @@ impl<'a, K, V, A: Allocator> Entry<'a, K, V, A> {
 }
 
 impl<'a, K, V: Default> Entry<'a, K, V> {
-    /// Ensures a value is in the entry by inserting the default value if empty,
-    /// and returns a mutable reference to the value in the entry.
+    /// 确保 entry 中存在一个值：若为空缺则插入默认值（default value），并返回该
+    /// entry 中值的可变引用。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// # fn main() {
@@ -2651,9 +2582,9 @@ impl<'a, K, V: Default> Entry<'a, K, V> {
 }
 
 impl<'a, K, V, A: Allocator> OccupiedEntry<'a, K, V, A> {
-    /// Gets a reference to the key in the entry.
+    /// 获取该 entry 中键的引用。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -2668,9 +2599,9 @@ impl<'a, K, V, A: Allocator> OccupiedEntry<'a, K, V, A> {
         self.base.key()
     }
 
-    /// Take the ownership of the key and value from the map.
+    /// 从 map 中取得键和值的所有权。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -2680,7 +2611,7 @@ impl<'a, K, V, A: Allocator> OccupiedEntry<'a, K, V, A> {
     /// map.entry("poneyland").or_insert(12);
     ///
     /// if let Entry::Occupied(o) = map.entry("poneyland") {
-    ///     // We delete the entry from the map.
+    ///     // 我们从 map 中删除这个 entry。
     ///     o.remove_entry();
     /// }
     ///
@@ -2692,9 +2623,9 @@ impl<'a, K, V, A: Allocator> OccupiedEntry<'a, K, V, A> {
         self.base.remove_entry()
     }
 
-    /// Gets a reference to the value in the entry.
+    /// 获取该 entry 中值的引用。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -2713,14 +2644,14 @@ impl<'a, K, V, A: Allocator> OccupiedEntry<'a, K, V, A> {
         self.base.get()
     }
 
-    /// Gets a mutable reference to the value in the entry.
+    /// 获取该 entry 中值的可变引用。
     ///
-    /// If you need a reference to the `OccupiedEntry` which may outlive the
-    /// destruction of the `Entry` value, see [`into_mut`].
+    /// 如果你需要一个生命周期可能超出 `Entry` 值销毁时刻的、对 `OccupiedEntry` 的
+    /// 引用，参见 [`into_mut`]。
     ///
     /// [`into_mut`]: Self::into_mut
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -2734,7 +2665,7 @@ impl<'a, K, V, A: Allocator> OccupiedEntry<'a, K, V, A> {
     ///     *o.get_mut() += 10;
     ///     assert_eq!(*o.get(), 22);
     ///
-    ///     // We can use the same Entry multiple times.
+    ///     // 我们可以多次使用同一个 Entry。
     ///     *o.get_mut() += 2;
     /// }
     ///
@@ -2746,14 +2677,14 @@ impl<'a, K, V, A: Allocator> OccupiedEntry<'a, K, V, A> {
         self.base.get_mut()
     }
 
-    /// Converts the `OccupiedEntry` into a mutable reference to the value in the entry
-    /// with a lifetime bound to the map itself.
+    /// 将 `OccupiedEntry` 转换为一个对 entry 中值的可变引用，其生命周期绑定到 map
+    /// 自身。
     ///
-    /// If you need multiple references to the `OccupiedEntry`, see [`get_mut`].
+    /// 如果你需要对 `OccupiedEntry` 的多个引用，参见 [`get_mut`]。
     ///
     /// [`get_mut`]: Self::get_mut
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -2775,9 +2706,9 @@ impl<'a, K, V, A: Allocator> OccupiedEntry<'a, K, V, A> {
         self.base.into_mut()
     }
 
-    /// Sets the value of the entry, and returns the entry's old value.
+    /// 设置该 entry 的值，并返回该 entry 的旧值。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -2798,9 +2729,9 @@ impl<'a, K, V, A: Allocator> OccupiedEntry<'a, K, V, A> {
         self.base.insert(value)
     }
 
-    /// Takes the value out of the entry, and returns it.
+    /// 将值从该 entry 中取出，并返回它。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -2823,10 +2754,9 @@ impl<'a, K, V, A: Allocator> OccupiedEntry<'a, K, V, A> {
 }
 
 impl<'a, K: 'a, V: 'a, A: Allocator> VacantEntry<'a, K, V, A> {
-    /// Gets a reference to the key that would be used when inserting a value
-    /// through the `VacantEntry`.
+    /// 获取一个对将通过该 `VacantEntry` 插入值时所用键的引用。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -2840,9 +2770,9 @@ impl<'a, K: 'a, V: 'a, A: Allocator> VacantEntry<'a, K, V, A> {
         self.base.key()
     }
 
-    /// Take ownership of the key.
+    /// 取得该键的所有权。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -2860,10 +2790,9 @@ impl<'a, K: 'a, V: 'a, A: Allocator> VacantEntry<'a, K, V, A> {
         self.base.into_key()
     }
 
-    /// Sets the value of the entry with the `VacantEntry`'s key,
-    /// and returns a mutable reference to it.
+    /// 以该 `VacantEntry` 的键设置该 entry 的值，并返回一个对它的可变引用。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -2882,10 +2811,9 @@ impl<'a, K: 'a, V: 'a, A: Allocator> VacantEntry<'a, K, V, A> {
         self.base.insert(value)
     }
 
-    /// Sets the value of the entry with the `VacantEntry`'s key,
-    /// and returns an `OccupiedEntry`.
+    /// 以该 `VacantEntry` 的键设置该 entry 的值，并返回一个 `OccupiedEntry`。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::collections::HashMap;
@@ -2912,10 +2840,9 @@ where
     K: Eq + Hash,
     S: BuildHasher + Default,
 {
-    /// Constructs a `HashMap<K, V>` from an iterator of key-value pairs.
+    /// 从一个键值对迭代器构造一个 `HashMap<K, V>`。
     ///
-    /// If the iterator produces any pairs with equal keys,
-    /// all but one of the corresponding values will be dropped.
+    /// 如果该迭代器产出任何键相等的对，那么对应的值中除一个之外都会被丢弃。
     fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> HashMap<K, V, S> {
         let mut map = HashMap::with_hasher(Default::default());
         map.extend(iter);
@@ -2923,8 +2850,7 @@ where
     }
 }
 
-/// Inserts all new key-values from the iterator and replaces values with existing
-/// keys with new values returned from the iterator.
+/// 插入迭代器中所有新的键值对，并把已存在键的值替换为迭代器返回的新值。
 #[stable(feature = "rust1", since = "1.0.0")]
 impl<K, V, S, A> Extend<(K, V)> for HashMap<K, V, S, A>
 where

@@ -1,4 +1,4 @@
-//! Unbounded channel implemented as a linked list.
+//! 以链表（linked list）实现的无界通道。
 
 use super::context::Context;
 use super::error::*;
@@ -12,36 +12,36 @@ use crate::ptr;
 use crate::sync::atomic::{self, Atomic, AtomicPtr, AtomicUsize, Ordering};
 use crate::time::Instant;
 
-// Bits indicating the state of a slot:
-// * If a message has been written into the slot, `WRITE` is set.
-// * If a message has been read from the slot, `READ` is set.
-// * If the block is being destroyed, `DESTROY` is set.
+// 用于表示一个槽位（slot）状态的若干比特位：
+// * 如果一条消息已被写入该槽位，则置位 `WRITE`。
+// * 如果一条消息已从该槽位被读出，则置位 `READ`。
+// * 如果该 block 正在被销毁，则置位 `DESTROY`。
 const WRITE: usize = 1;
 const READ: usize = 2;
 const DESTROY: usize = 4;
 
-// Each block covers one "lap" of indices.
+// 每个 block 覆盖索引的一“圈”（lap）。
 const LAP: usize = 32;
-// The maximum number of messages a block can hold.
+// 一个 block 能容纳的消息数量上限。
 const BLOCK_CAP: usize = LAP - 1;
-// How many lower bits are reserved for metadata.
+// 索引低位中预留给元数据的比特位数。
 const SHIFT: usize = 1;
-// Has two different purposes:
-// * If set in head, indicates that the block is not the last one.
-// * If set in tail, indicates that the channel is disconnected.
+// 有两种不同用途：
+// * 若在 head 中置位，表示该 block 不是最后一个。
+// * 若在 tail 中置位，表示通道已断连（disconnected）。
 const MARK_BIT: usize = 1;
 
-/// A slot in a block.
+/// 一个 block 中的槽位（slot）。
 struct Slot<T> {
-    /// The message.
+    /// 消息本体。
     msg: UnsafeCell<MaybeUninit<T>>,
 
-    /// The state of the slot.
+    /// 该槽位的状态。
     state: Atomic<usize>,
 }
 
 impl<T> Slot<T> {
-    /// Waits until a message is written into the slot.
+    /// 等待直到有一条消息被写入该槽位。
     fn wait_write(&self) {
         let backoff = Backoff::new();
         while self.state.load(Ordering::Acquire) & WRITE == 0 {
@@ -50,30 +50,29 @@ impl<T> Slot<T> {
     }
 }
 
-/// A block in a linked list.
+/// 链表中的一个 block（块）。
 ///
-/// Each block in the list can hold up to `BLOCK_CAP` messages.
+/// 链表中的每个 block 最多可容纳 `BLOCK_CAP` 条消息。
 struct Block<T> {
-    /// The next block in the linked list.
+    /// 链表中的下一个 block。
     next: Atomic<*mut Block<T>>,
 
-    /// Slots for messages.
+    /// 用于存放消息的槽位。
     slots: [Slot<T>; BLOCK_CAP],
 }
 
 impl<T> Block<T> {
-    /// Creates an empty block.
+    /// 创建一个空的 block。
     fn new() -> Box<Block<T>> {
-        // SAFETY: This is safe because:
-        //  [1] `Block::next` (Atomic<*mut _>) may be safely zero initialized.
-        //  [2] `Block::slots` (Array) may be safely zero initialized because of [3, 4].
-        //  [3] `Slot::msg` (UnsafeCell) may be safely zero initialized because it
-        //       holds a MaybeUninit.
-        //  [4] `Slot::state` (Atomic<usize>) may be safely zero initialized.
+        // SAFETY: 这是安全的，因为：
+        //  [1] `Block::next`（Atomic<*mut _>）可以被安全地零初始化。
+        //  [2] `Block::slots`（数组）由于 [3, 4] 可以被安全地零初始化。
+        //  [3] `Slot::msg`（UnsafeCell）由于它持有一个 MaybeUninit，可以被安全地零初始化。
+        //  [4] `Slot::state`（Atomic<usize>）可以被安全地零初始化。
         unsafe { Box::new_zeroed().assume_init() }
     }
 
-    /// Waits until the next pointer is set.
+    /// 等待直到 next 指针被设置好。
     fn wait_next(&self) -> *mut Block<T> {
         let backoff = Backoff::new();
         loop {
@@ -85,44 +84,43 @@ impl<T> Block<T> {
         }
     }
 
-    /// Sets the `DESTROY` bit in slots starting from `start` and destroys the block.
+    /// 从 `start` 起在各槽位中置位 `DESTROY` 比特，并销毁该 block。
     unsafe fn destroy(this: *mut Block<T>, start: usize) {
-        // It is not necessary to set the `DESTROY` bit in the last slot because that slot has
-        // begun destruction of the block.
+        // 没有必要在最后一个槽位中置位 `DESTROY`，因为那个槽位正是发起本 block 销毁的那一个。
         for i in start..BLOCK_CAP - 1 {
             let slot = unsafe { (*this).slots.get_unchecked(i) };
 
-            // Mark the `DESTROY` bit if a thread is still using the slot.
+            // 如果仍有线程在使用该槽位，则标记 `DESTROY` 比特。
             if slot.state.load(Ordering::Acquire) & READ == 0
                 && slot.state.fetch_or(DESTROY, Ordering::AcqRel) & READ == 0
             {
-                // If a thread is still using the slot, it will continue destruction of the block.
+                // 如果仍有线程在使用该槽位，则将由它来继续完成本 block 的销毁。
                 return;
             }
         }
 
-        // No thread is using the block, now it is safe to destroy it.
+        // 已经没有线程在使用该 block，现在销毁它是安全的。
         drop(unsafe { Box::from_raw(this) });
     }
 }
 
-/// A position in a channel.
+/// 通道中的一个位置（position）。
 #[derive(Debug)]
 struct Position<T> {
-    /// The index in the channel.
+    /// 通道内的索引。
     index: Atomic<usize>,
 
-    /// The block in the linked list.
+    /// 链表中对应的 block。
     block: Atomic<*mut Block<T>>,
 }
 
-/// The token type for the list flavor.
+/// list flavor 的 token 类型。
 #[derive(Debug)]
 pub(crate) struct ListToken {
-    /// The block of slots.
+    /// 槽位所在的 block。
     block: *const u8,
 
-    /// The offset into the block.
+    /// 在该 block 内的偏移量。
     offset: usize,
 }
 
@@ -133,29 +131,28 @@ impl Default for ListToken {
     }
 }
 
-/// Unbounded channel implemented as a linked list.
+/// 以链表实现的无界通道。
 ///
-/// Each message sent into the channel is assigned a sequence number, i.e. an index. Indices are
-/// represented as numbers of type `usize` and wrap on overflow.
+/// 发入通道的每条消息都会被分配一个序号（sequence number），即一个索引。索引以 `usize` 类型
+/// 的数字表示，并在溢出时回绕（wrap）。
 ///
-/// Consecutive messages are grouped into blocks in order to put less pressure on the allocator and
-/// improve cache efficiency.
+/// 连续的消息会被分组到若干 block 中，以减轻分配器的压力并提升缓存效率。
 pub(crate) struct Channel<T> {
-    /// The head of the channel.
+    /// 通道的头部（head）。
     head: CachePadded<Position<T>>,
 
-    /// The tail of the channel.
+    /// 通道的尾部（tail）。
     tail: CachePadded<Position<T>>,
 
-    /// Receivers waiting while the channel is empty and not disconnected.
+    /// 在通道为空且未断连期间等待的接收者。
     receivers: SyncWaker,
 
-    /// Indicates that dropping a `Channel<T>` may drop messages of type `T`.
+    /// 表明丢弃一个 `Channel<T>` 时可能会丢弃类型为 `T` 的消息。
     _marker: PhantomData<T>,
 }
 
 impl<T> Channel<T> {
-    /// Creates a new unbounded channel.
+    /// 创建一个新的无界通道。
     pub(crate) fn new() -> Self {
         Channel {
             head: CachePadded::new(Position {
@@ -171,7 +168,7 @@ impl<T> Channel<T> {
         }
     }
 
-    /// Attempts to reserve a slot for sending a message.
+    /// 尝试为发送一条消息预订（reserve）一个槽位。
     fn start_send(&self, token: &mut Token) -> bool {
         let backoff = Backoff::new();
         let mut tail = self.tail.index.load(Ordering::Acquire);
@@ -179,16 +176,16 @@ impl<T> Channel<T> {
         let mut next_block = None;
 
         loop {
-            // Check if the channel is disconnected.
+            // 检查通道是否已断连。
             if tail & MARK_BIT != 0 {
                 token.list.block = ptr::null();
                 return true;
             }
 
-            // Calculate the offset of the index into the block.
+            // 计算该索引在 block 内的偏移量。
             let offset = (tail >> SHIFT) % LAP;
 
-            // If we reached the end of the block, wait until the next one is installed.
+            // 如果我们已到达本 block 的末尾，则等待直到下一个 block 被装上。
             if offset == BLOCK_CAP {
                 backoff.spin_heavy();
                 tail = self.tail.index.load(Ordering::Acquire);
@@ -196,14 +193,13 @@ impl<T> Channel<T> {
                 continue;
             }
 
-            // If we're going to have to install the next block, allocate it in advance in order to
-            // make the wait for other threads as short as possible.
+            // 如果我们即将需要装上下一个 block，则提前把它分配好，以便把其他线程的等待时间
+            // 缩到最短。
             if offset + 1 == BLOCK_CAP && next_block.is_none() {
                 next_block = Some(Block::<T>::new());
             }
 
-            // If this is the first message to be sent into the channel, we need to allocate the
-            // first block and install it.
+            // 如果这是发入通道的第一条消息，我们需要分配第一个 block 并把它装上。
             if block.is_null() {
                 let new = Box::into_raw(Block::<T>::new());
 
@@ -213,9 +209,9 @@ impl<T> Channel<T> {
                     .compare_exchange(block, new, Ordering::Release, Ordering::Relaxed)
                     .is_ok()
                 {
-                    // This yield point leaves the channel in a half-initialized state where the
-                    // tail.block pointer is set but the head.block is not. This is used to
-                    // facilitate the test in src/tools/miri/tests/pass/issues/issue-139553.rs
+                    // 这个让出点（yield point）会让通道处于一种半初始化状态：tail.block 指针
+                    // 已设置，而 head.block 尚未设置。它被用来配合 miri 测试
+                    // src/tools/miri/tests/pass/issues/issue-139553.rs。
                     #[cfg(miri)]
                     crate::thread::yield_now();
                     self.head.block.store(new, Ordering::Release);
@@ -230,7 +226,7 @@ impl<T> Channel<T> {
 
             let new_tail = tail + (1 << SHIFT);
 
-            // Try advancing the tail forward.
+            // 尝试把 tail 向前推进。
             match self.tail.index.compare_exchange_weak(
                 tail,
                 new_tail,
@@ -238,7 +234,7 @@ impl<T> Channel<T> {
                 Ordering::Acquire,
             ) {
                 Ok(_) => unsafe {
-                    // If we've reached the end of the block, install the next one.
+                    // 如果我们已到达本 block 的末尾，则装上下一个 block。
                     if offset + 1 == BLOCK_CAP {
                         let next_block = Box::into_raw(next_block.unwrap());
                         self.tail.block.store(next_block, Ordering::Release);
@@ -259,14 +255,14 @@ impl<T> Channel<T> {
         }
     }
 
-    /// Writes a message into the channel.
+    /// 向通道写入一条消息。
     pub(crate) unsafe fn write(&self, token: &mut Token, msg: T) -> Result<(), T> {
-        // If there is no slot, the channel is disconnected.
+        // 如果没有槽位，说明通道已断连。
         if token.list.block.is_null() {
             return Err(msg);
         }
 
-        // Write the message into the slot.
+        // 把消息写入槽位。
         let block = token.list.block as *mut Block<T>;
         let offset = token.list.offset;
         unsafe {
@@ -275,22 +271,22 @@ impl<T> Channel<T> {
             slot.state.fetch_or(WRITE, Ordering::Release);
         }
 
-        // Wake a sleeping receiver.
+        // 唤醒一个正在睡眠的接收者。
         self.receivers.notify();
         Ok(())
     }
 
-    /// Attempts to reserve a slot for receiving a message.
+    /// 尝试为接收一条消息预订（reserve）一个槽位。
     fn start_recv(&self, token: &mut Token) -> bool {
         let backoff = Backoff::new();
         let mut head = self.head.index.load(Ordering::Acquire);
         let mut block = self.head.block.load(Ordering::Acquire);
 
         loop {
-            // Calculate the offset of the index into the block.
+            // 计算该索引在 block 内的偏移量。
             let offset = (head >> SHIFT) % LAP;
 
-            // If we reached the end of the block, wait until the next one is installed.
+            // 如果我们已到达本 block 的末尾，则等待直到下一个 block 被装上。
             if offset == BLOCK_CAP {
                 backoff.spin_heavy();
                 head = self.head.index.load(Ordering::Acquire);
@@ -304,27 +300,27 @@ impl<T> Channel<T> {
                 atomic::fence(Ordering::SeqCst);
                 let tail = self.tail.index.load(Ordering::Relaxed);
 
-                // If the tail equals the head, that means the channel is empty.
+                // 如果 tail 等于 head，意味着通道为空。
                 if head >> SHIFT == tail >> SHIFT {
-                    // If the channel is disconnected...
+                    // 如果通道已断连……
                     if tail & MARK_BIT != 0 {
-                        // ...then receive an error.
+                        // ……那么接收到一个错误。
                         token.list.block = ptr::null();
                         return true;
                     } else {
-                        // Otherwise, the receive operation is not ready.
+                        // 否则，接收操作尚未就绪。
                         return false;
                     }
                 }
 
-                // If head and tail are not in the same block, set `MARK_BIT` in head.
+                // 如果 head 与 tail 不在同一个 block 中，则在 head 中置位 `MARK_BIT`。
                 if (head >> SHIFT) / LAP != (tail >> SHIFT) / LAP {
                     new_head |= MARK_BIT;
                 }
             }
 
-            // The block can be null here only if the first message is being sent into the channel.
-            // In that case, just wait until it gets initialized.
+            // 此处 block 为 null 的唯一可能，是正有第一条消息被发入通道。这种情况下，只需
+            // 等待直到它被初始化。
             if block.is_null() {
                 backoff.spin_heavy();
                 head = self.head.index.load(Ordering::Acquire);
@@ -332,7 +328,7 @@ impl<T> Channel<T> {
                 continue;
             }
 
-            // Try moving the head index forward.
+            // 尝试把 head 索引向前移动。
             match self.head.index.compare_exchange_weak(
                 head,
                 new_head,
@@ -340,7 +336,7 @@ impl<T> Channel<T> {
                 Ordering::Acquire,
             ) {
                 Ok(_) => unsafe {
-                    // If we've reached the end of the block, move to the next one.
+                    // 如果我们已到达本 block 的末尾，则移动到下一个 block。
                     if offset + 1 == BLOCK_CAP {
                         let next = (*block).wait_next();
                         let mut next_index = (new_head & !MARK_BIT).wrapping_add(1 << SHIFT);
@@ -365,14 +361,14 @@ impl<T> Channel<T> {
         }
     }
 
-    /// Reads a message from the channel.
+    /// 从通道读取一条消息。
     pub(crate) unsafe fn read(&self, token: &mut Token) -> Result<T, ()> {
         if token.list.block.is_null() {
-            // The channel is disconnected.
+            // 通道已断连。
             return Err(());
         }
 
-        // Read the message.
+        // 读取消息。
         let block = token.list.block as *mut Block<T>;
         let offset = token.list.offset;
         unsafe {
@@ -380,8 +376,8 @@ impl<T> Channel<T> {
             slot.wait_write();
             let msg = slot.msg.get().read().assume_init();
 
-            // Destroy the block if we've reached the end, or if another thread wanted to destroy but
-            // couldn't because we were busy reading from the slot.
+            // 如果我们已到达末尾，或者另一线程曾想销毁该 block 但因我们正忙于从槽位读取而
+            // 未能成功，则在此销毁该 block。
             if offset + 1 == BLOCK_CAP {
                 Block::destroy(block, 0);
             } else if slot.state.fetch_or(READ, Ordering::AcqRel) & DESTROY != 0 {
@@ -392,7 +388,7 @@ impl<T> Channel<T> {
         }
     }
 
-    /// Attempts to send a message into the channel.
+    /// 尝试向通道发送一条消息。
     pub(crate) fn try_send(&self, msg: T) -> Result<(), TrySendError<T>> {
         self.send(msg, None).map_err(|err| match err {
             SendTimeoutError::Disconnected(msg) => TrySendError::Disconnected(msg),
@@ -400,7 +396,7 @@ impl<T> Channel<T> {
         })
     }
 
-    /// Sends a message into the channel.
+    /// 向通道发送一条消息。
     pub(crate) fn send(
         &self,
         msg: T,
@@ -411,7 +407,7 @@ impl<T> Channel<T> {
         unsafe { self.write(token, msg).map_err(SendTimeoutError::Disconnected) }
     }
 
-    /// Attempts to receive a message without blocking.
+    /// 尝试以非阻塞方式接收一条消息。
     pub(crate) fn try_recv(&self) -> Result<T, TryRecvError> {
         let token = &mut Token::default();
 
@@ -422,7 +418,7 @@ impl<T> Channel<T> {
         }
     }
 
-    /// Receives a message from the channel.
+    /// 从通道接收一条消息。
     pub(crate) fn recv(&self, deadline: Option<Instant>) -> Result<T, RecvTimeoutError> {
         let token = &mut Token::default();
         loop {
@@ -438,26 +434,25 @@ impl<T> Channel<T> {
                 }
             }
 
-            // Prepare for blocking until a sender wakes us up.
+            // 准备阻塞，直到某个发送者把我们唤醒。
             Context::with(|cx| {
                 let oper = Operation::hook(token);
                 self.receivers.register(oper, cx);
 
-                // Has the channel become ready just now?
+                // 通道是不是刚好在此刻变为就绪了？
                 if !self.is_empty() || self.is_disconnected() {
                     let _ = cx.try_select(Selected::Aborted);
                 }
 
-                // Block the current thread.
-                // SAFETY: the context belongs to the current thread.
+                // 阻塞当前线程。
+                // SAFETY: 该上下文属于当前线程。
                 let sel = unsafe { cx.wait_until(deadline) };
 
                 match sel {
                     Selected::Waiting => unreachable!(),
                     Selected::Aborted | Selected::Disconnected => {
                         self.receivers.unregister(oper).unwrap();
-                        // If the channel was disconnected, we still have to check for remaining
-                        // messages.
+                        // 即便通道已断连，我们仍然必须检查是否还有剩余的消息。
                     }
                     Selected::Operation(_) => {}
                 }
@@ -465,20 +460,20 @@ impl<T> Channel<T> {
         }
     }
 
-    /// Returns the current number of messages inside the channel.
+    /// 返回通道中当前的消息数量。
     pub(crate) fn len(&self) -> usize {
         loop {
-            // Load the tail index, then load the head index.
+            // 先加载 tail 索引，再加载 head 索引。
             let mut tail = self.tail.index.load(Ordering::SeqCst);
             let mut head = self.head.index.load(Ordering::SeqCst);
 
-            // If the tail index didn't change, we've got consistent indices to work with.
+            // 如果 tail 索引没有改变，说明我们拿到了一对一致（consistent）的索引可供计算。
             if self.tail.index.load(Ordering::SeqCst) == tail {
-                // Erase the lower bits.
+                // 抹掉低位。
                 tail &= !((1 << SHIFT) - 1);
                 head &= !((1 << SHIFT) - 1);
 
-                // Fix up indices if they fall onto block ends.
+                // 如果索引正好落在 block 的末尾，则修正它们。
                 if (tail >> SHIFT) & (LAP - 1) == LAP - 1 {
                     tail = tail.wrapping_add(1 << SHIFT);
                 }
@@ -486,29 +481,29 @@ impl<T> Channel<T> {
                     head = head.wrapping_add(1 << SHIFT);
                 }
 
-                // Rotate indices so that head falls into the first block.
+                // 旋转（rotate）索引，使 head 落入第一个 block。
                 let lap = (head >> SHIFT) / LAP;
                 tail = tail.wrapping_sub((lap * LAP) << SHIFT);
                 head = head.wrapping_sub((lap * LAP) << SHIFT);
 
-                // Remove the lower bits.
+                // 移除低位。
                 tail >>= SHIFT;
                 head >>= SHIFT;
 
-                // Return the difference minus the number of blocks between tail and head.
+                // 返回二者之差，再减去 tail 与 head 之间跨越的 block 数量。
                 return tail - head - tail / LAP;
             }
         }
     }
 
-    /// Returns the capacity of the channel.
+    /// 返回通道的容量。
     pub(crate) fn capacity(&self) -> Option<usize> {
         None
     }
 
-    /// Disconnects senders and wakes up all blocked receivers.
+    /// 断开（disconnect）发送者，并唤醒所有被阻塞的接收者。
     ///
-    /// Returns `true` if this call disconnected the channel.
+    /// 如果本次调用使通道断连，返回 `true`。
     pub(crate) fn disconnect_senders(&self) -> bool {
         let tail = self.tail.index.fetch_or(MARK_BIT, Ordering::SeqCst);
 
@@ -520,15 +515,14 @@ impl<T> Channel<T> {
         }
     }
 
-    /// Disconnects receivers.
+    /// 断开（disconnect）接收者。
     ///
-    /// Returns `true` if this call disconnected the channel.
+    /// 如果本次调用使通道断连，返回 `true`。
     pub(crate) fn disconnect_receivers(&self) -> bool {
         let tail = self.tail.index.fetch_or(MARK_BIT, Ordering::SeqCst);
 
         if tail & MARK_BIT == 0 {
-            // If receivers are dropped first, discard all messages to free
-            // memory eagerly.
+            // 如果接收者先被丢弃，则丢弃所有消息，以尽早释放内存。
             self.discard_all_messages();
             true
         } else {
@@ -536,9 +530,9 @@ impl<T> Channel<T> {
         }
     }
 
-    /// Discards all messages.
+    /// 丢弃所有消息。
     ///
-    /// This method should only be called when all receivers are dropped.
+    /// 此方法只应在所有接收者都已被丢弃后调用。
     fn discard_all_messages(&self) {
         let backoff = Backoff::new();
         let mut tail = self.tail.index.load(Ordering::Acquire);
@@ -548,51 +542,47 @@ impl<T> Channel<T> {
                 break;
             }
 
-            // New updates to tail will be rejected by MARK_BIT and aborted unless it's
-            // at boundary. We need to wait for the updates take affect otherwise there
-            // can be memory leaks.
+            // 对 tail 的新更新会因 MARK_BIT 而被拒绝并中止，除非它恰好处在边界上。我们需要
+            // 等待这些更新生效，否则可能发生内存泄漏。
             backoff.spin_heavy();
             tail = self.tail.index.load(Ordering::Acquire);
         }
 
         let mut head = self.head.index.load(Ordering::Acquire);
-        // The channel may be uninitialized, so we have to swap to avoid overwriting any sender's attempts
-        // to initialize the first block before noticing that the receivers disconnected. Late allocations
-        // will be deallocated by the sender in Drop.
+        // 通道可能尚未初始化，因此我们必须用 swap，以免覆盖某个发送者在察觉到接收者已断连
+        // 之前对第一个 block 所做的初始化尝试。那些较晚的分配将由发送者在 Drop 中释放。
         let mut block = self.head.block.swap(ptr::null_mut(), Ordering::AcqRel);
 
-        // If we're going to be dropping messages we need to synchronize with initialization
+        // 如果我们将要丢弃消息，就需要与初始化过程进行同步。
         if head >> SHIFT != tail >> SHIFT {
-            // The block can be null here only if a sender is in the process of initializing the
-            // channel while another sender managed to send a message by inserting it into the
-            // semi-initialized channel and advanced the tail.
-            // In that case, just wait until it gets initialized.
+            // 此处 block 为 null 的唯一可能是：当一个发送者正在初始化通道的过程中，另一个
+            // 发送者设法把一条消息插入这个半初始化的通道并推进了 tail。这种情况下，只需
+            // 等待直到它被初始化。
             while block.is_null() {
                 backoff.spin_heavy();
                 block = self.head.block.swap(ptr::null_mut(), Ordering::AcqRel);
             }
         }
-        // After this point `head.block` is not modified again and it will be deallocated if it's
-        // non-null. The `Drop` code of the channel, which runs after this function, also attempts
-        // to deallocate `head.block` if it's non-null. Therefore this function must maintain the
-        // invariant that if a deallocation of head.block is attempted then it must also be set to
-        // NULL. Failing to do so will lead to the Drop code attempting a double free. For this
-        // reason both reads above do an atomic swap instead of a simple atomic load.
+        // 自此之后 `head.block` 不会再被修改；如果它非空，将会被释放。在本函数之后运行的
+        // 通道 `Drop` 代码同样会尝试释放非空的 `head.block`。因此本函数必须维持这样一条
+        // 不变式：一旦尝试释放 head.block，就必须同时把它置为 NULL。否则将导致 Drop 代码
+        // 重复释放（double free）。正因如此，上面两处读取都采用原子 swap 而非简单的原子
+        // load。
 
         unsafe {
-            // Drop all messages between head and tail and deallocate the heap-allocated blocks.
+            // 丢弃 head 与 tail 之间的所有消息，并释放在堆上分配的各个 block。
             while head >> SHIFT != tail >> SHIFT {
                 let offset = (head >> SHIFT) % LAP;
 
                 if offset < BLOCK_CAP {
-                    // Drop the message in the slot.
+                    // 丢弃槽位中的消息。
                     let slot = (*block).slots.get_unchecked(offset);
                     slot.wait_write();
                     let p = &mut *slot.msg.get();
                     p.as_mut_ptr().drop_in_place();
                 } else {
                     (*block).wait_next();
-                    // Deallocate the block and move to the next one.
+                    // 释放该 block 并移动到下一个。
                     let next = (*block).next.load(Ordering::Acquire);
                     drop(Box::from_raw(block));
                     block = next;
@@ -601,7 +591,7 @@ impl<T> Channel<T> {
                 head = head.wrapping_add(1 << SHIFT);
             }
 
-            // Deallocate the last remaining block.
+            // 释放最后剩下的那个 block。
             if !block.is_null() {
                 drop(Box::from_raw(block));
             }
@@ -611,19 +601,19 @@ impl<T> Channel<T> {
         self.head.index.store(head, Ordering::Release);
     }
 
-    /// Returns `true` if the channel is disconnected.
+    /// 如果通道已断连，返回 `true`。
     pub(crate) fn is_disconnected(&self) -> bool {
         self.tail.index.load(Ordering::SeqCst) & MARK_BIT != 0
     }
 
-    /// Returns `true` if the channel is empty.
+    /// 如果通道为空，返回 `true`。
     pub(crate) fn is_empty(&self) -> bool {
         let head = self.head.index.load(Ordering::SeqCst);
         let tail = self.tail.index.load(Ordering::SeqCst);
         head >> SHIFT == tail >> SHIFT
     }
 
-    /// Returns `true` if the channel is full.
+    /// 如果通道已满，返回 `true`。
     pub(crate) fn is_full(&self) -> bool {
         false
     }
@@ -635,22 +625,22 @@ impl<T> Drop for Channel<T> {
         let mut tail = self.tail.index.load(Ordering::Relaxed);
         let mut block = self.head.block.load(Ordering::Relaxed);
 
-        // Erase the lower bits.
+        // 抹掉低位。
         head &= !((1 << SHIFT) - 1);
         tail &= !((1 << SHIFT) - 1);
 
         unsafe {
-            // Drop all messages between head and tail and deallocate the heap-allocated blocks.
+            // 丢弃 head 与 tail 之间的所有消息，并释放在堆上分配的各个 block。
             while head != tail {
                 let offset = (head >> SHIFT) % LAP;
 
                 if offset < BLOCK_CAP {
-                    // Drop the message in the slot.
+                    // 丢弃槽位中的消息。
                     let slot = (*block).slots.get_unchecked(offset);
                     let p = &mut *slot.msg.get();
                     p.as_mut_ptr().drop_in_place();
                 } else {
-                    // Deallocate the block and move to the next one.
+                    // 释放该 block 并移动到下一个。
                     let next = (*block).next.load(Ordering::Relaxed);
                     drop(Box::from_raw(block));
                     block = next;
@@ -659,7 +649,7 @@ impl<T> Drop for Channel<T> {
                 head = head.wrapping_add(1 << SHIFT);
             }
 
-            // Deallocate the last remaining block.
+            // 释放最后剩下的那个 block。
             if !block.is_null() {
                 drop(Box::from_raw(block));
             }

@@ -1,15 +1,12 @@
 use crate::num::NonZero;
 use crate::sync::atomic::{Atomic, Ordering};
 
-/// A unique identifier for a running thread.
+/// 正在运行的线程的唯一标识符。
 ///
-/// A `ThreadId` is an opaque object that uniquely identifies each thread
-/// created during the lifetime of a process. `ThreadId`s are guaranteed not to
-/// be reused, even when a thread terminates. `ThreadId`s are under the control
-/// of Rust's standard library and there may not be any relationship between
-/// `ThreadId` and the underlying platform's notion of a thread identifier --
-/// the two concepts cannot, therefore, be used interchangeably. A `ThreadId`
-/// can be retrieved from the [`id`] method on a [`Thread`].
+/// `ThreadId` 是一个不透明对象，它唯一地标识了进程生命周期内创建的每个线程。
+/// 保证 `ThreadId` 不会被重用，即便线程已经终止。`ThreadId` 由 Rust 标准库
+/// 控制，它与底层平台的线程标识符概念之间可能没有任何关系——因此这两个概念
+/// 不能互换使用。`ThreadId` 可以通过 [`Thread`] 上的 [`id`] 方法获取。
 ///
 /// # Examples
 ///
@@ -31,7 +28,7 @@ use crate::sync::atomic::{Atomic, Ordering};
 pub struct ThreadId(NonZero<u64>);
 
 impl ThreadId {
-    // Generate a new unique thread ID.
+    // 生成一个新的唯一线程 ID。
     pub(crate) fn new() -> ThreadId {
         #[cold]
         fn exhausted() -> ! {
@@ -62,16 +59,16 @@ impl ThreadId {
                 use crate::sync::atomic::AtomicBool;
                 use crate::thread::yield_now;
 
-                // If we don't have a 64-bit atomic we use a small spinlock. We don't use Mutex
-                // here as we might be trying to get the current thread id in the global allocator,
-                // and on some platforms Mutex requires allocation.
+                // 如果没有 64 位原子类型，我们就使用一个小型自旋锁。这里不用 Mutex，
+                // 因为我们可能正试图在全局分配器中获取当前线程 ID，而在某些平台上
+                // Mutex 需要进行分配。
                 static COUNTER_LOCKED: Atomic<bool> = AtomicBool::new(false);
                 static COUNTER: SyncUnsafeCell<u64> = SyncUnsafeCell::new(0);
 
-                // Acquire lock.
+                // 获取锁。
                 let mut spin = 0;
-                // Miri doesn't like it when we yield here as it interferes with deterministically
-                // scheduling threads, so avoid `compare_exchange_weak` to avoid spurious yields.
+                // Miri 不喜欢我们在这里 yield，因为它会干扰对线程的确定性调度，
+                // 所以避免使用 `compare_exchange_weak` 以免产生虚假的 yield。
                 while COUNTER_LOCKED.swap(true, Ordering::Acquire) {
                     if spin <= 3 {
                         for _ in 0..(1 << spin) {
@@ -82,9 +79,9 @@ impl ThreadId {
                     }
                     spin += 1;
                 }
-                // This was `false` before the swap, so we got the lock.
+                // 在这次 swap 之前它是 `false`，所以我们拿到了锁。
 
-                // SAFETY: we have an exclusive lock on the counter.
+                // SAFETY: 我们对该计数器持有独占锁。
                 unsafe {
                     if let Some(id) = (*COUNTER.get()).checked_add(1) {
                         *COUNTER.get() = id;
@@ -104,14 +101,11 @@ impl ThreadId {
         NonZero::new(v).map(ThreadId)
     }
 
-    /// This returns a numeric identifier for the thread identified by this
-    /// `ThreadId`.
+    /// 它返回由这个 `ThreadId` 所标识的线程的一个数值标识符。
     ///
-    /// As noted in the documentation for the type itself, it is essentially an
-    /// opaque ID, but is guaranteed to be unique for each thread. The returned
-    /// value is entirely opaque -- only equality testing is stable. Note that
-    /// it is not guaranteed which values new threads will return, and this may
-    /// change across Rust versions.
+    /// 正如该类型自身的文档所述，它本质上是一个不透明 ID，但保证对每个线程都是
+    /// 唯一的。返回值是完全不透明的——只有相等性测试是稳定的。注意，并不保证新
+    /// 线程会返回哪些值，并且这一点可能随 Rust 版本而变化。
     #[must_use]
     #[unstable(feature = "thread_id_value", issue = "67939")]
     pub fn as_u64(&self) -> NonZero<u64> {

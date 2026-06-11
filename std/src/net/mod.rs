@@ -1,24 +1,23 @@
-//! Networking primitives for TCP/UDP communication.
+//! 用于 TCP/UDP 通信的网络原语。
 //!
-//! This module provides networking functionality for the Transmission Control and User
-//! Datagram Protocols, as well as types for IP and socket addresses and functions related
-//! to network properties.
+//! 本模块提供面向传输控制协议（Transmission Control Protocol，TCP）与用户数据报
+//! 协议（User Datagram Protocol，UDP）的网络功能，同时提供表示 IP 地址、套接字地址
+//! 的类型，以及与网络属性相关的函数。
 //!
-//! # Organization
+//! # 模块组织(Organization）
 //!
-//! * [`TcpListener`] and [`TcpStream`] provide functionality for communication over TCP
-//! * [`UdpSocket`] provides functionality for communication over UDP
-//! * [`IpAddr`] represents IP addresses of either IPv4 or IPv6; [`Ipv4Addr`] and
-//!   [`Ipv6Addr`] are respectively IPv4 and IPv6 addresses
-//! * [`SocketAddr`] represents socket addresses of either IPv4 or IPv6; [`SocketAddrV4`]
-//!   and [`SocketAddrV6`] are respectively IPv4 and IPv6 socket addresses
-//! * [`ToSocketAddrs`] is a trait that is used for generic address resolution when interacting
-//!   with networking objects like [`TcpListener`], [`TcpStream`] or [`UdpSocket`]
-//! * Other types are return or parameter types for various methods in this module
+//! * [`TcpListener`] 与 [`TcpStream`] 提供基于 TCP 进行通信的功能
+//! * [`UdpSocket`] 提供基于 UDP 进行通信的功能
+//! * [`IpAddr`] 表示 IPv4 或 IPv6 的 IP 地址；[`Ipv4Addr`] 与
+//!   [`Ipv6Addr`] 分别表示 IPv4 与 IPv6 地址
+//! * [`SocketAddr`] 表示 IPv4 或 IPv6 的套接字地址；[`SocketAddrV4`]
+//!   与 [`SocketAddrV6`] 分别表示 IPv4 与 IPv6 套接字地址
+//! * [`ToSocketAddrs`] 是一个 trait，用于在与 [`TcpListener`]、[`TcpStream`] 或
+//!   [`UdpSocket`] 等网络对象交互时进行泛型化的地址解析
+//! * 其余类型则是本模块中各种方法的返回类型或参数类型
 //!
-//! Rust disables inheritance of socket objects to child processes by default when possible.  For
-//! example, through the use of the `CLOEXEC` flag in UNIX systems or the `HANDLE_FLAG_INHERIT`
-//! flag on Windows.
+//! 在可能的情况下，Rust 默认禁止套接字对象被子进程继承。例如，在 UNIX 系统上
+//! 通过 `CLOEXEC` 标志、在 Windows 上通过 `HANDLE_FLAG_INHERIT` 标志来实现。
 
 #![stable(feature = "rust1", since = "1.0.0")]
 
@@ -46,27 +45,27 @@ mod tcp;
 pub(crate) mod test;
 mod udp;
 
-/// Possible values which can be passed to the [`TcpStream::shutdown`] method.
+/// 可以传递给 [`TcpStream::shutdown`] 方法的取值集合。
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 #[stable(feature = "rust1", since = "1.0.0")]
 pub enum Shutdown {
-    /// The reading portion of the [`TcpStream`] should be shut down.
+    /// 应当关闭 [`TcpStream`] 的读取部分（半关闭读方向）。
     ///
-    /// All currently blocked and future [reads] will return <code>[Ok]\(0)</code>.
+    /// 所有当前阻塞中的以及将来的 [reads] 都会返回 <code>[Ok]\(0)</code>。
     ///
     /// [reads]: crate::io::Read "io::Read"
     #[stable(feature = "rust1", since = "1.0.0")]
     Read,
-    /// The writing portion of the [`TcpStream`] should be shut down.
+    /// 应当关闭 [`TcpStream`] 的写入部分（半关闭写方向）。
     ///
-    /// All currently blocked and future [writes] will return an error.
+    /// 所有当前阻塞中的以及将来的 [writes] 都会返回一个错误。
     ///
     /// [writes]: crate::io::Write "io::Write"
     #[stable(feature = "rust1", since = "1.0.0")]
     Write,
-    /// Both the reading and the writing portions of the [`TcpStream`] should be shut down.
+    /// 应当同时关闭 [`TcpStream`] 的读取部分与写入部分。
     ///
-    /// See [`Shutdown::Read`] and [`Shutdown::Write`] for more information.
+    /// 更多信息参见 [`Shutdown::Read`] 与 [`Shutdown::Write`]。
     #[stable(feature = "rust1", since = "1.0.0")]
     Both,
 }

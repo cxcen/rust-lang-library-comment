@@ -3,16 +3,16 @@
 use crate::sys::c;
 use crate::thread;
 
-/// Reserve stack space for use in stack overflow exceptions.
+/// 预留栈空间，以供栈溢出异常时使用。
 pub fn reserve_stack() {
     let result = unsafe { c::SetThreadStackGuarantee(&mut 0x5000) };
-    // Reserving stack space is not critical so we allow it to fail in the released build of libstd.
-    // We still use debug assert here so that CI will test that we haven't made a mistake calling the function.
+    // 预留栈空间并非关键操作，因此在 libstd 的发布构建中允许它失败。
+    // 不过这里仍使用 debug assert，以便 CI 能够检测出我们在调用该函数时是否犯了错误。
     debug_assert_ne!(result, 0, "failed to reserve stack space for exception handling");
 }
 
 unsafe extern "system" fn vectored_handler(ExceptionInfo: *mut c::EXCEPTION_POINTERS) -> i32 {
-    // SAFETY: It's up to the caller (which in this case is the OS) to ensure that `ExceptionInfo` is valid.
+    // SAFETY: 由调用方（本例中即操作系统）负责确保 `ExceptionInfo` 有效。
     unsafe {
         let rec = &(*(*ExceptionInfo).ExceptionRecord);
         let code = rec.ExceptionCode;
@@ -29,13 +29,13 @@ unsafe extern "system" fn vectored_handler(ExceptionInfo: *mut c::EXCEPTION_POIN
 }
 
 pub fn init() {
-    // SAFETY: `vectored_handler` has the correct ABI and is safe to call during exception handling.
+    // SAFETY: `vectored_handler` 具有正确的 ABI，且在异常处理期间调用它是安全的。
     unsafe {
         let result = c::AddVectoredExceptionHandler(0, Some(vectored_handler));
-        // Similar to the above, adding the stack overflow handler is allowed to fail
-        // but a debug assert is used so CI will still test that it normally works.
+        // 与上面类似，安装栈溢出处理程序允许失败，但这里使用 debug assert，
+        // 以便 CI 仍能检测它在正常情况下是否工作。
         debug_assert!(!result.is_null(), "failed to install exception handler");
     }
-    // Set the thread stack guarantee for the main thread.
+    // 为主线程设置线程栈保障（stack guarantee）。
     reserve_stack();
 }

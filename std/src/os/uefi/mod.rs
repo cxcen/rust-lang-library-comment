@@ -1,4 +1,4 @@
-//! Platform-specific extensions to `std` for UEFI.
+//! 针对 UEFI 的 `std` 平台特定扩展。
 
 #![unstable(feature = "uefi_std", issue = "100499")]
 #![doc(cfg(target_os = "uefi"))]

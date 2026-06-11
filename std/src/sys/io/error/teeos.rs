@@ -9,7 +9,7 @@ pub fn is_interrupted(errno: i32) -> bool {
     errno == libc::EINTR
 }
 
-// Note: code below is 1:1 copied from unix/mod.rs
+// 注意：下面的代码是从 unix/mod.rs 1:1 复制过来的
 pub fn decode_error_kind(errno: i32) -> io::ErrorKind {
     use io::ErrorKind::*;
     match errno as libc::c_int {
@@ -50,9 +50,9 @@ pub fn decode_error_kind(errno: i32) -> io::ErrorKind {
 
         libc::EACCES | libc::EPERM => PermissionDenied,
 
-        // These two constants can have the same value on some systems,
-        // but different values on others, so we can't use a match
-        // clause
+        // 这两个常量在某些系统上可能有相同的值，
+        // 但在另一些系统上有不同的值，所以我们不能使用 match
+        // 分支
         x if x == libc::EAGAIN || x == libc::EWOULDBLOCK => WouldBlock,
 
         _ => Uncategorized,

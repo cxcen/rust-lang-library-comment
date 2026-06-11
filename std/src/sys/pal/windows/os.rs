@@ -1,4 +1,4 @@
-//! Implementation of `std::os` functionality for Windows.
+//! Windows 平台上 `std::os` 功能的实现。
 
 #![allow(nonstandard_style)]
 
@@ -27,18 +27,15 @@ pub fn split_paths(unparsed: &OsStr) -> SplitPaths<'_> {
 impl<'a> Iterator for SplitPaths<'a> {
     type Item = PathBuf;
     fn next(&mut self) -> Option<PathBuf> {
-        // On Windows, the PATH environment variable is semicolon separated.
-        // Double quotes are used as a way of introducing literal semicolons
-        // (since c:\some;dir is a valid Windows path). Double quotes are not
-        // themselves permitted in path names, so there is no way to escape a
-        // double quote. Quoted regions can appear in arbitrary locations, so
+        // 在 Windows 上，PATH 环境变量以分号分隔。双引号被用作引入字面分号的方式
+        // （因为 c:\some;dir 是一个合法的 Windows 路径）。双引号本身不允许出现在
+        // 路径名中，因此无法对双引号进行转义。被引用的区域可以出现在任意位置，所以
         //
         //   c:\foo;c:\som"e;di"r;c:\bar
         //
-        // Should parse as [c:\foo, c:\some;dir, c:\bar].
+        // 应当被解析为 [c:\foo, c:\some;dir, c:\bar]。
         //
-        // (The above is based on testing; there is no clear reference available
-        // for the grammar.)
+        // （以上结论基于测试得出；目前没有可供参考的明确语法规范。）
 
         let must_yield = self.must_yield;
         self.must_yield = false;
@@ -129,13 +126,13 @@ pub fn temp_dir() -> PathBuf {
 #[cfg(all(not(target_vendor = "uwp"), not(target_vendor = "win7")))]
 fn home_dir_crt() -> Option<PathBuf> {
     unsafe {
-        // Defined in processthreadsapi.h.
+        // 定义于 processthreadsapi.h 中。
         const CURRENT_PROCESS_TOKEN: usize = -4_isize as usize;
 
         super::fill_utf16_buf(
             |buf, mut sz| {
-                // GetUserProfileDirectoryW does not quite use the usual protocol for
-                // negotiating the buffer size, so we have to translate.
+                // GetUserProfileDirectoryW 并不完全遵循通常那套协商缓冲区大小的协议，
+                // 因此我们必须做转换。
                 match c::GetUserProfileDirectoryW(
                     ptr::without_provenance_mut(CURRENT_PROCESS_TOKEN),
                     buf,
@@ -143,7 +140,7 @@ fn home_dir_crt() -> Option<PathBuf> {
                 ) {
                     0 if api::get_last_error() != WinError::INSUFFICIENT_BUFFER => 0,
                     0 => sz,
-                    _ => sz - 1, // sz includes the null terminator
+                    _ => sz - 1, // sz 包含了 null 结尾符
                 }
             },
             super::os2path,
@@ -168,7 +165,7 @@ fn home_dir_crt() -> Option<PathBuf> {
                 match c::GetUserProfileDirectoryW(token, buf, &mut sz) {
                     0 if api::get_last_error() != WinError::INSUFFICIENT_BUFFER => 0,
                     0 => sz,
-                    _ => sz - 1, // sz includes the null terminator
+                    _ => sz - 1, // sz 包含了 null 结尾符
                 }
             },
             super::os2path,

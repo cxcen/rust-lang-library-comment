@@ -1,28 +1,21 @@
-//! TLS, but async-signal-safe.
+//! TLS，但是 async-signal-safe（异步信号安全）的。
 //!
-//! Unfortunately, because thread local storage isn't async-signal-safe, we
-//! cannot soundly use it in our stack overflow handler. While this works
-//! without problems on most platforms, it can lead to undefined behaviour
-//! on others (such as GNU/Linux). Luckily, the POSIX specification documents
-//! two thread-specific values that can be accessed in asynchronous signal
-//! handlers: the value of `pthread_self()` and the address of `errno`. As
-//! `pthread_t` is an opaque platform-specific type, we use the address of
-//! `errno` here. As it is thread-specific and does not change over the
-//! lifetime of a thread, we can use `&errno` as a key for a `BTreeMap`
-//! that stores thread-specific data.
+//! 遗憾的是，由于线程局部存储（thread local storage）并非 async-signal-safe，我们
+//! 无法在栈溢出处理函数中健全地（soundly）使用它。虽然在大多数平台上这样用没有问题，
+//! 但在另一些平台（例如 GNU/Linux）上却会导致未定义行为。所幸 POSIX 规范规定了两个
+//! 可以在异步信号处理函数中访问的线程特定值：`pthread_self()` 的返回值，以及 `errno`
+//! 的地址。由于 `pthread_t` 是一个不透明的、平台相关的类型，我们这里使用 `errno` 的
+//! 地址。由于它是线程特定的、且在一个线程的整个生命周期内不会改变，我们便可以用
+//! `&errno` 作为键，去索引一个存储线程特定数据的 `BTreeMap`。
 //!
-//! Concurrent access to this map is synchronized by two locks – an outer
-//! [`Mutex`] and an inner spin lock that also remembers the identity of
-//! the lock owner:
-//! * The spin lock is the primary means of synchronization: since it only
-//!   uses native atomics, it can be soundly used inside the signal handle
-//!   as opposed to [`Mutex`], which might not be async-signal-safe.
-//! * The [`Mutex`] prevents busy-waiting in the setup logic, as all accesses
-//!   there are performed with the [`Mutex`] held, which makes the spin-lock
-//!   redundant in the common case.
-//! * Finally, by using the `errno` address as the locked value of the spin
-//!   lock, we can detect cases where a SIGSEGV occurred while the thread
-//!   info is being modified.
+//! 对该 map 的并发访问由两把锁来同步——一把外层的 [`Mutex`]，以及一把内层的自旋锁
+//! （spin lock），后者还会记住持锁者的身份：
+//! * 自旋锁是主要的同步手段：由于它只使用原生原子操作（native atomics），它可以在信号
+//!   处理函数内部被健全地使用，这一点与 [`Mutex`] 不同——后者可能并非 async-signal-safe。
+//! * [`Mutex`] 防止在 setup 逻辑中忙等待（busy-waiting），因为那里的所有访问都是在持有
+//!   [`Mutex`] 的情况下进行的，这使得自旋锁在常见情况下变得多余。
+//! * 最后，通过把 `errno` 的地址用作自旋锁的“已上锁”值，我们就能检测出“在线程信息正被
+//!   修改的过程中发生了 SIGSEGV”的情况。
 
 use crate::collections::BTreeMap;
 use crate::hint::spin_loop;
@@ -39,9 +32,8 @@ pub struct ThreadInfo {
 
 static LOCK: Mutex<()> = Mutex::new(());
 static SPIN_LOCK: AtomicUsize = AtomicUsize::new(0);
-// This uses a `BTreeMap` instead of a hashmap since it supports constant
-// initialization and automatically reduces the amount of memory used when
-// items are removed.
+// 这里使用 `BTreeMap` 而非哈希表，因为它支持常量初始化（constant initialization），
+// 并且会在条目被移除时自动减少所占用的内存。
 static mut THREAD_INFO: BTreeMap<usize, ThreadInfo> = BTreeMap::new();
 
 struct UnlockOnDrop;
@@ -52,20 +44,19 @@ impl Drop for UnlockOnDrop {
     }
 }
 
-/// Get the current thread's information, if available.
+/// 获取当前线程的信息（若可用）。
 ///
-/// Calling this function might freeze other threads if they attempt to modify
-/// their thread information. Thus, the caller should ensure that the process
-/// is aborted shortly after this function is called.
+/// 调用本函数可能会冻结其他线程——如果它们正试图修改自身的线程信息的话。因此，调用方
+/// 应当确保在调用本函数后不久进程便会 abort。
 ///
-/// This function is guaranteed to be async-signal-safe if `f` is too.
+/// 只要 `f` 也是 async-signal-safe 的，本函数就保证是 async-signal-safe 的。
 pub fn with_current_info<R>(f: impl FnOnce(Option<&ThreadInfo>) -> R) -> R {
     let this = errno_location().addr();
     let mut attempt = 0;
     let _guard = loop {
-        // If we are just spinning endlessly, it's very likely that the thread
-        // modifying the thread info map has a lower priority than us and will
-        // not continue until we stop running. Just give up in that case.
+        // 如果我们只是在无休止地自旋，那很可能是正在修改线程信息 map 的那个线程
+        // 优先级比我们低，并且在我们停止运行之前它都不会继续推进。这种情况下就
+        // 干脆放弃。
         if attempt == 10_000_000 {
             rtprintpanic!("deadlock in SIGSEGV handler");
             return f(None);
@@ -76,9 +67,8 @@ pub fn with_current_info<R>(f: impl FnOnce(Option<&ThreadInfo>) -> R) -> R {
             Err(owner) if owner == this => {
                 rtabort!("a thread received SIGSEGV while modifying its stack overflow information")
             }
-            // Spin until the lock can be acquired – there is nothing better to
-            // do. This is unfortunately a priority hole, but a stack overflow
-            // is a fatal error anyway.
+            // 自旋直到能获取到锁——没有比这更好的办法了。遗憾的是这会造成一个优先级
+            // 空洞（priority hole），但反正栈溢出本就是个致命错误。
             Err(_) => {
                 spin_loop();
                 attempt += 1;
@@ -86,7 +76,7 @@ pub fn with_current_info<R>(f: impl FnOnce(Option<&ThreadInfo>) -> R) -> R {
         }
     };
 
-    // SAFETY: we own the spin lock, so `THREAD_INFO` cannot not be aliased.
+    // SAFETY: 我们持有自旋锁，所以 `THREAD_INFO` 不可能被别名（aliased）。
     let thread_info = unsafe { &*(&raw const THREAD_INFO) };
     f(thread_info.get(&this))
 }
@@ -98,12 +88,11 @@ fn spin_lock_in_setup(this: usize) -> UnlockOnDrop {
             Err(owner) if owner == this => {
                 unreachable!("the thread info setup logic isn't recursive")
             }
-            // This function is always called with the outer lock held,
-            // meaning the only time locking can fail is if another thread has
-            // encountered a stack overflow. Since that will abort the process,
-            // we just stop the current thread until that time. We use `pause`
-            // instead of spinning to avoid priority inversion.
-            // SAFETY: this doesn't have any safety preconditions.
+            // 本函数总是在持有外层锁的情况下被调用，这意味着加锁唯一可能失败的
+            // 时刻，就是另一个线程遭遇了栈溢出。由于那将使进程 abort，我们在此之前
+            // 就让当前线程停下来。我们使用 `pause` 而非自旋，以避免优先级反转
+            // （priority inversion）。
+            // SAFETY: 这没有任何安全前置条件。
             Err(_) => drop(unsafe { libc::pause() }),
         }
     }
@@ -117,7 +106,7 @@ pub fn set_current_info(guard_page_range: Range<usize>) {
     let _lock_guard = LOCK.lock();
     let _spin_guard = spin_lock_in_setup(this);
 
-    // SAFETY: we own the spin lock, so `THREAD_INFO` cannot be aliased.
+    // SAFETY: 我们持有自旋锁，所以 `THREAD_INFO` 不可能被别名（aliased）。
     let thread_info = unsafe { &mut *(&raw mut THREAD_INFO) };
     thread_info.insert(this, ThreadInfo { tid, name, guard_page_range });
 }
@@ -127,7 +116,7 @@ pub fn delete_current_info() {
     let _lock_guard = LOCK.lock();
     let _spin_guard = spin_lock_in_setup(this);
 
-    // SAFETY: we own the spin lock, so `THREAD_INFO` cannot not be aliased.
+    // SAFETY: 我们持有自旋锁，所以 `THREAD_INFO` 不可能被别名（aliased）。
     let thread_info = unsafe { &mut *(&raw mut THREAD_INFO) };
     thread_info.remove(&this);
 }

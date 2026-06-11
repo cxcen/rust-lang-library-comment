@@ -1,5 +1,5 @@
-//! The underlying OsString/OsStr implementation on Unix and many other
-//! systems: just a `Vec<u8>`/`[u8]`.
+//! Unix 及许多其他系统上 OsString/OsStr 的底层实现：就是一个
+//! `Vec<u8>`/`[u8]`。
 
 use core::clone::CloneToUninit;
 
@@ -64,17 +64,17 @@ impl fmt::Debug for Slice {
 
 impl fmt::Display for Slice {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // If we're the empty string then our iterator won't actually yield
-        // anything, so perform the formatting manually
+        // 如果我们是空字符串，那么迭代器实际上不会产生任何东西，
+        // 所以手动执行格式化
         if self.inner.is_empty() {
             return "".fmt(f);
         }
 
         for chunk in self.inner.utf8_chunks() {
             let valid = chunk.valid();
-            // If we successfully decoded the whole chunk as a valid string then
-            // we can return a direct formatting of the string which will also
-            // respect various formatting flags if possible.
+            // 如果我们成功地把整个块解码为了一个有效的字符串，那么
+            // 我们可以直接返回对该字符串的格式化，这样在可能的情况下
+            // 也能尊重各种格式化标志。
             if chunk.invalid().is_empty() {
                 return valid.fmt(f);
             }
@@ -176,17 +176,17 @@ impl Buf {
 
     #[inline]
     pub fn as_slice(&self) -> &Slice {
-        // SAFETY: Slice is just a wrapper for [u8],
-        // and self.inner.as_slice() returns &[u8].
-        // Therefore, transmuting &[u8] to &Slice is safe.
+        // SAFETY: Slice 只是对 [u8] 的一个包装，
+        // 而 self.inner.as_slice() 返回 &[u8]。
+        // 因此，将 &[u8] transmute 为 &Slice 是安全的。
         unsafe { mem::transmute(self.inner.as_slice()) }
     }
 
     #[inline]
     pub fn as_mut_slice(&mut self) -> &mut Slice {
-        // SAFETY: Slice is just a wrapper for [u8],
-        // and self.inner.as_mut_slice() returns &mut [u8].
-        // Therefore, transmuting &mut [u8] to &mut Slice is safe.
+        // SAFETY: Slice 只是对 [u8] 的一个包装，
+        // 而 self.inner.as_mut_slice() 返回 &mut [u8]。
+        // 因此，将 &mut [u8] transmute 为 &mut Slice 是安全的。
         unsafe { mem::transmute(self.inner.as_mut_slice()) }
     }
 
@@ -216,26 +216,23 @@ impl Buf {
         self.as_slice().into_rc()
     }
 
-    /// Provides plumbing to `Vec::truncate` without giving full mutable access
-    /// to the `Vec`.
+    /// 在不给予对 `Vec` 完全可变访问权的前提下，提供通往 `Vec::truncate` 的管道。
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// The length must be at an `OsStr` boundary, according to
-    /// `Slice::check_public_boundary`.
+    /// 根据 `Slice::check_public_boundary`，长度必须位于一个 `OsStr` 边界上。
     #[inline]
     pub unsafe fn truncate_unchecked(&mut self, len: usize) {
         self.inner.truncate(len);
     }
 
-    /// Provides plumbing to `Vec::extend_from_slice` without giving full
-    /// mutable access to the `Vec`.
+    /// 在不给予对 `Vec` 完全可变访问权的前提下，提供通往
+    /// `Vec::extend_from_slice` 的管道。
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// The slice must be valid for the platform encoding (as described in
-    /// `OsStr::from_encoded_bytes_unchecked`). This encoding has no safety
-    /// requirements.
+    /// 该切片必须对平台编码有效（如 `OsStr::from_encoded_bytes_unchecked`
+    /// 中所述）。这种编码没有任何安全性要求。
     #[inline]
     pub unsafe fn extend_from_slice_unchecked(&mut self, other: &[u8]) {
         self.inner.extend_from_slice(other);
@@ -267,17 +264,16 @@ impl Slice {
 
         slow_path(&self.inner, index);
 
-        /// We're betting that typical splits will involve an ASCII character.
+        /// 我们押注典型的切分操作会涉及一个 ASCII 字符。
         ///
-        /// Putting the expensive checks in a separate function generates notably
-        /// better assembly.
+        /// 把昂贵的检查放进一个单独的函数里，会生成明显更好的汇编代码。
         #[track_caller]
         #[inline(never)]
         fn slow_path(bytes: &[u8], index: usize) {
             let (before, after) = bytes.split_at(index);
 
-            // UTF-8 takes at most 4 bytes per codepoint, so we don't
-            // need to check more than that.
+            // UTF-8 每个码点最多占 4 个字节，所以我们不需要
+            // 检查超过这个数量的字节。
             let after = after.get(..4).unwrap_or(after);
             match str::from_utf8(after) {
                 Ok(_) => return,
@@ -375,7 +371,7 @@ unsafe impl CloneToUninit for Slice {
     #[inline]
     #[cfg_attr(debug_assertions, track_caller)]
     unsafe fn clone_to_uninit(&self, dst: *mut u8) {
-        // SAFETY: we're just a transparent wrapper around [u8]
+        // SAFETY: 我们只是对 [u8] 的一个透明包装
         unsafe { self.inner.clone_to_uninit(dst) }
     }
 }

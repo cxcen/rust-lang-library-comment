@@ -1,14 +1,14 @@
-//! A priority inheriting mutex for Fuchsia.
+//! 用于 Fuchsia 的优先级继承（priority inheriting）mutex。
 //!
-//! This is a port of the [mutex in Fuchsia's libsync]. Contrary to the original,
-//! it does not abort the process when reentrant locking is detected, but deadlocks.
+//! 这是对 [Fuchsia libsync 中的 mutex][mutex in Fuchsia's libsync] 的移植。
+//! 与原版不同的是，当检测到可重入加锁（reentrant locking）时，它不会中止
+//! 进程，而是死锁（deadlock）。
 //!
-//! Priority inheritance is achieved by storing the owning thread's handle in an
-//! atomic variable. Fuchsia's futex operations support setting an owner thread
-//! for a futex, which can boost that thread's priority while the futex is waited
-//! upon.
+//! 优先级继承是通过把持有锁的线程的句柄存放在一个原子变量中实现的。Fuchsia 的
+//! futex 操作支持为一个 futex 设置 owner 线程，这样在该 futex 被等待期间可以
+//! 提升那个线程的优先级。
 //!
-//! libsync is licenced under the following BSD-style licence:
+//! libsync 采用以下 BSD 风格许可证授权：
 //!
 //! Copyright 2016 The Fuchsia Authors.
 //!
@@ -45,10 +45,10 @@ use crate::sys::fuchsia::{
     zx_thread_self,
 };
 
-// The lowest two bits of a `zx_handle_t` are always set, so the lowest bit is used to mark the
-// mutex as contested by clearing it.
+// 一个 `zx_handle_t` 的最低两位总是被置位的，所以最低位被用来通过清除它来把
+// mutex 标记为存在争用（contested）。
 const CONTESTED_BIT: u32 = 1;
-// This can never be a valid `zx_handle_t`.
+// 这个值永远不可能是一个有效的 `zx_handle_t`。
 const UNLOCKED: u32 = 0;
 
 pub struct Mutex {
@@ -99,18 +99,18 @@ impl Mutex {
         }
     }
 
-    /// # Safety
-    /// `thread_self` must be the handle for the current thread.
+    /// # 安全性(Safety）
+    /// `thread_self` 必须是当前线程的句柄。
     #[cold]
     unsafe fn lock_contested(&self, mut state: u32, thread_self: zx_handle_t) {
         let owned_state = mark_contested(to_state(thread_self));
         loop {
-            // Mark the mutex as contested if it is not already.
+            // 如果 mutex 尚未被标记为争用（contested），则将其标记为争用。
             let contested = mark_contested(state);
             if is_contested(state)
                 || self.futex.compare_exchange(state, contested, Relaxed, Relaxed).is_ok()
             {
-                // The mutex has been marked as contested, wait for the state to change.
+                // mutex 已被标记为争用，等待 state 改变。
                 unsafe {
                     match zx_futex_wait(
                         &self.futex,
@@ -119,10 +119,9 @@ impl Mutex {
                         ZX_TIME_INFINITE,
                     ) {
                         ZX_OK | ZX_ERR_BAD_STATE | ZX_ERR_TIMED_OUT => (),
-                        // Note that if a thread handle is reused after its associated thread
-                        // exits without unlocking the mutex, an arbitrary thread's priority
-                        // could be boosted by the wait, but there is currently no way to
-                        // prevent that.
+                        // 注意：如果某个线程句柄在其关联线程退出（且未解锁 mutex）之后
+                        // 被复用，那么本次等待可能会提升某个任意线程的优先级，但目前
+                        // 没有办法防止这种情况。
                         ZX_ERR_INVALID_ARGS | ZX_ERR_BAD_HANDLE | ZX_ERR_WRONG_TYPE => {
                             panic!(
                                 "either the current thread is trying to lock a mutex it has
@@ -135,7 +134,7 @@ impl Mutex {
                 }
             }
 
-            // The state has changed or a wakeup occurred, try to lock the mutex.
+            // state 已改变或发生了一次唤醒，尝试对 mutex 加锁。
             match self.futex.compare_exchange(UNLOCKED, owned_state, Acquire, Relaxed) {
                 Ok(_) => return,
                 Err(updated) => state = updated,
@@ -146,9 +145,8 @@ impl Mutex {
     #[inline]
     pub unsafe fn unlock(&self) {
         if is_contested(self.futex.swap(UNLOCKED, Release)) {
-            // The woken thread will mark the mutex as contested again,
-            // and return here, waking until there are no waiters left,
-            // in which case this is a noop.
+            // 被唤醒的线程会再次把 mutex 标记为争用，并返回到这里，持续唤醒
+            // 直到再没有等待者为止；在那种情况下这就是一个空操作（noop）。
             self.wake();
         }
     }

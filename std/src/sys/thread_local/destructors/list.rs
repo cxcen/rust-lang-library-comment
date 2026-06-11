@@ -14,13 +14,13 @@ pub unsafe fn register(t: *mut u8, dtor: unsafe extern "C" fn(*mut u8)) {
     dtors.push((t, dtor));
 }
 
-/// The [`guard`] module contains platform-specific functions which will run this
-/// function on thread exit if [`guard::enable`] has been called.
+/// [`guard`] 模块包含平台相关的函数；如果已调用过 [`guard::enable`]，
+/// 它们会在线程退出时运行此函数。
 ///
-/// # Safety
+/// # 安全性(Safety）
 ///
-/// May only be run on thread exit to guarantee that there are no live references
-/// to TLS variables while they are destroyed.
+/// 只能在线程退出时运行，以保证在 TLS 变量被销毁期间不存在指向它们的
+/// 活引用（live references）。
 pub unsafe fn run() {
     loop {
         let mut dtors = DTORS.borrow_mut();
@@ -32,7 +32,7 @@ pub unsafe fn run() {
                 }
             }
             None => {
-                // Free the list memory.
+                // 释放列表所占用的内存。
                 *dtors = Vec::new_in(System);
                 break;
             }

@@ -1,78 +1,78 @@
-//! ABI for μITRON derivatives
+//! μITRON 衍生体的 ABI
 pub type int_t = crate::os::raw::c_int;
 pub type uint_t = crate::os::raw::c_uint;
 pub type bool_t = int_t;
 
-/// Kernel object ID
+/// 内核对象 ID
 pub type ID = int_t;
 
-/// The current task.
+/// 当前任务。
 pub const TSK_SELF: ID = 0;
 
-/// Relative time
+/// 相对时间
 pub type RELTIM = u32;
 
-/// Timeout (a valid `RELTIM` value or `TMO_FEVR`)
+/// 超时（一个有效的 `RELTIM` 值或 `TMO_FEVR`）
 pub type TMO = u32;
 
-/// The infinite timeout value
+/// 无限超时值
 pub const TMO_FEVR: TMO = TMO::MAX;
 
-/// The maximum valid value of `RELTIM`
+/// `RELTIM` 的最大有效值
 pub const TMAX_RELTIM: RELTIM = 4_000_000_000;
 
-/// System time
+/// 系统时间
 pub type SYSTIM = u64;
 
-/// Error code type
+/// 错误码类型
 pub type ER = int_t;
 
-/// Error code type, `ID` on success
+/// 错误码类型，成功时为 `ID`
 pub type ER_ID = int_t;
 
-/// Service call operational mode
+/// 服务调用（service call）的操作模式
 pub type MODE = uint_t;
 
-/// OR waiting condition for an eventflag
+/// 用于 eventflag 的 OR 等待条件
 pub const TWF_ORW: MODE = 0x01;
 
-/// Object attributes
+/// 对象属性
 pub type ATR = uint_t;
 
-/// FIFO wait order
+/// FIFO 等待顺序
 pub const TA_FIFO: ATR = 0;
-/// Only one task is allowed to be in the waiting state for the eventflag
+/// 只允许一个任务处于针对该 eventflag 的等待状态
 pub const TA_WSGL: ATR = 0;
-/// The eventflag’s bit pattern is cleared when a task is released from the
-/// waiting state for that eventflag.
+/// 当某个任务从针对该 eventflag 的等待状态中被释放时，清除该 eventflag 的位模式
+/// （bit pattern）。
 pub const TA_CLR: ATR = 0x04;
 
-/// Bit pattern of an eventflag
+/// eventflag 的位模式（bit pattern）
 pub type FLGPTN = uint_t;
 
-/// Task or interrupt priority
+/// 任务或中断优先级
 pub type PRI = int_t;
 
-/// The special value of `PRI` representing the current task's priority.
+/// `PRI` 的特殊值，表示当前任务的优先级。
 pub const TPRI_SELF: PRI = 0;
 
-/// Use the priority inheritance protocol
+/// 使用优先级继承协议（priority inheritance protocol）
 #[cfg(target_os = "solid_asp3")]
 pub const TA_INHERIT: ATR = 0x02;
 
-/// Activate the task on creation
+/// 在创建时激活该任务
 pub const TA_ACT: ATR = 0x01;
 
-/// The maximum count of a semaphore
+/// 信号量的最大计数值
 pub const TMAX_MAXSEM: uint_t = uint_t::MAX;
 
-/// Callback parameter
+/// 回调参数
 pub type EXINF = isize;
 
-/// Task entrypoint
+/// 任务入口点
 pub type TASK = Option<unsafe extern "C" fn(EXINF)>;
 
-// Error codes
+// 错误码
 pub const E_OK: ER = 0;
 pub const E_SYS: ER = -5;
 pub const E_NOSPT: ER = -9;

@@ -1,38 +1,34 @@
-//! Support for "weak linkage" to symbols on Unix
+//! Unix 上对符号进行“弱链接（weak linkage）”的支持
 //!
-//! Some I/O operations we do in std require newer versions of OSes but we need
-//! to maintain binary compatibility with older releases for now. In order to
-//! use the new functionality when available we use this module for detection.
+//! std 中我们做的某些 I/O 操作需要较新版本的操作系统，但目前我们仍需与较旧的
+//! 发行版保持二进制兼容。为了在新功能可用时使用它，我们用本模块来做运行时探测。
 //!
-//! One option to use here is weak linkage, but that is unfortunately only
-//! really workable with ELF. Otherwise, use dlsym to get the symbol value at
-//! runtime. This is also done for compatibility with older versions of glibc,
-//! and to avoid creating dependencies on GLIBC_PRIVATE symbols. It assumes that
-//! we've been dynamically linked to the library the symbol comes from, but that
-//! is currently always the case for things like libpthread/libc.
+//! 一种可选方案是弱链接（weak linkage），但遗憾的是它实际上只在 ELF 上才真正
+//! 可行。其余情况下，则改用 dlsym 在运行时取得符号的地址值。这样做也是为了与较旧
+//! 版本的 glibc 兼容，并避免对 GLIBC_PRIVATE 符号产生依赖。它假定我们已经与该符号
+//! 所在的库做了动态链接，不过对于 libpthread/libc 这类库来说目前总是如此。
 //!
-//! A long time ago this used weak linkage for the __pthread_get_minstack
-//! symbol, but that caused Debian to detect an unnecessarily strict versioned
-//! dependency on libc6 (#23628) because it is GLIBC_PRIVATE. We now use `dlsym`
-//! for a runtime lookup of that symbol to avoid the ELF versioned dependency.
+//! 很久以前这里曾对 __pthread_get_minstack 符号使用弱链接，但那导致 Debian 检测到
+//! 了一个对 libc6 的、不必要地过于严格的版本化依赖（#23628），因为该符号属于
+//! GLIBC_PRIVATE。现在我们改用 `dlsym` 在运行时查找该符号，以避免产生 ELF 的
+//! 版本化依赖。
 
 #![forbid(unsafe_op_in_unsafe_fn)]
 
 cfg_select! {
-    // On non-ELF targets, use the dlsym approximation of weak linkage.
+    // 在非 ELF 目标上，使用 dlsym 这一对弱链接的近似实现。
     target_vendor = "apple" => {
         mod dlsym;
         pub(crate) use dlsym::weak;
     }
 
-    // Some targets don't need and support weak linkage at all...
+    // 某些目标根本不需要、也不支持弱链接……
     target_os = "espidf" => {}
 
-    // ... but ELF targets support true weak linkage.
+    // ……但 ELF 目标支持真正的弱链接。
     _ => {
-        // There are a variety of `#[cfg]`s controlling which targets are involved in
-        // each instance of `weak!`. Rather than trying to unify all of
-        // that, we'll just allow that some unix targets don't use this macro at all.
+        // 控制每一次 `weak!` 调用涉及哪些目标的 `#[cfg]` 多种多样。与其试图把这
+        // 一切统一起来，我们干脆允许某些 unix 目标完全不使用这个宏。
         #[cfg_attr(not(target_os = "linux"), allow(unused_macros, dead_code))]
         mod weak_linkage;
         #[cfg_attr(not(target_os = "linux"), allow(unused_imports))]
@@ -40,7 +36,7 @@ cfg_select! {
     }
 }
 
-// GNU/Linux needs the `dlsym` variant to avoid linking to private glibc symbols.
+// GNU/Linux 需要使用 `dlsym` 这一变体，以避免链接到 glibc 的私有符号。
 #[cfg(all(target_os = "linux", target_env = "gnu"))]
 mod dlsym;
 #[cfg(all(target_os = "linux", target_env = "gnu"))]

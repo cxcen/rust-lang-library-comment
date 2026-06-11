@@ -1,40 +1,35 @@
-//! # Safe(r) wrappers around Windows API functions.
+//! # 对 Windows API 函数的安全（或更安全）封装。
 //!
-//! This module contains fairly thin wrappers around Windows API functions,
-//! aimed at centralising safety instead of having unsafe blocks spread
-//! throughout higher level code. This makes it much easier to audit FFI safety.
+//! 本模块包含对 Windows API 函数的相当薄的封装，目的是把安全性集中到一处，
+//! 而不是让 unsafe 块散布在更上层的代码中。这使得审计 FFI 安全性变得容易得多。
 //!
-//! Not all functions can be made completely safe without more context but in
-//! such cases we should still endeavour to reduce the caller's burden of safety
-//! as much as possible.
+//! 并非所有函数都能在缺乏更多上下文的情况下做到完全安全，但即便如此，
+//! 我们仍应尽可能减轻调用方在安全性方面的负担。
 //!
-//! ## Guidelines for wrappers
+//! ## 封装指南
 //!
-//! Items here should be named similarly to their raw Windows API name, except
-//! that they follow Rust's case conventions. E.g. function names are
-//! lower_snake_case. The idea here is that it should be easy for a Windows
-//! C/C++ programmer to identify the underlying function that's being wrapped
-//! while not looking too out of place in Rust code.
+//! 这里的条目应当以与其对应的原始 Windows API 名称相似的方式命名，
+//! 区别仅在于遵循 Rust 的命名约定。例如函数名采用 lower_snake_case。
+//! 这样做的意图是：让 Windows C/C++ 程序员可以轻松辨认出被封装的底层函数，
+//! 同时又不至于在 Rust 代码中显得格格不入。
 //!
-//! Every use of an `unsafe` block must have a related SAFETY comment, even if
-//! it's trivially safe (for example, see `get_last_error`). Public unsafe
-//! functions must document what the caller has to do to call them safely.
+//! 每一处 `unsafe` 块都必须配有相应的 SAFETY 注释，即便它显然是安全的
+//! （例如，参见 `get_last_error`）。公开的 unsafe 函数必须说明调用方需要
+//! 做些什么才能安全地调用它们。
 //!
-//! Avoid unchecked `as` casts. For integers, either assert that the integer
-//! is in range or use `try_into` instead. For pointers, prefer to use
-//! `ptr.cast::<Type>()` when possible.
+//! 避免未经检查的 `as` 转换。对于整数，要么断言该整数在取值范围内，
+//! 要么改用 `try_into`。对于指针，尽可能使用 `ptr.cast::<Type>()`。
 //!
-//! This module must only depend on core and not on std types as the eventual
-//! hope is to have std depend on sys and not the other way around.
-//! However, some amount of glue code may currently be necessary so such code
-//! should go in sys/pal/windows/mod.rs rather than here. See `IoResult` as an example.
+//! 本模块只能依赖 core，而不能依赖 std 类型，因为最终的目标是让 std 依赖 sys，
+//! 而非反过来。不过，目前可能仍然需要一些粘合代码（glue code），这类代码
+//! 应放到 sys/pal/windows/mod.rs 中，而非这里。可参见 `IoResult` 这个例子。
 
 use core::ffi::c_void;
 use core::marker::PhantomData;
 
 use super::c;
 
-/// Creates a null-terminated UTF-16 string from a str.
+/// 从一个 str 创建以 null 结尾的 UTF-16 字符串。
 pub macro wide_str($str:literal) {{
     const _: () = {
         if core::slice::memchr::memchr(0, $str.as_bytes()).is_some() {
@@ -44,7 +39,7 @@ pub macro wide_str($str:literal) {{
     crate::sys::pal::windows::api::utf16!(concat!($str, '\0'))
 }}
 
-/// Creates a UTF-16 string from a str without null termination.
+/// 从一个 str 创建 UTF-16 字符串，不带 null 结尾符。
 pub macro utf16($str:expr) {{
     const UTF8: &str = $str;
     const UTF16_LEN: usize = crate::sys::pal::windows::api::utf16_len(UTF8);
@@ -55,29 +50,28 @@ pub macro utf16($str:expr) {{
 #[cfg(test)]
 mod tests;
 
-/// Gets the UTF-16 length of a UTF-8 string, for use in the wide_str macro.
+/// 获取 UTF-8 字符串对应的 UTF-16 长度，供 wide_str 宏使用。
 pub const fn utf16_len(s: &str) -> usize {
     let s = s.as_bytes();
     let mut i = 0;
     let mut len = 0;
     while i < s.len() {
-        // the length of a UTF-8 encoded code-point is given by the number of
-        // leading ones, except in the case of ASCII.
+        // 一个 UTF-8 编码码点的长度由其前导 1 的个数给出，ASCII 情况除外。
         let utf8_len = match s[i].leading_ones() {
             0 => 1,
             n => n as usize,
         };
         i += utf8_len;
-        // Note that UTF-16 surrogates (U+D800 to U+DFFF) are not encodable as UTF-8,
-        // so (unlike with WTF-8) we don't have to worry about how they'll get re-encoded.
+        // 注意：UTF-16 代理项（U+D800 至 U+DFFF）无法用 UTF-8 编码，
+        // 因此（不同于 WTF-8）我们无需担心它们会被如何重新编码。
         len += if utf8_len < 4 { 1 } else { 2 };
     }
     len
 }
 
-/// Const convert UTF-8 to UTF-16, for use in the wide_str macro.
+/// 在 const 上下文中把 UTF-8 转换为 UTF-16，供 wide_str 宏使用。
 ///
-/// Note that this is designed for use in const contexts so is not optimized.
+/// 注意：这是为在 const 上下文中使用而设计的，因此没有做优化。
 pub const fn to_utf16<const UTF16_LEN: usize>(s: &str) -> [u16; UTF16_LEN] {
     let mut output = [0_u16; UTF16_LEN];
     let mut pos = 0;
@@ -85,22 +79,22 @@ pub const fn to_utf16<const UTF16_LEN: usize>(s: &str) -> [u16; UTF16_LEN] {
     let mut i = 0;
     while i < s.len() {
         match s[i].leading_ones() {
-            // Decode UTF-8 based on its length.
-            // See https://en.wikipedia.org/wiki/UTF-8
+            // 根据 UTF-8 的长度进行解码。
+            // 参见 https://en.wikipedia.org/wiki/UTF-8
             0 => {
-                // ASCII is the same in both encodings
+                // ASCII 在两种编码中是一样的
                 output[pos] = s[i] as u16;
                 i += 1;
                 pos += 1;
             }
             2 => {
-                // Bits: 110xxxxx 10xxxxxx
+                // 位布局：110xxxxx 10xxxxxx
                 output[pos] = ((s[i] as u16 & 0b11111) << 6) | (s[i + 1] as u16 & 0b111111);
                 i += 2;
                 pos += 1;
             }
             3 => {
-                // Bits: 1110xxxx 10xxxxxx 10xxxxxx
+                // 位布局：1110xxxx 10xxxxxx 10xxxxxx
                 output[pos] = ((s[i] as u16 & 0b1111) << 12)
                     | ((s[i + 1] as u16 & 0b111111) << 6)
                     | (s[i + 2] as u16 & 0b111111);
@@ -108,44 +102,42 @@ pub const fn to_utf16<const UTF16_LEN: usize>(s: &str) -> [u16; UTF16_LEN] {
                 pos += 1;
             }
             4 => {
-                // Bits: 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
+                // 位布局：11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
                 let mut c = ((s[i] as u32 & 0b111) << 18)
                     | ((s[i + 1] as u32 & 0b111111) << 12)
                     | ((s[i + 2] as u32 & 0b111111) << 6)
                     | (s[i + 3] as u32 & 0b111111);
-                // re-encode as UTF-16 (see https://en.wikipedia.org/wiki/UTF-16)
-                // - Subtract 0x10000 from the code point
-                // - For the high surrogate, shift right by 10 then add 0xD800
-                // - For the low surrogate, take the low 10 bits then add 0xDC00
+                // 重新编码为 UTF-16（参见 https://en.wikipedia.org/wiki/UTF-16）
+                // - 从码点中减去 0x10000
+                // - 高位代理项：右移 10 位后加上 0xD800
+                // - 低位代理项：取低 10 位后加上 0xDC00
                 c -= 0x10000;
                 output[pos] = ((c >> 10) + 0xD800) as u16;
                 output[pos + 1] = ((c & 0b1111111111) + 0xDC00) as u16;
                 i += 4;
                 pos += 2;
             }
-            // valid UTF-8 cannot have any other values
+            // 合法的 UTF-8 不可能有其他取值
             _ => unreachable!(),
         }
     }
     output
 }
 
-/// Helper method for getting the size of `T` as a u32.
-/// Errors at compile time if the size would overflow.
+/// 用于获取 `T` 的大小（以 u32 表示）的辅助方法。
+/// 如果该大小会发生溢出，则在编译期报错。
 ///
-/// While a type larger than u32::MAX is unlikely, it is possible if only because of a bug.
-/// However, one key motivation for this function is to avoid the temptation to
-/// use frequent `as` casts. This is risky because they are too powerful.
-/// For example, the following will compile today:
+/// 虽然类型大于 u32::MAX 不太可能发生，但确有可能，哪怕只是因为出现了 bug。
+/// 不过，本函数的一个关键动机是避免动辄使用 `as` 转换的诱惑。这样做有风险，
+/// 因为 `as` 太过强大了。例如，下面这行代码今天就能编译通过：
 ///
 /// `size_of::<u64> as u32`
 ///
-/// Note that `size_of` is never actually called, instead a function pointer is
-/// converted to a `u32`. Clippy would warn about this but, alas, it's not run
-/// on the standard library.
+/// 注意 `size_of` 其实从未被真正调用，实际上是把一个函数指针转换成了 `u32`。
+/// Clippy 会对此发出警告，但很遗憾，它并不会在标准库上运行。
 const fn win32_size_of<T: Sized>() -> u32 {
-    // Const assert that the size does not exceed u32::MAX.
-    // Uses a trait to workaround restriction on using generic types in inner items.
+    // 在 const 上下文中断言其大小不超过 u32::MAX。
+    // 使用一个 trait 来绕开“不能在内层 item 中使用泛型类型”的限制。
     trait Win32SizeOf: Sized {
         const WIN32_SIZE_OF: u32 = {
             let size = size_of::<Self>();
@@ -158,28 +150,27 @@ const fn win32_size_of<T: Sized>() -> u32 {
     T::WIN32_SIZE_OF
 }
 
-/// The `SetFileInformationByHandle` function takes a generic parameter by
-/// making the user specify the type (class), a pointer to the data and its
-/// size. This trait allows attaching that information to a Rust type so that
-/// [`set_file_information_by_handle`] can be called safely.
+/// `SetFileInformationByHandle` 函数是泛型的：它要求使用者指定类型（class）、
+/// 一个指向数据的指针以及数据的大小。该 trait 允许把这些信息附加到某个 Rust
+/// 类型上，从而能够安全地调用 [`set_file_information_by_handle`]。
 ///
-/// This trait is designed so that it can support variable sized types.
-/// However, currently Rust's std only uses fixed sized structures.
+/// 该 trait 在设计上可以支持可变大小的类型。不过目前 Rust 的 std 只使用
+/// 固定大小的结构体。
 ///
-/// # Safety
+/// # 安全性(Safety）
 ///
-/// * `as_ptr` must return a pointer to memory that is readable up to `size` bytes.
-/// * `CLASS` must accurately reflect the type pointed to by `as_ptr`. E.g.
-/// the `FILE_BASIC_INFO` structure has the class `FileBasicInfo`.
+/// * `as_ptr` 必须返回一个指向可读取至多 `size` 字节内存的指针。
+/// * `CLASS` 必须准确反映 `as_ptr` 所指向的类型。例如，`FILE_BASIC_INFO`
+/// 结构体对应的 class 是 `FileBasicInfo`。
 pub unsafe trait SetFileInformation {
-    /// The type of information to set.
+    /// 要设置的信息类型。
     const CLASS: i32;
-    /// A pointer to the file information to set.
+    /// 指向要设置的文件信息的指针。
     fn as_ptr(&self) -> *const c_void;
-    /// The size of the type pointed to by `as_ptr`.
+    /// `as_ptr` 所指向类型的大小。
     fn size(&self) -> u32;
 }
-/// Helper trait for implementing `SetFileInformation` for statically sized types.
+/// 为静态大小类型实现 `SetFileInformation` 的辅助 trait。
 unsafe trait SizedSetFileInformation: Sized {
     const CLASS: i32;
 }
@@ -193,10 +184,10 @@ unsafe impl<T: SizedSetFileInformation> SetFileInformation for T {
     }
 }
 
-// SAFETY: FILE_BASIC_INFO, FILE_END_OF_FILE_INFO, FILE_ALLOCATION_INFO,
-// FILE_DISPOSITION_INFO, FILE_DISPOSITION_INFO_EX and FILE_IO_PRIORITY_HINT_INFO
-// are all plain `repr(C)` structs that only contain primitive types.
-// The given information classes correctly match with the struct.
+// SAFETY: FILE_BASIC_INFO、FILE_END_OF_FILE_INFO、FILE_ALLOCATION_INFO、
+// FILE_DISPOSITION_INFO、FILE_DISPOSITION_INFO_EX 和 FILE_IO_PRIORITY_HINT_INFO
+// 都是普通的 `repr(C)` 结构体，且仅包含原始类型。
+// 所给定的信息 class 与各结构体正确对应。
 unsafe impl SizedSetFileInformation for c::FILE_BASIC_INFO {
     const CLASS: i32 = c::FileBasicInfo;
 }
@@ -232,22 +223,21 @@ pub fn set_file_information_by_handle<T: SetFileInformation>(
             (result != 0).then_some(()).ok_or_else(get_last_error)
         }
     }
-    // SAFETY: The `SetFileInformation` trait ensures that this is safe.
+    // SAFETY: `SetFileInformation` trait 确保了这是安全的。
     unsafe { set_info(handle, T::CLASS, info.as_ptr(), info.size()) }
 }
 
-/// Gets the error from the last function.
-/// This must be called immediately after the function that sets the error to
-/// avoid the risk of another function overwriting it.
+/// 获取最近一次函数调用所产生的错误。
+/// 必须在设置该错误的函数之后立即调用本函数，以避免另一个函数覆盖它的风险。
 pub fn get_last_error() -> WinError {
-    // SAFETY: This just returns a thread-local u32 and has no other effects.
+    // SAFETY: 这只是返回一个线程局部的 u32，没有任何其他副作用。
     unsafe { WinError { code: c::GetLastError() } }
 }
 
-/// An error code as returned by [`get_last_error`].
+/// 由 [`get_last_error`] 返回的错误码。
 ///
-/// This is usually a 16-bit Win32 error code but may be a 32-bit HRESULT or NTSTATUS.
-/// Check the documentation of the Windows API function being called for expected errors.
+/// 它通常是一个 16 位的 Win32 错误码，但也可能是 32 位的 HRESULT 或 NTSTATUS。
+/// 请查阅所调用 Windows API 函数的文档，以了解可能出现的错误。
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct WinError {
@@ -259,15 +249,15 @@ impl WinError {
     }
 }
 
-// Error code constants.
-// The constant names should be the same as the winapi constants except for the leading `ERROR_`.
-// Due to the sheer number of codes, error codes should only be added here on an as-needed basis.
-// However, they should never be removed as the assumption is they may be useful again in the future.
+// 错误码常量。
+// 这些常量名应当与 winapi 中的常量一致，只是去掉了前导的 `ERROR_`。
+// 由于错误码数量庞大，仅应在确有需要时才往这里添加错误码。
+// 但是，已添加的错误码永远不应被删除，因为我们假设它们将来可能会再次有用。
 #[allow(unused)]
 impl WinError {
-    /// Success is not an error.
-    /// Some Windows APIs do use this to distinguish between a zero return and an error return
-    /// but we should never return this to users as an error.
+    /// 成功并不是错误。
+    /// 某些 Windows API 确实用它来区分“返回零”和“返回错误”这两种情况，
+    /// 但我们绝不应把它作为错误返回给用户。
     pub const SUCCESS: Self = Self::new(c::ERROR_SUCCESS);
     // tidy-alphabetical-start
     pub const ACCESS_DENIED: Self = Self::new(c::ERROR_ACCESS_DENIED);
@@ -293,13 +283,13 @@ impl WinError {
     // tidy-alphabetical-end
 }
 
-/// A wrapper around a UNICODE_STRING that is equivalent to `&[u16]`.
+/// 对 UNICODE_STRING 的封装，等价于 `&[u16]`。
 ///
-/// It is preferable to use the `unicode_str!` macro as that contains mitigations for  #143078.
+/// 更推荐使用 `unicode_str!` 宏，因为它包含针对 #143078 的缓解措施。
 ///
-/// If the MaximumLength field of the underlying UNICODE_STRING is greater than
-/// the Length field then you can test if the string is null terminated by inspecting
-/// the u16 directly after the string. You cannot otherwise depend on nul termination.
+/// 如果底层 UNICODE_STRING 的 MaximumLength 字段大于 Length 字段，
+/// 那么你可以通过检查紧跟在字符串之后的那个 u16 来测试该字符串是否以 null 结尾。
+/// 除此之外，你不能依赖于它以 null 结尾。
 #[derive(Copy, Clone)]
 pub struct UnicodeStrRef<'a> {
     s: c::UNICODE_STRING,
@@ -333,25 +323,24 @@ impl UnicodeStrRef<'_> {
         Self::new(slice, false)
     }
 
-    /// Returns a pointer to the underlying UNICODE_STRING
+    /// 返回指向底层 UNICODE_STRING 的指针
     pub const fn as_ptr(&self) -> *const c::UNICODE_STRING {
         &self.s
     }
 }
 
-/// Create a UnicodeStringRef from a literal str or a u16 array.
+/// 从一个字面量 str 或一个 u16 数组创建 UnicodeStringRef。
 ///
-/// To mitigate #143078, when using a literal str the created UNICODE_STRING
-/// will be nul terminated. The MaximumLength field of the UNICODE_STRING will
-/// be set greater than the Length field to indicate that a nul may be present.
+/// 为缓解 #143078，当使用字面量 str 时，所创建的 UNICODE_STRING 会以 null 结尾。
+/// 该 UNICODE_STRING 的 MaximumLength 字段会被设置为大于 Length 字段，
+/// 以表明其后可能存在一个 null。
 ///
-/// If using a u16 array, the array is used exactly as provided and you cannot
-/// count on the string being nul terminated.
-/// This should generally be used for strings that come from the OS.
+/// 如果使用 u16 数组，则该数组会被原样使用，你不能指望该字符串以 null 结尾。
+/// 这种用法通常适用于来自操作系统的字符串。
 ///
-/// **NOTE:** we lack a UNICODE_STRING builder type as we don't currently have
-/// a use for it. If needing to dynamically build a UNICODE_STRING, the builder
-/// should try to ensure there's a nul one past the end of the string.
+/// **NOTE:** 我们没有提供 UNICODE_STRING 的构建器类型，因为目前还用不到它。
+/// 如果需要动态构建 UNICODE_STRING，构建器应尽量确保在字符串末尾的下一个位置
+/// 存在一个 null。
 pub macro unicode_str {
     ($str:literal) => {const {
         crate::sys::pal::windows::api::UnicodeStrRef::from_slice_with_nul(

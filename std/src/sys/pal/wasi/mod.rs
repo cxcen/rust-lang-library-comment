@@ -1,8 +1,7 @@
-//! System bindings for the WASI platforms.
+//! WASI 平台的系统绑定（System bindings）。
 //!
-//! This module contains the facade (aka platform-specific) implementations of
-//! OS level functionality for WASI. Currently this includes both WASIp1 and
-//! WASIp2.
+//! 本模块包含 WASI 平台上 OS 级功能的门面（facade，即平台特定）实现。
+//! 目前这同时涵盖 WASIp1 与 WASIp2。
 
 #[allow(unused)]
 #[path = "../wasm/atomics/futex.rs"]
@@ -22,9 +21,9 @@ pub use common::*;
 
 mod helpers;
 
-// The following exports are listed individually to work around Rust's glob
-// import conflict rules. If we glob export `helpers` and `common` together,
-// then the compiler complains about conflicts.
+// 下面这些导出之所以逐个单独列出，是为了规避 Rust 的 glob 导入冲突规则。
+// 如果我们把 `helpers` 和 `common` 一起 glob 导出，
+// 编译器就会抱怨存在冲突。
 
 pub(crate) use helpers::abort_internal;
 #[cfg(target_env = "p1")]

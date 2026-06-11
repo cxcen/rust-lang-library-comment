@@ -4,7 +4,7 @@ use crate::sys::c;
 #[inline]
 pub fn fill_bytes(bytes: &mut [u8]) {
     let ret = unsafe { c::ProcessPrng(bytes.as_mut_ptr(), bytes.len()) };
-    // ProcessPrng is documented as always returning `TRUE`.
+    // ProcessPrng 的文档说明它总是返回 `TRUE`。
     // https://learn.microsoft.com/en-us/windows/win32/seccng/processprng#return-value
     debug_assert_eq!(ret, c::TRUE);
 }

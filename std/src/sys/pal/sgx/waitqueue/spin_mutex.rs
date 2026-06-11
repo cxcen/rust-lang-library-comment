@@ -1,5 +1,5 @@
-//! Trivial spinlock-based implementation of `sync::Mutex`.
-// FIXME: Perhaps use Intel TSX to avoid locking?
+//! 基于自旋锁（spinlock）的 `sync::Mutex` 的简易实现。
+// FIXME: 也许可以用 Intel TSX 来避免加锁？
 
 #[cfg(test)]
 mod tests;
@@ -54,7 +54,7 @@ impl<T> SpinMutex<T> {
     }
 }
 
-/// Lock the Mutex or return false.
+/// 对该 Mutex 加锁，或返回 false。
 pub macro try_lock_or_false($e:expr) {
     if let Some(v) = $e.try_lock() { v } else { return false }
 }

@@ -1,10 +1,10 @@
-//! Random data from `/dev/urandom`
+//! 来自 `/dev/urandom` 的随机数据
 //!
-//! Before `getentropy` was standardized in 2024, UNIX didn't have a standardized
-//! way of getting random data, so systems just followed the precedent set by
-//! Linux and exposed random devices at `/dev/random` and `/dev/urandom`. Thus,
-//! for the few systems that support neither `arc4random_buf` nor `getentropy`
-//! yet, we just read from the file.
+//! 在 `getentropy` 于 2024 年被标准化之前，UNIX 并没有一种标准化的
+//! 获取随机数据的方式，因此各系统只是沿袭了 Linux 开创的先例，
+//! 在 `/dev/random` 和 `/dev/urandom` 处暴露随机设备。因此，
+//! 对于那些既不支持 `arc4random_buf` 也不支持 `getentropy` 的少数系统，
+//! 我们就直接从文件中读取。
 
 use crate::fs::File;
 use crate::io::Read;

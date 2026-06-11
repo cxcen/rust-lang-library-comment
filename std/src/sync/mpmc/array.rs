@@ -1,10 +1,10 @@
-//! Bounded channel based on a preallocated array.
+//! 基于预分配数组（preallocated array）的有界通道。
 //!
-//! This flavor has a fixed, positive capacity.
+//! 这种 flavor 拥有一个固定且为正数的容量。
 //!
-//! The implementation is based on Dmitry Vyukov's bounded MPMC queue.
+//! 其实现基于 Dmitry Vyukov 的有界 MPMC 队列。
 //!
-//! Source:
+//! 来源：
 //!   - <http://www.1024cores.net/home/lock-free-algorithms/queues/bounded-mpmc-queue>
 //!   - <https://docs.google.com/document/d/1yIAYmbvL3JxOKOjuCyon7JhW4cSv1wy5hC0ApeGMV9s/pub>
 
@@ -19,23 +19,22 @@ use crate::ptr;
 use crate::sync::atomic::{self, Atomic, AtomicUsize, Ordering};
 use crate::time::Instant;
 
-/// A slot in a channel.
+/// 通道中的一个槽位（slot）。
 struct Slot<T> {
-    /// The current stamp.
+    /// 当前的戳记（stamp）。
     stamp: Atomic<usize>,
 
-    /// The message in this slot. Either read out in `read` or dropped through
-    /// `discard_all_messages`.
+    /// 该槽位中的消息。要么在 `read` 中被读出，要么通过 `discard_all_messages` 被丢弃。
     msg: UnsafeCell<MaybeUninit<T>>,
 }
 
-/// The token type for the array flavor.
+/// array flavor 的 token 类型。
 #[derive(Debug)]
 pub(crate) struct ArrayToken {
-    /// Slot to read from or write to.
+    /// 要读取或写入的槽位。
     slot: *const u8,
 
-    /// Stamp to store into the slot after reading or writing.
+    /// 读取或写入之后要存入该槽位的戳记（stamp）。
     stamp: usize,
 }
 
@@ -46,64 +45,63 @@ impl Default for ArrayToken {
     }
 }
 
-/// Bounded channel based on a preallocated array.
+/// 基于预分配数组的有界通道。
 pub(crate) struct Channel<T> {
-    /// The head of the channel.
+    /// 通道的头部（head）。
     ///
-    /// This value is a "stamp" consisting of an index into the buffer, a mark bit, and a lap, but
-    /// packed into a single `usize`. The lower bits represent the index, while the upper bits
-    /// represent the lap. The mark bit in the head is always zero.
+    /// 该值是一个“戳记”（stamp），由缓冲区内的一个索引、一个标记位（mark bit）和一个圈数
+    /// （lap）组成，并被打包进单个 `usize`。低位表示索引，高位表示圈数。head 中的标记位
+    /// 永远为零。
     ///
-    /// Messages are popped from the head of the channel.
+    /// 消息从通道的头部弹出（pop）。
     head: CachePadded<Atomic<usize>>,
 
-    /// The tail of the channel.
+    /// 通道的尾部（tail）。
     ///
-    /// This value is a "stamp" consisting of an index into the buffer, a mark bit, and a lap, but
-    /// packed into a single `usize`. The lower bits represent the index, while the upper bits
-    /// represent the lap. The mark bit indicates that the channel is disconnected.
+    /// 该值是一个“戳记”（stamp），由缓冲区内的一个索引、一个标记位（mark bit）和一个圈数
+    /// （lap）组成，并被打包进单个 `usize`。低位表示索引，高位表示圈数。标记位表示通道
+    /// 已断连（disconnected）。
     ///
-    /// Messages are pushed into the tail of the channel.
+    /// 消息被压入（push）通道的尾部。
     tail: CachePadded<Atomic<usize>>,
 
-    /// The buffer holding slots.
+    /// 持有各槽位的缓冲区。
     buffer: Box<[Slot<T>]>,
 
-    /// The channel capacity.
+    /// 通道的容量。
     cap: usize,
 
-    /// A stamp with the value of `{ lap: 1, mark: 0, index: 0 }`.
+    /// 一个值为 `{ lap: 1, mark: 0, index: 0 }` 的戳记。
     one_lap: usize,
 
-    /// If this bit is set in the tail, that means the channel is disconnected.
+    /// 如果该比特位在 tail 中被置位，意味着通道已断连。
     mark_bit: usize,
 
-    /// Senders waiting while the channel is full.
+    /// 在通道已满期间等待的发送者。
     senders: SyncWaker,
 
-    /// Receivers waiting while the channel is empty and not disconnected.
+    /// 在通道为空且未断连期间等待的接收者。
     receivers: SyncWaker,
 }
 
 impl<T> Channel<T> {
-    /// Creates a bounded channel of capacity `cap`.
+    /// 创建一个容量为 `cap` 的有界通道。
     pub(crate) fn with_capacity(cap: usize) -> Self {
         assert!(cap > 0, "capacity must be positive");
 
-        // Compute constants `mark_bit` and `one_lap`.
+        // 计算常量 `mark_bit` 与 `one_lap`。
         let mark_bit = (cap + 1).next_power_of_two();
         let one_lap = mark_bit * 2;
 
-        // Head is initialized to `{ lap: 0, mark: 0, index: 0 }`.
+        // head 初始化为 `{ lap: 0, mark: 0, index: 0 }`。
         let head = 0;
-        // Tail is initialized to `{ lap: 0, mark: 0, index: 0 }`.
+        // tail 初始化为 `{ lap: 0, mark: 0, index: 0 }`。
         let tail = 0;
 
-        // Allocate a buffer of `cap` slots initialized
-        // with stamps.
+        // 分配一个含 `cap` 个槽位的缓冲区，并为每个槽位初始化戳记。
         let buffer: Box<[Slot<T>]> = (0..cap)
             .map(|i| {
-                // Set the stamp to `{ lap: 0, mark: 0, index: i }`.
+                // 把戳记设为 `{ lap: 0, mark: 0, index: i }`。
                 Slot { stamp: AtomicUsize::new(i), msg: UnsafeCell::new(MaybeUninit::uninit()) }
             })
             .collect();
@@ -120,41 +118,41 @@ impl<T> Channel<T> {
         }
     }
 
-    /// Attempts to reserve a slot for sending a message.
+    /// 尝试为发送一条消息预订（reserve）一个槽位。
     fn start_send(&self, token: &mut Token) -> bool {
         let backoff = Backoff::new();
         let mut tail = self.tail.load(Ordering::Relaxed);
 
         loop {
-            // Check if the channel is disconnected.
+            // 检查通道是否已断连。
             if tail & self.mark_bit != 0 {
                 token.array.slot = ptr::null();
                 token.array.stamp = 0;
                 return true;
             }
 
-            // Deconstruct the tail.
+            // 拆解 tail。
             let index = tail & (self.mark_bit - 1);
             let lap = tail & !(self.one_lap - 1);
 
-            // Inspect the corresponding slot.
+            // 查看对应的槽位。
             debug_assert!(index < self.buffer.len());
             let slot = unsafe { self.buffer.get_unchecked(index) };
             let stamp = slot.stamp.load(Ordering::Acquire);
 
-            // If the tail and the stamp match, we may attempt to push.
+            // 如果 tail 与戳记相匹配，我们就可以尝试压入（push）。
             if tail == stamp {
                 let new_tail = if index + 1 < self.cap {
-                    // Same lap, incremented index.
-                    // Set to `{ lap: lap, mark: 0, index: index + 1 }`.
+                    // 同一圈，索引加一。
+                    // 设为 `{ lap: lap, mark: 0, index: index + 1 }`。
                     tail + 1
                 } else {
-                    // One lap forward, index wraps around to zero.
-                    // Set to `{ lap: lap.wrapping_add(1), mark: 0, index: 0 }`.
+                    // 前进一圈，索引回绕到零。
+                    // 设为 `{ lap: lap.wrapping_add(1), mark: 0, index: 0 }`。
                     lap.wrapping_add(self.one_lap)
                 };
 
-                // Try moving the tail.
+                // 尝试移动 tail。
                 match self.tail.compare_exchange_weak(
                     tail,
                     new_tail,
@@ -162,7 +160,7 @@ impl<T> Channel<T> {
                     Ordering::Relaxed,
                 ) {
                     Ok(_) => {
-                        // Prepare the token for the follow-up call to `write`.
+                        // 为随后调用的 `write` 准备好 token。
                         token.array.slot = slot as *const Slot<T> as *const u8;
                         token.array.stamp = tail + 1;
                         return true;
@@ -176,69 +174,69 @@ impl<T> Channel<T> {
                 atomic::fence(Ordering::SeqCst);
                 let head = self.head.load(Ordering::Relaxed);
 
-                // If the head lags one lap behind the tail as well...
+                // 如果 head 同样落后 tail 整整一圈……
                 if head.wrapping_add(self.one_lap) == tail {
-                    // ...then the channel is full.
+                    // ……那么通道已满。
                     return false;
                 }
 
                 backoff.spin_light();
                 tail = self.tail.load(Ordering::Relaxed);
             } else {
-                // Snooze because we need to wait for the stamp to get updated.
+                // 小睡一下（snooze），因为我们需要等待戳记被更新。
                 backoff.spin_heavy();
                 tail = self.tail.load(Ordering::Relaxed);
             }
         }
     }
 
-    /// Writes a message into the channel.
+    /// 向通道写入一条消息。
     pub(crate) unsafe fn write(&self, token: &mut Token, msg: T) -> Result<(), T> {
-        // If there is no slot, the channel is disconnected.
+        // 如果没有槽位，说明通道已断连。
         if token.array.slot.is_null() {
             return Err(msg);
         }
 
-        // Write the message into the slot and update the stamp.
+        // 把消息写入槽位，并更新戳记。
         unsafe {
             let slot: &Slot<T> = &*(token.array.slot as *const Slot<T>);
             slot.msg.get().write(MaybeUninit::new(msg));
             slot.stamp.store(token.array.stamp, Ordering::Release);
         }
 
-        // Wake a sleeping receiver.
+        // 唤醒一个正在睡眠的接收者。
         self.receivers.notify();
         Ok(())
     }
 
-    /// Attempts to reserve a slot for receiving a message.
+    /// 尝试为接收一条消息预订（reserve）一个槽位。
     fn start_recv(&self, token: &mut Token) -> bool {
         let backoff = Backoff::new();
         let mut head = self.head.load(Ordering::Relaxed);
 
         loop {
-            // Deconstruct the head.
+            // 拆解 head。
             let index = head & (self.mark_bit - 1);
             let lap = head & !(self.one_lap - 1);
 
-            // Inspect the corresponding slot.
+            // 查看对应的槽位。
             debug_assert!(index < self.buffer.len());
             let slot = unsafe { self.buffer.get_unchecked(index) };
             let stamp = slot.stamp.load(Ordering::Acquire);
 
-            // If the stamp is ahead of the head by 1, we may attempt to pop.
+            // 如果戳记比 head 超前 1，我们就可以尝试弹出（pop）。
             if head + 1 == stamp {
                 let new = if index + 1 < self.cap {
-                    // Same lap, incremented index.
-                    // Set to `{ lap: lap, mark: 0, index: index + 1 }`.
+                    // 同一圈，索引加一。
+                    // 设为 `{ lap: lap, mark: 0, index: index + 1 }`。
                     head + 1
                 } else {
-                    // One lap forward, index wraps around to zero.
-                    // Set to `{ lap: lap.wrapping_add(1), mark: 0, index: 0 }`.
+                    // 前进一圈，索引回绕到零。
+                    // 设为 `{ lap: lap.wrapping_add(1), mark: 0, index: 0 }`。
                     lap.wrapping_add(self.one_lap)
                 };
 
-                // Try moving the head.
+                // 尝试移动 head。
                 match self.head.compare_exchange_weak(
                     head,
                     new,
@@ -246,7 +244,7 @@ impl<T> Channel<T> {
                     Ordering::Relaxed,
                 ) {
                     Ok(_) => {
-                        // Prepare the token for the follow-up call to `read`.
+                        // 为随后调用的 `read` 准备好 token。
                         token.array.slot = slot as *const Slot<T> as *const u8;
                         token.array.stamp = head.wrapping_add(self.one_lap);
                         return true;
@@ -260,16 +258,16 @@ impl<T> Channel<T> {
                 atomic::fence(Ordering::SeqCst);
                 let tail = self.tail.load(Ordering::Relaxed);
 
-                // If the tail equals the head, that means the channel is empty.
+                // 如果 tail 等于 head，意味着通道为空。
                 if (tail & !self.mark_bit) == head {
-                    // If the channel is disconnected...
+                    // 如果通道已断连……
                     if tail & self.mark_bit != 0 {
-                        // ...then receive an error.
+                        // ……那么接收到一个错误。
                         token.array.slot = ptr::null();
                         token.array.stamp = 0;
                         return true;
                     } else {
-                        // Otherwise, the receive operation is not ready.
+                        // 否则，接收操作尚未就绪。
                         return false;
                     }
                 }
@@ -277,21 +275,21 @@ impl<T> Channel<T> {
                 backoff.spin_light();
                 head = self.head.load(Ordering::Relaxed);
             } else {
-                // Snooze because we need to wait for the stamp to get updated.
+                // 小睡一下（snooze），因为我们需要等待戳记被更新。
                 backoff.spin_heavy();
                 head = self.head.load(Ordering::Relaxed);
             }
         }
     }
 
-    /// Reads a message from the channel.
+    /// 从通道读取一条消息。
     pub(crate) unsafe fn read(&self, token: &mut Token) -> Result<T, ()> {
         if token.array.slot.is_null() {
-            // The channel is disconnected.
+            // 通道已断连。
             return Err(());
         }
 
-        // Read the message from the slot and update the stamp.
+        // 从槽位读取消息，并更新戳记。
         let msg = unsafe {
             let slot: &Slot<T> = &*(token.array.slot as *const Slot<T>);
 
@@ -300,12 +298,12 @@ impl<T> Channel<T> {
             msg
         };
 
-        // Wake a sleeping sender.
+        // 唤醒一个正在睡眠的发送者。
         self.senders.notify();
         Ok(msg)
     }
 
-    /// Attempts to send a message into the channel.
+    /// 尝试向通道发送一条消息。
     pub(crate) fn try_send(&self, msg: T) -> Result<(), TrySendError<T>> {
         let token = &mut Token::default();
         if self.start_send(token) {
@@ -315,7 +313,7 @@ impl<T> Channel<T> {
         }
     }
 
-    /// Sends a message into the channel.
+    /// 向通道发送一条消息。
     pub(crate) fn send(
         &self,
         msg: T,
@@ -323,7 +321,7 @@ impl<T> Channel<T> {
     ) -> Result<(), SendTimeoutError<T>> {
         let token = &mut Token::default();
         loop {
-            // Try sending a message.
+            // 尝试发送一条消息。
             if self.start_send(token) {
                 let res = unsafe { self.write(token, msg) };
                 return res.map_err(SendTimeoutError::Disconnected);
@@ -336,17 +334,17 @@ impl<T> Channel<T> {
             }
 
             Context::with(|cx| {
-                // Prepare for blocking until a receiver wakes us up.
+                // 准备阻塞，直到某个接收者把我们唤醒。
                 let oper = Operation::hook(token);
                 self.senders.register(oper, cx);
 
-                // Has the channel become ready just now?
+                // 通道是不是刚好在此刻变为就绪了？
                 if !self.is_full() || self.is_disconnected() {
                     let _ = cx.try_select(Selected::Aborted);
                 }
 
-                // Block the current thread.
-                // SAFETY: the context belongs to the current thread.
+                // 阻塞当前线程。
+                // SAFETY: 该上下文属于当前线程。
                 let sel = unsafe { cx.wait_until(deadline) };
 
                 match sel {
@@ -360,7 +358,7 @@ impl<T> Channel<T> {
         }
     }
 
-    /// Attempts to receive a message without blocking.
+    /// 尝试以非阻塞方式接收一条消息。
     pub(crate) fn try_recv(&self) -> Result<T, TryRecvError> {
         let token = &mut Token::default();
 
@@ -371,11 +369,11 @@ impl<T> Channel<T> {
         }
     }
 
-    /// Receives a message from the channel.
+    /// 从通道接收一条消息。
     pub(crate) fn recv(&self, deadline: Option<Instant>) -> Result<T, RecvTimeoutError> {
         let token = &mut Token::default();
         loop {
-            // Try receiving a message.
+            // 尝试接收一条消息。
             if self.start_recv(token) {
                 let res = unsafe { self.read(token) };
                 return res.map_err(|_| RecvTimeoutError::Disconnected);
@@ -388,25 +386,24 @@ impl<T> Channel<T> {
             }
 
             Context::with(|cx| {
-                // Prepare for blocking until a sender wakes us up.
+                // 准备阻塞，直到某个发送者把我们唤醒。
                 let oper = Operation::hook(token);
                 self.receivers.register(oper, cx);
 
-                // Has the channel become ready just now?
+                // 通道是不是刚好在此刻变为就绪了？
                 if !self.is_empty() || self.is_disconnected() {
                     let _ = cx.try_select(Selected::Aborted);
                 }
 
-                // Block the current thread.
-                // SAFETY: the context belongs to the current thread.
+                // 阻塞当前线程。
+                // SAFETY: 该上下文属于当前线程。
                 let sel = unsafe { cx.wait_until(deadline) };
 
                 match sel {
                     Selected::Waiting => unreachable!(),
                     Selected::Aborted | Selected::Disconnected => {
                         self.receivers.unregister(oper).unwrap();
-                        // If the channel was disconnected, we still have to check for remaining
-                        // messages.
+                        // 即便通道已断连，我们仍然必须检查是否还有剩余的消息。
                     }
                     Selected::Operation(_) => {}
                 }
@@ -414,14 +411,14 @@ impl<T> Channel<T> {
         }
     }
 
-    /// Returns the current number of messages inside the channel.
+    /// 返回通道中当前的消息数量。
     pub(crate) fn len(&self) -> usize {
         loop {
-            // Load the tail, then load the head.
+            // 先加载 tail，再加载 head。
             let tail = self.tail.load(Ordering::SeqCst);
             let head = self.head.load(Ordering::SeqCst);
 
-            // If the tail didn't change, we've got consistent values to work with.
+            // 如果 tail 没有改变，说明我们拿到了一对一致（consistent）的值可供计算。
             if self.tail.load(Ordering::SeqCst) == tail {
                 let hix = head & (self.mark_bit - 1);
                 let tix = tail & (self.mark_bit - 1);
@@ -439,15 +436,15 @@ impl<T> Channel<T> {
         }
     }
 
-    /// Returns the capacity of the channel.
-    #[allow(clippy::unnecessary_wraps)] // This is intentional.
+    /// 返回通道的容量。
+    #[allow(clippy::unnecessary_wraps)] // 这是有意为之。
     pub(crate) fn capacity(&self) -> Option<usize> {
         Some(self.cap)
     }
 
-    /// Disconnects senders and wakes up all blocked receivers.
+    /// 断开（disconnect）发送者，并唤醒所有被阻塞的接收者。
     ///
-    /// Returns `true` if this call disconnected the channel.
+    /// 如果本次调用使通道断连，返回 `true`。
     pub(crate) fn disconnect_senders(&self) -> bool {
         let tail = self.tail.fetch_or(self.mark_bit, Ordering::SeqCst);
 
@@ -459,14 +456,13 @@ impl<T> Channel<T> {
         }
     }
 
-    /// Disconnects receivers and wakes up all blocked senders.
+    /// 断开（disconnect）接收者，并唤醒所有被阻塞的发送者。
     ///
-    /// Returns `true` if this call disconnected the channel.
+    /// 如果本次调用使通道断连，返回 `true`。
     ///
     /// # Safety
-    /// May only be called once upon dropping the last receiver. The
-    /// destruction of all other receivers must have been observed with acquire
-    /// ordering or stronger.
+    /// 只能在丢弃最后一个接收者时调用一次。所有其他接收者的销毁都必须已经以 acquire 或更强
+    /// 的内存序被观察到。
     pub(crate) unsafe fn disconnect_receivers(&self) -> bool {
         let tail = self.tail.fetch_or(self.mark_bit, Ordering::SeqCst);
         let disconnected = if tail & self.mark_bit == 0 {
@@ -480,90 +476,86 @@ impl<T> Channel<T> {
         disconnected
     }
 
-    /// Discards all messages.
+    /// 丢弃所有消息。
     ///
-    /// `tail` should be the current (and therefore last) value of `tail`.
+    /// `tail` 应当是 `tail` 的当前值（因而也是最后一个值）。
     ///
     /// # Panicking
-    /// If a destructor panics, the remaining messages are leaked, matching the
-    /// behavior of the unbounded channel.
+    /// 如果某个析构函数 panic，则剩余的消息会被泄漏（leak），这与无界通道的行为一致。
     ///
     /// # Safety
-    /// This method must only be called when dropping the last receiver. The
-    /// destruction of all other receivers must have been observed with acquire
-    /// ordering or stronger.
+    /// 此方法只能在丢弃最后一个接收者时调用。所有其他接收者的销毁都必须已经以 acquire 或
+    /// 更强的内存序被观察到。
     unsafe fn discard_all_messages(&self, tail: usize) {
         debug_assert!(self.is_disconnected());
 
-        // Only receivers modify `head`, so since we are the last one,
-        // this value will not change and will not be observed (since
-        // no new messages can be sent after disconnection).
+        // 只有接收者会修改 `head`，因此既然我们是最后一个，这个值就不会再改变、也不会被
+        // 观察到（因为断连之后不可能再发送任何新消息）。
         let mut head = self.head.load(Ordering::Relaxed);
         let tail = tail & !self.mark_bit;
 
         let backoff = Backoff::new();
         loop {
-            // Deconstruct the head.
+            // 拆解 head。
             let index = head & (self.mark_bit - 1);
             let lap = head & !(self.one_lap - 1);
 
-            // Inspect the corresponding slot.
+            // 查看对应的槽位。
             debug_assert!(index < self.buffer.len());
             let slot = unsafe { self.buffer.get_unchecked(index) };
             let stamp = slot.stamp.load(Ordering::Acquire);
 
-            // If the stamp is ahead of the head by 1, we may drop the message.
+            // 如果戳记比 head 超前 1，我们就可以丢弃这条消息。
             if head + 1 == stamp {
                 head = if index + 1 < self.cap {
-                    // Same lap, incremented index.
-                    // Set to `{ lap: lap, mark: 0, index: index + 1 }`.
+                    // 同一圈，索引加一。
+                    // 设为 `{ lap: lap, mark: 0, index: index + 1 }`。
                     head + 1
                 } else {
-                    // One lap forward, index wraps around to zero.
-                    // Set to `{ lap: lap.wrapping_add(1), mark: 0, index: 0 }`.
+                    // 前进一圈，索引回绕到零。
+                    // 设为 `{ lap: lap.wrapping_add(1), mark: 0, index: 0 }`。
                     lap.wrapping_add(self.one_lap)
                 };
 
                 unsafe {
                     (*slot.msg.get()).assume_init_drop();
                 }
-            // If the tail equals the head, that means the channel is empty.
+            // 如果 tail 等于 head，意味着通道为空。
             } else if tail == head {
                 return;
-            // Otherwise, a sender is about to write into the slot, so we need
-            // to wait for it to update the stamp.
+            // 否则，说明有一个发送者即将写入该槽位，因此我们需要等待它更新戳记。
             } else {
                 backoff.spin_heavy();
             }
         }
     }
 
-    /// Returns `true` if the channel is disconnected.
+    /// 如果通道已断连，返回 `true`。
     pub(crate) fn is_disconnected(&self) -> bool {
         self.tail.load(Ordering::SeqCst) & self.mark_bit != 0
     }
 
-    /// Returns `true` if the channel is empty.
+    /// 如果通道为空，返回 `true`。
     pub(crate) fn is_empty(&self) -> bool {
         let head = self.head.load(Ordering::SeqCst);
         let tail = self.tail.load(Ordering::SeqCst);
 
-        // Is the tail equal to the head?
+        // tail 是否等于 head？
         //
-        // Note: If the head changes just before we load the tail, that means there was a moment
-        // when the channel was not empty, so it is safe to just return `false`.
+        // 注意：如果 head 恰好在我们加载 tail 之前发生了变化，那意味着曾经有那么一刻通道
+        // 非空，因此直接返回 `false` 是安全的。
         (tail & !self.mark_bit) == head
     }
 
-    /// Returns `true` if the channel is full.
+    /// 如果通道已满，返回 `true`。
     pub(crate) fn is_full(&self) -> bool {
         let tail = self.tail.load(Ordering::SeqCst);
         let head = self.head.load(Ordering::SeqCst);
 
-        // Is the head lagging one lap behind tail?
+        // head 是否落后 tail 整整一圈？
         //
-        // Note: If the tail changes just before we load the head, that means there was a moment
-        // when the channel was not full, so it is safe to just return `false`.
+        // 注意：如果 tail 恰好在我们加载 head 之前发生了变化，那意味着曾经有那么一刻通道
+        // 未满，因此直接返回 `false` 是安全的。
         head.wrapping_add(self.one_lap) == tail & !self.mark_bit
     }
 }

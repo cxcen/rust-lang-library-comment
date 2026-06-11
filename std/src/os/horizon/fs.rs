@@ -3,7 +3,7 @@
 use crate::fs::Metadata;
 use crate::sys::AsInner;
 
-/// OS-specific extensions to [`fs::Metadata`].
+/// 针对 [`fs::Metadata`] 的操作系统特定扩展。
 ///
 /// [`fs::Metadata`]: crate::fs::Metadata
 #[stable(feature = "metadata_ext", since = "1.1.0")]

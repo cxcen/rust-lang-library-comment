@@ -1,7 +1,9 @@
-//! Additional functionality for numerics.
+//! 数值相关的附加功能。
 //!
-//! This module provides some extra types that are useful when doing numerical
-//! work. See the individual documentation for each piece for more information.
+//! 本模块为数值计算提供一些额外的类型。其实质内容（`NonZero`、`Wrapping`、
+//! `Saturating`、各类解析错误等）全部定义在 `core::num` 中，这里只是把它们
+//! 重导出到 `std::num` 命名空间，以便不感知 core/std 拆分的使用者直接通过
+//! `std::num` 访问。各项的具体说明请参见对应的文档。
 
 #![stable(feature = "rust1", since = "1.0.0")]
 #![allow(missing_docs)]

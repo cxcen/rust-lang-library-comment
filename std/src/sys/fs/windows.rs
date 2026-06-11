@@ -68,14 +68,14 @@ unsafe impl Sync for OpenOptions {}
 
 #[derive(Clone, Debug)]
 pub struct OpenOptions {
-    // generic
+    // 通用部分
     read: bool,
     write: bool,
     append: bool,
     truncate: bool,
     create: bool,
     create_new: bool,
-    // system-specific
+    // 系统特定部分
     custom_flags: u32,
     access_mode: Option<u32>,
     attributes: u32,
@@ -110,8 +110,8 @@ pub struct DirBuilder;
 
 impl fmt::Debug for ReadDir {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // This will only be called from std::fs::ReadDir, which will add a "ReadDir()" frame.
-        // Thus the result will be e g 'ReadDir("C:\")'
+        // 它只会从 std::fs::ReadDir 中被调用，后者会添加一个 "ReadDir()" 帧。
+        // 因此结果会是例如 'ReadDir("C:\")' 这样的形式。
         fmt::Debug::fmt(&*self.root, f)
     }
 }
@@ -120,10 +120,10 @@ impl Iterator for ReadDir {
     type Item = io::Result<DirEntry>;
     fn next(&mut self) -> Option<io::Result<DirEntry>> {
         let Some(handle) = self.handle.as_ref() else {
-            // This iterator was initialized with an `INVALID_HANDLE_VALUE` as its handle.
-            // Simply return `None` because this is only the case when `FindFirstFileExW` in
-            // the construction of this iterator returns `ERROR_FILE_NOT_FOUND` which means
-            // no matchhing files can be found.
+            // 这个迭代器是以 `INVALID_HANDLE_VALUE` 作为其句柄来初始化的。
+            // 这里直接返回 `None`，因为只有当构造该迭代器时 `FindFirstFileExW`
+            // 返回 `ERROR_FILE_NOT_FOUND`（意味着找不到任何匹配的文件）时，
+            // 才会出现这种情况。
             return None;
         };
         if let Some(first) = self.first.take() {
@@ -161,7 +161,7 @@ impl Drop for FindNextFileHandle {
 impl DirEntry {
     fn new(root: &Arc<PathBuf>, wfd: &c::WIN32_FIND_DATAW) -> Option<DirEntry> {
         match &wfd.cFileName[0..3] {
-            // check for '.' and '..'
+            // 检查 '.' 和 '..'
             &[46, 0, ..] | &[46, 46, 0, ..] => return None,
             _ => {}
         }
@@ -193,14 +193,14 @@ impl DirEntry {
 impl OpenOptions {
     pub fn new() -> OpenOptions {
         OpenOptions {
-            // generic
+            // 通用部分
             read: false,
             write: false,
             append: false,
             truncate: false,
             create: false,
             create_new: false,
-            // system-specific
+            // 系统特定部分
             custom_flags: 0,
             access_mode: None,
             share_mode: c::FILE_SHARE_READ | c::FILE_SHARE_WRITE | c::FILE_SHARE_DELETE,
@@ -244,8 +244,8 @@ impl OpenOptions {
         self.attributes = attrs;
     }
     pub fn security_qos_flags(&mut self, flags: u32) {
-        // We have to set `SECURITY_SQOS_PRESENT` here, because one of the valid flags we can
-        // receive is `SECURITY_ANONYMOUS = 0x0`, which we can't check for later on.
+        // 我们必须在这里设置 `SECURITY_SQOS_PRESENT`，因为我们可能收到的一个有效标志
+        // 是 `SECURITY_ANONYMOUS = 0x0`，而我们之后无法对它进行检查。
         self.security_qos_flags = flags | c::SECURITY_SQOS_PRESENT;
     }
     pub fn inherit_handle(&mut self, inherit: bool) {
@@ -269,8 +269,8 @@ impl OpenOptions {
                 Ok(c::GENERIC_READ | (c::FILE_GENERIC_WRITE & !c::FILE_WRITE_DATA))
             }
             (false, false, false, None) => {
-                // If no access mode is set, check if any creation flags are set
-                // to provide a more descriptive error message
+                // 如果没有设置任何访问模式，检查是否设置了任何创建标志（creation flags），
+                // 以便提供一条更具描述性的错误信息
                 if self.create || self.create_new || self.truncate {
                     Err(io::Error::new(
                         io::ErrorKind::InvalidInput,
@@ -311,8 +311,8 @@ impl OpenOptions {
             (false, false, false) => (c::OPEN_EXISTING, c::FILE_OPEN),
             (true, false, false) => (c::OPEN_ALWAYS, c::FILE_OPEN_IF),
             (false, true, false) => (c::TRUNCATE_EXISTING, c::FILE_OVERWRITE),
-            // `CREATE_ALWAYS` has weird semantics so we emulate it using
-            // `OPEN_ALWAYS` and a manual truncation step. See #115745.
+            // `CREATE_ALWAYS` 的语义很怪，因此我们用 `OPEN_ALWAYS` 加上一个手动的
+            // 截断（truncation）步骤来模拟它。参见 #115745。
             (true, true, false) => (c::OPEN_ALWAYS, c::FILE_OVERWRITE_IF),
             (_, _, true) => (c::CREATE_NEW, c::FILE_CREATE),
         })
@@ -337,7 +337,7 @@ impl OpenOptions {
 impl File {
     pub fn open(path: &Path, opts: &OpenOptions) -> io::Result<File> {
         let path = maybe_verbatim(path)?;
-        // SAFETY: maybe_verbatim returns null-terminated strings
+        // SAFETY: maybe_verbatim 返回以 null 结尾的字符串
         let path = unsafe { WCStr::from_wchars_with_null_unchecked(&path) };
         Self::open_native(&path, opts)
     }
@@ -374,15 +374,14 @@ impl File {
                     )
                 })?;
             }
-            // Manual truncation. See #115745.
+            // 手动截断。参见 #115745。
             if opts.truncate
                 && creation == c::OPEN_ALWAYS
                 && api::get_last_error() == WinError::ALREADY_EXISTS
             {
-                // This first tries `FileAllocationInfo` but falls back to
-                // `FileEndOfFileInfo` in order to support WINE.
-                // If WINE gains support for FileAllocationInfo, we should
-                // remove the fallback.
+                // 它首先尝试 `FileAllocationInfo`，但为了支持 WINE，会回退到
+                // `FileEndOfFileInfo`。
+                // 如果 WINE 增加了对 FileAllocationInfo 的支持，我们就应当移除这个回退。
                 let alloc = c::FILE_ALLOCATION_INFO { AllocationSize: 0 };
                 set_file_information_by_handle(handle.as_raw_handle(), &alloc)
                     .or_else(|_| {
@@ -427,8 +426,8 @@ impl File {
                 Ok(_) => Ok(()),
                 Err(err) => {
                     if err.raw_os_error() == Some(c::ERROR_IO_PENDING as i32) {
-                        // Wait for the lock to be acquired, and get the lock operation status.
-                        // This can happen asynchronously, if the file handle was opened for async IO
+                        // 等待锁被获取，并获取该加锁操作的状态。
+                        // 如果文件句柄是以异步 IO 方式打开的，这可能是异步发生的
                         let mut bytes_transferred = 0;
                         cvt(c::GetOverlappedResult(
                             self.handle.as_raw_handle(),
@@ -500,10 +499,10 @@ impl File {
     }
 
     pub fn unlock(&self) -> io::Result<()> {
-        // Unlock the handle twice because LockFileEx() allows a file handle to acquire
-        // both an exclusive and shared lock, in which case the documentation states that:
-        // "...two unlock operations are necessary to unlock the region; the first unlock operation
-        // unlocks the exclusive lock, the second unlock operation unlocks the shared lock"
+        // 对该句柄解锁两次，因为 LockFileEx() 允许一个文件句柄同时获得
+        // 排他锁（exclusive lock）和共享锁（shared lock），在这种情况下文档指出：
+        // "...需要两次解锁操作才能解锁该区域；第一次解锁操作解开排他锁，
+        // 第二次解锁操作解开共享锁"
         cvt(unsafe { c::UnlockFile(self.handle.as_raw_handle(), 0, 0, u32::MAX, u32::MAX) })?;
         let result =
             cvt(unsafe { c::UnlockFile(self.handle.as_raw_handle(), 0, 0, u32::MAX, u32::MAX) });
@@ -663,8 +662,8 @@ impl File {
 
     pub fn seek(&self, pos: SeekFrom) -> io::Result<u64> {
         let (whence, pos) = match pos {
-            // Casting to `i64` is fine, `SetFilePointerEx` reinterprets this
-            // integer as `u64`.
+            // 转换为 `i64` 是没问题的，`SetFilePointerEx` 会把这个整数
+            // 重新解释（reinterpret）为 `u64`。
             SeekFrom::Start(n) => (c::FILE_BEGIN, n as i64),
             SeekFrom::End(n) => (c::FILE_END, n),
             SeekFrom::Current(n) => (c::FILE_CURRENT, n),
@@ -691,9 +690,8 @@ impl File {
         Ok(Self { handle: self.handle.try_clone()? })
     }
 
-    // NB: returned pointer is derived from `space`, and has provenance to
-    // match. A raw pointer is returned rather than a reference in order to
-    // avoid narrowing provenance to the actual `REPARSE_DATA_BUFFER`.
+    // NB: 返回的指针派生自 `space`，并具有与之匹配的来源（provenance）。
+    // 这里返回裸指针而不是引用，是为了避免把来源收窄到实际的 `REPARSE_DATA_BUFFER`。
     fn reparse_point(
         &self,
         space: &mut Align8<[MaybeUninit<u8>]>,
@@ -701,8 +699,7 @@ impl File {
         unsafe {
             let mut bytes = 0;
             cvt({
-                // Grab this in advance to avoid it invalidating the pointer
-                // we get from `space.0.as_mut_ptr()`.
+                // 提前获取它，以避免它使我们从 `space.0.as_mut_ptr()` 得到的指针失效。
                 let len = space.0.len();
                 c::DeviceIoControl(
                     self.handle.as_raw_handle(),
@@ -755,12 +752,12 @@ impl File {
             };
             let subst_ptr = path_buffer.add(subst_off.into());
             let subst = slice::from_raw_parts_mut(subst_ptr, subst_len as usize);
-            // Absolute paths start with an NT internal namespace prefix `\??\`
-            // We should not let it leak through.
+            // 绝对路径以 NT 内部命名空间前缀 `\??\` 开头
+            // 我们不应让它泄漏出去。
             if !relative && subst.starts_with(&[92u16, 63u16, 63u16, 92u16]) {
-                // Turn `\??\` into `\\?\` (a verbatim path).
+                // 把 `\??\` 变成 `\\?\`（一个 verbatim 路径）。
                 subst[1] = b'\\' as u16;
-                // Attempt to convert to a more user-friendly path.
+                // 尝试转换为一个更便于用户阅读的路径。
                 let user = crate::sys::args::from_wide_to_user_path(
                     subst.iter().copied().chain([0]).collect(),
                 )?;
@@ -815,7 +812,7 @@ impl File {
         Ok(())
     }
 
-    /// Gets only basic file information such as attributes and file times.
+    /// 只获取诸如属性（attributes）和文件时间这类基本的文件信息。
     fn basic_info(&self) -> io::Result<c::FILE_BASIC_INFO> {
         unsafe {
             let mut info: c::FILE_BASIC_INFO = mem::zeroed();
@@ -830,13 +827,11 @@ impl File {
         }
     }
 
-    /// Deletes the file, consuming the file handle to ensure the delete occurs
-    /// as immediately as possible.
-    /// This attempts to use `posix_delete` but falls back to `win32_delete`
-    /// if that is not supported by the filesystem.
+    /// 删除该文件，并消耗（consume）文件句柄，以确保删除尽可能立即发生。
+    /// 它会尝试使用 `posix_delete`，但如果文件系统不支持，则回退到 `win32_delete`。
     #[allow(unused)]
     fn delete(self) -> Result<(), WinError> {
-        // If POSIX delete is not supported for this filesystem then fallback to win32 delete.
+        // 如果该文件系统不支持 POSIX delete，则回退到 win32 delete。
         match self.posix_delete() {
             Err(WinError::INVALID_PARAMETER)
             | Err(WinError::NOT_SUPPORTED)
@@ -845,14 +840,13 @@ impl File {
         }
     }
 
-    /// Delete using POSIX semantics.
+    /// 使用 POSIX 语义进行删除。
     ///
-    /// Files will be deleted as soon as the handle is closed. This is supported
-    /// for Windows 10 1607 (aka RS1) and later. However some filesystem
-    /// drivers will not support it even then, e.g. FAT32.
+    /// 一旦句柄被关闭，文件就会被删除。该特性在 Windows 10 1607（也即 RS1）
+    /// 及更高版本上受支持。不过，即便如此，某些文件系统驱动仍不会支持它，例如 FAT32。
     ///
-    /// If the operation is not supported for this filesystem or OS version
-    /// then errors will be `ERROR_NOT_SUPPORTED` or `ERROR_INVALID_PARAMETER`.
+    /// 如果该文件系统或操作系统版本不支持此操作，那么错误将会是
+    /// `ERROR_NOT_SUPPORTED` 或 `ERROR_INVALID_PARAMETER`。
     #[allow(unused)]
     fn posix_delete(&self) -> Result<(), WinError> {
         let info = c::FILE_DISPOSITION_INFO_EX {
@@ -863,28 +857,28 @@ impl File {
         api::set_file_information_by_handle(self.handle.as_raw_handle(), &info)
     }
 
-    /// Delete a file using win32 semantics. The file won't actually be deleted
-    /// until all file handles are closed. However, marking a file for deletion
-    /// will prevent anyone from opening a new handle to the file.
+    /// 使用 win32 语义删除文件。在所有文件句柄都关闭之前，文件实际上不会被删除。
+    /// 然而，把一个文件标记为待删除（marking a file for deletion）会阻止任何人
+    /// 打开指向该文件的新句柄。
     #[allow(unused)]
     fn win32_delete(&self) -> Result<(), WinError> {
         let info = c::FILE_DISPOSITION_INFO { DeleteFile: true };
         api::set_file_information_by_handle(self.handle.as_raw_handle(), &info)
     }
 
-    /// Fill the given buffer with as many directory entries as will fit.
-    /// This will remember its position and continue from the last call unless
-    /// `restart` is set to `true`.
+    /// 用尽可能多的目录条目填充给定的缓冲区（buffer）。
+    /// 它会记住自己的位置，并在下一次调用时从上次的位置继续，除非
+    /// `restart` 被设为 `true`。
     ///
-    /// The returned bool indicates if there are more entries or not.
-    /// It is an error if `self` is not a directory.
+    /// 返回的 bool 表示是否还有更多条目。
+    /// 如果 `self` 不是目录，则视为一个错误。
     ///
-    /// # Symlinks and other reparse points
+    /// # 符号链接与其他重解析点（reparse points）
     ///
-    /// On Windows a file is either a directory or a non-directory.
-    /// A symlink directory is simply an empty directory with some "reparse" metadata attached.
-    /// So if you open a link (not its target) and iterate the directory,
-    /// you will always iterate an empty directory regardless of the target.
+    /// 在 Windows 上，一个文件要么是目录，要么是非目录。
+    /// 符号链接目录其实就是一个附带了某些 "reparse"（重解析）元数据的空目录。
+    /// 因此，如果你打开一个链接（而不是它的目标）并遍历该目录，
+    /// 无论目标是什么，你遍历到的总是一个空目录。
     #[allow(unused)]
     fn fill_dir_buff(&self, buffer: &mut DirBuff, restart: bool) -> Result<bool, WinError> {
         let class =
@@ -907,7 +901,7 @@ impl File {
     }
 }
 
-/// A buffer for holding directory entries.
+/// 用于存放目录条目的缓冲区。
 struct DirBuff {
     buffer: Box<Align8<[MaybeUninit<u8>; Self::BUFFER_SIZE]>>,
 }
@@ -915,8 +909,7 @@ impl DirBuff {
     const BUFFER_SIZE: usize = 1024;
     fn new() -> Self {
         Self {
-            // Safety: `Align8<[MaybeUninit<u8>; N]>` does not need
-            // initialization.
+            // Safety: `Align8<[MaybeUninit<u8>; N]>` 不需要初始化。
             buffer: unsafe { Box::new_uninit().assume_init() },
         }
     }
@@ -926,7 +919,7 @@ impl DirBuff {
     fn as_mut_ptr(&mut self) -> *mut u8 {
         self.buffer.0.as_mut_ptr().cast()
     }
-    /// Returns a `DirBuffIter`.
+    /// 返回一个 `DirBuffIter`。
     fn iter(&self) -> DirBuffIter<'_> {
         DirBuffIter::new(self)
     }
@@ -937,9 +930,9 @@ impl AsRef<[MaybeUninit<u8>]> for DirBuff {
     }
 }
 
-/// An iterator over entries stored in a `DirBuff`.
+/// 一个对存放在 `DirBuff` 中的条目进行迭代的迭代器。
 ///
-/// Currently only returns file names (UTF-16 encoded).
+/// 当前仅返回文件名（以 UTF-16 编码）。
 struct DirBuffIter<'a> {
     buffer: Option<&'a [MaybeUninit<u8>]>,
     cursor: usize,
@@ -954,21 +947,19 @@ impl<'a> Iterator for DirBuffIter<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         let buffer = &self.buffer?[self.cursor..];
 
-        // Get the name and next entry from the buffer.
+        // 从缓冲区中获取名称和下一个条目。
         // SAFETY:
-        // - The buffer contains a `FILE_ID_BOTH_DIR_INFO` struct but the last
-        //   field (the file name) is unsized. So an offset has to be used to
-        //   get the file name slice.
-        // - The OS has guaranteed initialization of the fields of
-        //   `FILE_ID_BOTH_DIR_INFO` and the trailing filename (for at least
-        //   `FileNameLength` bytes)
+        // - 缓冲区包含一个 `FILE_ID_BOTH_DIR_INFO` 结构体，但其最后一个字段
+        //   （文件名）是不定长（unsized）的。因此必须使用一个偏移量来获取文件名切片。
+        // - 操作系统保证了 `FILE_ID_BOTH_DIR_INFO` 各字段以及尾部文件名
+        //   （至少 `FileNameLength` 个字节）的初始化
         let (name, is_directory, next_entry) = unsafe {
             let info = buffer.as_ptr().cast::<c::FILE_ID_BOTH_DIR_INFO>();
-            // While this is guaranteed to be aligned in documentation for
+            // 尽管在如下文档中它被保证是对齐的
             // https://docs.microsoft.com/en-us/windows/win32/api/winbase/ns-winbase-file_id_both_dir_info
-            // it does not seem that reality is so kind, and assuming this
-            // caused crashes in some cases (https://github.com/rust-lang/rust/issues/104530)
-            // presumably, this can be blamed on buggy filesystem drivers, but who knows.
+            // 但现实似乎并没有这么友善，假定它对齐曾在某些情况下导致崩溃
+            //（https://github.com/rust-lang/rust/issues/104530）。
+            // 这大概可以归咎于有 bug 的文件系统驱动，但谁知道呢。
             let next_entry = (&raw const (*info).NextEntryOffset).read_unaligned() as usize;
             let length = (&raw const (*info).FileNameLength).read_unaligned() as usize;
             let attrs = (&raw const (*info).FileAttributes).read_unaligned();
@@ -987,7 +978,7 @@ impl<'a> Iterator for DirBuffIter<'a> {
             self.cursor += next_entry
         }
 
-        // Skip `.` and `..` pseudo entries.
+        // 跳过 `.` 和 `..` 这两个伪条目（pseudo entries）。
         const DOT: u16 = b'.' as u16;
         match &name[..] {
             [DOT] | [DOT, DOT] => self.next(),
@@ -1056,7 +1047,7 @@ fn debug_path_handle<'a, 'b>(
     f: &'a mut fmt::Formatter<'b>,
     name: &str,
 ) -> fmt::DebugStruct<'a, 'b> {
-    // FIXME(#24570): add more info here (e.g., mode)
+    // FIXME(#24570): 在这里添加更多信息（例如 mode）
     let mut b = f.debug_struct(name);
     b.field("handle", &handle.as_raw_handle());
     if let Ok(path) = get_path(handle) {
@@ -1139,7 +1130,7 @@ impl From<c::WIN32_FIND_DATAW> for FileAttr {
             change_time: None,
             file_size: ((wfd.nFileSizeHigh as u64) << 32) | (wfd.nFileSizeLow as u64),
             reparse_tag: if wfd.dwFileAttributes & c::FILE_ATTRIBUTE_REPARSE_POINT != 0 {
-                // reserved unless this is a reparse point
+                // 除非这是一个重解析点（reparse point），否则该字段是保留的（reserved）
                 wfd.dwReserved0
             } else {
                 0
@@ -1223,12 +1214,11 @@ impl DirBuilder {
 }
 
 pub fn readdir(p: &Path) -> io::Result<ReadDir> {
-    // We push a `*` to the end of the path which cause the empty path to be
-    // treated as the current directory. So, for consistency with other platforms,
-    // we explicitly error on the empty path.
+    // 我们在路径末尾追加一个 `*`，这会导致空路径被当作当前目录处理。
+    // 因此，为了与其他平台保持一致，我们对空路径显式地返回错误。
     if p.as_os_str().is_empty() {
-        // Return an error code consistent with other ways of opening files.
-        // E.g. fs::metadata or File::open.
+        // 返回一个与其他打开文件方式一致的错误码。
+        // 例如 fs::metadata 或 File::open。
         return Err(io::Error::from_raw_os_error(c::ERROR_PATH_NOT_FOUND as i32));
     }
     let root = p.to_path_buf();
@@ -1237,13 +1227,13 @@ pub fn readdir(p: &Path) -> io::Result<ReadDir> {
 
     unsafe {
         let mut wfd: c::WIN32_FIND_DATAW = mem::zeroed();
-        // this is like FindFirstFileW (see https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-findfirstfileexw),
-        // but with FindExInfoBasic it should skip filling WIN32_FIND_DATAW.cAlternateFileName
-        // (see https://learn.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-win32_find_dataw)
-        // (which will be always null string value and currently unused) and should be faster.
+        // 这类似于 FindFirstFileW（参见 https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-findfirstfileexw），
+        // 但使用 FindExInfoBasic 时，它应当会跳过填充 WIN32_FIND_DATAW.cAlternateFileName
+        // （参见 https://learn.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-win32_find_dataw）
+        //（该字段总是 null 字符串值且当前未使用），因此应当更快。
         //
-        // We can pass FIND_FIRST_EX_LARGE_FETCH to dwAdditionalFlags to speed up things more,
-        // but as we don't know user's use profile of this function, lets be conservative.
+        // 我们可以向 dwAdditionalFlags 传入 FIND_FIRST_EX_LARGE_FETCH 来进一步加速，
+        // 但由于我们不了解用户对该函数的使用习惯（use profile），还是保守一些为好。
         let find_handle = c::FindFirstFileExW(
             path.as_ptr(),
             c::FindExInfoBasic,
@@ -1260,26 +1250,24 @@ pub fn readdir(p: &Path) -> io::Result<ReadDir> {
                 first: Some(wfd),
             })
         } else {
-            // The status `ERROR_FILE_NOT_FOUND` is returned by the `FindFirstFileExW` function
-            // if no matching files can be found, but not necessarily that the path to find the
-            // files in does not exist.
+            // 如果找不到任何匹配的文件，`FindFirstFileExW` 函数会返回状态
+            // `ERROR_FILE_NOT_FOUND`，但这并不一定意味着用于查找文件的那个路径不存在。
             //
-            // Hence, a check for whether the path to search in exists is added when the last
-            // os error returned by Windows is `ERROR_FILE_NOT_FOUND` to handle this scenario.
-            // If that is the case, an empty `ReadDir` iterator is returned as it returns `None`
-            // in the initial `.next()` invocation because `ERROR_NO_MORE_FILES` would have been
-            // returned by the `FindNextFileW` function.
+            // 因此，当 Windows 返回的最后一个 os 错误是 `ERROR_FILE_NOT_FOUND` 时，
+            // 我们加入了一项检查：检查待搜索的路径是否存在，以处理这种情形。
+            // 如果确实如此，则返回一个空的 `ReadDir` 迭代器，因为它在首次调用 `.next()`
+            // 时会返回 `None`——这是由于 `FindNextFileW` 函数本会返回 `ERROR_NO_MORE_FILES`。
             //
-            // See issue #120040: https://github.com/rust-lang/rust/issues/120040.
+            // 参见 issue #120040：https://github.com/rust-lang/rust/issues/120040。
             let last_error = api::get_last_error();
             if last_error == WinError::FILE_NOT_FOUND {
                 return Ok(ReadDir { handle: None, root: Arc::new(root), first: None });
             }
 
-            // Just return the error constructed from the raw OS error if the above is not the case.
+            // 如果不是上述情况，就直接返回由原始 OS 错误构造出来的错误。
             //
-            // Note: `ERROR_PATH_NOT_FOUND` would have been returned by the `FindFirstFileExW` function
-            // when the path to search in does not exist in the first place.
+            // 注意：如果待搜索的路径本就不存在，`FindFirstFileExW` 函数本会返回
+            // `ERROR_PATH_NOT_FOUND`。
             Err(Error::from_raw_os_error(last_error.code as i32))
         }
     }
@@ -1288,9 +1276,9 @@ pub fn readdir(p: &Path) -> io::Result<ReadDir> {
 pub fn unlink(path: &WCStr) -> io::Result<()> {
     if unsafe { c::DeleteFileW(path.as_ptr()) } == 0 {
         let err = api::get_last_error();
-        // if `DeleteFileW` fails with ERROR_ACCESS_DENIED then try to remove
-        // the file while ignoring the readonly attribute.
-        // This is accomplished by calling the `posix_delete` function on an open file handle.
+        // 如果 `DeleteFileW` 以 ERROR_ACCESS_DENIED 失败，则尝试在忽略只读属性
+        // （readonly attribute）的情况下移除该文件。
+        // 这是通过在一个已打开的文件句柄上调用 `posix_delete` 函数来实现的。
         if err == WinError::ACCESS_DENIED {
             let mut opts = OpenOptions::new();
             opts.access_mode(c::DELETE);
@@ -1301,7 +1289,7 @@ pub fn unlink(path: &WCStr) -> io::Result<()> {
                 }
             }
         }
-        // return the original error if any of the above fails.
+        // 如果上述任何一步失败，则返回原始的错误。
         Err(io::Error::from_raw_os_error(err.code as i32))
     } else {
         Ok(())
@@ -1311,17 +1299,18 @@ pub fn unlink(path: &WCStr) -> io::Result<()> {
 pub fn rename(old: &WCStr, new: &WCStr) -> io::Result<()> {
     if unsafe { c::MoveFileExW(old.as_ptr(), new.as_ptr(), c::MOVEFILE_REPLACE_EXISTING) } == 0 {
         let err = api::get_last_error();
-        // if `MoveFileExW` fails with ERROR_ACCESS_DENIED then try to move
-        // the file while ignoring the readonly attribute.
-        // This is accomplished by calling `SetFileInformationByHandle` with `FileRenameInfoEx`.
+        // 如果 `MoveFileExW` 以 ERROR_ACCESS_DENIED 失败，则尝试在忽略只读属性
+        // （readonly attribute）的情况下移动该文件。
+        // 这是通过用 `FileRenameInfoEx` 调用 `SetFileInformationByHandle` 来实现的。
         if err == WinError::ACCESS_DENIED {
             let mut opts = OpenOptions::new();
             opts.access_mode(c::DELETE);
             opts.custom_flags(c::FILE_FLAG_OPEN_REPARSE_POINT | c::FILE_FLAG_BACKUP_SEMANTICS);
             let Ok(f) = File::open_native(&old, &opts) else { return Err(err).io_result() };
 
-            // Calculate the layout of the `FILE_RENAME_INFO` we pass to `SetFileInformation`
-            // This is a dynamically sized struct so we need to get the position of the last field to calculate the actual size.
+            // 计算我们传给 `SetFileInformation` 的 `FILE_RENAME_INFO` 的内存布局（layout）。
+            // 这是一个动态大小（dynamically sized）的结构体，因此我们需要获取最后一个字段的
+            // 位置来计算实际大小。
             let Ok(new_len_without_nul_in_bytes): Result<u32, _> =
                 ((new.count_bytes() - 1) * 2).try_into()
             else {
@@ -1334,7 +1323,7 @@ pub fn rename(old: &WCStr, new: &WCStr) -> io::Result<()> {
                     .unwrap();
 
             let file_rename_info;
-            // SAFETY: We allocate enough memory for a full FILE_RENAME_INFO struct and a filename.
+            // SAFETY: 我们为一个完整的 FILE_RENAME_INFO 结构体和一个文件名分配了足够的内存。
             unsafe {
                 file_rename_info = alloc(layout).cast::<c::FILE_RENAME_INFO>();
                 if file_rename_info.is_null() {
@@ -1347,7 +1336,7 @@ pub fn rename(old: &WCStr, new: &WCStr) -> io::Result<()> {
                 });
 
                 (&raw mut (*file_rename_info).RootDirectory).write(ptr::null_mut());
-                // Don't include the NULL in the size
+                // 大小中不包含 NULL
                 (&raw mut (*file_rename_info).FileNameLength).write(new_len_without_nul_in_bytes);
 
                 new.as_ptr().copy_to_nonoverlapping(
@@ -1385,27 +1374,27 @@ pub fn rmdir(p: &WCStr) -> io::Result<()> {
 }
 
 pub fn remove_dir_all(path: &WCStr) -> io::Result<()> {
-    // Open a file or directory without following symlinks.
+    // 不跟随符号链接地打开一个文件或目录。
     let mut opts = OpenOptions::new();
     opts.access_mode(c::FILE_LIST_DIRECTORY);
-    // `FILE_FLAG_BACKUP_SEMANTICS` allows opening directories.
-    // `FILE_FLAG_OPEN_REPARSE_POINT` opens a link instead of its target.
+    // `FILE_FLAG_BACKUP_SEMANTICS` 允许打开目录。
+    // `FILE_FLAG_OPEN_REPARSE_POINT` 打开链接本身而不是其目标。
     opts.custom_flags(c::FILE_FLAG_BACKUP_SEMANTICS | c::FILE_FLAG_OPEN_REPARSE_POINT);
     let file = File::open_native(path, &opts)?;
 
-    // Test if the file is not a directory or a symlink to a directory.
+    // 测试该文件是否既不是目录、也不是指向目录的符号链接。
     if (file.basic_info()?.FileAttributes & c::FILE_ATTRIBUTE_DIRECTORY) == 0 {
         return Err(io::Error::from_raw_os_error(c::ERROR_DIRECTORY as _));
     }
 
-    // Remove the directory and all its contents.
+    // 删除该目录及其全部内容。
     remove_dir_all_iterative(file).io_result()
 }
 
 pub fn readlink(path: &WCStr) -> io::Result<PathBuf> {
-    // Open the link with no access mode, instead of generic read.
-    // By default FILE_LIST_DIRECTORY is denied for the junction "C:\Documents and Settings", so
-    // this is needed for a common case.
+    // 以无访问模式（而不是 generic read）打开该链接。
+    // 默认情况下，对联接点（junction）"C:\Documents and Settings" 而言，
+    // FILE_LIST_DIRECTORY 是被拒绝的，因此对于这一常见情形，需要这样做。
     let mut opts = OpenOptions::new();
     opts.access_mode(0);
     opts.custom_flags(c::FILE_FLAG_OPEN_REPARSE_POINT | c::FILE_FLAG_BACKUP_SEMANTICS);
@@ -1421,10 +1410,10 @@ pub fn symlink_inner(original: &Path, link: &Path, dir: bool) -> io::Result<()> 
     let original = to_u16s(original)?;
     let link = maybe_verbatim(link)?;
     let flags = if dir { c::SYMBOLIC_LINK_FLAG_DIRECTORY } else { 0 };
-    // Formerly, symlink creation required the SeCreateSymbolicLink privilege. For the Windows 10
-    // Creators Update, Microsoft loosened this to allow unprivileged symlink creation if the
-    // computer is in Developer Mode, but SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE must be
-    // added to dwFlags to opt into this behavior.
+    // 以前，创建符号链接需要 SeCreateSymbolicLink 特权。在 Windows 10
+    // Creators Update 中，Microsoft 放宽了这一限制：如果计算机处于开发者模式
+    // （Developer Mode），允许无特权地创建符号链接，但必须把
+    // SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE 加入到 dwFlags 中才能启用此行为。
     let result = cvt(unsafe {
         c::CreateSymbolicLinkW(
             link.as_ptr(),
@@ -1434,8 +1423,8 @@ pub fn symlink_inner(original: &Path, link: &Path, dir: bool) -> io::Result<()> 
     });
     if let Err(err) = result {
         if err.raw_os_error() == Some(c::ERROR_INVALID_PARAMETER as i32) {
-            // Older Windows objects to SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE,
-            // so if we encounter ERROR_INVALID_PARAMETER, retry without that flag.
+            // 较早版本的 Windows 不接受 SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE，
+            // 因此如果遇到 ERROR_INVALID_PARAMETER，就去掉该标志后重试。
             cvt(unsafe {
                 c::CreateSymbolicLinkW(link.as_ptr(), original.as_ptr(), flags) as c::BOOL
             })?;
@@ -1489,31 +1478,30 @@ impl ReparsePoint {
 
 fn metadata(path: &WCStr, reparse: ReparsePoint) -> io::Result<FileAttr> {
     let mut opts = OpenOptions::new();
-    // No read or write permissions are necessary
+    // 不需要读或写权限
     opts.access_mode(0);
     opts.custom_flags(c::FILE_FLAG_BACKUP_SEMANTICS | reparse.as_flag());
 
-    // Attempt to open the file normally.
-    // If that fails with `ERROR_SHARING_VIOLATION` then retry using `FindFirstFileExW`.
-    // If the fallback fails for any reason we return the original error.
+    // 尝试以正常方式打开该文件。
+    // 如果那以 `ERROR_SHARING_VIOLATION` 失败，则改用 `FindFirstFileExW` 重试。
+    // 如果该回退方案因任何原因失败，我们就返回原始的错误。
     match File::open_native(&path, &opts) {
         Ok(file) => file.file_attr(),
         Err(e)
             if [Some(c::ERROR_SHARING_VIOLATION as _), Some(c::ERROR_ACCESS_DENIED as _)]
                 .contains(&e.raw_os_error()) =>
         {
-            // `ERROR_ACCESS_DENIED` is returned when the user doesn't have permission for the resource.
-            // One such example is `System Volume Information` as default but can be created as well
-            // `ERROR_SHARING_VIOLATION` will almost never be returned.
-            // Usually if a file is locked you can still read some metadata.
-            // However, there are special system files, such as
-            // `C:\hiberfil.sys`, that are locked in a way that denies even that.
+            // 当用户对该资源没有权限时，会返回 `ERROR_ACCESS_DENIED`。
+            // 一个例子是默认的 `System Volume Information`，不过这种文件也可以被创建。
+            // `ERROR_SHARING_VIOLATION` 几乎永远不会被返回。
+            // 通常即便一个文件被锁定，你仍然能读到一些元数据。
+            // 然而，存在一些特殊的系统文件，例如 `C:\hiberfil.sys`，
+            // 它们被锁定的方式甚至连这一点也不允许。
             unsafe {
-                // `FindFirstFileExW` accepts wildcard file names.
-                // Fortunately wildcards are not valid file names and
-                // `ERROR_SHARING_VIOLATION` means the file exists (but is locked)
-                // therefore it's safe to assume the file name given does not
-                // include wildcards.
+                // `FindFirstFileExW` 接受带通配符（wildcard）的文件名。
+                // 幸运的是，通配符不是合法的文件名，而且
+                // `ERROR_SHARING_VIOLATION` 意味着该文件存在（但被锁定），
+                // 因此可以安全地假定所给的文件名不含通配符。
                 let mut wfd: c::WIN32_FIND_DATAW = mem::zeroed();
                 let handle = c::FindFirstFileExW(
                     path.as_ptr(),
@@ -1525,15 +1513,14 @@ fn metadata(path: &WCStr, reparse: ReparsePoint) -> io::Result<FileAttr> {
                 );
 
                 if handle == c::INVALID_HANDLE_VALUE {
-                    // This can fail if the user does not have read access to the
-                    // directory.
+                    // 如果用户对该目录没有读访问权限，这可能会失败。
                     Err(e)
                 } else {
-                    // We no longer need the find handle.
+                    // 我们不再需要这个 find 句柄了。
                     c::FindClose(handle);
 
-                    // `FindFirstFileExW` reads the cached file information from the
-                    // directory. The downside is that this metadata may be outdated.
+                    // `FindFirstFileExW` 从目录中读取缓存的文件信息。
+                    // 缺点是这些元数据可能已经过时（outdated）。
                     let attrs = FileAttr::from(wfd);
                     if reparse == ReparsePoint::Follow && attrs.file_type().is_symlink() {
                         Err(e)
@@ -1565,7 +1552,7 @@ pub fn set_times(p: &WCStr, times: FileTimes) -> io::Result<()> {
 pub fn set_times_nofollow(p: &WCStr, times: FileTimes) -> io::Result<()> {
     let mut opts = OpenOptions::new();
     opts.write(true);
-    // `FILE_FLAG_OPEN_REPARSE_POINT` for no_follow behavior
+    // 用 `FILE_FLAG_OPEN_REPARSE_POINT` 来实现 no_follow（不跟随）行为
     opts.custom_flags(c::FILE_FLAG_BACKUP_SEMANTICS | c::FILE_FLAG_OPEN_REPARSE_POINT);
     let file = File::open_native(p, &opts)?;
     file.set_times(times)
@@ -1582,9 +1569,9 @@ fn get_path(f: impl AsRawHandle) -> io::Result<PathBuf> {
 
 pub fn canonicalize(p: &WCStr) -> io::Result<PathBuf> {
     let mut opts = OpenOptions::new();
-    // No read or write permissions are necessary
+    // 不需要读或写权限
     opts.access_mode(0);
-    // This flag is so we can open directories too
+    // 这个标志是为了让我们也能打开目录
     opts.custom_flags(c::FILE_FLAG_BACKUP_SEMANTICS);
     let f = File::open_native(p, &opts)?;
     get_path(f.handle)
@@ -1624,7 +1611,7 @@ pub fn copy(from: &WCStr, to: &WCStr) -> io::Result<u64> {
 }
 
 pub fn junction_point(original: &Path, link: &Path) -> io::Result<()> {
-    // Create and open a new directory in one go.
+    // 一步到位地创建并打开一个新目录。
     let mut opts = OpenOptions::new();
     opts.create_new(true);
     opts.write(true);
@@ -1633,15 +1620,15 @@ pub fn junction_point(original: &Path, link: &Path) -> io::Result<()> {
 
     let d = File::open(link, &opts)?;
 
-    // We need to get an absolute, NT-style path.
+    // 我们需要获取一个绝对的、NT 风格的路径。
     let path_bytes = original.as_os_str().as_encoded_bytes();
     let abs_path: Vec<u16> = if path_bytes.starts_with(br"\\?\") || path_bytes.starts_with(br"\??\")
     {
-        // It's already an absolute path, we just need to convert the prefix to `\??\`
+        // 它已经是一个绝对路径，我们只需要把前缀转换为 `\??\`
         let bytes = unsafe { OsStr::from_encoded_bytes_unchecked(&path_bytes[4..]) };
         r"\??\".encode_utf16().chain(bytes.encode_wide()).collect()
     } else {
-        // Get an absolute path and then convert the prefix to `\??\`
+        // 获取一个绝对路径，然后把前缀转换为 `\??\`
         let abs_path = crate::path::absolute(original)?.into_os_string().into_encoded_bytes();
         if abs_path.len() > 0 && abs_path[1..].starts_with(br":\") {
             let bytes = unsafe { OsStr::from_encoded_bytes_unchecked(&abs_path) };
@@ -1656,7 +1643,7 @@ pub fn junction_point(original: &Path, link: &Path) -> io::Result<()> {
             return Err(io::const_error!(io::ErrorKind::InvalidInput, "path is not valid"));
         }
     };
-    // Defined inline so we don't have to mess about with variable length buffer.
+    // 内联定义，这样我们就不必去摆弄变长缓冲区了。
     #[repr(C)]
     pub struct MountPointBuffer {
         ReparseTag: u32,
@@ -1702,37 +1689,35 @@ pub fn junction_point(original: &Path, link: &Path) -> io::Result<()> {
     }
 }
 
-// Try to see if a file exists but, unlike `exists`, report I/O errors.
+// 尝试查看某个文件是否存在，但与 `exists` 不同，它会上报 I/O 错误。
 pub fn exists(path: &WCStr) -> io::Result<bool> {
-    // Open the file to ensure any symlinks are followed to their target.
+    // 打开该文件，以确保任何符号链接都被跟随到其目标。
     let mut opts = OpenOptions::new();
-    // No read, write, etc access rights are needed.
+    // 不需要读、写等任何访问权限。
     opts.access_mode(0);
-    // Backup semantics enables opening directories as well as files.
+    // Backup 语义使得既能打开文件也能打开目录。
     opts.custom_flags(c::FILE_FLAG_BACKUP_SEMANTICS);
     match File::open_native(path, &opts) {
         Err(e) => match e.kind() {
-            // The file definitely does not exist
+            // 该文件确定不存在
             io::ErrorKind::NotFound => Ok(false),
 
-            // `ERROR_SHARING_VIOLATION` means that the file has been locked by
-            // another process. This is often temporary so we simply report it
-            // as the file existing.
+            // `ERROR_SHARING_VIOLATION` 意味着该文件已被另一个进程锁定。
+            // 这通常是暂时的，因此我们简单地把它上报为文件存在。
             _ if e.raw_os_error() == Some(c::ERROR_SHARING_VIOLATION as i32) => Ok(true),
 
-            // `ERROR_CANT_ACCESS_FILE` means that a file exists but that the
-            // reparse point could not be handled by `CreateFile`.
-            // This can happen for special files such as:
-            // * Unix domain sockets which you need to `connect` to
-            // * App exec links which require using `CreateProcess`
+            // `ERROR_CANT_ACCESS_FILE` 意味着文件存在，但 `CreateFile` 无法处理
+            // 其重解析点（reparse point）。
+            // 这可能发生在如下这类特殊文件上：
+            // * Unix 域套接字（Unix domain sockets），你需要 `connect` 它
+            // * 应用执行链接（App exec links），它需要使用 `CreateProcess`
             _ if e.raw_os_error() == Some(c::ERROR_CANT_ACCESS_FILE as i32) => Ok(true),
 
-            // Other errors such as `ERROR_ACCESS_DENIED` may indicate that the
-            // file exists. However, these types of errors are usually more
-            // permanent so we report them here.
+            // 其他错误，例如 `ERROR_ACCESS_DENIED`，可能表明该文件存在。
+            // 然而，这类错误通常更为持久（permanent），因此我们在这里把它们上报出去。
             _ => Err(e),
         },
-        // The file was opened successfully therefore it must exist,
+        // 该文件被成功打开，因此它必定存在，
         Ok(_) => Ok(true),
     }
 }

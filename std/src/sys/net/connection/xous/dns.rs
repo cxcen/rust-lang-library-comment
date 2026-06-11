@@ -62,7 +62,7 @@ impl Iterator for LookupHost {
 pub fn lookup_host(query: &str, port: u16) -> io::Result<LookupHost> {
     let mut result = LookupHost { data: LookupHostQuery([0u8; 4096]), offset: 0, count: 0, port };
 
-    // Copy the query into the message that gets sent to the DNS server
+    // 将查询内容拷贝到将要发送给 DNS 服务器的消息中
     for (query_byte, result_byte) in query.as_bytes().iter().zip(result.data.0.iter_mut()) {
         *result_byte = *query_byte;
     }
@@ -81,7 +81,7 @@ pub fn lookup_host(query: &str, port: u16) -> io::Result<LookupHost> {
     assert_eq!(result.offset, 0);
     result.count = result.data.0[1] as usize;
 
-    // Advance the offset to the first record
+    // 将偏移量前移到第一条记录
     result.offset = 2;
     Ok(result)
 }

@@ -1,18 +1,16 @@
-//! Implementation of the `thread_local` macro.
+//! `thread_local` 宏的实现。
 //!
-//! There are three different thread-local implementations:
-//! * Some targets lack threading support, and hence have only one thread, so
-//!   the TLS data is stored in a normal `static`.
-//! * Some targets support TLS natively via the dynamic linker and C runtime.
-//! * On some targets, the OS provides a library-based TLS implementation. The
-//!   TLS data is heap-allocated and referenced using a TLS key.
+//! 存在三种不同的线程本地（thread-local）实现：
+//! * 某些 target 缺乏线程支持，因而只有一个线程，所以 TLS 数据存放在
+//!   一个普通的 `static` 中。
+//! * 某些 target 通过动态链接器和 C 运行时原生支持 TLS。
+//! * 在某些 target 上，OS 提供了基于库（library-based）的 TLS 实现。TLS 数据
+//!   在堆上分配，并通过一个 TLS key 来引用。
 //!
-//! Each implementation provides a macro which generates the `LocalKey` `const`
-//! used to reference the TLS variable, along with the necessary helper structs
-//! to track the initialization/destruction state of the variable.
+//! 每种实现都提供一个宏，用于生成引用该 TLS 变量所用的 `LocalKey` `const`，
+//! 以及用于追踪该变量初始化/销毁状态的必要辅助结构体。
 //!
-//! Additionally, this module contains abstractions for the OS interfaces used
-//! for these implementations.
+//! 此外，本模块还包含用于这些实现所需的 OS 接口的抽象。
 
 #![cfg_attr(test, allow(unused))]
 #![doc(hidden)]
@@ -47,13 +45,12 @@ cfg_select! {
     }
 }
 
-/// The native TLS implementation needs a way to register destructors for its data.
-/// This module contains platform-specific implementations of that register.
+/// 原生 TLS 实现需要一种为其数据注册析构函数（destructors）的方式。
+/// 本模块包含该“注册”机制的平台相关实现。
 ///
-/// It turns out however that most platforms don't have a way to register a
-/// destructor for each variable. On these platforms, we keep track of the
-/// destructors ourselves and register (through the [`guard`] module) only a
-/// single callback that runs all of the destructors in the list.
+/// 然而事实证明，大多数平台都没有办法为每个变量分别注册一个析构函数。
+/// 在这些平台上，我们自己来追踪这些析构函数，并（通过 [`guard`] 模块）只注册
+/// 一个回调，由它运行列表中的所有析构函数。
 #[cfg(all(target_thread_local, not(all(target_family = "wasm", not(target_feature = "atomics")))))]
 pub(crate) mod destructors {
     cfg_select! {
@@ -79,9 +76,9 @@ pub(crate) mod destructors {
     }
 }
 
-/// This module provides a way to schedule the execution of the destructor list
-/// and the [runtime cleanup](crate::rt::thread_cleanup) function. Calling `enable`
-/// should ensure that these functions are called at the right times.
+/// 本模块提供一种机制，用于调度析构函数列表以及
+/// [运行时清理](crate::rt::thread_cleanup) 函数的执行。调用 `enable`
+/// 应当确保这些函数在恰当的时机被调用。
 pub(crate) mod guard {
     cfg_select! {
         all(target_thread_local, target_vendor = "apple") => {
@@ -102,12 +99,11 @@ pub(crate) mod guard {
             target_os = "vexos",
         ) => {
             pub(crate) fn enable() {
-                // FIXME: Right now there is no concept of "thread exit" on
-                // wasm, but this is likely going to show up at some point in
-                // the form of an exported symbol that the wasm runtime is going
-                // to be expected to call. For now we just leak everything, but
-                // if such a function starts to exist it will probably need to
-                // iterate the destructor list with these functions:
+                // FIXME：目前在 wasm 上还没有“线程退出（thread exit）”的概念，
+                // 但这一概念很可能会在某个时间点以一个导出符号（exported symbol）
+                // 的形式出现，wasm 运行时被期望去调用它。目前我们只是把一切都泄漏掉，
+                // 但如果这样一个函数开始存在，它大概需要用下面这些函数来遍历
+                // 析构函数列表：
                 #[cfg(all(target_family = "wasm", target_feature = "atomics"))]
                 #[allow(unused)]
                 use super::destructors::run;
@@ -119,8 +115,7 @@ pub(crate) mod guard {
             target_os = "hermit",
             target_os = "xous",
         ) => {
-            // `std` is the only runtime, so it just calls the destructor functions
-            // itself when the time comes.
+            // `std` 是唯一的运行时，所以时机到来时它就自己调用析构函数。
             pub(crate) fn enable() {}
         }
         target_os = "solid_asp3" => {
@@ -134,12 +129,12 @@ pub(crate) mod guard {
     }
 }
 
-/// `const`-creatable TLS keys.
+/// 可在 `const` 上下文中创建的 TLS key。
 ///
-/// Most OSs without native TLS will provide a library-based way to create TLS
-/// storage. For each TLS variable, we create a key, which can then be used to
-/// reference an entry in a thread-local table. This then associates each key
-/// with a pointer which we can get and set to store our data.
+/// 大多数没有原生 TLS 的 OS 都会提供一种基于库（library-based）的方式来创建
+/// TLS 存储。对每个 TLS 变量，我们创建一个 key，随后可用它来引用线程本地表
+///（thread-local table）中的某个条目。这样就把每个 key 与一个指针关联起来，
+/// 我们可以读取和设置该指针以存放我们的数据。
 pub(crate) mod key {
     cfg_select! {
         any(
@@ -199,13 +194,13 @@ pub(crate) mod key {
     }
 }
 
-/// Run a callback in a scenario which must not unwind (such as a `extern "C"
-/// fn` declared in a user crate). If the callback unwinds anyway, then
-/// `rtabort` with a message about thread local panicking on drop.
+/// 在一个绝不能 unwind（栈展开）的场景中运行回调（例如在用户 crate 中声明的
+/// `extern "C" fn`）。如果回调仍然发生了 unwind，则 `rtabort`，并附带一条关于
+/// 线程本地变量在 drop 时 panic 的消息。
 #[inline]
 #[allow(dead_code)]
 fn abort_on_dtor_unwind(f: impl FnOnce()) {
-    // Using a guard like this is lower cost.
+    // 像这样使用一个守卫（guard）开销更低。
     let guard = DtorUnwindGuard;
     f();
     core::mem::forget(guard);
@@ -214,8 +209,8 @@ fn abort_on_dtor_unwind(f: impl FnOnce()) {
     impl Drop for DtorUnwindGuard {
         #[inline]
         fn drop(&mut self) {
-            // This is not terribly descriptive, but it doesn't need to be as we'll
-            // already have printed a panic message at this point.
+            // 这条消息算不上很详细，但也不需要详细，因为此时我们已经
+            // 打印过一条 panic 消息了。
             rtabort!("thread local panicked on drop");
         }
     }

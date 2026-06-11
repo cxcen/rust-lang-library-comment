@@ -1,4 +1,4 @@
-//! Hurd-specific extensions to primitives in the [`std::fs`] module.
+//! 针对 [`std::fs`] 模块中各类基础类型的 Hurd 平台特定扩展。
 //!
 //! [`std::fs`]: crate::fs
 
@@ -7,14 +7,14 @@
 use crate::fs::Metadata;
 use crate::sys::AsInner;
 
-/// OS-specific extensions to [`fs::Metadata`].
+/// 针对 [`fs::Metadata`] 的操作系统特定扩展。
 ///
 /// [`fs::Metadata`]: crate::fs::Metadata
 #[stable(feature = "metadata_ext", since = "1.1.0")]
 pub trait MetadataExt {
-    /// Returns the device ID on which this file resides.
+    /// 返回此文件所在的设备 ID。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs;
@@ -29,9 +29,9 @@ pub trait MetadataExt {
     /// ```
     #[stable(feature = "metadata_ext2", since = "1.8.0")]
     fn st_dev(&self) -> u64;
-    /// Returns the inode number.
+    /// 返回 inode 编号。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs;
@@ -46,9 +46,9 @@ pub trait MetadataExt {
     /// ```
     #[stable(feature = "metadata_ext2", since = "1.8.0")]
     fn st_ino(&self) -> u64;
-    /// Returns the file type and mode.
+    /// 返回文件类型和模式（mode）。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs;
@@ -63,9 +63,9 @@ pub trait MetadataExt {
     /// ```
     #[stable(feature = "metadata_ext2", since = "1.8.0")]
     fn st_mode(&self) -> u32;
-    /// Returns the number of hard links to file.
+    /// 返回指向该文件的硬链接数。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs;
@@ -80,9 +80,9 @@ pub trait MetadataExt {
     /// ```
     #[stable(feature = "metadata_ext2", since = "1.8.0")]
     fn st_nlink(&self) -> u64;
-    /// Returns the user ID of the file owner.
+    /// 返回文件所有者的用户 ID。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs;
@@ -97,9 +97,9 @@ pub trait MetadataExt {
     /// ```
     #[stable(feature = "metadata_ext2", since = "1.8.0")]
     fn st_uid(&self) -> u32;
-    /// Returns the group ID of the file owner.
+    /// 返回文件所有者的组 ID。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs;
@@ -114,9 +114,9 @@ pub trait MetadataExt {
     /// ```
     #[stable(feature = "metadata_ext2", since = "1.8.0")]
     fn st_gid(&self) -> u32;
-    /// Returns the device ID that this file represents. Only relevant for special file.
+    /// 返回此文件所表示的设备 ID。仅对特殊文件有意义。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs;
@@ -131,12 +131,12 @@ pub trait MetadataExt {
     /// ```
     #[stable(feature = "metadata_ext2", since = "1.8.0")]
     fn st_rdev(&self) -> u64;
-    /// Returns the size of the file (if it is a regular file or a symbolic link) in bytes.
+    /// 返回文件的大小（若它是常规文件或符号链接），以字节为单位。
     ///
-    /// The size of a symbolic link is the length of the pathname it contains,
-    /// without a terminating null byte.
+    /// 符号链接的大小是它所包含的路径名的长度，
+    /// 不包括结尾的空字节（null byte）。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs;
@@ -151,9 +151,9 @@ pub trait MetadataExt {
     /// ```
     #[stable(feature = "metadata_ext2", since = "1.8.0")]
     fn st_size(&self) -> u64;
-    /// Returns the last access time of the file, in seconds since Unix Epoch.
+    /// 返回文件的最后访问时间，以自 Unix 纪元（Epoch）起的秒数表示。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs;
@@ -168,11 +168,11 @@ pub trait MetadataExt {
     /// ```
     #[stable(feature = "metadata_ext2", since = "1.8.0")]
     fn st_atime(&self) -> i64;
-    /// Returns the last access time of the file, in nanoseconds since [`st_atime`].
+    /// 返回文件的最后访问时间，以自 [`st_atime`] 起的纳秒数表示。
     ///
     /// [`st_atime`]: Self::st_atime
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs;
@@ -187,9 +187,9 @@ pub trait MetadataExt {
     /// ```
     #[stable(feature = "metadata_ext2", since = "1.8.0")]
     fn st_atime_nsec(&self) -> i64;
-    /// Returns the last modification time of the file, in seconds since Unix Epoch.
+    /// 返回文件的最后修改时间，以自 Unix 纪元（Epoch）起的秒数表示。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs;
@@ -204,11 +204,11 @@ pub trait MetadataExt {
     /// ```
     #[stable(feature = "metadata_ext2", since = "1.8.0")]
     fn st_mtime(&self) -> i64;
-    /// Returns the last modification time of the file, in nanoseconds since [`st_mtime`].
+    /// 返回文件的最后修改时间，以自 [`st_mtime`] 起的纳秒数表示。
     ///
     /// [`st_mtime`]: Self::st_mtime
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs;
@@ -223,9 +223,9 @@ pub trait MetadataExt {
     /// ```
     #[stable(feature = "metadata_ext2", since = "1.8.0")]
     fn st_mtime_nsec(&self) -> i64;
-    /// Returns the last status change time of the file, in seconds since Unix Epoch.
+    /// 返回文件的最后状态变更时间，以自 Unix 纪元（Epoch）起的秒数表示。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs;
@@ -240,11 +240,11 @@ pub trait MetadataExt {
     /// ```
     #[stable(feature = "metadata_ext2", since = "1.8.0")]
     fn st_ctime(&self) -> i64;
-    /// Returns the last status change time of the file, in nanoseconds since [`st_ctime`].
+    /// 返回文件的最后状态变更时间，以自 [`st_ctime`] 起的纳秒数表示。
     ///
     /// [`st_ctime`]: Self::st_ctime
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs;
@@ -259,9 +259,9 @@ pub trait MetadataExt {
     /// ```
     #[stable(feature = "metadata_ext2", since = "1.8.0")]
     fn st_ctime_nsec(&self) -> i64;
-    /// Returns the "preferred" block size for efficient filesystem I/O.
+    /// 返回用于高效文件系统 I/O 的“首选”块大小。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs;
@@ -276,9 +276,9 @@ pub trait MetadataExt {
     /// ```
     #[stable(feature = "metadata_ext2", since = "1.8.0")]
     fn st_blksize(&self) -> u64;
-    /// Returns the number of blocks allocated to the file, 512-byte units.
+    /// 返回分配给该文件的块数，以 512 字节为单位。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```no_run
     /// use std::fs;

@@ -1,11 +1,10 @@
-//! Thread parking using thread ids.
+//! 使用线程 id 实现的线程 parking。
 //!
-//! Some platforms (notably NetBSD) have thread parking primitives whose semantics
-//! match those offered by `thread::park`, with the difference that the thread to
-//! be unparked is referenced by a platform-specific thread id. Since the thread
-//! parker is constructed before that id is known, an atomic state variable is used
-//! to manage the park state and propagate the thread id. This also avoids platform
-//! calls in the case where `unpark` is called before `park`.
+//! 某些平台（尤其是 NetBSD）拥有语义与 `thread::park` 所提供的相匹配的线程
+//! parking 原语，区别在于：要被 unpark 的线程是通过一个平台特定的线程 id 来
+//! 引用的。由于线程 parker 是在那个 id 已知之前就构造出来的，因此这里用一个
+//! 原子状态变量来管理 park 状态并传播线程 id。这同时也避免了在 `unpark` 先于
+//! `park` 被调用的情形下进行平台调用。
 
 use crate::cell::UnsafeCell;
 use crate::pin::Pin;
@@ -28,24 +27,22 @@ impl Parker {
         Parker { state: AtomicI8::new(EMPTY), tid: UnsafeCell::new(None) }
     }
 
-    /// Creates a new thread parker. UNIX requires this to happen in-place.
+    /// 创建一个新的线程 parker。UNIX 要求这必须就地（in-place）进行。
     pub unsafe fn new_in_place(parker: *mut Parker) {
         parker.write(Parker::new())
     }
 
-    /// # Safety
-    /// * must always be called from the same thread
-    /// * must be called before the state is set to PARKED
+    /// # 安全性(Safety）
+    /// * 必须始终从同一个线程调用
+    /// * 必须在状态被设为 PARKED 之前调用
     unsafe fn init_tid(&self) {
-        // The field is only ever written to from this thread, so we don't need
-        // synchronization to read it here.
+        // 这个字段只会从本线程写入，所以我们在这里读取它时不需要同步。
         if self.tid.get().read().is_none() {
-            // Because this point is only reached once, before the state is set
-            // to PARKED for the first time, the non-atomic write here can not
-            // conflict with reads by other threads.
+            // 由于这一点只会被到达一次——即在状态第一次被设为 PARKED 之前——
+            // 因此这里的非原子写入不会与其他线程的读取产生冲突。
             self.tid.get().write(Some(current()));
-            // Ensure that the write can be observed by all threads reading the
-            // state. Synchronizes with the acquire barrier in `unpark`.
+            // 确保该写入能被所有读取状态的线程观测到。与 `unpark` 中的 acquire
+            // 屏障（barrier）建立同步关系。
             fence(Release);
         }
     }
@@ -53,12 +50,12 @@ impl Parker {
     pub unsafe fn park(self: Pin<&Self>) {
         self.init_tid();
 
-        // Changes NOTIFIED to EMPTY and EMPTY to PARKED.
+        // 把 NOTIFIED 改为 EMPTY，把 EMPTY 改为 PARKED。
         let state = self.state.fetch_sub(1, Acquire);
         if state == EMPTY {
-            // Loop to guard against spurious wakeups.
-            // The state must be reset with acquire ordering to ensure that all
-            // calls to `unpark` synchronize with this thread.
+            // 循环以防范虚假唤醒（spurious wakeup）。
+            // 状态必须以 acquire 内存序重置，以确保所有对 `unpark` 的调用都与
+            // 本线程建立同步关系。
             while self.state.compare_exchange(NOTIFIED, EMPTY, Acquire, Relaxed).is_err() {
                 park(self.state.as_ptr().addr());
             }
@@ -71,8 +68,7 @@ impl Parker {
         let state = self.state.fetch_sub(1, Acquire).wrapping_sub(1);
         if state == PARKED {
             park_timeout(dur, self.state.as_ptr().addr());
-            // Swap to ensure that we observe all state changes with acquire
-            // ordering.
+            // 做一次 swap，以确保我们以 acquire 内存序观测到所有的状态改动。
             self.state.swap(EMPTY, Acquire);
         }
     }
@@ -80,18 +76,16 @@ impl Parker {
     pub fn unpark(self: Pin<&Self>) {
         let state = self.state.swap(NOTIFIED, Release);
         if state == PARKED {
-            // Synchronize with the release fence in `init_tid` to observe the
-            // write to `tid`.
+            // 与 `init_tid` 中的 release 栅栏（fence）建立同步关系，以观测到对
+            // `tid` 的写入。
             fence(Acquire);
-            // # Safety
-            // The thread id is initialized before the state is set to `PARKED`
-            // for the first time and is not written to from that point on
-            // (negating the need for an atomic read).
+            // # 安全性(Safety）
+            // 线程 id 是在状态第一次被设为 `PARKED` 之前初始化的，并且从那一刻起
+            // 不再被写入（因此无需进行原子读取）。
             let tid = unsafe { self.tid.get().read().unwrap_unchecked() };
-            // It is possible that the waiting thread woke up because of a timeout
-            // and terminated before this call is made. This call then returns an
-            // error or wakes up an unrelated thread. The platform API and
-            // environment does allow this, however.
+            // 有可能等待的线程因为超时而醒来并在本次调用发生之前就终止了。这种情况下
+            // 本次调用会返回一个错误，或者唤醒一个不相关的线程。不过平台 API 和环境
+            // 确实允许这种情况。
             unpark(tid, self.state.as_ptr().addr());
         }
     }

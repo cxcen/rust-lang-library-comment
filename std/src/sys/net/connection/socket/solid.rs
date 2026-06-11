@@ -18,8 +18,7 @@ pub(super) mod netc {
 pub type wrlen_t = size_t;
 
 const fn max_iov() -> usize {
-    // Judging by the source code, it's unlimited, but specify a lower
-    // value just in case.
+    // 从源代码来看，它是没有限制的，但为以防万一仍指定一个较低的值。
     1024
 }
 
@@ -42,7 +41,7 @@ pub fn cvt<T: IsMinusOne>(t: T) -> io::Result<T> {
     if t.is_minus_one() { Err(last_error()) } else { Ok(t) }
 }
 
-/// A variant of `cvt` for `getaddrinfo` which return 0 for a success.
+/// `cvt` 的一个变体，用于 `getaddrinfo`——它在成功时返回 0。
 pub fn cvt_gai(err: c_int) -> io::Result<()> {
     if err == 0 {
         Ok(())
@@ -62,7 +61,7 @@ pub fn cvt_gai(err: c_int) -> io::Result<()> {
     }
 }
 
-/// Just to provide the same interface as sys/pal/unix/net.rs
+/// 仅仅是为了提供与 sys/pal/unix/net.rs 相同的接口。
 pub fn cvt_r<T, F>(mut f: F) -> io::Result<T>
 where
     T: IsMinusOne,
@@ -71,7 +70,7 @@ where
     cvt(f())
 }
 
-/// Returns the last error from the network subsystem.
+/// 返回网络子系统的最近一次错误。
 fn last_error() -> io::Error {
     io::Error::from_raw_os_error(unsafe { netc::SOLID_NET_GetLastError() })
 }
@@ -132,7 +131,7 @@ impl Socket {
 
         match r {
             Ok(_) => return Ok(()),
-            // there's no ErrorKind for EINPROGRESS
+            // EINPROGRESS 没有对应的 ErrorKind
             Err(ref e) if e.raw_os_error() == Some(netc::EINPROGRESS) => {}
             Err(e) => return Err(e),
         }

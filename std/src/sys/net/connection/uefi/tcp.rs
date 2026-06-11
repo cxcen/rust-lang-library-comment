@@ -9,7 +9,7 @@ pub(crate) enum Tcp {
     V4(tcp4::Tcp4),
 }
 
-// SAFETY: UEFI has no threads.
+// SAFETY: UEFI 没有线程。
 unsafe impl Send for Tcp {}
 
 impl Tcp {

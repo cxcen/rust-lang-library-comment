@@ -17,7 +17,7 @@ use crate::sys::{unsupported, unsupported_err};
 
 type CIntNotMinusOne = core::num::niche_types::NotAllOnes<c_int>;
 
-/// A file descriptor.
+/// 一个文件描述符（file descriptor）。
 #[derive(Clone, Copy)]
 struct FileDesc {
     fd: CIntNotMinusOne,
@@ -45,7 +45,7 @@ pub struct FileAttr {
     stat: abi::stat,
 }
 
-// all DirEntry's will have a reference to this struct
+// 所有 DirEntry 都会持有一个对该结构体的引用
 struct InnerReadDir {
     dirp: abi::S_DIR,
     root: PathBuf,
@@ -62,14 +62,14 @@ pub struct DirEntry {
 
 #[derive(Clone, Debug)]
 pub struct OpenOptions {
-    // generic
+    // 通用部分
     read: bool,
     write: bool,
     append: bool,
     truncate: bool,
     create: bool,
     create_new: bool,
-    // system-specific
+    // 系统特定部分
     custom_flags: i32,
 }
 
@@ -161,8 +161,8 @@ pub fn readdir(p: &Path) -> io::Result<ReadDir> {
 
 impl fmt::Debug for ReadDir {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // This will only be called from std::fs::ReadDir, which will add a "ReadDir()" frame.
-        // Thus the result will be e g 'ReadDir("/home")'
+        // 它只会从 std::fs::ReadDir 中被调用，后者会添加一个 "ReadDir()" 帧。
+        // 因此结果会是例如 'ReadDir("/home")' 这样的形式。
         fmt::Debug::fmt(&*self.inner.root, f)
     }
 }
@@ -224,14 +224,14 @@ impl DirEntry {
 impl OpenOptions {
     pub fn new() -> OpenOptions {
         OpenOptions {
-            // generic
+            // 通用部分
             read: false,
             write: false,
             append: false,
             truncate: false,
             create: false,
             create_new: false,
-            // system-specific
+            // 系统特定部分
             custom_flags: 0,
         }
     }
@@ -300,14 +300,14 @@ fn cstr(path: &Path) -> io::Result<CString> {
     let path = path.as_os_str().as_bytes();
 
     if !path.starts_with(br"\") {
-        // Relative paths aren't supported
+        // 不支持相对路径
         return Err(crate::io::const_error!(
             crate::io::ErrorKind::Unsupported,
             "relative path is not supported on this platform",
         ));
     }
 
-    // Apply the thread-safety wrapper
+    // 套上线程安全（thread-safety）包装层
     const SAFE_PREFIX: &[u8] = br"\TS";
     let wrapped_path = [SAFE_PREFIX, &path, &[0]].concat();
 
@@ -395,12 +395,10 @@ impl File {
             ))
             .map_err(|e| e.as_io_error())?;
 
-            // Safety: `out_num_bytes` is filled by the successful call to
-            // `SOLID_FS_Read`
+            // Safety: 成功调用 `SOLID_FS_Read` 后，`out_num_bytes` 已被填充
             let num_bytes_read = out_num_bytes.assume_init();
 
-            // Safety: `num_bytes_read` bytes were written to the unfilled
-            // portion of the buffer
+            // Safety: 已向缓冲区中未填充的部分写入了 `num_bytes_read` 个字节
             cursor.advance_unchecked(num_bytes_read);
 
             Ok(())
@@ -445,8 +443,8 @@ impl File {
 
     pub fn seek(&self, pos: SeekFrom) -> io::Result<u64> {
         let (whence, pos) = match pos {
-            // Casting to `i64` is fine, too large values will end up as
-            // negative which will cause an error in `SOLID_FS_Lseek`.
+            // 转换为 `i64` 是没问题的，过大的值会变成负数，
+            // 这会在 `SOLID_FS_Lseek` 中导致一个错误。
             SeekFrom::Start(off) => (abi::SEEK_SET, off as i64),
             SeekFrom::End(off) => (abi::SEEK_END, off),
             SeekFrom::Current(off) => (abi::SEEK_CUR, off),
@@ -455,7 +453,7 @@ impl File {
             abi::SOLID_FS_Lseek(self.fd.raw(), pos, whence)
         })
         .map_err(|e| e.as_io_error())?;
-        // Get the new offset
+        // 获取新的偏移量
         self.tell()
     }
 
@@ -567,7 +565,7 @@ pub fn remove_dir_all(path: &Path) -> io::Result<()> {
                 unlink(&child.path())?;
             }
         };
-        // ignore internal NotFound errors
+        // 忽略内部的 NotFound 错误
         if let Err(err) = &result
             && err.kind() != io::ErrorKind::NotFound
         {
@@ -578,23 +576,23 @@ pub fn remove_dir_all(path: &Path) -> io::Result<()> {
 }
 
 pub fn readlink(p: &Path) -> io::Result<PathBuf> {
-    // This target doesn't support symlinks
+    // 该目标平台不支持符号链接
     stat(p)?;
     Err(io::const_error!(io::ErrorKind::InvalidInput, "not a symbolic link"))
 }
 
 pub fn symlink(_original: &Path, _link: &Path) -> io::Result<()> {
-    // This target doesn't support symlinks
+    // 该目标平台不支持符号链接
     unsupported()
 }
 
 pub fn link(_src: &Path, _dst: &Path) -> io::Result<()> {
-    // This target doesn't support symlinks
+    // 该目标平台不支持符号链接
     unsupported()
 }
 
 pub fn stat(p: &Path) -> io::Result<FileAttr> {
-    // This target doesn't support symlinks
+    // 该目标平台不支持符号链接
     lstat(p)
 }
 

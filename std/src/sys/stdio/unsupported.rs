@@ -28,8 +28,8 @@ impl io::Read for Stdin {
 
     #[inline]
     fn is_read_vectored(&self) -> bool {
-        // Do not force `Chain<Empty, T>` or `Chain<T, Empty>` to use vectored
-        // reads, unless the other reader is vectored.
+        // 不要强制 `Chain<Empty, T>` 或 `Chain<T, Empty>` 使用向量化（vectored）读取，
+        // 除非另一个 reader 是向量化的。
         false
     }
 
@@ -87,7 +87,7 @@ impl io::Write for Stdout {
         Ok(())
     }
 
-    // Keep the default write_fmt so the `fmt::Arguments` are still evaluated.
+    // 保留默认的 write_fmt，以便 `fmt::Arguments` 仍会被求值（evaluated）。
 
     #[inline]
     fn flush(&mut self) -> io::Result<()> {

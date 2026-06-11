@@ -1,23 +1,21 @@
-//! A "once initialization" primitive
+//! 一个「一次性初始化」（once initialization）原语
 //!
-//! This primitive is meant to be used to run one-time initialization. An
-//! example use case would be for initializing an FFI library.
+//! 该原语用于执行一次性初始化。一个典型用例是初始化某个 FFI 库。
 
 use crate::fmt;
 use crate::panic::{RefUnwindSafe, UnwindSafe};
 use crate::sys::sync as sys;
 
-/// A low-level synchronization primitive for one-time global execution.
+/// 用于一次性全局执行的底层同步原语。
 ///
-/// Previously this was the only "execute once" synchronization in `std`.
-/// Other libraries implemented novel synchronizing types with `Once`, like
-/// [`OnceLock<T>`] or [`LazyLock<T, F>`], before those were added to `std`.
-/// `OnceLock<T>` in particular supersedes `Once` in functionality and should
-/// be preferred for the common case where the `Once` is associated with data.
+/// 在过去，这曾是 `std` 中唯一的「执行一次」（execute once）同步设施。
+/// 在 [`OnceLock<T>`] 或 [`LazyLock<T, F>`] 被加入 `std` 之前，其他库曾用
+/// `Once` 实现各种新颖的同步类型。其中 `OnceLock<T>` 在功能上取代了 `Once`，
+/// 当 `Once` 与某份数据相关联这一常见场景下，应优先选用它。
 ///
-/// This type can only be constructed with [`Once::new()`].
+/// 该类型只能通过 [`Once::new()`] 构造。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use std::sync::Once;
@@ -25,7 +23,7 @@ use crate::sys::sync as sys;
 /// static START: Once = Once::new();
 ///
 /// START.call_once(|| {
-///     // run initialization here
+///     // 在此处运行初始化
 /// });
 /// ```
 ///
@@ -42,24 +40,24 @@ impl UnwindSafe for Once {}
 #[stable(feature = "sync_once_unwind_safe", since = "1.59.0")]
 impl RefUnwindSafe for Once {}
 
-/// State yielded to [`Once::call_once_force()`]’s closure parameter. The state
-/// can be used to query the poison status of the [`Once`].
+/// 交给 [`Once::call_once_force()`] 闭包参数的状态。可用它来查询 [`Once`]
+/// 的中毒（poison）状态。
 #[stable(feature = "once_poison", since = "1.51.0")]
 pub struct OnceState {
     pub(crate) inner: sys::OnceState,
 }
 
-/// Used for the internal implementation of `sys::sync::once` on different platforms and the
-/// [`LazyLock`](crate::sync::LazyLock) implementation.
+/// 用于不同平台上 `sys::sync::once` 的内部实现，以及
+/// [`LazyLock`](crate::sync::LazyLock) 的实现。
 pub(crate) enum OnceExclusiveState {
     Incomplete,
     Poisoned,
     Complete,
 }
 
-/// Initialization value for static [`Once`] values.
+/// 用于静态 [`Once`] 值的初始化值。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use std::sync::{Once, ONCE_INIT};
@@ -75,7 +73,7 @@ pub(crate) enum OnceExclusiveState {
 pub const ONCE_INIT: Once = Once::new();
 
 impl Once {
-    /// Creates a new `Once` value.
+    /// 创建一个新的 `Once` 值。
     #[inline]
     #[stable(feature = "once_new", since = "1.2.0")]
     #[rustc_const_stable(feature = "const_once_new", since = "1.32.0")]
@@ -84,25 +82,20 @@ impl Once {
         Once { inner: sys::Once::new() }
     }
 
-    /// Performs an initialization routine once and only once. The given closure
-    /// will be executed if this is the first time `call_once` has been called,
-    /// and otherwise the routine will *not* be invoked.
+    /// 仅且只执行一次初始化例程。如果这是第一次调用 `call_once`，给定的闭包
+    /// 就会被执行；否则该例程将 *不会* 被调用。
     ///
-    /// This method will block the calling thread if another initialization
-    /// routine is currently running.
+    /// 如果当前有另一个初始化例程正在运行，本方法会阻塞调用线程。
     ///
-    /// When this function returns, it is guaranteed that some initialization
-    /// has run and completed (it might not be the closure specified). It is also
-    /// guaranteed that any memory writes performed by the executed closure can
-    /// be reliably observed by other threads at this point (there is a
-    /// happens-before relation between the closure and code executing after the
-    /// return).
+    /// 本函数返回时，保证某个初始化已经运行并完成（不一定是这次指定的那个
+    /// 闭包）。同时还保证：所执行闭包做出的任何内存写入，此时都能被其他线程
+    /// 可靠地观测到（在该闭包与返回之后执行的代码之间存在 happens-before
+    /// 关系）。
     ///
-    /// If the given closure recursively invokes `call_once` on the same [`Once`]
-    /// instance, the exact behavior is not specified: allowed outcomes are
-    /// a panic or a deadlock.
+    /// 如果给定的闭包对同一个 [`Once`] 实例递归调用 `call_once`，确切行为未作
+    /// 规定：允许的结果是 panic 或死锁。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::sync::Once;
@@ -110,12 +103,11 @@ impl Once {
     /// static mut VAL: usize = 0;
     /// static INIT: Once = Once::new();
     ///
-    /// // Accessing a `static mut` is unsafe much of the time, but if we do so
-    /// // in a synchronized fashion (e.g., write once or read all) then we're
-    /// // good to go!
+    /// // 访问 `static mut` 在大多数情况下是 unsafe 的，但如果我们以同步的
+    /// // 方式访问（例如只写一次、或全部为读），那就没问题！
     /// //
-    /// // This function will only call `expensive_computation` once, and will
-    /// // otherwise always return the value returned from the first invocation.
+    /// // 本函数只会调用 `expensive_computation` 一次，此后总是返回首次调用
+    /// // 所返回的值。
     /// fn get_cached_val() -> usize {
     ///     unsafe {
     ///         INIT.call_once(|| {
@@ -133,13 +125,12 @@ impl Once {
     ///
     /// # Panics
     ///
-    /// The closure `f` will only be executed once even if this is called
-    /// concurrently amongst many threads. If that closure panics, however, then
-    /// it will *poison* this [`Once`] instance, causing all future invocations of
-    /// `call_once` to also panic.
+    /// 即便在众多线程间并发调用，闭包 `f` 也只会被执行一次。然而，如果该闭包
+    /// panic，则它会使这个 [`Once`] 实例 *中毒*（poison），导致今后所有对
+    /// `call_once` 的调用也都 panic。
     ///
-    /// This is similar to [poisoning with mutexes][poison], but this mechanism
-    /// is guaranteed to never skip panics within `f`.
+    /// 这类似于 [互斥锁的中毒机制][poison]，但本机制保证绝不会跳过 `f` 内部
+    /// 发生的 panic。
     ///
     /// [poison]: struct.Mutex.html#poisoning
     #[inline]
@@ -150,32 +141,33 @@ impl Once {
     where
         F: FnOnce(),
     {
-        // Fast path check
+        // 快速路径检查：若已完成则直接返回，避免进入慢速的加锁路径。
         if self.inner.is_completed() {
             return;
         }
 
+        // 把 `f` 包进 `Option` 里，以便在 `call` 选中本闭包时用 `take` 取出
+        // 并按值调用（`FnOnce` 只能调用一次）。
         let mut f = Some(f);
         self.inner.call(false, &mut |_| f.take().unwrap()());
     }
 
-    /// Performs the same function as [`call_once()`] except ignores poisoning.
+    /// 执行与 [`call_once()`] 相同的功能，但忽略中毒（poisoning）。
     ///
-    /// Unlike [`call_once()`], if this [`Once`] has been poisoned (i.e., a previous
-    /// call to [`call_once()`] or [`call_once_force()`] caused a panic), calling
-    /// [`call_once_force()`] will still invoke the closure `f` and will _not_
-    /// result in an immediate panic. If `f` panics, the [`Once`] will remain
-    /// in a poison state. If `f` does _not_ panic, the [`Once`] will no
-    /// longer be in a poison state and all future calls to [`call_once()`] or
-    /// [`call_once_force()`] will be no-ops.
+    /// 与 [`call_once()`] 不同：如果这个 [`Once`] 已经中毒（即先前对
+    /// [`call_once()`] 或 [`call_once_force()`] 的调用导致了 panic），调用
+    /// [`call_once_force()`] 仍会执行闭包 `f`，并且 _不会_ 立即 panic。若 `f`
+    /// panic，则该 [`Once`] 将保持中毒状态。若 `f` _未_ panic，则该 [`Once`]
+    /// 将不再处于中毒状态，今后所有对 [`call_once()`] 或 [`call_once_force()`]
+    /// 的调用都会成为空操作（no-op）。
     ///
-    /// The closure `f` is yielded a [`OnceState`] structure which can be used
-    /// to query the poison status of the [`Once`].
+    /// 闭包 `f` 会被交予一个 [`OnceState`] 结构体，可用它查询该 [`Once`] 的
+    /// 中毒状态。
     ///
     /// [`call_once()`]: Once::call_once
     /// [`call_once_force()`]: Once::call_once_force
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::sync::Once;
@@ -183,24 +175,24 @@ impl Once {
     ///
     /// static INIT: Once = Once::new();
     ///
-    /// // poison the once
+    /// // 使这个 once 中毒
     /// let handle = thread::spawn(|| {
     ///     INIT.call_once(|| panic!());
     /// });
     /// assert!(handle.join().is_err());
     ///
-    /// // poisoning propagates
+    /// // 中毒会传播
     /// let handle = thread::spawn(|| {
     ///     INIT.call_once(|| {});
     /// });
     /// assert!(handle.join().is_err());
     ///
-    /// // call_once_force will still run and reset the poisoned state
+    /// // call_once_force 仍会运行，并重置中毒状态
     /// INIT.call_once_force(|state| {
     ///     assert!(state.is_poisoned());
     /// });
     ///
-    /// // once any success happens, we stop propagating the poison
+    /// // 一旦有任何一次成功，我们就停止传播中毒
     /// INIT.call_once(|| {});
     /// ```
     #[inline]
@@ -210,7 +202,7 @@ impl Once {
     where
         F: FnOnce(&OnceState),
     {
-        // Fast path check
+        // 快速路径检查
         if self.inner.is_completed() {
             return;
         }
@@ -219,21 +211,19 @@ impl Once {
         self.inner.call(true, &mut |p| f.take().unwrap()(p));
     }
 
-    /// Returns `true` if some [`call_once()`] call has completed
-    /// successfully. Specifically, `is_completed` will return false in
-    /// the following situations:
-    ///   * [`call_once()`] was not called at all,
-    ///   * [`call_once()`] was called, but has not yet completed,
-    ///   * the [`Once`] instance is poisoned
+    /// 如果某次 [`call_once()`] 调用已成功完成，则返回 `true`。具体而言，
+    /// `is_completed` 在以下情形会返回 false：
+    ///   * [`call_once()`] 根本没被调用过，
+    ///   * [`call_once()`] 被调用了，但尚未完成，
+    ///   * 该 [`Once`] 实例已中毒
     ///
-    /// This function returning `false` does not mean that [`Once`] has not been
-    /// executed. For example, it may have been executed in the time between
-    /// when `is_completed` starts executing and when it returns, in which case
-    /// the `false` return value would be stale (but still permissible).
+    /// 本函数返回 `false` 并不意味着 [`Once`] 没有被执行过。例如，它可能正好
+    /// 在 `is_completed` 开始执行到返回之间被执行，这种情况下 `false` 返回值
+    /// 就是过时的（但仍然是允许的）。
     ///
     /// [`call_once()`]: Once::call_once
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::sync::Once;
@@ -266,9 +256,9 @@ impl Once {
         self.inner.is_completed()
     }
 
-    /// Blocks the current thread until initialization has completed.
+    /// 阻塞当前线程，直到初始化完成为止。
     ///
-    /// # Example
+    /// # 示例
     ///
     /// ```rust
     /// use std::sync::Once;
@@ -286,9 +276,8 @@ impl Once {
     ///
     /// # Panics
     ///
-    /// If this [`Once`] has been poisoned because an initialization closure has
-    /// panicked, this method will also panic. Use [`wait_force`](Self::wait_force)
-    /// if this behavior is not desired.
+    /// 如果这个 [`Once`] 因某个初始化闭包发生 panic 而中毒，本方法也会 panic。
+    /// 若不希望这种行为，请使用 [`wait_force`](Self::wait_force)。
     #[stable(feature = "once_wait", since = "1.86.0")]
     #[rustc_should_not_be_called_on_const_items]
     pub fn wait(&self) {
@@ -297,11 +286,10 @@ impl Once {
         }
     }
 
-    /// Blocks the current thread until initialization has completed, ignoring
-    /// poisoning.
+    /// 阻塞当前线程，直到初始化完成为止，并忽略中毒（poisoning）。
     ///
-    /// If this [`Once`] has been poisoned, this function blocks until it
-    /// becomes completed, unlike [`Once::wait()`], which panics in this case.
+    /// 如果这个 [`Once`] 已中毒，本函数会一直阻塞直到它完成；这与
+    /// [`Once::wait()`] 不同——后者在此情况下会 panic。
     #[stable(feature = "once_wait", since = "1.86.0")]
     #[rustc_should_not_be_called_on_const_items]
     pub fn wait_force(&self) {
@@ -310,21 +298,20 @@ impl Once {
         }
     }
 
-    /// Returns the current state of the `Once` instance.
+    /// 返回该 `Once` 实例的当前状态。
     ///
-    /// Since this takes a mutable reference, no initialization can currently
-    /// be running, so the state must be either "incomplete", "poisoned" or
-    /// "complete".
+    /// 由于本方法获取的是可变引用（mutable reference），当前不可能有任何
+    /// 初始化正在运行，因此状态必定是 "incomplete"、"poisoned" 或 "complete"
+    /// 三者之一。
     #[inline]
     pub(crate) fn state(&mut self) -> OnceExclusiveState {
         self.inner.state()
     }
 
-    /// Sets current state of the `Once` instance.
+    /// 设置该 `Once` 实例的当前状态。
     ///
-    /// Since this takes a mutable reference, no initialization can currently
-    /// be running, so the state must be either "incomplete", "poisoned" or
-    /// "complete".
+    /// 由于本方法获取的是可变引用，当前不可能有任何初始化正在运行，因此状态
+    /// 必定是 "incomplete"、"poisoned" 或 "complete" 三者之一。
     #[inline]
     pub(crate) fn set_state(&mut self, new_state: OnceExclusiveState) {
         self.inner.set_state(new_state);
@@ -339,12 +326,12 @@ impl fmt::Debug for Once {
 }
 
 impl OnceState {
-    /// Returns `true` if the associated [`Once`] was poisoned prior to the
-    /// invocation of the closure passed to [`Once::call_once_force()`].
+    /// 如果关联的 [`Once`] 在传给 [`Once::call_once_force()`] 的闭包被调用之前
+    /// 就已中毒，则返回 `true`。
     ///
-    /// # Examples
+    /// # 示例
     ///
-    /// A poisoned [`Once`]:
+    /// 一个已中毒的 [`Once`]：
     ///
     /// ```
     /// use std::sync::Once;
@@ -352,7 +339,7 @@ impl OnceState {
     ///
     /// static INIT: Once = Once::new();
     ///
-    /// // poison the once
+    /// // 使这个 once 中毒
     /// let handle = thread::spawn(|| {
     ///     INIT.call_once(|| panic!());
     /// });
@@ -363,7 +350,7 @@ impl OnceState {
     /// });
     /// ```
     ///
-    /// An unpoisoned [`Once`]:
+    /// 一个未中毒的 [`Once`]：
     ///
     /// ```
     /// use std::sync::Once;
@@ -379,8 +366,8 @@ impl OnceState {
         self.inner.is_poisoned()
     }
 
-    /// Poison the associated [`Once`] without explicitly panicking.
-    // NOTE: This is currently only exposed for `OnceLock`.
+    /// 使关联的 [`Once`] 中毒，而无需显式地 panic。
+    // 注意：目前仅为 `OnceLock` 暴露此方法。
     #[inline]
     pub(crate) fn poison(&self) {
         self.inner.poison();

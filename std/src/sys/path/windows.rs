@@ -13,19 +13,19 @@ pub const HAS_PREFIXES: bool = true;
 pub const MAIN_SEP_STR: &str = "\\";
 pub const MAIN_SEP: char = '\\';
 
-/// A null terminated wide string.
+/// 一个以 null 结尾的宽字符串(wide string）。
 #[repr(transparent)]
 pub struct WCStr([u16]);
 
 impl WCStr {
-    /// Convert a slice to a WCStr without checks.
+    /// 不做检查地把一个切片转换为 WCStr。
     ///
-    /// Though it is memory safe, the slice should also not contain interior nulls
-    /// as this may lead to unwanted truncation.
+    /// 尽管它是内存安全的，该切片也不应包含内部的 null，
+    /// 因为这可能导致意料之外的截断。
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// The slice must end in a null.
+    /// 该切片必须以一个 null 结尾。
     pub unsafe fn from_wchars_with_null_unchecked(s: &[u16]) -> &Self {
         unsafe { &*(s as *const [u16] as *const Self) }
     }
@@ -42,7 +42,7 @@ impl WCStr {
 #[inline]
 pub fn with_native_path<T>(path: &Path, f: &dyn Fn(&WCStr) -> io::Result<T>) -> io::Result<T> {
     let path = maybe_verbatim(path)?;
-    // SAFETY: maybe_verbatim returns null-terminated strings
+    // SAFETY: maybe_verbatim 返回以 null 结尾的字符串
     let path = unsafe { WCStr::from_wchars_with_null_unchecked(&path) };
     f(path)
 }
@@ -61,7 +61,7 @@ pub fn is_verbatim(path: &[u16]) -> bool {
     path.starts_with(utf16!(r"\\?\")) || path.starts_with(utf16!(r"\??\"))
 }
 
-/// Returns true if `path` looks like a lone filename.
+/// 如果 `path` 看起来像一个单独的文件名，则返回 true。
 pub(crate) fn is_file_name(path: &OsStr) -> bool {
     !path.as_encoded_bytes().iter().copied().any(is_sep_byte)
 }
@@ -71,39 +71,37 @@ pub(crate) fn has_trailing_slash(path: &OsStr) -> bool {
     if let Some(&c) = path.as_encoded_bytes().last() { is_separator(c) } else { false }
 }
 
-/// Appends a suffix to a path.
+/// 把一个后缀追加到路径上。
 ///
-/// Can be used to append an extension without removing an existing extension.
+/// 可用于在不移除已有扩展名的情况下追加一个扩展名。
 pub(crate) fn append_suffix(path: PathBuf, suffix: &OsStr) -> PathBuf {
     let mut path = OsString::from(path);
     path.push(suffix);
     path.into()
 }
 
-/// Returns a UTF-16 encoded path capable of bypassing the legacy `MAX_PATH` limits.
+/// 返回一个 UTF-16 编码的路径，它能够绕过传统的 `MAX_PATH` 限制。
 ///
-/// This path may or may not have a verbatim prefix.
+/// 该路径可能带有也可能不带有 verbatim 前缀。
 pub(crate) fn maybe_verbatim(path: &Path) -> io::Result<Vec<u16>> {
     let path = to_u16s(path)?;
     get_long_path(path, true)
 }
 
-/// Gets a normalized absolute path that can bypass path length limits.
+/// 获取一个能够绕过路径长度限制的、规范化的绝对路径。
 ///
-/// Setting prefer_verbatim to true suggests a stronger preference for verbatim
-/// paths even when not strictly necessary. This allows the Windows API to avoid
-/// repeating our work. However, if the path may be given back to users or
-/// passed to other application then it's preferable to use non-verbatim paths
-/// when possible. Non-verbatim paths are better understood by users and handled
-/// by more software.
+/// 把 prefer_verbatim 设为 true 表示更强烈地偏好 verbatim 路径，即使并非严格必要。
+/// 这能让 Windows API 避免重复我们已经做过的工作。然而，如果该路径可能被返回给用户，
+/// 或被传递给其他应用程序，那么在可能的情况下最好使用非 verbatim 路径。非 verbatim
+/// 路径更容易被用户理解，也能被更多软件处理。
 pub(crate) fn get_long_path(mut path: Vec<u16>, prefer_verbatim: bool) -> io::Result<Vec<u16>> {
-    // Normally the MAX_PATH is 260 UTF-16 code units (including the NULL).
-    // However, for APIs such as CreateDirectory[1], the limit is 248.
+    // 通常 MAX_PATH 是 260 个 UTF-16 码元（包含 NULL）。
+    // 然而，对于诸如 CreateDirectory[1] 这样的 API，限制是 248。
     //
     // [1]: https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createdirectorya#parameters
     const LEGACY_MAX_PATH: usize = 248;
-    // UTF-16 encoded code points, used in parsing and building UTF-16 paths.
-    // All of these are in the ASCII range so they can be cast directly to `u16`.
+    // UTF-16 编码的码点，用于解析和构建 UTF-16 路径。
+    // 它们全都在 ASCII 范围内，所以可以直接转换(cast）为 `u16`。
     const SEP: u16 = b'\\' as _;
     const ALT_SEP: u16 = b'/' as _;
     const QUERY: u16 = b'?' as _;
@@ -121,40 +119,40 @@ pub(crate) fn get_long_path(mut path: Vec<u16>, prefer_verbatim: bool) -> io::Re
     const UNC_PREFIX: &[u16] = &[SEP, SEP, QUERY, SEP, U, N, C, SEP];
 
     if path.starts_with(VERBATIM_PREFIX) || path.starts_with(NT_PREFIX) || path == [0] {
-        // Early return for paths that are already verbatim or empty.
+        // 对于已经是 verbatim 或为空的路径，提前返回。
         return Ok(path);
     } else if path.len() < LEGACY_MAX_PATH {
-        // Early return if an absolute path is less < 260 UTF-16 code units.
-        // This is an optimization to avoid calling `GetFullPathNameW` unnecessarily.
+        // 如果一个绝对路径少于 260 个 UTF-16 码元，则提前返回。
+        // 这是一项优化，用于避免不必要地调用 `GetFullPathNameW`。
         match path.as_slice() {
-            // Starts with `D:`, `D:\`, `D:/`, etc.
-            // Does not match if the path starts with a `\` or `/`.
+            // 以 `D:`、`D:\`、`D:/` 等开头。
+            // 如果路径以 `\` 或 `/` 开头，则不匹配。
             [drive, COLON, 0] | [drive, COLON, SEP | ALT_SEP, ..]
                 if *drive != SEP && *drive != ALT_SEP =>
             {
                 return Ok(path);
             }
-            // Starts with `\\`, `//`, etc
+            // 以 `\\`、`//` 等开头
             [SEP | ALT_SEP, SEP | ALT_SEP, ..] => return Ok(path),
             _ => {}
         }
     }
 
-    // Firstly, get the absolute path using `GetFullPathNameW`.
+    // 首先，使用 `GetFullPathNameW` 获取绝对路径。
     // https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfullpathnamew
     let lpfilename = path.as_ptr();
     fill_utf16_buf(
-        // SAFETY: `fill_utf16_buf` ensures the `buffer` and `size` are valid.
-        // `lpfilename` is a pointer to a null terminated string that is not
-        // invalidated until after `GetFullPathNameW` returns successfully.
+        // SAFETY: `fill_utf16_buf` 确保 `buffer` 和 `size` 是有效的。
+        // `lpfilename` 是指向一个以 null 结尾的字符串的指针，该字符串在
+        // `GetFullPathNameW` 成功返回之前都不会失效。
         |buffer, size| unsafe { c::GetFullPathNameW(lpfilename, size, buffer, ptr::null_mut()) },
         |mut absolute| {
             path.clear();
 
-            // Only prepend the prefix if needed.
+            // 仅在需要时才添加前缀。
             if prefer_verbatim || absolute.len() + 1 >= LEGACY_MAX_PATH {
-                // Secondly, add the verbatim prefix. This is easier here because we know the
-                // path is now absolute and fully normalized (e.g. `/` has been changed to `\`).
+                // 其次，添加 verbatim 前缀。在这里这样做更容易，因为我们知道此时
+                // 路径已经是绝对的并且已完全规范化（例如 `/` 已被改为 `\`）。
                 let prefix = match absolute {
                     // C:\ => \\?\C:\
                     [_, COLON, SEP, ..] => VERBATIM_PREFIX,
@@ -163,14 +161,14 @@ pub(crate) fn get_long_path(mut path: Vec<u16>, prefer_verbatim: bool) -> io::Re
                         absolute = &absolute[4..];
                         VERBATIM_PREFIX
                     }
-                    // Leave \\?\ and \??\ as-is.
+                    // 保持 \\?\ 和 \??\ 原样不变。
                     [SEP, SEP, QUERY, SEP, ..] | [SEP, QUERY, QUERY, SEP, ..] => &[],
                     // \\ => \\?\UNC\
                     [SEP, SEP, ..] => {
                         absolute = &absolute[2..];
                         UNC_PREFIX
                     }
-                    // Anything else we leave alone.
+                    // 其他任何情况我们都不去动它。
                     _ => &[],
                 };
 
@@ -186,13 +184,13 @@ pub(crate) fn get_long_path(mut path: Vec<u16>, prefer_verbatim: bool) -> io::Re
     Ok(path)
 }
 
-/// Make a Windows path absolute.
+/// 把一个 Windows 路径变为绝对路径。
 pub(crate) fn absolute(path: &Path) -> io::Result<PathBuf> {
     let path = path.as_os_str();
     let prefix = parse_prefix(path);
-    // Verbatim paths should not be modified.
+    // verbatim 路径不应被修改。
     if prefix.map(|x| x.is_verbatim()).unwrap_or(false) {
-        // NULs in verbatim paths are rejected for consistency.
+        // 为了保持一致性，verbatim 路径中的 NUL 会被拒绝。
         if path.as_encoded_bytes().contains(&0) {
             return Err(io::const_error!(
                 io::ErrorKind::InvalidInput,
@@ -205,9 +203,9 @@ pub(crate) fn absolute(path: &Path) -> io::Result<PathBuf> {
     let path = to_u16s(path)?;
     let lpfilename = path.as_ptr();
     fill_utf16_buf(
-        // SAFETY: `fill_utf16_buf` ensures the `buffer` and `size` are valid.
-        // `lpfilename` is a pointer to a null terminated string that is not
-        // invalidated until after `GetFullPathNameW` returns successfully.
+        // SAFETY: `fill_utf16_buf` 确保 `buffer` 和 `size` 是有效的。
+        // `lpfilename` 是指向一个以 null 结尾的字符串的指针，该字符串在
+        // `GetFullPathNameW` 成功返回之前都不会失效。
         |buffer, size| unsafe { c::GetFullPathNameW(lpfilename, size, buffer, ptr::null_mut()) },
         os2path,
     )
@@ -217,27 +215,26 @@ pub(crate) fn is_absolute(path: &Path) -> bool {
     path.has_root() && path.prefix().is_some()
 }
 
-/// Test that the path is absolute, fully qualified and unchanged when processed by the Windows API.
+/// 测试该路径是否为绝对路径、是否完全限定(fully qualified），以及经过 Windows API 处理后是否保持不变。
 ///
-/// For example:
+/// 例如：
 ///
-/// - `C:\path\to\file` will return true.
-/// - `C:\path\to\nul` returns false because the Windows API will convert it to \\.\NUL
-/// - `C:\path\to\..\file` returns false because it will be resolved to `C:\path\file`.
+/// - `C:\path\to\file` 会返回 true。
+/// - `C:\path\to\nul` 返回 false，因为 Windows API 会把它转换为 \\.\NUL
+/// - `C:\path\to\..\file` 返回 false，因为它会被解析为 `C:\path\file`。
 ///
-/// This is a useful property because it means the path can be converted from and to and verbatim
-/// path just by changing the prefix.
+/// 这是一个有用的性质，因为它意味着只需更改前缀，该路径就可以在普通路径和 verbatim
+/// 路径之间相互转换。
 pub(crate) fn is_absolute_exact(path: &[u16]) -> bool {
-    // This is implemented by checking that passing the path through
-    // GetFullPathNameW does not change the path in any way.
+    // 这是通过检查把路径传给 GetFullPathNameW 后路径是否以任何方式发生改变来实现的。
 
-    // Windows paths are limited to i16::MAX length
-    // though the API here accepts a u32 for the length.
+    // Windows 路径的长度被限制在 i16::MAX，
+    // 尽管这里的 API 接受一个 u32 作为长度。
     if path.is_empty() || path.len() > u32::MAX as usize || path.last() != Some(&0) {
         return false;
     }
-    // The path returned by `GetFullPathNameW` must be the same length as the
-    // given path, otherwise they're not equal.
+    // `GetFullPathNameW` 返回的路径长度必须与给定的路径相同，
+    // 否则它们就不相等。
     let buffer_len = path.len();
     let mut new_path = Vec::with_capacity(buffer_len);
     let result = unsafe {
@@ -248,11 +245,11 @@ pub(crate) fn is_absolute_exact(path: &[u16]) -> bool {
             crate::ptr::null_mut(),
         )
     };
-    // Note: if non-zero, the returned result is the length of the buffer without the null termination
+    // 注意：如果非零，返回的结果是缓冲区的长度，不含 null 终止符
     if result == 0 || result as usize != buffer_len - 1 {
         false
     } else {
-        // SAFETY: `GetFullPathNameW` initialized `result` bytes and does not exceed `nBufferLength - 1` (capacity).
+        // SAFETY: `GetFullPathNameW` 初始化了 `result` 个字节，且不超过 `nBufferLength - 1`（容量）。
         unsafe {
             new_path.set_len((result as usize) + 1);
         }

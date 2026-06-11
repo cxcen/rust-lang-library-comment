@@ -23,7 +23,7 @@ mod cstring_array;
 
 cfg_select! {
     target_os = "fuchsia" => {
-        // fuchsia doesn't have /dev/null
+        // fuchsia 没有 /dev/null
     }
     target_os = "vxworks" => {
         const DEV_NULL: &CStr = c"/null";
@@ -33,10 +33,9 @@ cfg_select! {
     }
 }
 
-// Android with api less than 21 define sig* functions inline, so it is not
-// available for dynamic link. Implementing sigemptyset and sigaddset allow us
-// to support older Android version (independent of libc version).
-// The following implementations are based on
+// api 版本低于 21 的 Android 把 sig* 函数定义为内联（inline），因此它无法用于动态链接。
+// 实现 sigemptyset 和 sigaddset 使我们能够支持较旧的 Android 版本（与 libc 版本无关）。
+// 以下实现基于
 // https://github.com/aosp-mirror/platform_bionic/blob/ad8dcd6023294b646e5a8288c0ed431b0845da49/libc/include/android/legacy_signal_inlines.h
 cfg_select! {
     target_os = "android" => {
@@ -51,9 +50,9 @@ cfg_select! {
             use crate::slice;
             use libc::{c_ulong, sigset_t};
 
-            // The implementations from bionic (android libc) type pun `sigset_t` as an
-            // array of `c_ulong`. This works, but lets add a smoke check to make sure
-            // that doesn't change.
+            // 来自 bionic（android libc）的实现把 `sigset_t` 当作一个 `c_ulong` 数组
+            // 来进行类型双关（type pun）。这样可行，但我们加一个 smoke check
+            // 来确保这一点没有改变。
             const _: () = assert!(
                 align_of::<c_ulong>() == align_of::<sigset_t>()
                     && (size_of::<sigset_t>() % size_of::<c_ulong>()) == 0
@@ -80,7 +79,7 @@ cfg_select! {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// Command
+// 命令（Command）
 ////////////////////////////////////////////////////////////////////////////////
 
 pub struct Command {
@@ -105,8 +104,7 @@ pub struct Command {
     setsid: bool,
 }
 
-// passed to do_exec() with configuration of what the child stdio should look
-// like
+// 连同关于子进程 stdio 应当是什么样子的配置，一起传给 do_exec()
 #[cfg_attr(target_os = "vita", allow(dead_code))]
 pub struct ChildPipes {
     pub stdin: ChildStdio,
@@ -119,8 +117,7 @@ pub enum ChildStdio {
     Explicit(c_int),
     Owned(FileDesc),
 
-    // On Fuchsia, null stdio is the default, so we simply don't specify
-    // any actions at the time of spawning.
+    // 在 Fuchsia 上，null stdio 是默认值，因此我们在 spawn 时干脆不指定任何 action。
     #[cfg(target_os = "fuchsia")]
     Null,
 }
@@ -136,11 +133,11 @@ pub enum Stdio {
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum ProgramKind {
-    /// A program that would be looked up on the PATH (e.g. `ls`)
+    /// 一个会在 PATH 上查找的程序（例如 `ls`）
     PathLookup,
-    /// A relative path (e.g. `my-dir/foo`, `../foo`, `./foo`)
+    /// 一个相对路径（例如 `my-dir/foo`、`../foo`、`./foo`）
     Relative,
-    /// An absolute path.
+    /// 一个绝对路径。
     Absolute,
 }
 
@@ -149,7 +146,7 @@ impl ProgramKind {
         if program.as_encoded_bytes().starts_with(b"/") {
             Self::Absolute
         } else if program.as_encoded_bytes().contains(&b'/') {
-            // If the program has more than one component in it, it is a relative path.
+            // 如果程序名中含有不止一个组成部分（component），那它就是一个相对路径。
             Self::Relative
         } else {
             Self::PathLookup
@@ -187,7 +184,7 @@ impl Command {
     }
 
     pub fn set_arg_0(&mut self, arg: &OsStr) {
-        // Set a new arg0
+        // 设置一个新的 arg0
         let arg = os2c(arg, &mut self.saw_nul);
         self.args.write(0, arg);
     }
@@ -253,8 +250,7 @@ impl Command {
 
     pub fn get_args(&self) -> CommandArgs<'_> {
         let mut iter = self.args.iter();
-        // argv[0] contains the program name, but we are only interested in the
-        // arguments so skip it.
+        // argv[0] 包含程序名，但我们只对参数感兴趣，所以跳过它。
         iter.next();
         CommandArgs { iter }
     }
@@ -376,12 +372,12 @@ fn os2c(s: &OsStr, saw_nul: &mut bool) -> CString {
 fn construct_envp(env: BTreeMap<OsString, OsString>, saw_nul: &mut bool) -> CStringArray {
     let mut result = CStringArray::with_capacity(env.len());
     for (mut k, v) in env {
-        // Reserve additional space for '=' and null terminator
+        // 为 '=' 和 null 终止符预留额外空间
         k.reserve_exact(v.len() + 2);
         k.push("=");
         k.push(&v);
 
-        // Add the new entry into the array
+        // 把新条目添加进数组
         if let Ok(item) = CString::new(k.into_vec()) {
             result.push(item);
         } else {
@@ -397,13 +393,10 @@ impl Stdio {
         match *self {
             Stdio::Inherit => Ok((ChildStdio::Inherit, None)),
 
-            // Make sure that the source descriptors are not an stdio
-            // descriptor, otherwise the order which we set the child's
-            // descriptors may blow away a descriptor which we are hoping to
-            // save. For example, suppose we want the child's stderr to be the
-            // parent's stdout, and the child's stdout to be the parent's
-            // stderr. No matter which we dup first, the second will get
-            // overwritten prematurely.
+            // 确保这些源描述符不是 stdio 描述符，否则我们设置子进程描述符的顺序
+            // 可能会冲掉一个我们正打算保存的描述符。举例来说，假设我们想让子进程的
+            // stderr 成为父进程的 stdout，让子进程的 stdout 成为父进程的 stderr。
+            // 无论我们先 dup 哪一个，第二个都会被过早地覆盖掉。
             Stdio::Fd(ref fd) => {
                 if fd.as_raw_fd() >= 0 && fd.as_raw_fd() <= libc::STDERR_FILENO {
                     Ok((ChildStdio::Owned(fd.duplicate()?), None))
@@ -452,16 +445,15 @@ impl From<File> for Stdio {
 
 impl From<io::Stdout> for Stdio {
     fn from(_: io::Stdout) -> Stdio {
-        // This ought really to be is Stdio::StaticFd(input_argument.as_fd()).
-        // But AsFd::as_fd takes its argument by reference, and yields
-        // a bounded lifetime, so it's no use here. There is no AsStaticFd.
+        // 这里其实本应是 Stdio::StaticFd(input_argument.as_fd())。
+        // 但 AsFd::as_fd 是按引用接收其参数的，并产出一个有界的（bounded）生命周期，
+        // 所以在这里没用。也不存在 AsStaticFd。
         //
-        // Additionally AsFd is only implemented for the *locked* versions.
-        // We don't want to lock them here.  (The implications of not locking
-        // are the same as those for process::Stdio::inherit().)
+        // 此外，AsFd 只为 *locked*（已加锁）版本实现。
+        // 我们不想在这里给它们加锁。（不加锁的影响与 process::Stdio::inherit() 的相同。）
         //
-        // Arguably the hypothetical AsStaticFd and AsFd<'static>
-        // should be implemented for io::Stdout, not just for StdoutLocked.
+        // 可以说，假想中的 AsStaticFd 和 AsFd<'static> 本应为 io::Stdout 实现，
+        // 而不仅仅是为 StdoutLocked 实现。
         Stdio::StaticFd(unsafe { BorrowedFd::borrow_raw(libc::STDOUT_FILENO) })
     }
 }
@@ -486,8 +478,8 @@ impl ChildStdio {
 }
 
 impl fmt::Debug for Command {
-    // show all attributes but `self.closures` which does not implement `Debug`
-    // and `self.argv` which is not useful for debugging
+    // 显示除 `self.closures`（它未实现 `Debug`）和 `self.argv`（它对调试没什么用）
+    // 之外的所有属性
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if f.alternate() {
             let mut debug_command = f.debug_struct("Command");
@@ -535,9 +527,9 @@ impl fmt::Debug for Command {
             }
             if self.env.does_clear() {
                 write!(f, "env -i ")?;
-                // Altered env vars will be printed next, that should exactly work as expected.
+                // 被改动过的环境变量将紧接着打印出来，这应当完全如预期那样工作。
             } else {
-                // Removed env vars need the command to be wrapped in `env`.
+                // 被移除的环境变量需要把命令用 `env` 包裹起来。
                 let mut any_removed = false;
                 for (key, value_opt) in self.get_envs() {
                     if value_opt.is_none() {
@@ -549,7 +541,7 @@ impl fmt::Debug for Command {
                     }
                 }
             }
-            // Altered env vars can just be added in front of the program.
+            // 被改动过的环境变量可以直接添加到程序名前面。
             for (key, value_opt) in self.get_envs() {
                 if let Some(value) = value_opt {
                     write!(f, "{}={value:?} ", key.to_string_lossy())?;
@@ -635,8 +627,8 @@ pub fn read_output(
     err: ChildPipe,
     stderr: &mut Vec<u8>,
 ) -> io::Result<()> {
-    // Set both pipes into nonblocking mode as we're gonna be reading from both
-    // in the `select` loop below, and we wouldn't want one to block the other!
+    // 把两个管道都设为非阻塞（nonblocking）模式，因为我们将在下面的 `select` 循环中
+    // 从两者读取，而我们不希望其中一个阻塞住另一个！
     out.set_nonblocking(true)?;
     err.set_nonblocking(true)?;
 
@@ -646,7 +638,7 @@ pub fn read_output(
     fds[1].fd = err.as_raw_fd();
     fds[1].events = libc::POLLIN;
     loop {
-        // wait for either pipe to become readable using `poll`
+        // 使用 `poll` 等待任一管道变得可读
         cvt_r(|| unsafe { libc::poll(fds.as_mut_ptr(), 2, -1) })?;
 
         if fds[0].revents != 0 && read(&out, stdout)? {
@@ -659,11 +651,9 @@ pub fn read_output(
         }
     }
 
-    // Read as much as we can from each pipe, ignoring EWOULDBLOCK or
-    // EAGAIN. If we hit EOF, then this will happen because the underlying
-    // reader will return Ok(0), in which case we'll see `Ok` ourselves. In
-    // this case we flip the other fd back into blocking mode and read
-    // whatever's leftover on that file descriptor.
+    // 从每个管道尽可能多地读取，忽略 EWOULDBLOCK 或 EAGAIN。如果我们碰到 EOF，
+    // 那是因为底层 reader 会返回 Ok(0)，在这种情况下我们自己会看到 `Ok`。
+    // 此时我们把另一个 fd 切回阻塞模式，并读取该文件描述符上剩余的全部内容。
     fn read(fd: &FileDesc, dst: &mut Vec<u8>) -> Result<bool, io::Error> {
         match fd.read_to_end(dst) {
             Ok(_) => Ok(true),

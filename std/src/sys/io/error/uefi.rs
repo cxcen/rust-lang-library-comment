@@ -55,8 +55,8 @@ pub fn decode_error_kind(code: io::RawOsError) -> io::ErrorKind {
 }
 
 pub fn error_string(errno: io::RawOsError) -> String {
-    // Keep the List in Alphabetical Order
-    // The Messages are taken from UEFI Specification Appendix D - Status Codes
+    // 保持该列表按字母顺序排列
+    // 这些消息取自 UEFI Specification 附录 D - Status Codes
     #[rustfmt::skip]
     let msg = match Status::from_usize(errno) {
         Status::ABORTED => "The operation was aborted.",

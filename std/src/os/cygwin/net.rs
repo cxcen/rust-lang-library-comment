@@ -1,11 +1,11 @@
-//! Cygwin-specific networking functionality.
+//! Cygwin 平台特有的网络功能。
 //!
-//! There are some limitations of Unix domain sockets on Cygwin:
-//! * The syscalls `accept` and `connect` need
-//! [handshake](https://inbox.sourceware.org/cygwin/Z_UERXFI1g-1v3p2@calimero.vinschen.de/T/#t).
-//! * Cannot bind to abstract addr.
-//! * Unbounded unix socket has an abstract local addr.
-//! * Doesn't support recvmsg with control data.
+//! Cygwin 上的 Unix 域套接字存在一些限制：
+//! * 系统调用 `accept` 和 `connect` 需要
+//! [握手（handshake）](https://inbox.sourceware.org/cygwin/Z_UERXFI1g-1v3p2@calimero.vinschen.de/T/#t)。
+//! * 无法绑定到抽象地址（abstract addr）。
+//! * 未绑定的 unix 套接字拥有一个抽象的本地地址。
+//! * 不支持携带控制数据（control data）的 recvmsg。
 
 #![stable(feature = "unix_socket_abstract", since = "1.70.0")]
 

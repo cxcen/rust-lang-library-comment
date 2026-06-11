@@ -1,7 +1,7 @@
-//! OS-specific networking functionality.
+//! 操作系统相关的网络功能。
 
-// See cfg macros in `library/std/src/os/mod.rs` for why these platforms must
-// be special-cased during rustdoc generation.
+// 参见 `library/std/src/os/mod.rs` 中的 cfg 宏，了解为何在 rustdoc 生成过程中
+// 必须对这些平台进行特殊处理。
 #[cfg(not(all(
     doc,
     any(

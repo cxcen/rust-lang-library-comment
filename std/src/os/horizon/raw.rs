@@ -1,4 +1,4 @@
-//! Horizon OS raw type definitions
+//! Horizon OS 原始类型定义
 
 #![stable(feature = "raw_ext", since = "1.1.0")]
 #![deprecated(

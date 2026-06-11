@@ -1,7 +1,7 @@
 #![cfg(not(test))]
 
-// These symbols are all defined by `libm`,
-// or by `compiler-builtins` on unsupported platforms.
+// 这些符号全部由 `libm` 定义，
+// 在不受支持的平台上则由 `compiler-builtins` 定义。
 unsafe extern "C" {
     pub safe fn acos(n: f64) -> f64;
     pub safe fn asin(n: f64) -> f64;
@@ -49,9 +49,9 @@ unsafe extern "C" {
 
 cfg_select! {
     all(target_os = "windows", target_env = "msvc", target_arch = "x86") => {
-        // On 32-bit x86 MSVC these functions aren't defined, so we just define shims
-        // which promote everything to f64, perform the calculation, and then demote
-        // back to f32. While not precisely correct should be "correct enough" for now.
+        // 在 32 位 x86 MSVC 上这些函数没有定义，因此我们直接定义一组桩函数（shim），
+        // 把所有运算提升到 f64 进行计算，再降回 f32。虽然不是精确正确，
+        // 但目前“够用”。
         #[inline]
         pub fn acosf(n: f32) -> f32 {
             f64::acos(n as f64) as f32
@@ -106,8 +106,8 @@ cfg_select! {
     }
 }
 
-// On AIX, we don't have lgammaf_r only the f64 version, so we can
-// use the f64 version lgamma_r
+// 在 AIX 上没有 lgammaf_r，只有 f64 版本，因此我们
+// 可以借用 f64 版本的 lgamma_r 来实现。
 #[cfg(target_os = "aix")]
 pub fn lgammaf_r(n: f32, s: &mut i32) -> f32 {
     lgamma_r(n.into(), s) as f32

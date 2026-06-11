@@ -4,19 +4,16 @@ use crate::sync::poison::{self, LockResult, MutexGuard, PoisonError, mutex};
 use crate::sys::sync as sys;
 use crate::time::{Duration, Instant};
 
-/// A Condition Variable
+/// 一个条件变量（Condition Variable）
 ///
-/// Condition variables represent the ability to block a thread such that it
-/// consumes no CPU time while waiting for an event to occur. Condition
-/// variables are typically associated with a boolean predicate (a condition)
-/// and a mutex. The predicate is always verified inside of the mutex before
-/// determining that a thread must block.
+/// 条件变量代表这样一种能力：阻塞一个线程，使它在等待某事件发生时不消耗
+/// CPU 时间。条件变量通常与一个布尔谓词（一个条件）和一个互斥锁关联在一起。
+/// 在判定一个线程必须阻塞之前，总是会在互斥锁内部检验该谓词。
 ///
-/// Functions in this module will block the current **thread** of execution.
-/// Note that any attempt to use multiple mutexes on the same condition
-/// variable may result in a runtime panic.
+/// 本模块中的函数会阻塞当前 **线程**（thread）的执行。注意，任何在同一个
+/// 条件变量上使用多个互斥锁的尝试，都可能导致运行时 panic。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```
 /// use std::sync::{Arc, Mutex, Condvar};
@@ -25,16 +22,16 @@ use crate::time::{Duration, Instant};
 /// let pair = Arc::new((Mutex::new(false), Condvar::new()));
 /// let pair2 = Arc::clone(&pair);
 ///
-/// // Inside of our lock, spawn a new thread, and then wait for it to start.
+/// // 在持锁状态下派生一个新线程，然后等待它启动。
 /// thread::spawn(move || {
 ///     let (lock, cvar) = &*pair2;
 ///     let mut started = lock.lock().unwrap();
 ///     *started = true;
-///     // We notify the condvar that the value has changed.
+///     // 我们通知该条件变量：值已经改变。
 ///     cvar.notify_one();
 /// });
 ///
-/// // Wait for the thread to start up.
+/// // 等待该线程启动。
 /// let (lock, cvar) = &*pair;
 /// let mut started = lock.lock().unwrap();
 /// while !*started {
@@ -47,10 +44,9 @@ pub struct Condvar {
 }
 
 impl Condvar {
-    /// Creates a new condition variable which is ready to be waited on and
-    /// notified.
+    /// 创建一个新的条件变量，可随时被等待（wait）和通知（notify）。
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::sync::Condvar;
@@ -65,37 +61,32 @@ impl Condvar {
         Condvar { inner: sys::Condvar::new() }
     }
 
-    /// Blocks the current thread until this condition variable receives a
-    /// notification.
+    /// 阻塞当前线程，直到这个条件变量收到一个通知（notification）。
     ///
-    /// This function will atomically unlock the mutex specified (represented by
-    /// `guard`) and block the current thread. This means that any calls
-    /// to [`notify_one`] or [`notify_all`] which happen logically after the
-    /// mutex is unlocked are candidates to wake this thread up. When this
-    /// function call returns, the lock specified will have been re-acquired.
+    /// 本函数会原子地解锁所指定的互斥锁（由 `guard` 表示）并阻塞当前线程。
+    /// 这意味着：任何在逻辑上发生于该互斥锁解锁之后的 [`notify_one`] 或
+    /// [`notify_all`] 调用，都有可能唤醒本线程。当本函数调用返回时，所指定的
+    /// 锁将已被重新获取。
     ///
-    /// Note that this function is susceptible to spurious wakeups. Condition
-    /// variables normally have a boolean predicate associated with them, and
-    /// the predicate must always be checked each time this function returns to
-    /// protect against spurious wakeups.
+    /// 注意，本函数易受虚假唤醒（spurious wakeups）的影响。条件变量通常会
+    /// 关联一个布尔谓词（predicate），每次本函数返回时都必须检查该谓词，以
+    /// 防范虚假唤醒。
     ///
     /// # Errors
     ///
-    /// This function will return an error if the mutex being waited on is
-    /// poisoned when this thread re-acquires the lock. For more information,
-    /// see information about [poisoning] on the [`Mutex`] type.
+    /// 如果当本线程重新获取该锁时，所等待的互斥锁已中毒（poisoned），本函数
+    /// 将返回一个错误。更多信息参见 [`Mutex`] 类型上关于 [poisoning] 的说明。
     ///
     /// # Panics
     ///
-    /// This function may [`panic!`] if it is used with more than one mutex
-    /// over time.
+    /// 如果在不同时间把它和多个互斥锁一起使用，本函数可能 [`panic!`]。
     ///
     /// [`notify_one`]: Self::notify_one
     /// [`notify_all`]: Self::notify_all
     /// [poisoning]: super::Mutex#poisoning
     /// [`Mutex`]: super::Mutex
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::sync::{Arc, Mutex, Condvar};
@@ -108,14 +99,14 @@ impl Condvar {
     ///     let (lock, cvar) = &*pair2;
     ///     let mut started = lock.lock().unwrap();
     ///     *started = true;
-    ///     // We notify the condvar that the value has changed.
+    ///     // 我们通知该条件变量：值已经改变。
     ///     cvar.notify_one();
     /// });
     ///
-    /// // Wait for the thread to start up.
+    /// // 等待该线程启动。
     /// let (lock, cvar) = &*pair;
     /// let mut started = lock.lock().unwrap();
-    /// // As long as the value inside the `Mutex<bool>` is `false`, we wait.
+    /// // 只要 `Mutex<bool>` 内部的值是 `false`，我们就一直等待。
     /// while !*started {
     ///     started = cvar.wait(started).unwrap();
     /// }
@@ -126,28 +117,28 @@ impl Condvar {
         let poisoned = unsafe {
             let lock = mutex::guard_lock(&guard);
             self.inner.wait(lock);
+            // 重新获取锁之后，检查这把互斥锁此刻是否已中毒。
             mutex::guard_poison(&guard).get()
         };
+        // 若已中毒，则把守卫包进 `PoisonError` 一并返回，把中毒状态传播给调用方。
         if poisoned { Err(PoisonError::new(guard)) } else { Ok(guard) }
     }
 
-    /// Blocks the current thread until the provided condition becomes false.
+    /// 阻塞当前线程，直到所提供的条件变为 false。
     ///
-    /// `condition` is checked immediately; if not met (returns `true`), this
-    /// will [`wait`] for the next notification then check again. This repeats
-    /// until `condition` returns `false`, in which case this function returns.
+    /// `condition` 会被立即检查；如果未满足（返回 `true`），则本方法会
+    /// [`wait`] 下一个通知，然后再次检查。如此重复，直到 `condition` 返回
+    /// `false`，此时本函数返回。
     ///
-    /// This function will atomically unlock the mutex specified (represented by
-    /// `guard`) and block the current thread. This means that any calls
-    /// to [`notify_one`] or [`notify_all`] which happen logically after the
-    /// mutex is unlocked are candidates to wake this thread up. When this
-    /// function call returns, the lock specified will have been re-acquired.
+    /// 本函数会原子地解锁所指定的互斥锁（由 `guard` 表示）并阻塞当前线程。
+    /// 这意味着：任何在逻辑上发生于该互斥锁解锁之后的 [`notify_one`] 或
+    /// [`notify_all`] 调用，都有可能唤醒本线程。当本函数调用返回时，所指定的
+    /// 锁将已被重新获取。
     ///
     /// # Errors
     ///
-    /// This function will return an error if the mutex being waited on is
-    /// poisoned when this thread re-acquires the lock. For more information,
-    /// see information about [poisoning] on the [`Mutex`] type.
+    /// 如果当本线程重新获取该锁时，所等待的互斥锁已中毒，本函数将返回一个
+    /// 错误。更多信息参见 [`Mutex`] 类型上关于 [poisoning] 的说明。
     ///
     /// [`wait`]: Self::wait
     /// [`notify_one`]: Self::notify_one
@@ -155,7 +146,7 @@ impl Condvar {
     /// [poisoning]: super::Mutex#poisoning
     /// [`Mutex`]: super::Mutex
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::sync::{Arc, Mutex, Condvar};
@@ -168,13 +159,13 @@ impl Condvar {
     ///     let (lock, cvar) = &*pair2;
     ///     let mut pending = lock.lock().unwrap();
     ///     *pending = false;
-    ///     // We notify the condvar that the value has changed.
+    ///     // 我们通知该条件变量：值已经改变。
     ///     cvar.notify_one();
     /// });
     ///
-    /// // Wait for the thread to start up.
+    /// // 等待该线程启动。
     /// let (lock, cvar) = &*pair;
-    /// // As long as the value inside the `Mutex<bool>` is `true`, we wait.
+    /// // 只要 `Mutex<bool>` 内部的值是 `true`，我们就一直等待。
     /// let _guard = cvar.wait_while(lock.lock().unwrap(), |pending| { *pending }).unwrap();
     /// ```
     #[stable(feature = "wait_until", since = "1.42.0")]
@@ -187,35 +178,30 @@ impl Condvar {
     where
         F: FnMut(&mut T) -> bool,
     {
+        // 在循环中检查谓词，自动应对虚假唤醒：只要条件仍为 true 就继续等待。
         while condition(&mut *guard) {
             guard = self.wait(guard)?;
         }
         Ok(guard)
     }
 
-    /// Waits on this condition variable for a notification, timing out after a
-    /// specified duration.
+    /// 在这个条件变量上等待一个通知，并在指定的时长（duration）后超时。
     ///
-    /// The semantics of this function are equivalent to [`wait`]
-    /// except that the thread will be blocked for roughly no longer
-    /// than `ms` milliseconds. This method should not be used for
-    /// precise timing due to anomalies such as preemption or platform
-    /// differences that might not cause the maximum amount of time
-    /// waited to be precisely `ms`.
+    /// 本函数的语义等价于 [`wait`]，区别在于本线程被阻塞的时间大致不会超过
+    /// `ms` 毫秒。本方法不应用于精确计时，因为诸如抢占（preemption）或平台
+    /// 差异之类的异常情况，可能导致实际等待的最大时间并非恰好为 `ms`。
     ///
-    /// Note that the best effort is made to ensure that the time waited is
-    /// measured with a monotonic clock, and not affected by the changes made to
-    /// the system time.
+    /// 注意，已尽力确保所等待的时间用单调时钟（monotonic clock）来度量，
+    /// 不受系统时间变更的影响。
     ///
-    /// The returned boolean is `false` only if the timeout is known
-    /// to have elapsed.
+    /// 返回的布尔值仅在可确定超时已经发生时才为 `false`。
     ///
-    /// Like [`wait`], the lock specified will be re-acquired when this function
-    /// returns, regardless of whether the timeout elapsed or not.
+    /// 与 [`wait`] 一样，无论超时是否发生，本函数返回时所指定的锁都将被重新
+    /// 获取。
     ///
     /// [`wait`]: Self::wait
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::sync::{Arc, Mutex, Condvar};
@@ -228,20 +214,20 @@ impl Condvar {
     ///     let (lock, cvar) = &*pair2;
     ///     let mut started = lock.lock().unwrap();
     ///     *started = true;
-    ///     // We notify the condvar that the value has changed.
+    ///     // 我们通知该条件变量：值已经改变。
     ///     cvar.notify_one();
     /// });
     ///
-    /// // Wait for the thread to start up.
+    /// // 等待该线程启动。
     /// let (lock, cvar) = &*pair;
     /// let mut started = lock.lock().unwrap();
-    /// // As long as the value inside the `Mutex<bool>` is `false`, we wait.
+    /// // 只要 `Mutex<bool>` 内部的值是 `false`，我们就一直等待。
     /// loop {
     ///     let result = cvar.wait_timeout_ms(started, 10).unwrap();
-    ///     // 10 milliseconds have passed, or maybe the value changed!
+    ///     // 10 毫秒已经过去，或者也许值已改变！
     ///     started = result.0;
     ///     if *started == true {
-    ///         // We received the notification and the value has been updated, we can leave.
+    ///         // 我们收到了通知且值已被更新，可以离开了。
     ///         break
     ///     }
     /// }
@@ -258,35 +244,28 @@ impl Condvar {
         poison::map_result(res, |(a, b)| (a, !b.timed_out()))
     }
 
-    /// Waits on this condition variable for a notification, timing out after a
-    /// specified duration.
+    /// 在这个条件变量上等待一个通知，并在指定的时长（duration）后超时。
     ///
-    /// The semantics of this function are equivalent to [`wait`] except that
-    /// the thread will be blocked for roughly no longer than `dur`. This
-    /// method should not be used for precise timing due to anomalies such as
-    /// preemption or platform differences that might not cause the maximum
-    /// amount of time waited to be precisely `dur`.
+    /// 本函数的语义等价于 [`wait`]，区别在于本线程被阻塞的时间大致不会超过
+    /// `dur`。本方法不应用于精确计时，因为诸如抢占（preemption）或平台差异
+    /// 之类的异常情况，可能导致实际等待的最大时间并非恰好为 `dur`。
     ///
-    /// Note that the best effort is made to ensure that the time waited is
-    /// measured with a monotonic clock, and not affected by the changes made to
-    /// the system time. This function is susceptible to spurious wakeups.
-    /// Condition variables normally have a boolean predicate associated with
-    /// them, and the predicate must always be checked each time this function
-    /// returns to protect against spurious wakeups. Furthermore, since the timeout
-    /// is given relative to the moment this function is called, it needs to be adjusted
-    /// when this function is called in a loop. The [`wait_timeout_while`] method
-    /// lets you wait with a timeout while a predicate is true, taking care of all these concerns.
+    /// 注意，已尽力确保所等待的时间用单调时钟（monotonic clock）来度量，
+    /// 不受系统时间变更的影响。本函数易受虚假唤醒的影响。条件变量通常会关联
+    /// 一个布尔谓词，每次本函数返回时都必须检查该谓词，以防范虚假唤醒。此外，
+    /// 由于超时是相对于本函数被调用的那一刻给出的，因此当本函数在循环中调用
+    /// 时需要对其进行调整。[`wait_timeout_while`] 方法让你能够在谓词为 true
+    /// 期间带超时地等待，并替你处理好上述所有这些顾虑。
     ///
-    /// The returned [`WaitTimeoutResult`] value indicates if the timeout is
-    /// known to have elapsed.
+    /// 返回的 [`WaitTimeoutResult`] 值表明是否可确定超时已经发生。
     ///
-    /// Like [`wait`], the lock specified will be re-acquired when this function
-    /// returns, regardless of whether the timeout elapsed or not.
+    /// 与 [`wait`] 一样，无论超时是否发生，本函数返回时所指定的锁都将被重新
+    /// 获取。
     ///
     /// [`wait`]: Self::wait
     /// [`wait_timeout_while`]: Self::wait_timeout_while
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::sync::{Arc, Mutex, Condvar};
@@ -300,20 +279,20 @@ impl Condvar {
     ///     let (lock, cvar) = &*pair2;
     ///     let mut started = lock.lock().unwrap();
     ///     *started = true;
-    ///     // We notify the condvar that the value has changed.
+    ///     // 我们通知该条件变量：值已经改变。
     ///     cvar.notify_one();
     /// });
     ///
-    /// // wait for the thread to start up
+    /// // 等待该线程启动
     /// let (lock, cvar) = &*pair;
     /// let mut started = lock.lock().unwrap();
-    /// // as long as the value inside the `Mutex<bool>` is `false`, we wait
+    /// // 只要 `Mutex<bool>` 内部的值是 `false`，我们就一直等待
     /// loop {
     ///     let result = cvar.wait_timeout(started, Duration::from_millis(10)).unwrap();
-    ///     // 10 milliseconds have passed, or maybe the value changed!
+    ///     // 10 毫秒已经过去，或者也许值已改变！
     ///     started = result.0;
     ///     if *started == true {
-    ///         // We received the notification and the value has been updated, we can leave.
+    ///         // 我们收到了通知且值已被更新，可以离开了。
     ///         break
     ///     }
     /// }
@@ -328,34 +307,30 @@ impl Condvar {
         let (poisoned, result) = unsafe {
             let lock = mutex::guard_lock(&guard);
             let success = self.inner.wait_timeout(lock, dur);
+            // 底层 `wait_timeout` 返回「是否被通知唤醒（成功）」；取反即「是否超时」。
             (mutex::guard_poison(&guard).get(), WaitTimeoutResult(!success))
         };
         if poisoned { Err(PoisonError::new((guard, result))) } else { Ok((guard, result)) }
     }
 
-    /// Waits on this condition variable for a notification, timing out after a
-    /// specified duration.
+    /// 在这个条件变量上等待一个通知，并在指定的时长后超时。
     ///
-    /// The semantics of this function are equivalent to [`wait_while`] except
-    /// that the thread will be blocked for roughly no longer than `dur`. This
-    /// method should not be used for precise timing due to anomalies such as
-    /// preemption or platform differences that might not cause the maximum
-    /// amount of time waited to be precisely `dur`.
+    /// 本函数的语义等价于 [`wait_while`]，区别在于本线程被阻塞的时间大致不会
+    /// 超过 `dur`。本方法不应用于精确计时，因为诸如抢占或平台差异之类的异常
+    /// 情况，可能导致实际等待的最大时间并非恰好为 `dur`。
     ///
-    /// Note that the best effort is made to ensure that the time waited is
-    /// measured with a monotonic clock, and not affected by the changes made to
-    /// the system time.
+    /// 注意，已尽力确保所等待的时间用单调时钟来度量，不受系统时间变更的影响。
     ///
-    /// The returned [`WaitTimeoutResult`] value indicates if the timeout is
-    /// known to have elapsed without the condition being met.
+    /// 返回的 [`WaitTimeoutResult`] 值表明是否可确定：在条件未被满足的情况下
+    /// 超时已经发生。
     ///
-    /// Like [`wait_while`], the lock specified will be re-acquired when this
-    /// function returns, regardless of whether the timeout elapsed or not.
+    /// 与 [`wait_while`] 一样，无论超时是否发生，本函数返回时所指定的锁都将被
+    /// 重新获取。
     ///
     /// [`wait_while`]: Self::wait_while
     /// [`wait_timeout`]: Self::wait_timeout
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::sync::{Arc, Mutex, Condvar};
@@ -369,11 +344,11 @@ impl Condvar {
     ///     let (lock, cvar) = &*pair2;
     ///     let mut pending = lock.lock().unwrap();
     ///     *pending = false;
-    ///     // We notify the condvar that the value has changed.
+    ///     // 我们通知该条件变量：值已经改变。
     ///     cvar.notify_one();
     /// });
     ///
-    /// // wait for the thread to start up
+    /// // 等待该线程启动
     /// let (lock, cvar) = &*pair;
     /// let result = cvar.wait_timeout_while(
     ///     lock.lock().unwrap(),
@@ -381,9 +356,9 @@ impl Condvar {
     ///     |&mut pending| pending,
     /// ).unwrap();
     /// if result.1.timed_out() {
-    ///     // timed-out without the condition ever evaluating to false.
+    ///     // 超时了，且条件自始至终都没有取值为 false。
     /// }
-    /// // access the locked mutex via result.0
+    /// // 通过 result.0 访问已锁定的互斥锁
     /// ```
     #[stable(feature = "wait_timeout_until", since = "1.42.0")]
     #[rustc_should_not_be_called_on_const_items]
@@ -401,6 +376,8 @@ impl Condvar {
             if !condition(&mut *guard) {
                 return Ok((guard, WaitTimeoutResult(false)));
             }
+            // 每次循环都重新计算剩余超时：用总时长减去已流逝时间；若已耗尽
+            // （checked_sub 返回 None），则判定为超时并返回。
             let timeout = match dur.checked_sub(start.elapsed()) {
                 Some(timeout) => timeout,
                 None => return Ok((guard, WaitTimeoutResult(true))),
@@ -409,13 +386,13 @@ impl Condvar {
         }
     }
 
-    /// Wakes up one blocked thread on this condvar.
+    /// 唤醒这个条件变量上一个被阻塞的线程。
     ///
-    /// If there is a blocked thread on this condition variable, then it will
-    /// be woken up from its call to [`wait`] or [`wait_timeout`]. Calls to
-    /// `notify_one` are not buffered in any way.
+    /// 如果这个条件变量上有一个被阻塞的线程，那么它将从其对 [`wait`] 或
+    /// [`wait_timeout`] 的调用中被唤醒。对 `notify_one` 的调用不会以任何方式
+    /// 被缓冲（buffer）。
     ///
-    /// To wake up all threads, see [`notify_all`].
+    /// 要唤醒所有线程，参见 [`notify_all`]。
     ///
     /// [`wait`]: Self::wait
     /// [`wait_timeout`]: Self::wait_timeout
@@ -434,14 +411,14 @@ impl Condvar {
     ///     let (lock, cvar) = &*pair2;
     ///     let mut started = lock.lock().unwrap();
     ///     *started = true;
-    ///     // We notify the condvar that the value has changed.
+    ///     // 我们通知该条件变量：值已经改变。
     ///     cvar.notify_one();
     /// });
     ///
-    /// // Wait for the thread to start up.
+    /// // 等待该线程启动。
     /// let (lock, cvar) = &*pair;
     /// let mut started = lock.lock().unwrap();
-    /// // As long as the value inside the `Mutex<bool>` is `false`, we wait.
+    /// // 只要 `Mutex<bool>` 内部的值是 `false`，我们就一直等待。
     /// while !*started {
     ///     started = cvar.wait(started).unwrap();
     /// }
@@ -452,17 +429,16 @@ impl Condvar {
         self.inner.notify_one()
     }
 
-    /// Wakes up all blocked threads on this condvar.
+    /// 唤醒这个条件变量上所有被阻塞的线程。
     ///
-    /// This method will ensure that any current waiters on the condition
-    /// variable are awoken. Calls to `notify_all()` are not buffered in any
-    /// way.
+    /// 本方法会确保该条件变量上当前所有的等待者都被唤醒。对 `notify_all()` 的
+    /// 调用不会以任何方式被缓冲。
     ///
-    /// To wake up only one thread, see [`notify_one`].
+    /// 要只唤醒一个线程，参见 [`notify_one`]。
     ///
     /// [`notify_one`]: Self::notify_one
     ///
-    /// # Examples
+    /// # 示例
     ///
     /// ```
     /// use std::sync::{Arc, Mutex, Condvar};
@@ -475,14 +451,14 @@ impl Condvar {
     ///     let (lock, cvar) = &*pair2;
     ///     let mut started = lock.lock().unwrap();
     ///     *started = true;
-    ///     // We notify the condvar that the value has changed.
+    ///     // 我们通知该条件变量：值已经改变。
     ///     cvar.notify_all();
     /// });
     ///
     /// // Wait for the thread to start up.
     /// let (lock, cvar) = &*pair;
     /// let mut started = lock.lock().unwrap();
-    /// // As long as the value inside the `Mutex<bool>` is `false`, we wait.
+    /// // 只要 `Mutex<bool>` 内部的值是 `false`，我们就一直等待。
     /// while !*started {
     ///     started = cvar.wait(started).unwrap();
     /// }
@@ -503,7 +479,7 @@ impl fmt::Debug for Condvar {
 
 #[stable(feature = "condvar_default", since = "1.10.0")]
 impl Default for Condvar {
-    /// Creates a `Condvar` which is ready to be waited on and notified.
+    /// 创建一个可随时被等待和通知的 `Condvar`。
     fn default() -> Condvar {
         Condvar::new()
     }

@@ -26,52 +26,42 @@ pub(super) struct Pipes {
     pub theirs: ChildPipe,
 }
 
-/// Creates an anonymous pipe suitable for communication with a child process.
+/// 创建一个适用于与子进程通信的匿名管道（anonymous pipe）。
 ///
-/// Windows unfortunately does not have a way of performing asynchronous operations
-/// on a handle originally created for synchronous operation. As `read_output` can
-/// only be correctly implemented with asynchronous reads but the pipe created by
-/// `CreatePipe` is synchronous, we cannot use it (and thus [`io::pipe`]) to create
-/// a pipe for communicating with a child. Instead, this function uses the NT API
-/// to create a pipe where one pipe handle (`ours`) is asynchronous and one is
-/// synchronous and can be inherited by a child for use as a console handle
-/// (`theirs`).
+/// 遗憾的是，Windows 没有办法在一个原本为同步操作而创建的句柄上执行异步操作。
+/// 由于 `read_output` 只能用异步读取来正确实现，而 `CreatePipe` 创建的管道是同步的，
+/// 我们无法用它（因而也无法用 [`io::pipe`]）来创建一个用于与子进程通信的管道。
+/// 相反，本函数使用 NT API 来创建一个管道：其中一个管道句柄（`ours`）是异步的，
+/// 另一个是同步的、可被子进程继承以用作控制台句柄（`theirs`）。
 ///
-/// The ours/theirs pipes are *not* specifically readable or writable. Each
-/// one only supports a read or a write, but which is which depends on the
-/// boolean flag given. If `ours_readable` is `true`, then `ours` is readable and
-/// `theirs` is writable. Conversely, if `ours_readable` is `false`, then `ours`
-/// is writable and `theirs` is readable.
+/// ours/theirs 这两个管道 *并非* 明确地分为可读或可写。它们各自只支持读或写之一，
+/// 但谁是哪个取决于所给的布尔标志。如果 `ours_readable` 为 `true`，那么 `ours` 可读、
+/// `theirs` 可写。反之，如果 `ours_readable` 为 `false`，那么 `ours` 可写、`theirs` 可读。
 ///
-/// Also note that the `ours` pipe is always a handle opened up in overlapped
-/// mode. This means that technically speaking it should only ever be used
-/// with `OVERLAPPED` instances, but also works out ok if it's only ever used
-/// once at a time (which we do indeed guarantee).
-// FIXME(joboet): No, we don't guarantee that? E.g. `&Stdout` is both `Read`
-//                and `Sync`, so there could be multiple operations at the same
-//                time. All the functions below that forward to the inner handle
-//                methods could abort if used concurrently.
+/// 还要注意，`ours` 管道始终是一个以重叠（overlapped）模式打开的句柄。这意味着严格来说
+/// 它应当只与 `OVERLAPPED` 实例一起使用，但只要它每次只被使用一次（这一点我们确实有保证），
+/// 也能正常运作。
+// FIXME(joboet): 不，我们并没有保证这一点？例如 `&Stdout` 同时是 `Read` 和 `Sync`，
+//                因此可能存在多个同时进行的操作。下面所有转发到内部句柄方法的函数，
+//                如果被并发使用，都可能会 abort。
 pub(super) fn child_pipe(ours_readable: bool, their_handle_inheritable: bool) -> io::Result<Pipes> {
-    // A 64kb pipe capacity is the same as a typical Linux default.
+    // 64kb 的管道容量与典型的 Linux 默认值相同。
     const PIPE_BUFFER_CAPACITY: u32 = 64 * 1024;
 
-    // Note that we specifically do *not* use `CreatePipe` here because
-    // unfortunately the anonymous pipes returned do not support overlapped
-    // operations. Instead, we use `NtCreateNamedPipeFile` to create the
-    // anonymous pipe with overlapped support.
+    // 注意，我们在这里特意 *不* 使用 `CreatePipe`，因为遗憾的是它返回的匿名管道
+    // 不支持重叠（overlapped）操作。相反，我们使用 `NtCreateNamedPipeFile` 来创建
+    // 一个带重叠支持的匿名管道。
     //
-    // Once we do this, we connect to it via `NtOpenFile`, and then
-    // we return those reader/writer halves. Note that the `ours` pipe return
-    // value is always the named pipe, whereas `theirs` is just the normal file.
-    // This should hopefully shield us from child processes which assume their
-    // stdout is a named pipe, which would indeed be odd!
+    // 一旦做完这一步，我们就通过 `NtOpenFile` 连接到它，然后返回这两个 reader/writer 半边。
+    // 注意，返回值中的 `ours` 管道始终是命名管道（named pipe），而 `theirs` 只是普通文件。
+    // 这有望屏蔽掉那些假定其 stdout 是命名管道的子进程——那种假定确实很古怪！
     unsafe {
         let mut io_status = c::IO_STATUS_BLOCK::default();
         let mut object_attributes = c::OBJECT_ATTRIBUTES::default();
         object_attributes.Length = size_of::<c::OBJECT_ATTRIBUTES>() as u32;
 
-        // Open a handle to the pipe filesystem (`\??\PIPE\`).
-        // This will be used when creating a new annon pipe.
+        // 打开一个指向管道文件系统（`\??\PIPE\`）的句柄。
+        // 它将在创建新的匿名管道时使用。
         let pipe_fs = {
             let path = api::unicode_str!(r"\??\PIPE\");
             object_attributes.ObjectName = path.as_ptr();
@@ -82,7 +72,7 @@ pub(super) fn child_pipe(ours_readable: bool, their_handle_inheritable: bool) ->
                 &object_attributes,
                 &mut io_status,
                 c::FILE_SHARE_READ | c::FILE_SHARE_WRITE,
-                c::FILE_SYNCHRONOUS_IO_NONALERT, // synchronous access
+                c::FILE_SYNCHRONOUS_IO_NONALERT, // 同步访问
             );
             if c::nt_success(status) {
                 Handle::from_raw_handle(pipe_fs)
@@ -91,25 +81,25 @@ pub(super) fn child_pipe(ours_readable: bool, their_handle_inheritable: bool) ->
             }
         };
 
-        // From now on we're using handles instead of paths to create and open pipes.
-        // So set the `ObjectName` to a zero length string.
-        // As a (perhaps overzealous) mitigation for #143078, we use the null pointer
-        // for empty.Buffer instead of unicode_str!("").
-        // There's no difference to the OS itself but it's possible that third party
-        // DLLs which hook in to processes could be relying on the exact form of this string.
+        // 从现在起，我们使用句柄而不是路径来创建和打开管道。
+        // 因此把 `ObjectName` 设为一个零长度字符串。
+        // 作为对 #143078 的一种（也许是过度谨慎的）缓解措施，对于空的 Buffer，
+        // 我们使用空指针而不是 unicode_str!("")。
+        // 这对操作系统本身没有区别，但有可能某些挂钩（hook）进进程的第三方 DLL
+        // 会依赖于这个字符串的确切形式。
         let empty = c::UNICODE_STRING::default();
         object_attributes.ObjectName = &raw const empty;
 
-        // Create our side of the pipe for async access.
+        // 创建我们这一侧的管道，用于异步访问。
         let ours = {
-            // Use the pipe filesystem as the root directory.
-            // With no name provided, an anonymous pipe will be created.
+            // 把管道文件系统用作根目录（root directory）。
+            // 由于没有提供名称，将会创建一个匿名管道。
             object_attributes.RootDirectory = pipe_fs.as_raw_handle();
 
-            // A negative timeout value is a relative time (rather than an absolute time).
-            // The time is given in 100's of nanoseconds so this is 50 milliseconds.
-            // This value was chosen to be consistent with the default timeout set by `CreateNamedPipeW`
-            // See: https://learn.microsoft.com/en-us/windows/win32/api/namedpipeapi/nf-namedpipeapi-createnamedpipew
+            // 负的超时值表示一段相对时间（而不是绝对时间）。
+            // 时间以 100 纳秒为单位给出，所以这是 50 毫秒。
+            // 选择这个值是为了与 `CreateNamedPipeW` 设置的默认超时保持一致
+            // 参见：https://learn.microsoft.com/en-us/windows/win32/api/namedpipeapi/nf-namedpipeapi-createnamedpipew
             let timeout = (50_i64 * 10000).neg() as u64;
 
             let mut ours = ptr::null_mut();
@@ -124,7 +114,7 @@ pub(super) fn child_pipe(ours_readable: bool, their_handle_inheritable: bool) ->
                 c::FILE_PIPE_BYTE_STREAM_TYPE,
                 c::FILE_PIPE_BYTE_STREAM_MODE,
                 c::FILE_PIPE_QUEUE_OPERATION,
-                // only allow one client pipe
+                // 只允许一个客户端管道
                 1,
                 PIPE_BUFFER_CAPACITY,
                 PIPE_BUFFER_CAPACITY,
@@ -137,10 +127,10 @@ pub(super) fn child_pipe(ours_readable: bool, their_handle_inheritable: bool) ->
             }
         };
 
-        // Open their side of the pipe for synchronous access.
+        // 打开他们那一侧的管道，用于同步访问。
         let theirs = {
-            // We can reopen the anonymous pipe without a name by setting
-            // RootDirectory to the pipe handle and not setting a path name,
+            // 我们可以通过把 RootDirectory 设为该管道句柄、且不设置路径名，
+            // 来重新打开（reopen）这个不带名称的匿名管道，
             object_attributes.RootDirectory = ours.as_raw_handle();
 
             if their_handle_inheritable {
@@ -171,24 +161,22 @@ pub(super) fn child_pipe(ours_readable: bool, their_handle_inheritable: bool) ->
     }
 }
 
-/// Takes an asynchronous source pipe and returns a synchronous pipe suitable
-/// for sending to a child process.
+/// 接收一个异步的源管道，并返回一个适合发送给子进程的同步管道。
 ///
-/// This is achieved by creating a new set of pipes and spawning a thread that
-/// relays messages between the source and the synchronous pipe.
+/// 这是通过创建一组新的管道、并 spawn 一个线程在源管道与同步管道之间转发消息来实现的。
 pub(super) fn spawn_pipe_relay(
     source: &ChildPipe,
     ours_readable: bool,
     their_handle_inheritable: bool,
 ) -> io::Result<ChildPipe> {
-    // We need this handle to live for the lifetime of the thread spawned below.
+    // 我们需要这个句柄在下面 spawn 的线程的整个生命周期内都存活。
     let source = source.try_clone()?;
 
-    // create a new pair of anon pipes.
+    // 创建一对新的匿名管道。
     let Pipes { theirs, ours } = child_pipe(ours_readable, their_handle_inheritable)?;
 
-    // Spawn a thread that passes messages from one pipe to the other.
-    // Any errors will simply cause the thread to exit.
+    // spawn 一个线程，把消息从一个管道传递到另一个管道。
+    // 任何错误都会直接导致该线程退出。
     let (reader, writer) = if ours_readable { (ours, source) } else { (source, ours) };
     crate::thread::spawn(move || {
         let mut buf = [0_u8; 4096];
@@ -207,7 +195,7 @@ pub(super) fn spawn_pipe_relay(
         }
     });
 
-    // Return the pipe that should be sent to the child process.
+    // 返回应当发送给子进程的那个管道。
     Ok(theirs)
 }
 
@@ -233,10 +221,9 @@ impl ChildPipe {
         };
 
         match result {
-            // The special treatment of BrokenPipe is to deal with Windows
-            // pipe semantics, which yields this error when *reading* from
-            // a pipe after the other end has closed; we interpret that as
-            // EOF on the pipe.
+            // 对 BrokenPipe 的特殊处理是为了应对 Windows 的管道语义：
+            // 当在另一端已关闭之后还从管道中 *读取* 时，会产生这个错误；
+            // 我们把它解释为管道上的 EOF。
             Err(ref e) if e.kind() == io::ErrorKind::BrokenPipe => Ok(0),
             _ => result,
         }
@@ -252,10 +239,9 @@ impl ChildPipe {
         };
 
         match result {
-            // The special treatment of BrokenPipe is to deal with Windows
-            // pipe semantics, which yields this error when *reading* from
-            // a pipe after the other end has closed; we interpret that as
-            // EOF on the pipe.
+            // 对 BrokenPipe 的特殊处理是为了应对 Windows 的管道语义：
+            // 当在另一端已关闭之后还从管道中 *读取* 时，会产生这个错误；
+            // 我们把它解释为管道上的 EOF。
             Err(ref e) if e.kind() == io::ErrorKind::BrokenPipe => Ok(()),
             Err(e) => Err(e),
             Ok(n) => {
@@ -298,17 +284,17 @@ impl ChildPipe {
         self.inner.is_write_vectored()
     }
 
-    /// Synchronizes asynchronous reads or writes using our anonymous pipe.
+    /// 使用我们的匿名管道来同步异步的读取或写入。
     ///
-    /// This is a wrapper around [`ReadFileEx`] or [`WriteFileEx`] that uses
-    /// [Asynchronous Procedure Call] (APC) to synchronize reads or writes.
+    /// 它是对 [`ReadFileEx`] 或 [`WriteFileEx`] 的封装，借助
+    /// [异步过程调用（Asynchronous Procedure Call）]（APC）来同步读取或写入。
     ///
-    /// Note: This should not be used for handles we don't create.
+    /// 注意：它不应被用于并非由我们创建的句柄。
     ///
-    /// # Safety
+    /// # 安全性(Safety）
     ///
-    /// `buf` must be a pointer to a buffer that's valid for reads or writes
-    /// up to `len` bytes. The `AlertableIoFn` must be either `ReadFileEx` or `WriteFileEx`
+    /// `buf` 必须是一个指向缓冲区的指针，且该缓冲区对至多 `len` 字节的读取或写入有效。
+    /// `AlertableIoFn` 必须是 `ReadFileEx` 或 `WriteFileEx` 之一
     ///
     /// [`ReadFileEx`]: https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-readfileex
     /// [`WriteFileEx`]: https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-writefileex
@@ -317,77 +303,75 @@ impl ChildPipe {
         &self,
         io: impl FnOnce(&mut c::OVERLAPPED, c::LPOVERLAPPED_COMPLETION_ROUTINE) -> c::BOOL,
     ) -> io::Result<usize> {
-        // Use "alertable I/O" to synchronize the pipe I/O.
-        // This has four steps.
+        // 使用 "alertable I/O"（可警示 I/O）来同步管道 I/O。
+        // 它分为四个步骤。
         //
-        // STEP 1: Start the asynchronous I/O operation.
-        //         This simply calls either `ReadFileEx` or `WriteFileEx`,
-        //         giving it a pointer to the buffer and callback function.
+        // 步骤 1：启动异步 I/O 操作。
+        //         这只是调用 `ReadFileEx` 或 `WriteFileEx` 之一，
+        //         给它一个指向缓冲区的指针以及一个回调函数。
         //
-        // STEP 2: Enter an alertable state.
-        //         The callback set in step 1 will not be called until the thread
-        //         enters an "alertable" state. This can be done using `SleepEx`.
+        // 步骤 2：进入可警示（alertable）状态。
+        //         步骤 1 中设置的回调要等到线程进入 "alertable" 状态后才会被调用。
+        //         这可以用 `SleepEx` 来实现。
         //
-        // STEP 3: The callback
-        //         Once the I/O is complete and the thread is in an alertable state,
-        //         the callback will be run on the same thread as the call to
-        //         `ReadFileEx` or `WriteFileEx` done in step 1.
-        //         In the callback we simply set the result of the async operation.
+        // 步骤 3：回调
+        //         一旦 I/O 完成且线程处于可警示状态，该回调就会在与步骤 1 中调用
+        //         `ReadFileEx` 或 `WriteFileEx` 相同的线程上运行。
+        //         在回调中，我们只是设置该异步操作的结果。
         //
-        // STEP 4: Return the result.
-        //         At this point we'll have a result from the callback function
-        //         and can simply return it. Note that we must not return earlier,
-        //         while the I/O is still in progress.
+        // 步骤 4：返回结果。
+        //         此时我们将从回调函数得到一个结果，直接返回它即可。注意，我们绝不能
+        //         在更早的时候、即 I/O 仍在进行中时就返回。
 
-        // The result that will be set from the asynchronous callback.
+        // 将由异步回调设置的结果。
         let mut async_result: Option<AsyncResult> = None;
         struct AsyncResult {
             error: u32,
             transferred: u32,
         }
 
-        // STEP 3: The callback.
+        // 步骤 3：回调。
         unsafe extern "system" fn callback(
             error: u32,
             transferred: u32,
             overlapped: *mut c::OVERLAPPED,
         ) {
-            // Set `async_result` using a pointer smuggled through `hEvent`.
+            // 使用一个通过 `hEvent` 偷渡（smuggle）进来的指针来设置 `async_result`。
             // SAFETY:
-            // At this point, the OVERLAPPED struct will have been written to by the OS,
-            // except for our `hEvent` field which we set to a valid AsyncResult pointer (see below)
+            // 此时，OVERLAPPED 结构体已经被操作系统写入过了，
+            // 唯独我们的 `hEvent` 字段除外——我们把它设为了一个有效的 AsyncResult 指针（见下文）
             unsafe {
                 let result = AsyncResult { error, transferred };
                 *(*overlapped).hEvent.cast::<Option<AsyncResult>>() = Some(result);
             }
         }
 
-        // STEP 1: Start the I/O operation.
+        // 步骤 1：启动 I/O 操作。
         let mut overlapped: c::OVERLAPPED = unsafe { crate::mem::zeroed() };
-        // `hEvent` is unused by `ReadFileEx` and `WriteFileEx`.
-        // Therefore the documentation suggests using it to smuggle a pointer to the callback.
+        // `hEvent` 不被 `ReadFileEx` 和 `WriteFileEx` 使用。
+        // 因此文档建议利用它来偷渡（smuggle）一个指向回调的指针。
         overlapped.hEvent = (&raw mut async_result) as *mut _;
 
-        // Asynchronous read of the pipe.
-        // If successful, `callback` will be called once it completes.
+        // 对管道进行异步读取。
+        // 如果成功，`callback` 将在它完成后被调用一次。
         let result = io(&mut overlapped, Some(callback));
         if result == c::FALSE {
-            // We can return here because the call failed.
-            // After this we must not return until the I/O completes.
+            // 我们可以在这里返回，因为该调用失败了。
+            // 在此之后，在 I/O 完成之前我们绝不能返回。
             return Err(io::Error::last_os_error());
         }
 
-        // Wait indefinitely for the result.
+        // 无限期地等待结果。
         let result = loop {
-            // STEP 2: Enter an alertable state.
-            // The second parameter of `SleepEx` is used to make this sleep alertable.
+            // 步骤 2：进入可警示（alertable）状态。
+            // `SleepEx` 的第二个参数用于使本次睡眠变为可警示的。
             unsafe { c::SleepEx(c::INFINITE, c::TRUE) };
             if let Some(result) = async_result {
                 break result;
             }
         };
-        // STEP 4: Return the result.
-        // `async_result` is always `Some` at this point
+        // 步骤 4：返回结果。
+        // 此时 `async_result` 始终为 `Some`
         match result.error {
             c::ERROR_SUCCESS => Ok(result.transferred as usize),
             error => Err(io::Error::from_raw_os_error(error as _)),
@@ -408,14 +392,13 @@ pub fn read_output(
     let mut p2 = AsyncPipe::new(p2, v2)?;
     let objs = [p1.event.as_raw_handle(), p2.event.as_raw_handle()];
 
-    // In a loop we wait for either pipe's scheduled read operation to complete.
-    // If the operation completes with 0 bytes, that means EOF was reached, in
-    // which case we just finish out the other pipe entirely.
+    // 在一个循环中，我们等待任一管道已调度的读取操作完成。
+    // 如果该操作以 0 字节完成，那意味着到达了 EOF，在这种情况下，
+    // 我们就把另一个管道彻底读完。
     //
-    // Note that overlapped I/O is in general super unsafe because we have to
-    // be careful to ensure that all pointers in play are valid for the entire
-    // duration of the I/O operation (where tons of operations can also fail).
-    // The destructor for `AsyncPipe` ends up taking care of most of this.
+    // 注意，重叠（overlapped）I/O 总体上极其不安全，因为我们必须小心确保参与其中的
+    // 所有指针在整个 I/O 操作期间都有效（而在此期间还有大量操作可能失败）。
+    // `AsyncPipe` 的析构函数最终会处理掉其中的大部分问题。
     loop {
         let res = unsafe { c::WaitForMultipleObjects(2, objs.as_ptr(), c::FALSE, c::INFINITE) };
         if res == c::WAIT_OBJECT_0 {
@@ -435,7 +418,7 @@ pub fn read_output(
 struct AsyncPipe<'a> {
     pipe: Handle,
     event: Handle,
-    overlapped: Box<c::OVERLAPPED>, // needs a stable address
+    overlapped: Box<c::OVERLAPPED>, // 需要一个稳定的地址
     dst: &'a mut Vec<u8>,
     state: State,
 }
@@ -449,28 +432,24 @@ enum State {
 
 impl<'a> AsyncPipe<'a> {
     fn new(pipe: Handle, dst: &'a mut Vec<u8>) -> io::Result<AsyncPipe<'a>> {
-        // Create an event which we'll use to coordinate our overlapped
-        // operations, this event will be used in WaitForMultipleObjects
-        // and passed as part of the OVERLAPPED handle.
+        // 创建一个事件（event），我们将用它来协调我们的重叠（overlapped）操作；
+        // 这个事件将在 WaitForMultipleObjects 中使用，并作为 OVERLAPPED 句柄的一部分传入。
         //
-        // Note that we do a somewhat clever thing here by flagging the
-        // event as being manually reset and setting it initially to the
-        // signaled state. This means that we'll naturally fall through the
-        // WaitForMultipleObjects call above for pipes created initially,
-        // and the only time an even will go back to "unset" will be once an
-        // I/O operation is successfully scheduled (what we want).
+        // 注意，我们在这里做了一件略带巧妙的事情：把该事件标记为手动重置（manually reset），
+        // 并将其初始状态设为已触发（signaled）。这意味着对于刚创建的管道，我们会自然地
+        // “穿过”上面的 WaitForMultipleObjects 调用；而事件唯一会回到 "unset"（未触发）
+        // 状态的时刻，是在一次 I/O 操作被成功调度（schedule）之后（这正是我们想要的）。
         let event = Handle::new_event(true, true)?;
         let mut overlapped: Box<c::OVERLAPPED> = unsafe { Box::new(mem::zeroed()) };
         overlapped.hEvent = event.as_raw_handle();
         Ok(AsyncPipe { pipe, overlapped, event, dst, state: State::NotReading })
     }
 
-    /// Executes an overlapped read operation.
+    /// 执行一次重叠（overlapped）读取操作。
     ///
-    /// Must not currently be reading, and returns whether the pipe is currently
-    /// at EOF or not. If the pipe is not at EOF then `result()` must be called
-    /// to complete the read later on (may block), but if the pipe is at EOF
-    /// then `result()` should not be called as it will just block forever.
+    /// 当前必须不在读取中；它返回该管道当前是否处于 EOF。如果管道不在 EOF，
+    /// 那么之后必须调用 `result()` 来完成本次读取（可能会阻塞）；但如果管道处于 EOF，
+    /// 则不应调用 `result()`，因为那只会永远阻塞下去。
     fn schedule_read(&mut self) -> io::Result<bool> {
         assert_eq!(self.state, State::NotReading);
         let amt = unsafe {
@@ -481,13 +460,11 @@ impl<'a> AsyncPipe<'a> {
             self.pipe.read_overlapped(self.dst.spare_capacity_mut(), &mut *self.overlapped)?
         };
 
-        // If this read finished immediately then our overlapped event will
-        // remain signaled (it was signaled coming in here) and we'll progress
-        // down to the method below.
+        // 如果本次读取立即就完成了，那么我们的重叠（overlapped）事件将保持已触发状态
+        //（它进入这里时就是已触发的），于是我们会继续往下走到下面的方法。
         //
-        // Otherwise the I/O operation is scheduled and the system set our event
-        // to not signaled, so we flag ourselves into the reading state and move
-        // on.
+        // 否则，I/O 操作已被调度，系统会把我们的事件设为未触发（not signaled），
+        // 因此我们把自己标记进入读取（reading）状态并继续往下走。
         self.state = match amt {
             Some(0) => return Ok(false),
             Some(amt) => State::Read(amt),
@@ -496,17 +473,15 @@ impl<'a> AsyncPipe<'a> {
         Ok(true)
     }
 
-    /// Wait for the result of the overlapped operation previously executed.
+    /// 等待先前执行的重叠（overlapped）操作的结果。
     ///
-    /// Takes a parameter `wait` which indicates if this pipe is currently being
-    /// read whether the function should block waiting for the read to complete.
+    /// 接收一个参数 `wait`，用于指示：当该管道当前正在被读取时，本函数是否应当
+    /// 阻塞等待读取完成。
     ///
-    /// Returns values:
+    /// 返回值：
     ///
-    /// * `true` - finished any pending read and the pipe is not at EOF (keep
-    ///            going)
-    /// * `false` - finished any pending read and pipe is at EOF (stop issuing
-    ///             reads)
+    /// * `true`  —— 完成了任何挂起的读取，且管道未处于 EOF（继续进行）
+    /// * `false` —— 完成了任何挂起的读取，且管道处于 EOF（停止发起读取）
     fn result(&mut self) -> io::Result<bool> {
         let amt = match self.state {
             State::NotReading => return Ok(true),
@@ -521,10 +496,10 @@ impl<'a> AsyncPipe<'a> {
         Ok(amt != 0)
     }
 
-    /// Finishes out reading this pipe entirely.
+    /// 把这个管道整个读完。
     ///
-    /// Waits for any pending and schedule read, and then calls `read_to_end`
-    /// if necessary to read all the remaining information.
+    /// 等待任何挂起的以及已调度的读取，然后在必要时调用 `read_to_end`
+    /// 来读取所有剩余的信息。
     fn finish(&mut self) -> io::Result<()> {
         while self.result()? && self.schedule_read()? {
             // ...
@@ -537,16 +512,14 @@ impl<'a> Drop for AsyncPipe<'a> {
     fn drop(&mut self) {
         let State::Reading = self.state else { return };
 
-        // If we have a pending read operation, then we have to make sure that
-        // it's *done* before we actually drop this type. The kernel requires
-        // that the `OVERLAPPED` and buffer pointers are valid for the entire
-        // I/O operation.
+        // 如果我们有一个挂起（pending）的读取操作，那么在真正丢弃（drop）这个类型之前，
+        // 我们必须确保它已经 *完成*。内核要求 `OVERLAPPED` 和缓冲区指针在整个 I/O 操作
+        // 期间都保持有效。
         //
-        // To do that, we call `CancelIo` to cancel any pending operation, and
-        // if that succeeds we wait for the overlapped result.
+        // 为此，我们调用 `CancelIo` 来取消任何挂起的操作；如果成功，就等待重叠（overlapped）结果。
         //
-        // If anything here fails, there's not really much we can do, so we leak
-        // the buffer/OVERLAPPED pointers to ensure we're at least memory safe.
+        // 如果这里有任何一步失败，我们其实也没什么办法，因此我们泄漏（leak）掉
+        // 缓冲区/OVERLAPPED 指针，以确保我们至少在内存上是安全的。
         if self.pipe.cancel_io().is_err() || self.result().is_err() {
             let buf = mem::take(self.dst);
             let overlapped = Box::new(unsafe { mem::zeroed() });

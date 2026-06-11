@@ -2,7 +2,7 @@ mod memoryflags;
 pub(crate) use memoryflags::*;
 
 #[stable(feature = "rust1", since = "1.0.0")]
-/// Indicates a particular syscall number as used by the Xous kernel.
+/// 表示 Xous 内核所使用的某个特定系统调用号（syscall number）。
 #[derive(Copy, Clone)]
 #[repr(usize)]
 pub enum Syscall {
@@ -25,8 +25,7 @@ pub enum Syscall {
 }
 
 #[stable(feature = "rust1", since = "1.0.0")]
-/// Copies of these invocation types here for when we're running
-/// in environments without libxous.
+/// 这些调用结果（invocation）类型的副本放在这里，供我们在没有 libxous 的环境中运行时使用。
 #[derive(Copy, Clone)]
 #[repr(usize)]
 pub enum SyscallResult {
@@ -44,7 +43,7 @@ pub enum SyscallResult {
 
 #[stable(feature = "rust1", since = "1.0.0")]
 #[derive(Copy, Clone)]
-/// A list of all known errors that may be returned by the Xous kernel.
+/// Xous 内核可能返回的所有已知错误的列表。
 #[repr(usize)]
 pub enum Error {
     NoError = 0,
@@ -175,7 +174,7 @@ impl core::fmt::Debug for Error {
 #[stable(feature = "rust1", since = "1.0.0")]
 impl crate::error::Error for Error {}
 
-/// Indicates the type of Message that is sent when making a `SendMessage` syscall.
+/// 表示在执行 `SendMessage` 系统调用时所发送的 Message 类型。
 #[derive(Copy, Clone)]
 #[repr(usize)]
 pub(crate) enum InvokeType {
@@ -188,7 +187,7 @@ pub(crate) enum InvokeType {
 
 #[stable(feature = "rust1", since = "1.0.0")]
 #[derive(Debug, Copy, Clone)]
-/// A representation of a connection to a Xous service.
+/// 对一个到 Xous 服务连接（connection）的表示。
 pub struct Connection(u32);
 
 #[stable(feature = "rust1", since = "1.0.0")]
@@ -276,7 +275,7 @@ impl Into<usize> for ThreadId {
 
 #[derive(Copy, Clone)]
 #[repr(usize)]
-/// Limits that can be passed to `AdjustLimit`
+/// 可以传递给 `AdjustLimit` 的各项限制（limit）
 pub(crate) enum Limits {
     HeapMaximum = 1,
     HeapSize = 2,

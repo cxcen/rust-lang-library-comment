@@ -9,7 +9,7 @@ use crate::sys::{cvt, thread};
 use crate::{fmt, sys};
 
 ////////////////////////////////////////////////////////////////////////////////
-// Command
+// 命令（Command）
 ////////////////////////////////////////////////////////////////////////////////
 
 impl Command {
@@ -67,7 +67,7 @@ impl Command {
                 t!(cvt(libc::chdir(cwd.as_ptr())));
             }
 
-            // pre_exec closures are ignored on VxWorks
+            // 在 VxWorks 上，pre_exec 闭包会被忽略
             let _ = self.get_closures();
 
             let c_envp = envp
@@ -81,7 +81,7 @@ impl Command {
                 libc::PTHREAD_STACK_MIN,
             );
 
-            // ensure that access to the environment is synchronized
+            // 确保对环境（environment）的访问是同步的
             let _lock = sys::env::env_read_lock();
 
             let ret = libc::rtpSpawn(
@@ -94,8 +94,8 @@ impl Command {
                 0,            // task options
             );
 
-            // Because FileDesc was not used, each duplicated file descriptor
-            // needs to be closed manually
+            // 由于没有使用 FileDesc，每个被复制（duplicated）的文件描述符
+            // 都需要手动关闭
             if orig_stdin != libc::STDIN_FILENO {
                 t!(cvt_r(|| libc::dup2(orig_stdin, libc::STDIN_FILENO)));
                 libc::close(orig_stdin);
@@ -132,10 +132,10 @@ impl Command {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// Processes
+// 进程（Processes）
 ////////////////////////////////////////////////////////////////////////////////
 
-/// The unique id of the process (this should never be negative).
+/// 进程的唯一 id（它绝不应为负数）。
 pub struct Process {
     pid: RTP_ID,
     status: Option<ExitStatus>,
@@ -151,9 +151,9 @@ impl Process {
     }
 
     pub fn send_signal(&self, signal: i32) -> io::Result<()> {
-        // If we've already waited on this process then the pid can be recycled and
-        // used for another process, and we probably shouldn't be sending signals to
-        // random processes, so return Ok because the process has exited already.
+        // 如果我们已经对该进程 wait 过了，那么这个 pid 可能会被回收（recycled）并用于
+        // 另一个进程，而我们大概不应该向随机的进程发送信号，因此返回 Ok，
+        // 因为该进程已经退出了。
         if self.status.is_some() {
             Ok(())
         } else {
@@ -187,7 +187,7 @@ impl Process {
     }
 }
 
-/// Unix exit statuses
+/// Unix 退出状态（exit statuses）
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Default)]
 pub struct ExitStatus(c_int);
 
@@ -201,11 +201,11 @@ impl ExitStatus {
     }
 
     pub fn exit_ok(&self) -> Result<(), ExitStatusError> {
-        // This assumes that WIFEXITED(status) && WEXITSTATUS==0 corresponds to status==0. This is
-        // true on all actual versions of Unix, is widely assumed, and is specified in SuS
-        // https://pubs.opengroup.org/onlinepubs/9699919799/functions/wait.html. If it is not
-        // true for a platform pretending to be Unix, the tests (our doctests, and also
-        // unix/tests.rs) will spot it. `ExitStatusError::code` assumes this too.
+        // 它假定 WIFEXITED(status) && WEXITSTATUS==0 对应于 status==0。
+        // 这在所有实际版本的 Unix 上都成立，被广泛假定，并在 SuS 中有明确规定
+        // https://pubs.opengroup.org/onlinepubs/9699919799/functions/wait.html。
+        // 如果对某个假装成 Unix 的平台而言它不成立，那么这些测试（我们的 doctests，
+        // 以及 unix/tests.rs）会发现它。`ExitStatusError::code` 也做了同样的假定。
         match NonZero::try_from(self.0) {
             Ok(failure) => Err(ExitStatusError(failure)),
             Err(_) => Ok(()),
@@ -221,7 +221,7 @@ impl ExitStatus {
     }
 
     pub fn core_dumped(&self) -> bool {
-        // This method is not yet properly implemented on VxWorks
+        // 该方法在 VxWorks 上尚未被正确实现
         false
     }
 
@@ -230,7 +230,7 @@ impl ExitStatus {
     }
 
     pub fn continued(&self) -> bool {
-        // This method is not yet properly implemented on VxWorks
+        // 该方法在 VxWorks 上尚未被正确实现
         false
     }
 
@@ -239,7 +239,7 @@ impl ExitStatus {
     }
 }
 
-/// Converts a raw `c_int` to a type-safe `ExitStatus` by wrapping it without copying.
+/// 通过包装一个原始的 `c_int`（不进行拷贝）来把它转换为类型安全的 `ExitStatus`。
 impl From<c_int> for ExitStatus {
     fn from(a: c_int) -> ExitStatus {
         ExitStatus(a)

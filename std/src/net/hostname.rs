@@ -1,19 +1,19 @@
 use crate::ffi::OsString;
 
-/// Returns the system hostname.
+/// 返回系统主机名（hostname）。
 ///
-/// This can error out in platform-specific error cases;
-/// for example, uefi and wasm, where hostnames aren't
-/// supported.
+/// 在平台特定的错误场景下，此函数可能返回错误；
+/// 例如在 uefi 与 wasm 上，这些平台并不支持
+/// 主机名。
 ///
-/// # Underlying system calls
+/// # 底层系统调用(Underlying system calls）
 ///
-/// | Platform | System call                                                                                             |
+/// | 平台     | 系统调用                                                                                                |
 /// |----------|---------------------------------------------------------------------------------------------------------|
 /// | UNIX     | [`gethostname`](https://www.man7.org/linux/man-pages/man2/gethostname.2.html)                           |
 /// | Windows  | [`GetHostNameW`](https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-gethostnamew) |
 ///
-/// Note that platform-specific behavior [may change in the future][changes].
+/// 注意，平台特定的行为 [将来可能发生变化][changes]。
 ///
 /// [changes]: crate::io#platform-specific-behavior
 #[unstable(feature = "gethostname", issue = "135142")]

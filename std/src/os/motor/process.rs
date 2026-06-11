@@ -4,7 +4,7 @@ use crate::sealed::Sealed;
 use crate::sys::AsInner;
 
 pub trait ChildExt: Sealed {
-    /// Extracts the main thread raw handle, without taking ownership
+    /// 提取主线程的原始句柄（raw handle），不获取其所有权
     fn sys_handle(&self) -> u64;
 }
 
